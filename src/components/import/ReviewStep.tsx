@@ -31,9 +31,10 @@ import {
   IconInfoCircle,
   IconCalendar,
   IconBuilding,
+  IconCopy,
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
-import type { MatchedBiomarker } from '../../services/analysis/LabReportAnalyzer';
+import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 
 /**
  * Reviewed result with edited biomarkers
@@ -45,6 +46,8 @@ export interface ReviewedResult extends AnalysisResult {
   editedLabDate?: string;
   /** Edited lab name */
   editedLabName?: string;
+  /** Duplicate biomarker conflicts (inherited from AnalysisResult, explicitly declared for clarity) */
+  duplicateConflicts?: DuplicateConflict[];
 }
 
 /**
@@ -94,6 +97,7 @@ export function ReviewStep({
     resultIndex: number;
     biomarkerIndex: number;
   } | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Update a biomarker value
   const updateBiomarker = useCallback(
@@ -190,6 +194,18 @@ export function ReviewStep({
     0
   );
 
+  // Count duplicate conflicts
+  const duplicateConflictCount = reviewedResults.reduce(
+    (sum, r) =>
+      sum + r.editedBiomarkers.filter((b) => b.hasDuplicateConflict).length,
+    0
+  );
+
+  // Get unique duplicate conflicts for display
+  const allDuplicateConflicts = reviewedResults.flatMap(
+    (r) => r.duplicateConflicts?.filter((c) => !c.valuesMatch) || []
+  );
+
   // Total biomarkers
   const totalBiomarkers = reviewedResults.reduce(
     (sum, r) => sum + r.editedBiomarkers.length,
@@ -198,16 +214,30 @@ export function ReviewStep({
 
   // Handle continue
   const handleContinue = useCallback(() => {
-    // Validate that all biomarkers have required fields
-    const isValid = reviewedResults.every((r) =>
-      r.editedBiomarkers.every(
-        (b) => b.name && b.value !== undefined && b.unit
-      )
-    );
+    // Find biomarkers with missing required fields
+    const invalidBiomarkers: string[] = [];
 
-    if (isValid) {
-      onComplete(reviewedResults);
+    reviewedResults.forEach((r) => {
+      r.editedBiomarkers.forEach((b, index) => {
+        const missing: string[] = [];
+        if (!b.name) missing.push('name');
+        if (b.value === undefined || b.value === null) missing.push('value');
+        if (!b.unit) missing.push('unit');
+
+        if (missing.length > 0) {
+          const biomarkerLabel = b.name || `Biomarker #${index + 1}`;
+          invalidBiomarkers.push(`${biomarkerLabel} in "${r.fileName}" is missing: ${missing.join(', ')}`);
+        }
+      });
+    });
+
+    if (invalidBiomarkers.length > 0) {
+      setValidationError(`Please fix the following issues:\n${invalidBiomarkers.slice(0, 5).join('\n')}${invalidBiomarkers.length > 5 ? `\n...and ${invalidBiomarkers.length - 5} more` : ''}`);
+      return;
     }
+
+    setValidationError(null);
+    onComplete(reviewedResults);
   }, [reviewedResults, onComplete]);
 
   return (
@@ -222,19 +252,61 @@ export function ReviewStep({
               file(s)
             </Text>
           </div>
-          {lowConfidenceCount > 0 && (
-            <Tooltip label="Values that may need verification">
-              <Badge
-                color="yellow"
-                variant="light"
-                leftSection={<IconAlertTriangle size={12} />}
-              >
-                {lowConfidenceCount} low confidence
-              </Badge>
-            </Tooltip>
-          )}
+          <Group gap="xs">
+            {duplicateConflictCount > 0 && (
+              <Tooltip label="Duplicate biomarkers with conflicting values">
+                <Badge
+                  color="orange"
+                  variant="light"
+                  leftSection={<IconCopy size={12} />}
+                >
+                  {duplicateConflictCount} conflicts
+                </Badge>
+              </Tooltip>
+            )}
+            {lowConfidenceCount > 0 && (
+              <Tooltip label="Values that may need verification">
+                <Badge
+                  color="yellow"
+                  variant="light"
+                  leftSection={<IconAlertTriangle size={12} />}
+                >
+                  {lowConfidenceCount} low confidence
+                </Badge>
+              </Tooltip>
+            )}
+          </Group>
         </Group>
       </Paper>
+
+      {/* Duplicate conflict warnings */}
+      {allDuplicateConflicts.length > 0 && (
+        <Alert
+          icon={<IconCopy size={16} />}
+          title="Duplicate Biomarkers Detected"
+          color="orange"
+          variant="light"
+        >
+          <Stack gap="xs">
+            <Text size="sm">
+              The following biomarkers appear multiple times with different values.
+              Please review and remove the incorrect entries:
+            </Text>
+            <ul style={{ margin: 0, paddingLeft: 16 }}>
+              {allDuplicateConflicts.map((conflict, i) => (
+                <li key={i}>
+                  <Text size="sm" fw={500}>
+                    {conflict.biomarkerName}:
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {conflict.message}
+                  </Text>
+                </li>
+              ))}
+            </ul>
+          </Stack>
+        </Alert>
+      )}
 
       {/* Results by file */}
       <Accordion variant="separated" multiple defaultValue={['0']}>
@@ -312,15 +384,16 @@ export function ReviewStep({
                         editingBiomarker?.resultIndex === resultIndex &&
                         editingBiomarker?.biomarkerIndex === bioIndex;
 
+                      // Determine row background color based on issues
+                      let rowBg: string | undefined;
+                      if (biomarker.hasDuplicateConflict) {
+                        rowBg = 'var(--mantine-color-orange-light)';
+                      } else if (biomarker.confidence < 0.7) {
+                        rowBg = 'var(--mantine-color-yellow-light)';
+                      }
+
                       return (
-                        <Table.Tr
-                          key={bioIndex}
-                          bg={
-                            biomarker.confidence < 0.7
-                              ? 'var(--mantine-color-yellow-light)'
-                              : undefined
-                          }
-                        >
+                        <Table.Tr key={bioIndex} bg={rowBg}>
                           <Table.Td>
                             {isEditing ? (
                               <TextInput
@@ -336,7 +409,18 @@ export function ReviewStep({
                             ) : (
                               <Group gap="xs">
                                 <Text size="sm">{biomarker.name}</Text>
-                                {biomarker.dictionaryMatch && (
+                                {biomarker.hasDuplicateConflict && (
+                                  <Tooltip label="Duplicate with conflicting value - please review">
+                                    <ThemeIcon
+                                      size="xs"
+                                      color="orange"
+                                      variant="light"
+                                    >
+                                      <IconCopy size={10} />
+                                    </ThemeIcon>
+                                  </Tooltip>
+                                )}
+                                {biomarker.dictionaryMatch && !biomarker.hasDuplicateConflict && (
                                   <Tooltip label="Matched to dictionary">
                                     <ThemeIcon
                                       size="xs"
@@ -525,6 +609,21 @@ export function ReviewStep({
           </Accordion.Item>
         ))}
       </Accordion>
+
+      {/* Validation error */}
+      {validationError && (
+        <Alert
+          icon={<IconAlertTriangle size={16} />}
+          title="Cannot Continue"
+          color="red"
+          withCloseButton
+          onClose={() => setValidationError(null)}
+        >
+          <Text size="sm" style={{ whiteSpace: 'pre-line' }}>
+            {validationError}
+          </Text>
+        </Alert>
+      )}
 
       {/* Action buttons */}
       <Group justify="space-between" mt="xl">

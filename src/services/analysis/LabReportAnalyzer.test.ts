@@ -102,7 +102,27 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
 
 vi.mock('../units', () => ({
   normalizeUnit: vi.fn().mockImplementation((unit: string) => unit),
-  canConvert: vi.fn().mockReturnValue(true),
+  canConvert: vi.fn().mockImplementation((name: string, from: string, to: string) => {
+    // Glucose can be converted between mg/dL and mmol/L
+    if (name.toLowerCase() === 'glucose') {
+      return (from === 'mg/dL' && to === 'mg/dL') ||
+             (from === 'mmol/L' && to === 'mg/dL') ||
+             (from === 'mg/dL' && to === 'mmol/L');
+    }
+    return from === to;
+  }),
+  convertValue: vi.fn().mockImplementation((name: string, value: number, from: string, to: string) => {
+    // Glucose conversion: mg/dL to mmol/L (divide by 18.0182) or vice versa
+    if (name.toLowerCase() === 'glucose') {
+      if (from === 'mmol/L' && to === 'mg/dL') {
+        return { convertedValue: Math.round(value * 18.0182), originalValue: value, originalUnit: from, targetUnit: to, precision: 0 };
+      }
+      if (from === 'mg/dL' && to === 'mmol/L') {
+        return { convertedValue: Math.round(value / 18.0182 * 100) / 100, originalValue: value, originalUnit: from, targetUnit: to, precision: 2 };
+      }
+    }
+    return { convertedValue: value, originalValue: value, originalUnit: from, targetUnit: to, precision: 2 };
+  }),
 }));
 
 // Import mocked modules for control
@@ -423,6 +443,121 @@ describe('LabReportAnalyzer', () => {
       expect(error.message).toBe('Test message');
       expect(error.stage).toBe('Test Stage');
       expect(error.cause).toBe(cause);
+    });
+  });
+
+  describe('biomarker deduplication', () => {
+    const defaultOptions = {
+      aiProvider: 'openai' as const,
+      aiConfig: { apiKey: 'sk-test-key' },
+    };
+
+    it('deduplicates biomarkers with same value in different units', async () => {
+      // Mock AI to return duplicate Glucose values in different units
+      // 100 mg/dL and 5.55 mmol/L are equivalent (5.55 * 18.0182 ≈ 100)
+      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
+        type: 'openai',
+        name: 'OpenAI',
+        analyzeLabReport: vi.fn().mockResolvedValue({
+          biomarkers: [
+            {
+              name: 'Glucose',
+              value: 100,
+              unit: 'mg/dL',
+              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              confidence: 0.95,
+              flaggedAbnormal: false,
+            },
+            {
+              name: 'Glucose',
+              value: 5.55,
+              unit: 'mmol/L',
+              referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
+              confidence: 0.90,
+              flaggedAbnormal: false,
+            },
+          ],
+          labDate: '2024-01-15',
+          labName: 'Test Lab',
+          overallConfidence: 0.92,
+          analyzedText: 'test text',
+          warnings: [],
+          modelUsed: 'gpt-4o-mini',
+          processingTime: 500,
+        }),
+        validateConfiguration: vi.fn(),
+        testConnection: vi.fn(),
+      });
+
+      const file = createMockFile('report.pdf', 'application/pdf');
+      const result = await analyzeLabReport(file, defaultOptions);
+
+      // Should have only one Glucose entry (deduplicated)
+      const glucoseEntries = result.matchedBiomarkers.filter(
+        (b) => b.name === 'Glucose'
+      );
+      expect(glucoseEntries).toHaveLength(1);
+      expect(result.duplicateConflicts).toHaveLength(0);
+    });
+
+    it('flags conflicting duplicate biomarkers for user review', async () => {
+      // Mock AI to return conflicting Glucose values
+      // 100 mg/dL and 8.0 mmol/L are NOT equivalent (8.0 * 18.0182 ≈ 144, not 100)
+      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
+        type: 'openai',
+        name: 'OpenAI',
+        analyzeLabReport: vi.fn().mockResolvedValue({
+          biomarkers: [
+            {
+              name: 'Glucose',
+              value: 100,
+              unit: 'mg/dL',
+              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              confidence: 0.95,
+              flaggedAbnormal: false,
+            },
+            {
+              name: 'Glucose',
+              value: 8.0,
+              unit: 'mmol/L',
+              referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
+              confidence: 0.90,
+              flaggedAbnormal: true,
+            },
+          ],
+          labDate: '2024-01-15',
+          labName: 'Test Lab',
+          overallConfidence: 0.92,
+          analyzedText: 'test text',
+          warnings: [],
+          modelUsed: 'gpt-4o-mini',
+          processingTime: 500,
+        }),
+        validateConfiguration: vi.fn(),
+        testConnection: vi.fn(),
+      });
+
+      const file = createMockFile('report.pdf', 'application/pdf');
+      const result = await analyzeLabReport(file, defaultOptions);
+
+      // Both entries should be kept since values conflict
+      const glucoseEntries = result.matchedBiomarkers.filter(
+        (b) => b.name === 'Glucose'
+      );
+      expect(glucoseEntries).toHaveLength(2);
+
+      // All Glucose entries should be flagged as having conflicts
+      expect(glucoseEntries.every((g) => g.hasDuplicateConflict)).toBe(true);
+
+      // Should have one conflict for Glucose
+      expect(result.duplicateConflicts).toHaveLength(1);
+      expect(result.duplicateConflicts[0].biomarkerName).toBe('Glucose');
+      expect(result.duplicateConflicts[0].valuesMatch).toBe(false);
+
+      // Warnings should mention the conflict
+      expect(
+        result.warnings.some((w) => w.includes('conflicting duplicate'))
+      ).toBe(true);
     });
   });
 });

@@ -85,11 +85,14 @@ interface SerializedUserNote extends Omit<UserNote, 'createdAt' | 'updatedAt'> {
 
 /**
  * Deserialize lab result from backup
+ * Note: We preserve the original id for mapping purposes during restore.
+ * The id will be stripped when actually inserting into the database.
  */
 function deserializeLabResult(data: SerializedLabResult): LabResult {
   return {
     ...data,
-    id: undefined, // Will be assigned by database
+    // Keep original id for mapping during restore (will be stripped on insert)
+    id: data.id,
     date: parseDate(data.date),
     createdAt: parseDate(data.createdAt),
     updatedAt: parseDate(data.updatedAt),
@@ -98,12 +101,15 @@ function deserializeLabResult(data: SerializedLabResult): LabResult {
 
 /**
  * Deserialize test value from backup
+ * Note: We preserve original ids for mapping purposes during restore.
  */
 function deserializeTestValue(data: SerializedTestValue): TestValue {
   return {
     ...data,
-    id: undefined, // Will be assigned by database
-    labResultId: data.labResultId, // Will be updated after lab result import
+    // Keep original id for reference (will be stripped on insert)
+    id: data.id,
+    // Keep labResultId for mapping (will be updated during restore)
+    labResultId: data.labResultId,
     createdAt: parseDate(data.createdAt),
     updatedAt: parseDate(data.updatedAt),
   };
@@ -111,12 +117,15 @@ function deserializeTestValue(data: SerializedTestValue): TestValue {
 
 /**
  * Deserialize user note from backup
+ * Note: We preserve original ids for reference during restore.
  */
 function deserializeUserNote(data: SerializedUserNote): UserNote {
   return {
     ...data,
-    id: undefined, // Will be assigned by database
-    labResultId: data.labResultId, // Will be updated after lab result import
+    // Keep original id for reference (will be stripped on insert)
+    id: data.id,
+    // Keep labResultId for mapping (may need to be updated during restore)
+    labResultId: data.labResultId,
     createdAt: parseDate(data.createdAt),
     updatedAt: parseDate(data.updatedAt),
   };

@@ -92,15 +92,18 @@ describe('jsonImport', () => {
       expect(parsed.labResults[0].updatedAt).toBeInstanceOf(Date);
     });
 
-    it('should remove IDs from imported data', () => {
+    it('should preserve IDs for mapping during restore', () => {
+      // IDs are preserved during parsing so they can be used for ID mapping
+      // during the restore process. They are stripped when inserting into the database.
       const sources = createMockDataSources();
       const json = exportToJson(sources);
 
       const parsed = parseBackupJson(json);
 
-      expect(parsed.labResults[0].id).toBeUndefined();
-      expect(parsed.testValues[0].id).toBeUndefined();
-      expect(parsed.userNotes[0].id).toBeUndefined();
+      // IDs should be preserved for mapping
+      expect(parsed.labResults[0].id).toBe(1);
+      expect(parsed.testValues[0].id).toBe(1);
+      expect(parsed.userNotes[0].id).toBe(1);
     });
 
     it('should preserve labResultId references', () => {

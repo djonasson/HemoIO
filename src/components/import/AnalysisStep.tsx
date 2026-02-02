@@ -28,7 +28,7 @@ import {
 import type { UploadedFile } from './UploadStep';
 import { analyzeLabReport, AnalysisError } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
-import type { MatchedBiomarker } from '../../services/analysis/LabReportAnalyzer';
+import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 
 /**
  * Analysis result for a single file
@@ -52,6 +52,8 @@ export interface AnalysisResult {
   confidence: number;
   /** Warnings from analysis */
   warnings: string[];
+  /** Duplicate biomarker conflicts */
+  duplicateConflicts?: DuplicateConflict[];
 }
 
 /**
@@ -204,6 +206,7 @@ export function AnalysisStep({
             labName: result.labName,
             confidence: result.overallConfidence,
             warnings: result.warnings,
+            duplicateConflicts: result.duplicateConflicts,
           });
 
           updateFileStatus(uploadedFile.id, {

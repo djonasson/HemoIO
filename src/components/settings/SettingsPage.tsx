@@ -55,6 +55,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     getApiKey,
     setApiKey: saveEncryptedApiKey,
     removeApiKey,
+    isLoading: isApiKeyLoading,
   } = useEncryptedApiKey();
 
   // AI Settings state
@@ -325,7 +326,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         <Tabs.Panel value="ai" pt="md">
           <AISettings
             provider={aiProvider}
-            hasApiKey={hasApiKey}
+            hasApiKey={!isApiKeyLoading && hasApiKey}
             apiKeyLastFour={apiKeyLastFour}
             ollamaModel={ollamaModel}
             openaiModel={openaiModel}

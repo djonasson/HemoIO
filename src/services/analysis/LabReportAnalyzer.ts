@@ -23,7 +23,26 @@ import type {
 } from '../ai';
 import { findBiomarker } from '../../data/biomarkers/dictionary';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
-import { normalizeUnit, canConvert } from '../units';
+import { normalizeUnit, canConvert, convertValue } from '../units';
+
+/**
+ * Information about a duplicate biomarker conflict
+ */
+export interface DuplicateConflict {
+  /** The biomarker name */
+  biomarkerName: string;
+  /** Original values before deduplication (for user review) */
+  originalValues: Array<{
+    value: number;
+    unit: string;
+    convertedValue?: number;
+    convertedUnit?: string;
+  }>;
+  /** Whether the values match after conversion */
+  valuesMatch: boolean;
+  /** Message describing the conflict */
+  message: string;
+}
 
 /**
  * Matched biomarker with dictionary information
@@ -37,6 +56,10 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   isExactMatch: boolean;
   /** Normalized unit */
   normalizedUnit: string;
+  /** Flag indicating this biomarker has a duplicate conflict that needs user review */
+  hasDuplicateConflict?: boolean;
+  /** Details about the duplicate conflict if present */
+  duplicateConflict?: DuplicateConflict;
 }
 
 /**
@@ -65,6 +88,8 @@ export interface AnalysisResult {
   overallConfidence: number;
   /** Warnings and issues */
   warnings: string[];
+  /** Duplicate biomarker conflicts that need user review */
+  duplicateConflicts: DuplicateConflict[];
   /** Processing stages completed */
   stages: AnalysisStage[];
   /** Total processing time in milliseconds */
@@ -287,13 +312,19 @@ export async function analyzeLabReport(
   options.onProgress?.('Matching biomarkers', 0.9);
 
   let matchedBiomarkers: MatchedBiomarker[];
+  let duplicateConflicts: DuplicateConflict[] = [];
 
   try {
     startStage(matchingStage);
 
-    matchedBiomarkers = aiAnalysis.biomarkers.map((biomarker) =>
+    const initialMatches = aiAnalysis.biomarkers.map((biomarker) =>
       matchBiomarkerToDictionary(biomarker)
     );
+
+    // Deduplicate biomarkers with different units
+    const deduplicationResult = deduplicateBiomarkers(initialMatches);
+    matchedBiomarkers = deduplicationResult.deduplicated;
+    duplicateConflicts = deduplicationResult.conflicts;
 
     // Count unmatched biomarkers
     const unmatchedCount = matchedBiomarkers.filter(
@@ -303,6 +334,16 @@ export async function analyzeLabReport(
       warnings.push(
         `${unmatchedCount} biomarker(s) could not be matched to the dictionary`
       );
+    }
+
+    // Add warnings for duplicate conflicts
+    if (duplicateConflicts.length > 0) {
+      const conflictCount = duplicateConflicts.filter((c) => !c.valuesMatch).length;
+      if (conflictCount > 0) {
+        warnings.push(
+          `${conflictCount} biomarker(s) have conflicting duplicate values that need review`
+        );
+      }
     }
 
     completeStage(matchingStage);
@@ -332,6 +373,7 @@ export async function analyzeLabReport(
     labName: aiAnalysis.labName,
     overallConfidence: calculateOverallConfidence(matchedBiomarkers, aiAnalysis),
     warnings,
+    duplicateConflicts,
     stages,
     totalProcessingTime,
   };
@@ -376,11 +418,232 @@ function matchBiomarkerToDictionary(
     };
   }
 
+  // Log unmatched biomarkers to console for dictionary improvement
+  console.warn(
+    `[HemoIO] Unmatched biomarker: "${biomarker.name}" (unit: ${biomarker.unit}, value: ${biomarker.value})`
+  );
+
   return {
     ...biomarker,
     isExactMatch: false,
     normalizedUnit,
   };
+}
+
+/**
+ * Tolerance for comparing converted values (0.5% difference allowed)
+ */
+const VALUE_TOLERANCE = 0.005;
+
+/**
+ * Check if two values are equal within tolerance
+ */
+function valuesAreEqual(val1: number, val2: number): boolean {
+  if (val1 === val2) return true;
+  if (val1 === 0 || val2 === 0) return false;
+  const diff = Math.abs(val1 - val2);
+  const avg = (Math.abs(val1) + Math.abs(val2)) / 2;
+  return diff / avg <= VALUE_TOLERANCE;
+}
+
+/**
+ * Deduplicate biomarkers that appear multiple times with different units.
+ * - If values are the same after conversion: keep only one (prefer canonical unit)
+ * - If values differ: flag as conflict for user review
+ */
+function deduplicateBiomarkers(
+  biomarkers: MatchedBiomarker[]
+): { deduplicated: MatchedBiomarker[]; conflicts: DuplicateConflict[] } {
+  const conflicts: DuplicateConflict[] = [];
+
+  // Group biomarkers by their canonical name (from dictionary match or original name)
+  const groups = new Map<string, MatchedBiomarker[]>();
+
+  for (const biomarker of biomarkers) {
+    const canonicalName =
+      biomarker.dictionaryMatch?.name ||
+      biomarker.suggestedMatch?.name ||
+      biomarker.name.toLowerCase().trim();
+
+    if (!groups.has(canonicalName)) {
+      groups.set(canonicalName, []);
+    }
+    groups.get(canonicalName)!.push(biomarker);
+  }
+
+  const deduplicated: MatchedBiomarker[] = [];
+
+  for (const [canonicalName, group] of groups) {
+    if (group.length === 1) {
+      // No duplicates, keep as is
+      deduplicated.push(group[0]);
+      continue;
+    }
+
+    // Multiple entries for the same biomarker - check if they can be merged
+    const definition = group[0].dictionaryMatch || group[0].suggestedMatch;
+    const canonicalUnit = definition?.canonicalUnit;
+
+    if (!canonicalUnit) {
+      // No canonical unit available, keep all and warn
+      const conflict: DuplicateConflict = {
+        biomarkerName: canonicalName,
+        originalValues: group.map((b) => ({ value: b.value, unit: b.unit })),
+        valuesMatch: false,
+        message: `Multiple values found for "${canonicalName}" but no canonical unit available to compare them.`,
+      };
+      conflicts.push(conflict);
+
+      // Mark all as having conflict and keep them
+      for (const biomarker of group) {
+        deduplicated.push({
+          ...biomarker,
+          hasDuplicateConflict: true,
+          duplicateConflict: conflict,
+        });
+      }
+      continue;
+    }
+
+    // Convert all values to canonical unit
+    const convertedValues: Array<{
+      biomarker: MatchedBiomarker;
+      originalValue: number;
+      originalUnit: string;
+      convertedValue: number;
+      conversionSucceeded: boolean;
+    }> = [];
+
+    for (const biomarker of group) {
+      if (biomarker.unit.toLowerCase() === canonicalUnit.toLowerCase()) {
+        convertedValues.push({
+          biomarker,
+          originalValue: biomarker.value,
+          originalUnit: biomarker.unit,
+          convertedValue: biomarker.value,
+          conversionSucceeded: true,
+        });
+      } else if (canConvert(canonicalName, biomarker.unit, canonicalUnit)) {
+        try {
+          const result = convertValue(
+            canonicalName,
+            biomarker.value,
+            biomarker.unit,
+            canonicalUnit
+          );
+          convertedValues.push({
+            biomarker,
+            originalValue: biomarker.value,
+            originalUnit: biomarker.unit,
+            convertedValue: result.convertedValue,
+            conversionSucceeded: true,
+          });
+        } catch {
+          convertedValues.push({
+            biomarker,
+            originalValue: biomarker.value,
+            originalUnit: biomarker.unit,
+            convertedValue: biomarker.value,
+            conversionSucceeded: false,
+          });
+        }
+      } else {
+        convertedValues.push({
+          biomarker,
+          originalValue: biomarker.value,
+          originalUnit: biomarker.unit,
+          convertedValue: biomarker.value,
+          conversionSucceeded: false,
+        });
+      }
+    }
+
+    // Check if all converted values match
+    const successfulConversions = convertedValues.filter((cv) => cv.conversionSucceeded);
+
+    if (successfulConversions.length < 2) {
+      // Can't compare, keep all with warning
+      const conflict: DuplicateConflict = {
+        biomarkerName: canonicalName,
+        originalValues: convertedValues.map((cv) => ({
+          value: cv.originalValue,
+          unit: cv.originalUnit,
+          convertedValue: cv.conversionSucceeded ? cv.convertedValue : undefined,
+          convertedUnit: cv.conversionSucceeded ? canonicalUnit : undefined,
+        })),
+        valuesMatch: false,
+        message: `Multiple values found for "${canonicalName}" but unit conversion failed for some entries.`,
+      };
+      conflicts.push(conflict);
+
+      for (const cv of convertedValues) {
+        deduplicated.push({
+          ...cv.biomarker,
+          hasDuplicateConflict: true,
+          duplicateConflict: conflict,
+        });
+      }
+      continue;
+    }
+
+    // Check if all values match after conversion
+    const firstValue = successfulConversions[0].convertedValue;
+    const allMatch = successfulConversions.every((cv) =>
+      valuesAreEqual(cv.convertedValue, firstValue)
+    );
+
+    if (allMatch) {
+      // Values match - keep only the one in canonical unit, or first one
+      const preferredEntry =
+        convertedValues.find(
+          (cv) => cv.originalUnit.toLowerCase() === canonicalUnit.toLowerCase()
+        ) || convertedValues[0];
+
+      deduplicated.push(preferredEntry.biomarker);
+
+      // Log the merge
+      console.info(
+        `[HemoIO] Merged duplicate biomarker "${canonicalName}": ` +
+          convertedValues
+            .map((cv) => `${cv.originalValue} ${cv.originalUnit}`)
+            .join(' = ')
+      );
+    } else {
+      // Values don't match - flag as conflict for user review
+      const conflict: DuplicateConflict = {
+        biomarkerName: canonicalName,
+        originalValues: convertedValues.map((cv) => ({
+          value: cv.originalValue,
+          unit: cv.originalUnit,
+          convertedValue: cv.conversionSucceeded ? cv.convertedValue : undefined,
+          convertedUnit: cv.conversionSucceeded ? canonicalUnit : undefined,
+        })),
+        valuesMatch: false,
+        message:
+          `Conflicting values found for "${canonicalName}": ` +
+          convertedValues
+            .map(
+              (cv) =>
+                `${cv.originalValue} ${cv.originalUnit}` +
+                (cv.conversionSucceeded ? ` (=${cv.convertedValue} ${canonicalUnit})` : '')
+            )
+            .join(' vs ') +
+          '. Please review and keep the correct value.',
+      };
+      conflicts.push(conflict);
+
+      // Mark all as having conflict
+      for (const cv of convertedValues) {
+        deduplicated.push({
+          ...cv.biomarker,
+          hasDuplicateConflict: true,
+          duplicateConflict: conflict,
+        });
+      }
+    }
+  }
+
+  return { deduplicated, conflicts };
 }
 
 /**

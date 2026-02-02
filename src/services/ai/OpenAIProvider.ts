@@ -31,6 +31,13 @@ const DEFAULT_CONFIG = {
 };
 
 /**
+ * Higher token limit for reasoning models (GPT-5, o1, o3, o4)
+ * These models use "reasoning tokens" for internal chain-of-thought,
+ * which consume most of the token budget before producing output.
+ */
+const REASONING_MODEL_MAX_TOKENS = 16384;
+
+/**
  * OpenAI API response types
  */
 interface OpenAIMessage {
@@ -171,6 +178,49 @@ export class OpenAIProvider implements AIProvider {
   }
 
   /**
+   * Check if the model requires max_completion_tokens (newer models)
+   */
+  private useMaxCompletionTokens(): boolean {
+    const model = this.config.model.toLowerCase();
+    // GPT-5 series, o1, o3, o4 models use max_completion_tokens
+    return (
+      model.startsWith('gpt-5') ||
+      model.startsWith('o1') ||
+      model.startsWith('o3') ||
+      model.startsWith('o4')
+    );
+  }
+
+  /**
+   * Check if the model supports custom temperature values
+   * Some newer models only support the default temperature (1)
+   */
+  private supportsCustomTemperature(): boolean {
+    const model = this.config.model.toLowerCase();
+    // GPT-5 series, o1, o3, o4 models don't support custom temperature
+    return !(
+      model.startsWith('gpt-5') ||
+      model.startsWith('o1') ||
+      model.startsWith('o3') ||
+      model.startsWith('o4')
+    );
+  }
+
+  /**
+   * Check if the model uses reasoning tokens (chain-of-thought)
+   * These models need higher token limits as reasoning consumes most tokens
+   */
+  private isReasoningModel(): boolean {
+    const model = this.config.model.toLowerCase();
+    return (
+      model.startsWith('gpt-5') ||
+      model.startsWith('o1') ||
+      model.startsWith('o3') ||
+      model.startsWith('o4')
+    );
+  }
+
+  /**
    * Make a request to the OpenAI API
    */
   private async makeRequest(
@@ -179,19 +229,38 @@ export class OpenAIProvider implements AIProvider {
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
 
+    // Use higher token limit for reasoning models unless explicitly overridden
+    let tokenLimit = options.maxTokens || this.config.maxTokens;
+    if (!options.maxTokens && this.isReasoningModel()) {
+      tokenLimit = REASONING_MODEL_MAX_TOKENS;
+    }
+
+    // Build request body with correct parameters for model
+    const requestBody: Record<string, unknown> = {
+      model: this.config.model,
+      messages,
+      response_format: { type: 'json_object' },
+    };
+
+    // Only include temperature for models that support it
+    if (this.supportsCustomTemperature()) {
+      requestBody.temperature = this.config.temperature;
+    }
+
+    // Use max_completion_tokens for newer models, max_tokens for older ones
+    if (this.useMaxCompletionTokens()) {
+      requestBody.max_completion_tokens = tokenLimit;
+    } else {
+      requestBody.max_tokens = tokenLimit;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.config.model,
-        messages,
-        max_tokens: options.maxTokens || this.config.maxTokens,
-        temperature: this.config.temperature,
-        response_format: { type: 'json_object' },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {

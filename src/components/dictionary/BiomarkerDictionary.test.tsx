@@ -73,8 +73,8 @@ describe('BiomarkerDictionary', () => {
       await user.click(screen.getByText('Complete Blood Count'));
 
       await waitFor(() => {
-        // WBC is an alias for White Blood Cell Count
-        expect(screen.getByText(/WBC/)).toBeInTheDocument();
+        // WBC is an alias for White Blood Cell Count, shown in parentheses
+        expect(screen.getByText('(WBC)')).toBeInTheDocument();
       });
     });
 

@@ -21,6 +21,7 @@ import {
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
 import { findBiomarker } from '@data/biomarkers/dictionary';
+import { convertValue, canConvert } from '@services/units';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -98,7 +99,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
     [deleteNote]
   );
 
-  // Build map of biomarker data
+  // Build map of biomarker data with unit conversion to canonical units
   const biomarkerDataMap = useMemo(() => {
     const map = new Map<number, {
       name: string;
@@ -113,11 +114,14 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
         if (typeof testValue.value !== 'number') continue;
 
         const biomarkerId = testValue.biomarkerId;
+        const biomarkerDef = findBiomarker(testValue.rawText || '');
+
         if (!map.has(biomarkerId)) {
-          const biomarkerDef = findBiomarker(testValue.rawText || '');
+          // Use canonical unit from dictionary if available, otherwise first unit encountered
+          const canonicalUnit = biomarkerDef?.canonicalUnit || testValue.unit;
           map.set(biomarkerId, {
             name: biomarkerDef?.name || testValue.rawText || `Biomarker ${biomarkerId}`,
-            unit: testValue.unit,
+            unit: canonicalUnit,
             category: biomarkerDef?.category || 'other',
             dataPoints: [],
             labInfoMap: new Map(),
@@ -130,14 +134,45 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
           labName: result.labName,
         });
 
+        // Convert value to canonical unit if needed
+        let convertedValue = testValue.value as number;
+        let convertedRefLow = testValue.referenceRangeLow;
+        let convertedRefHigh = testValue.referenceRangeHigh;
+        const biomarkerName = biomarkerDef?.name || testValue.rawText || '';
+
+        if (testValue.unit !== entry.unit && biomarkerName) {
+          // Try to convert value to canonical unit
+          if (canConvert(biomarkerName, testValue.unit, entry.unit)) {
+            try {
+              const result = convertValue(biomarkerName, testValue.value as number, testValue.unit, entry.unit);
+              convertedValue = result.convertedValue;
+
+              // Also convert reference ranges if present
+              if (testValue.referenceRangeLow !== undefined) {
+                const lowResult = convertValue(biomarkerName, testValue.referenceRangeLow, testValue.unit, entry.unit);
+                convertedRefLow = lowResult.convertedValue;
+              }
+              if (testValue.referenceRangeHigh !== undefined) {
+                const highResult = convertValue(biomarkerName, testValue.referenceRangeHigh, testValue.unit, entry.unit);
+                convertedRefHigh = highResult.convertedValue;
+              }
+            } catch (e) {
+              // Conversion failed, use original values
+              console.warn(`[HemoIO] Unit conversion failed for ${biomarkerName}: ${testValue.unit} → ${entry.unit}`, e);
+            }
+          } else {
+            console.warn(`[HemoIO] Cannot convert ${biomarkerName} from ${testValue.unit} to ${entry.unit}`);
+          }
+        }
+
         entry.dataPoints.push({
           date: result.date,
-          value: testValue.value as number,
-          unit: testValue.unit,
+          value: convertedValue,
+          unit: entry.unit,
           status: testValue.status,
           referenceRange: {
-            low: testValue.referenceRangeLow,
-            high: testValue.referenceRangeHigh,
+            low: convertedRefLow,
+            high: convertedRefHigh,
           },
           labName: result.labName,
         });
