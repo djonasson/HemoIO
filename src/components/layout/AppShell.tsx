@@ -375,6 +375,7 @@ function MainContent({
       (localStorage.getItem('hemoio_ai_provider') as 'openai' | 'anthropic' | 'ollama') ||
       'openai';
     const aiApiKey = localStorage.getItem('hemoio_ai_api_key') || '';
+    const ollamaModel = localStorage.getItem('hemoio_ollama_model') || undefined;
 
     // Check if AI is properly configured
     // Ollama doesn't require an API key, but other providers do
@@ -398,6 +399,7 @@ function MainContent({
       <ImportWizard
         aiProvider={aiProvider}
         aiApiKey={aiApiKey}
+        ollamaModel={ollamaModel}
         onComplete={onImportComplete}
       />
     );

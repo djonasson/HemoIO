@@ -50,6 +50,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   // Step 3: AI Configuration
   const [aiProvider, setAiProvider] = useState<AIProviderType | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [ollamaModel, setOllamaModel] = useState<string | undefined>(undefined);
 
   const canProceed = useCallback((): boolean => {
     switch (activeStep) {
@@ -91,6 +92,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
         if (apiKey) {
           localStorage.setItem('hemoio_ai_api_key', apiKey);
         }
+        if (aiProvider === 'ollama' && ollamaModel) {
+          localStorage.setItem('hemoio_ollama_model', ollamaModel);
+        }
       }
 
       onComplete();
@@ -100,7 +104,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     } finally {
       setIsSubmitting(false);
     }
-  }, [password, setupPassword, onComplete, aiProvider, apiKey]);
+  }, [password, setupPassword, onComplete, aiProvider, apiKey, ollamaModel]);
 
   const renderStep = (): React.ReactNode => {
     switch (activeStep) {
@@ -125,8 +129,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           <AIConfigStep
             aiProvider={aiProvider}
             apiKey={apiKey}
+            ollamaModel={ollamaModel}
             onProviderChange={setAiProvider}
             onApiKeyChange={setApiKey}
+            onOllamaModelChange={setOllamaModel}
           />
         );
       case 3:

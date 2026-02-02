@@ -76,6 +76,8 @@ export interface AnalysisStepProps {
   aiProvider: 'openai' | 'anthropic' | 'ollama';
   /** AI API key (not required for Ollama) */
   aiApiKey: string;
+  /** Ollama model (only used when aiProvider is 'ollama') */
+  ollamaModel?: string;
   /** Callback when analysis is complete */
   onComplete: (results: AnalysisResult[]) => void;
   /** Callback to go back */
@@ -89,6 +91,7 @@ export function AnalysisStep({
   files,
   aiProvider,
   aiApiKey,
+  ollamaModel,
   onComplete,
   onBack,
 }: AnalysisStepProps) {
@@ -143,7 +146,10 @@ export function AnalysisStep({
             uploadedFile.file,
             {
               aiProvider,
-              aiConfig: { apiKey: aiApiKey },
+              aiConfig: {
+                apiKey: aiApiKey,
+                model: aiProvider === 'ollama' ? ollamaModel : undefined,
+              },
               onProgress: (stage, progress) => {
                 if (!cancelled) {
                   updateFileStatus(uploadedFile.id, {

@@ -36,6 +36,8 @@ export interface ImportWizardProps {
   aiProvider: 'openai' | 'anthropic' | 'ollama';
   /** AI API key (not required for Ollama) */
   aiApiKey: string;
+  /** Ollama model (only used when aiProvider is 'ollama') */
+  ollamaModel?: string;
 }
 
 /**
@@ -56,6 +58,7 @@ export function ImportWizard({
   onCancel,
   aiProvider,
   aiApiKey,
+  ollamaModel,
 }: ImportWizardProps) {
   const [activeStep, setActiveStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -117,6 +120,7 @@ export function ImportWizard({
             files={uploadedFiles}
             aiProvider={aiProvider}
             aiApiKey={aiApiKey}
+            ollamaModel={ollamaModel}
             onComplete={handleAnalysisComplete}
             onBack={prevStep}
           />

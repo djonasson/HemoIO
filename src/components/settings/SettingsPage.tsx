@@ -54,6 +54,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const [aiProvider, setAiProvider] = useState<AIProviderType>('openai');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [apiKeyLastFour, setApiKeyLastFour] = useState<string | undefined>();
+  const [ollamaModel, setOllamaModel] = useState<string | undefined>();
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
 
   // Display Settings state
@@ -68,6 +69,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   useEffect(() => {
     const savedProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
     const savedApiKey = localStorage.getItem('hemoio_ai_api_key');
+    const savedOllamaModel = localStorage.getItem('hemoio_ollama_model');
 
     if (savedProvider) {
       setAiProvider(savedProvider);
@@ -76,6 +78,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     if (savedApiKey) {
       setHasApiKey(true);
       setApiKeyLastFour(savedApiKey.slice(-4));
+    }
+
+    if (savedOllamaModel) {
+      setOllamaModel(savedOllamaModel);
     }
   }, []);
 
@@ -143,6 +149,12 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       setHasApiKey(false);
       setApiKeyLastFour(undefined);
     }
+  }, []);
+
+  // Handle Ollama model change
+  const handleOllamaModelChange = useCallback((model: string) => {
+    setOllamaModel(model);
+    localStorage.setItem('hemoio_ollama_model', model);
   }, []);
 
   // Handle AI connection test
@@ -291,8 +303,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             provider={aiProvider}
             hasApiKey={hasApiKey}
             apiKeyLastFour={apiKeyLastFour}
+            ollamaModel={ollamaModel}
             onProviderChange={handleAiProviderChange}
             onApiKeyChange={handleApiKeyChange}
+            onOllamaModelChange={handleOllamaModelChange}
             onTestConnection={handleTestConnection}
             isSaving={aiTestInProgress}
           />

@@ -9,7 +9,7 @@
  */
 export const OLLAMA_DEFAULTS = {
   baseUrl: 'http://localhost:11434',
-  timeout: 120000, // 2 minutes for local processing
+  timeout: 600000, // 10 minutes for local processing (large models can be slow)
   temperature: 0.1,
   maxTokens: 4096,
 } as const;
