@@ -7,11 +7,14 @@ import {
   getAnthropicModels,
   getDefaultAnthropicModels,
   testAnthropicApiKey,
+  clearAnthropicModelsCache,
 } from './anthropicUtils';
 
 describe('anthropicUtils', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn());
+    clearAnthropicModelsCache();
   });
 
   afterEach(() => {
@@ -36,15 +39,14 @@ describe('anthropicUtils', () => {
         last_id: null,
       };
 
-      const fetchMock = vi.fn().mockResolvedValue({
+      vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(mockModels),
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await getAnthropicModels('test-api-key');
 
-      expect(fetchMock).toHaveBeenCalledWith(
+      expect(fetch).toHaveBeenCalledWith(
         'https://api.anthropic.com/v1/models',
         expect.objectContaining({
           method: 'GET',
@@ -56,28 +58,28 @@ describe('anthropicUtils', () => {
       );
 
       expect(result).toHaveLength(2);
-      expect(result[0].value).toBe('claude-sonnet-4-20250514');
+      // Models are sorted alphabetically
+      expect(result[0].value).toBe('claude-3-5-sonnet-20241022');
+      expect(result[1].value).toBe('claude-sonnet-4-20250514');
     });
 
-    it('should return defaults when API call fails', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
+    it('should return empty array when API call fails', async () => {
+      vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 401,
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await getAnthropicModels('invalid-key');
 
-      expect(result).toEqual(getDefaultAnthropicModels());
+      expect(result).toEqual([]);
     });
 
-    it('should return defaults on network error', async () => {
-      const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));
-      global.fetch = fetchMock;
+    it('should return empty array on network error', async () => {
+      vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 
       const result = await getAnthropicModels('test-api-key');
 
-      expect(result).toEqual(getDefaultAnthropicModels());
+      expect(result).toEqual([]);
     });
 
     it('should filter out non-claude models', async () => {
@@ -91,11 +93,10 @@ describe('anthropicUtils', () => {
         last_id: null,
       };
 
-      const fetchMock = vi.fn().mockResolvedValue({
+      vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(mockModels),
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await getAnthropicModels('test-api-key');
 
@@ -103,7 +104,7 @@ describe('anthropicUtils', () => {
       expect(result[0].value).toBe('claude-sonnet-4-20250514');
     });
 
-    it('should sort models by priority', async () => {
+    it('should return models sorted alphabetically', async () => {
       const mockModels = {
         data: [
           { id: 'claude-3-opus-20240229', type: 'model', display_name: 'Claude 3 Opus', created_at: '2024-02-29' },
@@ -115,43 +116,24 @@ describe('anthropicUtils', () => {
         last_id: null,
       };
 
-      const fetchMock = vi.fn().mockResolvedValue({
+      vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(mockModels),
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await getAnthropicModels('test-api-key');
 
-      // Should be sorted: sonnet-4, haiku, opus (by priority in MODEL_DISPLAY_INFO)
-      expect(result[0].value).toBe('claude-sonnet-4-20250514');
-      expect(result[1].value).toBe('claude-3-5-haiku-20241022');
-      expect(result[2].value).toBe('claude-3-opus-20240229');
+      // Models sorted alphabetically
+      expect(result[0].value).toBe('claude-3-5-haiku-20241022');
+      expect(result[1].value).toBe('claude-3-opus-20240229');
+      expect(result[2].value).toBe('claude-sonnet-4-20250514');
     });
   });
 
   describe('getDefaultAnthropicModels', () => {
-    it('should return a list of default models', () => {
+    it('should return empty array (deprecated function)', () => {
       const models = getDefaultAnthropicModels();
-
-      expect(models.length).toBeGreaterThan(0);
-      expect(models[0]).toHaveProperty('value');
-      expect(models[0]).toHaveProperty('label');
-    });
-
-    it('should include Claude Sonnet 4 as first option', () => {
-      const models = getDefaultAnthropicModels();
-
-      expect(models[0].value).toBe('claude-sonnet-4-20250514');
-    });
-
-    it('should include a mix of model tiers', () => {
-      const models = getDefaultAnthropicModels();
-      const modelIds = models.map(m => m.value);
-
-      expect(modelIds.some(id => id.includes('sonnet'))).toBe(true);
-      expect(modelIds.some(id => id.includes('opus'))).toBe(true);
-      expect(modelIds.some(id => id.includes('haiku'))).toBe(true);
+      expect(models).toEqual([]);
     });
   });
 
@@ -162,15 +144,14 @@ describe('anthropicUtils', () => {
     });
 
     it('should return true if API call succeeds', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
+      vi.mocked(fetch).mockResolvedValue({
         ok: true,
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await testAnthropicApiKey('valid-api-key');
 
       expect(result).toBe(true);
-      expect(fetchMock).toHaveBeenCalledWith(
+      expect(fetch).toHaveBeenCalledWith(
         'https://api.anthropic.com/v1/models',
         expect.objectContaining({
           headers: expect.objectContaining({
@@ -181,11 +162,10 @@ describe('anthropicUtils', () => {
     });
 
     it('should return false if API call fails', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
+      vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 401,
-      });
-      global.fetch = fetchMock;
+      } as Response);
 
       const result = await testAnthropicApiKey('invalid-api-key');
 
@@ -193,8 +173,7 @@ describe('anthropicUtils', () => {
     });
 
     it('should return false on network error', async () => {
-      const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));
-      global.fetch = fetchMock;
+      vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 
       const result = await testAnthropicApiKey('test-api-key');
 

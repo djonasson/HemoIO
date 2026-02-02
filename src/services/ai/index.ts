@@ -56,6 +56,7 @@ export {
   getOpenAIModels,
   getDefaultOpenAIModels,
   testOpenAIApiKey,
+  clearOpenAIModelsCache,
 } from './openaiUtils';
 export type { OpenAIModelInfo } from './openaiUtils';
 
@@ -64,6 +65,7 @@ export {
   getAnthropicModels,
   getDefaultAnthropicModels,
   testAnthropicApiKey,
+  clearAnthropicModelsCache,
 } from './anthropicUtils';
 export type { AnthropicModelInfo } from './anthropicUtils';
 

@@ -34,9 +34,7 @@ import {
   isOllamaRunning,
   getOllamaModelNames,
   getOpenAIModels,
-  getDefaultOpenAIModels,
   getAnthropicModels,
-  getDefaultAnthropicModels,
 } from '@/services/ai';
 
 /**
@@ -75,7 +73,7 @@ export interface AISettingsProps {
  * AI provider options
  */
 const PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI (GPT-4)', requiresApiKey: true },
+  { value: 'openai', label: 'OpenAI (GPT-5)', requiresApiKey: true },
   { value: 'anthropic', label: 'Anthropic (Claude)', requiresApiKey: true },
   { value: 'ollama', label: 'Ollama (Local)', requiresApiKey: false },
 ];
@@ -107,11 +105,11 @@ export function AISettings({
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [localOllamaModel, setLocalOllamaModel] = useState<string | undefined>(ollamaModel);
-  const [localOpenaiModel, setLocalOpenaiModel] = useState<string>(openaiModel || 'gpt-4o-mini');
-  const [localAnthropicModel, setLocalAnthropicModel] = useState<string>(anthropicModel || 'claude-sonnet-4-20250514');
-  const [openaiModels, setOpenaiModels] = useState<Array<{ value: string; label: string }>>(getDefaultOpenAIModels());
+  const [localOpenaiModel, setLocalOpenaiModel] = useState<string>(openaiModel || '');
+  const [localAnthropicModel, setLocalAnthropicModel] = useState<string>(anthropicModel || '');
+  const [openaiModels, setOpenaiModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingOpenaiModels, setIsLoadingOpenaiModels] = useState(false);
-  const [anthropicModels, setAnthropicModels] = useState<Array<{ value: string; label: string }>>(getDefaultAnthropicModels());
+  const [anthropicModels, setAnthropicModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingAnthropicModels, setIsLoadingAnthropicModels] = useState(false);
 
   // Sync local state with props
@@ -527,40 +525,43 @@ export function AISettings({
         )}
 
         {/* Model Selection (for OpenAI/Anthropic) */}
-        {requiresApiKey && (
+        {requiresApiKey && hasApiKey && (
           <Stack gap="xs">
             <Group justify="space-between">
               <Text fw={500}>Model</Text>
-              {localProvider === 'openai' && isLoadingOpenaiModels && (
+              {((localProvider === 'openai' && isLoadingOpenaiModels) ||
+                (localProvider === 'anthropic' && isLoadingAnthropicModels)) && (
                 <Group gap="xs">
                   <Loader size="xs" />
-                  <Text size="xs" c="dimmed">Loading models...</Text>
-                </Group>
-              )}
-              {localProvider === 'anthropic' && isLoadingAnthropicModels && (
-                <Group gap="xs">
-                  <Loader size="xs" />
-                  <Text size="xs" c="dimmed">Loading models...</Text>
+                  <Text size="xs" c="dimmed">Loading models from API...</Text>
                 </Group>
               )}
             </Group>
-            <Select
-              value={localProvider === 'openai' ? localOpenaiModel : localAnthropicModel}
-              onChange={localProvider === 'openai' ? handleOpenaiModelChange : handleAnthropicModelChange}
-              data={localProvider === 'openai' ? openaiModels : anthropicModels}
-              disabled={isSaving || (localProvider === 'openai' && isLoadingOpenaiModels) || (localProvider === 'anthropic' && isLoadingAnthropicModels)}
-              aria-label={`Select ${localProvider === 'openai' ? 'OpenAI' : 'Anthropic'} model`}
-              placeholder={!hasApiKey ? 'Add API key to see available models' : 'Select a model'}
-            />
-            <Text size="xs" c="dimmed">
-              {localProvider === 'openai'
-                ? hasApiKey
-                  ? 'Models are fetched from your OpenAI account. GPT-4o provides the best accuracy.'
-                  : 'Add your API key to see available models from your OpenAI account.'
-                : hasApiKey
-                  ? 'Models are fetched from your Anthropic account. Claude Sonnet 4 offers the best balance.'
-                  : 'Add your API key to see available models from your Anthropic account.'}
-            </Text>
+            {((localProvider === 'openai' && openaiModels.length > 0) ||
+              (localProvider === 'anthropic' && anthropicModels.length > 0)) ? (
+              <>
+                <Select
+                  value={localProvider === 'openai' ? localOpenaiModel : localAnthropicModel}
+                  onChange={localProvider === 'openai' ? handleOpenaiModelChange : handleAnthropicModelChange}
+                  data={localProvider === 'openai' ? openaiModels : anthropicModels}
+                  disabled={isSaving || (localProvider === 'openai' && isLoadingOpenaiModels) || (localProvider === 'anthropic' && isLoadingAnthropicModels)}
+                  aria-label={`Select ${localProvider === 'openai' ? 'OpenAI' : 'Anthropic'} model`}
+                  placeholder="Select a model"
+                  searchable
+                />
+                <Text size="xs" c="dimmed">
+                  {openaiModels.length > 0 || anthropicModels.length > 0
+                    ? `${localProvider === 'openai' ? openaiModels.length : anthropicModels.length} models available from your account`
+                    : 'Loading models...'}
+                </Text>
+              </>
+            ) : (
+              !isLoadingOpenaiModels && !isLoadingAnthropicModels && (
+                <Text size="sm" c="dimmed">
+                  No models available. Check your API key or try refreshing.
+                </Text>
+              )
+            )}
           </Stack>
         )}
 

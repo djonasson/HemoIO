@@ -52,7 +52,7 @@ export function AIConfigStep({
   const AI_PROVIDERS: ProviderOption[] = [
     {
       value: 'openai',
-      label: 'OpenAI (GPT-4)',
+      label: 'OpenAI (GPT-5)',
       keyPlaceholder: 'sk-...',
       docsUrl: 'https://platform.openai.com/api-keys',
       requiresApiKey: true,

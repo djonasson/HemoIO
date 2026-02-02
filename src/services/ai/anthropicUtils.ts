@@ -4,6 +4,18 @@
  * Helper functions for Anthropic model detection and configuration.
  */
 
+// Session cache for models (persists until page refresh)
+let cachedModels: Array<{ value: string; label: string }> | null = null;
+let cachedApiKey: string | null = null;
+
+/**
+ * Clear the models cache (useful for testing)
+ */
+export function clearAnthropicModelsCache(): void {
+  cachedModels = null;
+  cachedApiKey = null;
+}
+
 /**
  * Anthropic model information from the API
  */
@@ -23,21 +35,6 @@ interface AnthropicModelsResponse {
   first_id: string | null;
   last_id: string | null;
 }
-
-/**
- * Model display names and sorting priority
- */
-const MODEL_DISPLAY_INFO: Record<string, { label: string; priority: number }> = {
-  'claude-sonnet-4-20250514': { label: 'Claude Sonnet 4 (Balanced)', priority: 1 },
-  'claude-opus-4-20250514': { label: 'Claude Opus 4 (Most capable)', priority: 2 },
-  'claude-3-7-sonnet-20250219': { label: 'Claude 3.7 Sonnet', priority: 3 },
-  'claude-3-5-sonnet-20241022': { label: 'Claude 3.5 Sonnet (Oct 2024)', priority: 4 },
-  'claude-3-5-sonnet-20240620': { label: 'Claude 3.5 Sonnet (Jun 2024)', priority: 5 },
-  'claude-3-5-haiku-20241022': { label: 'Claude 3.5 Haiku (Fastest)', priority: 6 },
-  'claude-3-opus-20240229': { label: 'Claude 3 Opus', priority: 10 },
-  'claude-3-sonnet-20240229': { label: 'Claude 3 Sonnet', priority: 11 },
-  'claude-3-haiku-20240307': { label: 'Claude 3 Haiku', priority: 12 },
-};
 
 /**
  * Models to exclude (deprecated, not suitable for chat)
@@ -62,30 +59,6 @@ function isChatModel(modelId: string): boolean {
 }
 
 /**
- * Get display info for a model
- */
-function getModelDisplayInfo(model: AnthropicModelInfo): { label: string; priority: number } {
-  // Check for exact match first
-  if (MODEL_DISPLAY_INFO[model.id]) {
-    return MODEL_DISPLAY_INFO[model.id];
-  }
-
-  // Use display_name from API if available
-  if (model.display_name) {
-    // Determine priority based on model type
-    let priority = 100;
-    if (model.id.includes('opus')) priority = 50;
-    else if (model.id.includes('sonnet')) priority = 60;
-    else if (model.id.includes('haiku')) priority = 70;
-
-    return { label: model.display_name, priority };
-  }
-
-  // Default: use the model ID as the label
-  return { label: model.id, priority: 100 };
-}
-
-/**
  * Fetch available models from Anthropic API
  *
  * @param apiKey - Anthropic API key
@@ -98,6 +71,11 @@ export async function getAnthropicModels(
 ): Promise<Array<{ value: string; label: string }>> {
   if (!apiKey) {
     return [];
+  }
+
+  // Return cached models if available and API key hasn't changed
+  if (cachedModels && cachedApiKey === apiKey) {
+    return cachedModels;
   }
 
   try {
@@ -117,40 +95,36 @@ export async function getAnthropicModels(
 
     if (!response.ok) {
       console.warn('Failed to fetch Anthropic models:', response.status);
-      return getDefaultAnthropicModels();
+      return [];
     }
 
     const data = await response.json() as AnthropicModelsResponse;
 
-    // Filter to chat models and add display info
+    // Filter to chat models and sort alphabetically
     const chatModels = data.data
       .filter(model => isChatModel(model.id))
       .map(model => ({
         value: model.id,
-        ...getModelDisplayInfo(model),
+        label: model.id,
       }))
-      .sort((a, b) => a.priority - b.priority)
-      .map(({ value, label }) => ({ value, label }));
+      .sort((a, b) => a.value.localeCompare(b.value));
 
-    // If we got models, return them; otherwise return defaults
-    return chatModels.length > 0 ? chatModels : getDefaultAnthropicModels();
+    // Cache the result for the session
+    cachedModels = chatModels;
+    cachedApiKey = apiKey;
+
+    return chatModels;
   } catch (error) {
     console.warn('Error fetching Anthropic models:', error);
-    return getDefaultAnthropicModels();
+    return [];
   }
 }
 
 /**
- * Get default Anthropic models (fallback when API call fails)
+ * @deprecated Use getAnthropicModels with API key instead. This only exists for backward compatibility.
  */
 export function getDefaultAnthropicModels(): Array<{ value: string; label: string }> {
-  return [
-    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (Balanced)' },
-    { value: 'claude-opus-4-20250514', label: 'Claude Opus 4 (Most capable)' },
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Latest)' },
-    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Fastest)' },
-    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
-  ];
+  return [];
 }
 
 /**
