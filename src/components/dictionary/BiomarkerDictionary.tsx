@@ -48,6 +48,7 @@ function getBiomarkersByCategory(): Record<BiomarkerCategory, BiomarkerDefinitio
     iron: [],
     vitamin: [],
     urinalysis: [],
+    fertility: [],
     other: [],
   };
 

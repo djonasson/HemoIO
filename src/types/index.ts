@@ -52,6 +52,7 @@ export type BiomarkerCategory =
   | 'iron'
   | 'vitamin'
   | 'urinalysis'
+  | 'fertility'
   | 'other';
 
 // User's display preferences

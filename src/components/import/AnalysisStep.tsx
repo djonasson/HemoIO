@@ -29,6 +29,7 @@ import type { UploadedFile } from './UploadStep';
 import { analyzeLabReport, AnalysisError } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
+import { processWithConcurrency } from '../../utils/concurrency';
 
 /**
  * Analysis result for a single file
@@ -131,7 +132,8 @@ export function AnalysisStep({
     let cancelled = false;
 
     async function processFiles() {
-      const analysisResults: AnalysisResult[] = [];
+      // Pre-allocate array to maintain order despite parallel completion
+      const analysisResults: AnalysisResult[] = new Array(files.length);
 
       // Get decrypted API key (not needed for Ollama)
       let apiKey: string | null = null;
@@ -162,83 +164,96 @@ export function AnalysisStep({
         }
       }
 
-      for (let i = 0; i < files.length; i++) {
-        if (cancelled) break;
+      // Determine concurrency based on provider
+      // Cloud providers can handle parallel requests, Ollama should stay sequential
+      const concurrency = aiProvider === 'ollama' ? 1 : 3;
+      let completedCount = 0;
 
-        const uploadedFile = files[i];
-        updateFileStatus(uploadedFile.id, {
-          status: 'processing',
-          progress: 0,
-          stage: 'Starting...',
-        });
-
-        try {
-          const result: ServiceAnalysisResult = await analyzeLabReport(
-            uploadedFile.file,
-            {
-              aiProvider,
-              aiConfig: {
-                apiKey: apiKey || '',
-                model: aiModel,
-              },
-              onProgress: (stage, progress) => {
-                if (!cancelled) {
-                  updateFileStatus(uploadedFile.id, {
-                    progress: progress * 100,
-                    stage,
-                  });
-
-                  // Update overall progress
-                  const baseProgress = (i / files.length) * 100;
-                  const fileProgress = (progress / files.length) * 100;
-                  setOverallProgress(baseProgress + fileProgress);
-                }
-              },
-            }
-          );
-
-          analysisResults.push({
-            fileId: uploadedFile.id,
-            fileName: uploadedFile.file.name,
-            success: true,
-            biomarkers: result.matchedBiomarkers,
-            labDate: result.labDate,
-            labName: result.labName,
-            confidence: result.overallConfidence,
-            warnings: result.warnings,
-            duplicateConflicts: result.duplicateConflicts,
-          });
+      await processWithConcurrency(
+        files,
+        async (uploadedFile, index) => {
+          if (cancelled) return;
 
           updateFileStatus(uploadedFile.id, {
-            status: 'success',
-            progress: 100,
-            stage: 'Complete',
+            status: 'processing',
+            progress: 0,
+            stage: 'Starting...',
           });
-        } catch (error) {
-          const errorMessage =
-            error instanceof AnalysisError
-              ? error.message
-              : error instanceof Error
+
+          try {
+            const result: ServiceAnalysisResult = await analyzeLabReport(
+              uploadedFile.file,
+              {
+                aiProvider,
+                aiConfig: {
+                  apiKey: apiKey || '',
+                  model: aiModel,
+                },
+                onProgress: (stage, progress) => {
+                  if (!cancelled) {
+                    updateFileStatus(uploadedFile.id, {
+                      progress: progress * 100,
+                      stage,
+                    });
+
+                    // Update overall progress based on completed files + current file progress
+                    const completedProgress = (completedCount / files.length) * 100;
+                    const currentFileProgress = (progress / files.length) * 100;
+                    setOverallProgress(Math.min(completedProgress + currentFileProgress, 99));
+                  }
+                },
+              }
+            );
+
+            analysisResults[index] = {
+              fileId: uploadedFile.id,
+              fileName: uploadedFile.file.name,
+              success: true,
+              biomarkers: result.matchedBiomarkers,
+              labDate: result.labDate,
+              labName: result.labName,
+              confidence: result.overallConfidence,
+              warnings: result.warnings,
+              duplicateConflicts: result.duplicateConflicts,
+            };
+
+            updateFileStatus(uploadedFile.id, {
+              status: 'success',
+              progress: 100,
+              stage: 'Complete',
+            });
+          } catch (error) {
+            const errorMessage =
+              error instanceof AnalysisError
                 ? error.message
-                : 'Unknown error';
+                : error instanceof Error
+                  ? error.message
+                  : 'Unknown error';
 
-          analysisResults.push({
-            fileId: uploadedFile.id,
-            fileName: uploadedFile.file.name,
-            success: false,
-            error: errorMessage,
-            biomarkers: [],
-            confidence: 0,
-            warnings: [],
-          });
+            analysisResults[index] = {
+              fileId: uploadedFile.id,
+              fileName: uploadedFile.file.name,
+              success: false,
+              error: errorMessage,
+              biomarkers: [],
+              confidence: 0,
+              warnings: [],
+            };
 
-          updateFileStatus(uploadedFile.id, {
-            status: 'error',
-            progress: 100,
-            error: errorMessage,
-          });
-        }
-      }
+            updateFileStatus(uploadedFile.id, {
+              status: 'error',
+              progress: 100,
+              error: errorMessage,
+            });
+          }
+
+          completedCount++;
+          if (!cancelled) {
+            setOverallProgress((completedCount / files.length) * 100);
+          }
+        },
+        concurrency
+      );
 
       if (!cancelled) {
         setResults(analysisResults);

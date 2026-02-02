@@ -189,6 +189,7 @@ const folateConversions: BiomarkerConversions = {
 /**
  * TSH conversions
  * mIU/L and µIU/mL are equivalent
+ * μUI/mL is also equivalent (alternate notation)
  */
 const tshConversions: BiomarkerConversions = {
   biomarker: 'Thyroid Stimulating Hormone',
@@ -198,6 +199,18 @@ const tshConversions: BiomarkerConversions = {
     { from: 'µIU/mL', to: 'mIU/L', factor: 1 },
     { from: 'mIU/L', to: 'mU/L', factor: 1 },
     { from: 'mU/L', to: 'mIU/L', factor: 1 },
+    // μUI/mL variant (common in Italian reports)
+    { from: 'μUI/mL', to: 'mIU/L', factor: 1 },
+    { from: 'mIU/L', to: 'μUI/mL', factor: 1 },
+    { from: 'μUI/mL', to: 'µIU/mL', factor: 1 },
+    { from: 'µIU/mL', to: 'μUI/mL', factor: 1 },
+    { from: 'μUI/mL', to: 'mU/L', factor: 1 },
+    { from: 'mU/L', to: 'μUI/mL', factor: 1 },
+    // uIU/mL variant (ASCII approximation)
+    { from: 'uIU/mL', to: 'mIU/L', factor: 1 },
+    { from: 'mIU/L', to: 'uIU/mL', factor: 1 },
+    { from: 'uIU/mL', to: 'µIU/mL', factor: 1 },
+    { from: 'µIU/mL', to: 'uIU/mL', factor: 1 },
   ],
 };
 
@@ -349,6 +362,328 @@ const uricAcidConversions: BiomarkerConversions = {
 };
 
 /**
+ * White Blood Cell Count conversions
+ * 10^3/μL = 10^9/L (equivalent units)
+ * Also known as: k/μL, K/uL, thousand/μL
+ */
+const wbcConversions: BiomarkerConversions = {
+  biomarker: 'White Blood Cell Count',
+  aliases: ['WBC', 'Leukocytes', 'White Blood Cells', 'WBC Count'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'K/uL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'K/uL', factor: 1 },
+    { from: '10^3/μL', to: 'k/μL', factor: 1 },
+    { from: 'k/μL', to: '10^3/μL', factor: 1 },
+    // cells/μL to 10^9/L: divide by 10^6
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Red Blood Cell Count conversions
+ * 10^6/μL = 10^12/L (equivalent units)
+ * Also known as: M/μL, million/μL
+ */
+const rbcConversions: BiomarkerConversions = {
+  biomarker: 'Red Blood Cell Count',
+  aliases: ['RBC', 'Erythrocytes', 'Red Blood Cells', 'RBC Count'],
+  conversions: [
+    { from: '10^6/μL', to: '10^12/L', factor: 1 },
+    { from: '10^12/L', to: '10^6/μL', factor: 1 },
+    { from: '10^6/µL', to: '10^12/L', factor: 1 },
+    { from: '10^12/L', to: '10^6/µL', factor: 1 },
+    { from: 'M/μL', to: '10^12/L', factor: 1 },
+    { from: '10^12/L', to: 'M/μL', factor: 1 },
+    { from: 'M/uL', to: '10^12/L', factor: 1 },
+    { from: '10^12/L', to: 'M/uL', factor: 1 },
+    { from: '10^6/μL', to: 'M/μL', factor: 1 },
+    { from: 'M/μL', to: '10^6/μL', factor: 1 },
+  ],
+};
+
+/**
+ * Platelet Count conversions
+ * 10^3/μL = 10^9/L (equivalent units)
+ * Also known as: k/μL, K/uL, thousand/μL
+ */
+const plateletConversions: BiomarkerConversions = {
+  biomarker: 'Platelet Count',
+  aliases: ['PLT', 'Platelets', 'Thrombocytes', 'PLT Count'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'K/uL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'K/uL', factor: 1 },
+    { from: '10^3/μL', to: 'k/μL', factor: 1 },
+    { from: 'k/μL', to: '10^3/μL', factor: 1 },
+  ],
+};
+
+/**
+ * Neutrophil Count conversions
+ */
+const neutrophilConversions: BiomarkerConversions = {
+  biomarker: 'Neutrophil Count',
+  aliases: ['Neutrophils', 'Absolute Neutrophil Count', 'ANC', 'Neutrophils Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Lymphocyte Count conversions
+ */
+const lymphocyteConversions: BiomarkerConversions = {
+  biomarker: 'Lymphocyte Count',
+  aliases: ['Lymphocytes', 'Absolute Lymphocyte Count', 'Lymphocytes Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Monocyte Count conversions
+ */
+const monocyteConversions: BiomarkerConversions = {
+  biomarker: 'Monocyte Count',
+  aliases: ['Monocytes', 'Absolute Monocyte Count', 'Monocytes Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Eosinophil Count conversions
+ */
+const eosinophilConversions: BiomarkerConversions = {
+  biomarker: 'Eosinophil Count',
+  aliases: ['Eosinophils', 'Absolute Eosinophil Count', 'Eosinophils Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Basophil Count conversions
+ */
+const basophilConversions: BiomarkerConversions = {
+  biomarker: 'Basophil Count',
+  aliases: ['Basophils', 'Absolute Basophil Count', 'Basophils Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
+    { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+  ],
+};
+
+/**
+ * Reticulocyte Count conversions
+ */
+const reticulocyteConversions: BiomarkerConversions = {
+  biomarker: 'Reticulocyte Count',
+  aliases: ['Reticulocytes', 'Retics', 'Reticulocyte Absolute'],
+  conversions: [
+    { from: '10^3/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/μL', factor: 1 },
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+    { from: 'k/μL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'k/μL', factor: 1 },
+    // Percentage conversion - these need context of total RBC
+    // Only include direct unit equivalences here
+  ],
+};
+
+/**
+ * Magnesium conversions
+ * Molecular weight: 24.305 g/mol
+ * Conversion: mg/dL × 0.4114 = mmol/L
+ * Also: mEq/L × 0.5 = mmol/L (since Mg2+ is divalent)
+ */
+const magnesiumConversions: BiomarkerConversions = {
+  biomarker: 'Magnesium',
+  aliases: ['Mg', 'Serum Magnesium', 'Mg++'],
+  conversions: [
+    { from: 'mg/dL', to: 'mmol/L', factor: 0.4114 },
+    { from: 'mmol/L', to: 'mg/dL', factor: 2.431 },
+    { from: 'mEq/L', to: 'mmol/L', factor: 0.5 },
+    { from: 'mmol/L', to: 'mEq/L', factor: 2 },
+    { from: 'mg/dL', to: 'mEq/L', factor: 0.8228 },
+    { from: 'mEq/L', to: 'mg/dL', factor: 1.215 },
+  ],
+};
+
+/**
+ * Potassium conversions
+ * mEq/L = mmol/L for monovalent ions
+ */
+const potassiumConversions: BiomarkerConversions = {
+  biomarker: 'Potassium',
+  aliases: ['K', 'K+', 'Serum Potassium'],
+  conversions: [
+    { from: 'mEq/L', to: 'mmol/L', factor: 1 },
+    { from: 'mmol/L', to: 'mEq/L', factor: 1 },
+  ],
+};
+
+/**
+ * Sodium conversions
+ * mEq/L = mmol/L for monovalent ions
+ */
+const sodiumConversions: BiomarkerConversions = {
+  biomarker: 'Sodium',
+  aliases: ['Na', 'Na+', 'Serum Sodium'],
+  conversions: [
+    { from: 'mEq/L', to: 'mmol/L', factor: 1 },
+    { from: 'mmol/L', to: 'mEq/L', factor: 1 },
+  ],
+};
+
+/**
+ * Chloride conversions
+ * mEq/L = mmol/L for monovalent ions
+ */
+const chlorideConversions: BiomarkerConversions = {
+  biomarker: 'Chloride',
+  aliases: ['Cl', 'Cl-', 'Serum Chloride'],
+  conversions: [
+    { from: 'mEq/L', to: 'mmol/L', factor: 1 },
+    { from: 'mmol/L', to: 'mEq/L', factor: 1 },
+  ],
+};
+
+/**
+ * Phosphorus conversions
+ * Molecular weight: 30.97 g/mol
+ * Conversion: mg/dL × 0.3229 = mmol/L
+ */
+const phosphorusConversions: BiomarkerConversions = {
+  biomarker: 'Phosphorus',
+  aliases: ['Phosphate', 'P', 'Inorganic Phosphorus', 'Serum Phosphorus'],
+  conversions: [
+    { from: 'mg/dL', to: 'mmol/L', factor: 0.3229 },
+    { from: 'mmol/L', to: 'mg/dL', factor: 3.097 },
+  ],
+};
+
+/**
+ * Testosterone conversions
+ * Molecular weight: 288.42 g/mol
+ * Conversion: ng/dL × 0.0347 = nmol/L
+ */
+const testosteroneConversions: BiomarkerConversions = {
+  biomarker: 'Testosterone',
+  aliases: ['Total Testosterone', 'Testosterone Total', 'Free Testosterone', 'Testosterone Free'],
+  conversions: [
+    { from: 'ng/dL', to: 'nmol/L', factor: 0.0347 },
+    { from: 'nmol/L', to: 'ng/dL', factor: 28.84 },
+    { from: 'ng/mL', to: 'nmol/L', factor: 3.47 },
+    { from: 'nmol/L', to: 'ng/mL', factor: 0.288 },
+  ],
+};
+
+/**
+ * Estradiol conversions
+ * Molecular weight: 272.38 g/mol
+ * Conversion: pg/mL × 3.671 = pmol/L
+ */
+const estradiolConversions: BiomarkerConversions = {
+  biomarker: 'Estradiol',
+  aliases: ['E2', 'Estrogen', '17-beta Estradiol'],
+  conversions: [
+    { from: 'pg/mL', to: 'pmol/L', factor: 3.671 },
+    { from: 'pmol/L', to: 'pg/mL', factor: 0.272 },
+  ],
+};
+
+/**
+ * PSA (Prostate Specific Antigen) conversions
+ * ng/mL = μg/L (equivalent)
+ */
+const psaConversions: BiomarkerConversions = {
+  biomarker: 'Prostate Specific Antigen',
+  aliases: ['PSA', 'Total PSA', 'PSA Total', 'Free PSA'],
+  conversions: [
+    { from: 'ng/mL', to: 'μg/L', factor: 1 },
+    { from: 'μg/L', to: 'ng/mL', factor: 1 },
+    { from: 'ng/mL', to: 'ug/L', factor: 1 },
+    { from: 'ug/L', to: 'ng/mL', factor: 1 },
+  ],
+};
+
+/**
+ * CRP (C-Reactive Protein) conversions
+ * mg/L = mg/dL × 10
+ */
+const crpConversions: BiomarkerConversions = {
+  biomarker: 'C-Reactive Protein',
+  aliases: ['CRP', 'hs-CRP', 'High Sensitivity CRP'],
+  conversions: [
+    { from: 'mg/L', to: 'mg/dL', factor: 0.1 },
+    { from: 'mg/dL', to: 'mg/L', factor: 10 },
+    { from: 'mg/L', to: 'nmol/L', factor: 9.524 }, // MW ~105 kDa
+    { from: 'nmol/L', to: 'mg/L', factor: 0.105 },
+  ],
+};
+
+/**
+ * ESR (Erythrocyte Sedimentation Rate) conversions
+ * mm/hr is the standard unit - just handle variations
+ */
+const esrConversions: BiomarkerConversions = {
+  biomarker: 'Erythrocyte Sedimentation Rate',
+  aliases: ['ESR', 'Sed Rate', 'Sedimentation Rate'],
+  conversions: [
+    { from: 'mm/hr', to: 'mm/h', factor: 1 },
+    { from: 'mm/h', to: 'mm/hr', factor: 1 },
+  ],
+};
+
+/**
  * All conversion definitions
  */
 export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
@@ -373,6 +708,29 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   albuminConversions,
   hba1cConversions,
   uricAcidConversions,
+  // Cell count conversions
+  wbcConversions,
+  rbcConversions,
+  plateletConversions,
+  neutrophilConversions,
+  lymphocyteConversions,
+  monocyteConversions,
+  eosinophilConversions,
+  basophilConversions,
+  reticulocyteConversions,
+  // Electrolytes
+  magnesiumConversions,
+  potassiumConversions,
+  sodiumConversions,
+  chlorideConversions,
+  phosphorusConversions,
+  // Hormones
+  testosteroneConversions,
+  estradiolConversions,
+  // Other
+  psaConversions,
+  crpConversions,
+  esrConversions,
 ];
 
 /**
