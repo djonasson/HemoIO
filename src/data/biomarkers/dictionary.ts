@@ -152,7 +152,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Creatinine',
-    aliases: ['Creat', 'Serum Creatinine'],
+    aliases: ['Creat', 'Serum Creatinine', 'S-Creatinina', 'Creatinina'],
     category: 'metabolic',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['µmol/L', 'umol/L'],
@@ -174,7 +174,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Sodium',
-    aliases: ['Na', 'Na+', 'Serum Sodium'],
+    aliases: ['Na', 'Na+', 'Serum Sodium', 'S-Na Sodio', 'Sodio', 'S-Na'],
     category: 'metabolic',
     canonicalUnit: 'mEq/L',
     alternativeUnits: ['mmol/L'],
@@ -185,7 +185,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Potassium',
-    aliases: ['K', 'K+', 'Serum Potassium'],
+    aliases: ['K', 'K+', 'Serum Potassium', 'S-K Potassio', 'Potassio', 'S-K'],
     category: 'metabolic',
     canonicalUnit: 'mEq/L',
     alternativeUnits: ['mmol/L'],
@@ -246,7 +246,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
 const lipidBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Total Cholesterol',
-    aliases: ['Cholesterol', 'TC', 'Chol'],
+    aliases: ['Cholesterol', 'TC', 'Chol', 'S-Colesterolo Totale', 'Colesterolo Totale', 'Colesterolo', 'S-Cholesterolo Totale', 'Cholesterolo Totale', 'Cholesterolo'],
     category: 'lipid',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['mmol/L'],
@@ -318,7 +318,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
 const thyroidBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Thyroid Stimulating Hormone',
-    aliases: ['TSH', 'Thyrotropin'],
+    aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina'],
     category: 'thyroid',
     canonicalUnit: 'mIU/L',
     alternativeUnits: ['µIU/mL', 'mU/L'],
@@ -617,7 +617,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
 const liverBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Alanine Aminotransferase',
-    aliases: ['ALT', 'SGPT', 'Alanine Transaminase'],
+    aliases: ['ALT', 'SGPT', 'Alanine Transaminase', 'S-ALT Alanina Amino Trasferasi', 'Alanina Amino Trasferasi', 'S-ALT'],
     category: 'metabolic',
     canonicalUnit: 'U/L',
     alternativeUnits: ['IU/L'],
@@ -628,7 +628,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Aspartate Aminotransferase',
-    aliases: ['AST', 'SGOT', 'Aspartate Transaminase'],
+    aliases: ['AST', 'SGOT', 'Aspartate Transaminase', 'S-AST Aspartato Amino Trasferasi', 'Aspartato Amino Trasferasi', 'S-AST'],
     category: 'metabolic',
     canonicalUnit: 'U/L',
     alternativeUnits: ['IU/L'],
@@ -672,7 +672,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Gamma-Glutamyl Transferase',
-    aliases: ['GGT', 'Gamma GT', 'GGTP'],
+    aliases: ['GGT', 'Gamma GT', 'GGTP', 'S-GGT Gamma Glutamil Trasferasi', 'Gamma Glutamil Trasferasi', 'S-GGT'],
     category: 'metabolic',
     canonicalUnit: 'U/L',
     alternativeUnits: ['IU/L'],
@@ -702,6 +702,28 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     description: 'Total albumin and globulin in blood.',
     highIndication: 'May indicate dehydration or chronic inflammation',
     lowIndication: 'May indicate liver disease or malnutrition',
+  },
+  {
+    name: 'Amylase',
+    aliases: ['S-Amilasi', 'Amilasi', 'S-Amilasi Totale', 'Amilasi Totale', 'Serum Amylase', 'AMY'],
+    category: 'metabolic',
+    canonicalUnit: 'U/L',
+    alternativeUnits: ['IU/L'],
+    defaultReferenceRange: { low: 25, high: 125, unit: 'U/L' },
+    description: 'Enzyme that helps digest carbohydrates, produced by pancreas and salivary glands.',
+    highIndication: 'May indicate pancreatitis, salivary gland disorders, or bowel obstruction',
+    lowIndication: 'May indicate pancreatic insufficiency or liver disease',
+  },
+  {
+    name: 'Alpha-fetoprotein',
+    aliases: ['AFP', 'S-AFP', 'α-fetoprotein', 'Alpha Fetoprotein', 'S-AFP alfa-fetoproteina', 'Alfa-fetoproteina', 'S-AFP Alfa-Fetoproteina'],
+    category: 'metabolic',
+    canonicalUnit: 'ng/mL',
+    alternativeUnits: ['IU/mL', 'kU/L', 'µg/L'],
+    defaultReferenceRange: { low: 0, high: 10, unit: 'ng/mL' },
+    description: 'Protein produced by fetal liver, used as tumor marker in adults.',
+    highIndication: 'May indicate liver cancer, germ cell tumors, or liver regeneration',
+    lowIndication: 'Generally not clinically significant',
   },
 ];
 

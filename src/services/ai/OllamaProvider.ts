@@ -26,6 +26,7 @@ import {
   selectBestVisionModel,
   isVisionModel,
   parseOllamaError,
+  cleanUnitAndExtractRange,
 } from './ollamaUtils';
 
 /**
@@ -479,39 +480,63 @@ Respond with ONLY a valid JSON object containing:
     warnings: string[];
   } {
     try {
+      // Remove markdown code block markers if present
+      const cleanedContent = content
+        .replace(/^```(?:json)?\s*\n?/gm, '')
+        .replace(/\n?```\s*$/gm, '')
+        .trim();
+
       // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('No JSON object found in response');
       }
 
-      const data = JSON.parse(jsonMatch[0]);
+      let jsonString = jsonMatch[0];
+
+      // Fix unquoted property names (common issue with some models)
+      // This converts { low: 5, high: 10 } to { "low": 5, "high": 10 }
+      jsonString = jsonString.replace(
+        /([{,]\s*)(\w+)(\s*:)/g,
+        '$1"$2"$3'
+      );
+
+      const data = JSON.parse(jsonString);
 
       // Validate and normalize biomarkers
       const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
-        (b: Record<string, unknown>) => ({
-          name: String(b.name || ''),
-          value: Number(b.value) || 0,
-          unit: String(b.unit || ''),
-          referenceRange: b.referenceRange
-            ? {
-                low:
-                  typeof (b.referenceRange as Record<string, unknown>).low === 'number'
-                    ? ((b.referenceRange as Record<string, unknown>).low as number)
-                    : undefined,
-                high:
-                  typeof (b.referenceRange as Record<string, unknown>).high === 'number'
-                    ? ((b.referenceRange as Record<string, unknown>).high as number)
-                    : undefined,
-                unit: String(
-                  (b.referenceRange as Record<string, unknown>).unit || b.unit || ''
-                ),
-              }
-            : undefined,
-          confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
-          notes: b.notes ? String(b.notes) : undefined,
-          flaggedAbnormal: Boolean(b.flaggedAbnormal),
-        })
+        (b: Record<string, unknown>) => {
+          // Clean unit field and extract any embedded reference range
+          const rawUnit = String(b.unit || '');
+          const { unit: cleanedUnit, extractedRange } = cleanUnitAndExtractRange(rawUnit);
+
+          // Get reference range from response
+          const responseRange = b.referenceRange as Record<string, unknown> | undefined;
+          const responseLow = typeof responseRange?.low === 'number' ? responseRange.low : undefined;
+          const responseHigh = typeof responseRange?.high === 'number' ? responseRange.high : undefined;
+
+          // Merge reference ranges: prefer response range, fall back to extracted from unit
+          const finalLow = responseLow ?? extractedRange?.low;
+          const finalHigh = responseHigh ?? extractedRange?.high;
+          const hasRange = finalLow !== undefined || finalHigh !== undefined;
+
+          return {
+            name: String(b.name || ''),
+            value: Number(b.value) || 0,
+            unit: cleanedUnit,
+            referenceRange: hasRange
+              ? {
+                  low: finalLow,
+                  high: finalHigh,
+                  unit: String(responseRange?.unit || cleanedUnit || ''),
+                }
+              : undefined,
+            method: b.method ? String(b.method) : undefined,
+            confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
+            notes: b.notes ? String(b.notes) : undefined,
+            flaggedAbnormal: Boolean(b.flaggedAbnormal),
+          };
+        }
       );
 
       return {

@@ -301,6 +301,7 @@ export function ReviewStep({
                       <Table.Th>Value</Table.Th>
                       <Table.Th>Unit</Table.Th>
                       <Table.Th>Reference Range</Table.Th>
+                      <Table.Th>Method</Table.Th>
                       <Table.Th>Confidence</Table.Th>
                       <Table.Th w={100}>Actions</Table.Th>
                     </Table.Tr>
@@ -384,12 +385,72 @@ export function ReviewStep({
                             )}
                           </Table.Td>
                           <Table.Td>
-                            {biomarker.referenceRange ? (
+                            {isEditing ? (
+                              <Group gap="xs" wrap="nowrap">
+                                <NumberInput
+                                  size="xs"
+                                  value={biomarker.referenceRange?.low ?? ''}
+                                  onChange={(value) =>
+                                    updateBiomarker(resultIndex, bioIndex, {
+                                      referenceRange: {
+                                        ...biomarker.referenceRange,
+                                        low: value === '' ? undefined : Number(value),
+                                        high: biomarker.referenceRange?.high,
+                                        unit: biomarker.referenceRange?.unit || biomarker.unit,
+                                      },
+                                    })
+                                  }
+                                  decimalScale={2}
+                                  placeholder="Low"
+                                  w={70}
+                                  allowNegative={false}
+                                />
+                                <Text size="xs">-</Text>
+                                <NumberInput
+                                  size="xs"
+                                  value={biomarker.referenceRange?.high ?? ''}
+                                  onChange={(value) =>
+                                    updateBiomarker(resultIndex, bioIndex, {
+                                      referenceRange: {
+                                        ...biomarker.referenceRange,
+                                        low: biomarker.referenceRange?.low,
+                                        high: value === '' ? undefined : Number(value),
+                                        unit: biomarker.referenceRange?.unit || biomarker.unit,
+                                      },
+                                    })
+                                  }
+                                  decimalScale={2}
+                                  placeholder="High"
+                                  w={70}
+                                  allowNegative={false}
+                                />
+                              </Group>
+                            ) : biomarker.referenceRange ? (
                               <Text size="sm">
                                 {biomarker.referenceRange.low ?? '?'} -{' '}
-                                {biomarker.referenceRange.high ?? '?'}{' '}
-                                {biomarker.referenceRange.unit}
+                                {biomarker.referenceRange.high ?? '?'}
                               </Text>
+                            ) : (
+                              <Text size="sm" c="dimmed">
+                                —
+                              </Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            {isEditing ? (
+                              <TextInput
+                                size="xs"
+                                value={biomarker.method || ''}
+                                onChange={(e) =>
+                                  updateBiomarker(resultIndex, bioIndex, {
+                                    method: e.target.value || undefined,
+                                  })
+                                }
+                                placeholder="Method"
+                                w={100}
+                              />
+                            ) : biomarker.method ? (
+                              <Text size="sm">{biomarker.method}</Text>
                             ) : (
                               <Text size="sm" c="dimmed">
                                 —

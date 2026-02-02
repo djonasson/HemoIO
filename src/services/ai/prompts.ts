@@ -39,10 +39,22 @@ Each biomarker object should have:
 - name: Biomarker name as found in report
 - value: Numeric value (number only, no units)
 - unit: Unit of measurement
-- referenceRange: { low, high, unit } if available
+- referenceRange: { low, high, unit } if available - IMPORTANT: extract numeric values only
+- method: Analytical method if specified (e.g., "Enzymatic", "HPLC", "Immunoassay", "Colorimetric", "Turbidimetric")
 - confidence: 0-1 score based on extraction certainty
 - notes: Any flags or additional notes
 - flaggedAbnormal: boolean if marked as abnormal
+
+REFERENCE RANGE PARSING:
+Reference ranges appear in many formats across languages. Always extract just the numeric low and high values:
+- "5-34" or "5 - 34" → { low: 5, high: 34 }
+- "Da 5 a 34" (Italian: from 5 to 34) → { low: 5, high: 34 }
+- "De 5 à 34" (French: from 5 to 34) → { low: 5, high: 34 }
+- "Von 5 bis 34" (German: from 5 to 34) → { low: 5, high: 34 }
+- "< 5.0" or "fino a 5" (up to) → { high: 5 }
+- "> 5.0" or "oltre 5" (above) → { low: 5 }
+- "(5.0 - 34.0)" → { low: 5, high: 34 }
+Never include text like "Da", "a", "to", "from" in the numeric values.
 
 CONFIDENCE SCORING:
 - 0.9-1.0: Clear, unambiguous value with standard format
@@ -110,6 +122,7 @@ export const RESPONSE_SCHEMA = {
               unit: { type: 'string' },
             },
           },
+          method: { type: 'string' },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           notes: { type: 'string' },
           flaggedAbnormal: { type: 'boolean' },

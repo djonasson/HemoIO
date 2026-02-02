@@ -13,6 +13,7 @@ import {
   getRecommendedModels,
   formatModelSize,
   parseOllamaError,
+  cleanUnitAndExtractRange,
   OLLAMA_DEFAULTS,
   RANKED_TEXT_MODELS,
   VISION_MODELS,
@@ -137,7 +138,7 @@ describe('ollamaUtils', () => {
   describe('OLLAMA_DEFAULTS', () => {
     it('should have correct default values', () => {
       expect(OLLAMA_DEFAULTS.baseUrl).toBe('http://localhost:11434');
-      expect(OLLAMA_DEFAULTS.timeout).toBe(120000);
+      expect(OLLAMA_DEFAULTS.timeout).toBe(600000); // 10 minutes for local processing
       expect(OLLAMA_DEFAULTS.temperature).toBe(0.1);
       expect(OLLAMA_DEFAULTS.maxTokens).toBe(4096);
     });
@@ -347,6 +348,110 @@ describe('ollamaUtils - network functions', () => {
 
       const result = await parseOllamaError(mockResponse);
       expect(result).toBe('HTTP 404: Not Found');
+    });
+  });
+
+  describe('cleanUnitAndExtractRange', () => {
+    it('should return empty string for empty input', () => {
+      expect(cleanUnitAndExtractRange('')).toEqual({ unit: '' });
+    });
+
+    it('should pass through clean units unchanged', () => {
+      expect(cleanUnitAndExtractRange('U/L')).toEqual({ unit: 'U/L' });
+      expect(cleanUnitAndExtractRange('mg/dL')).toEqual({ unit: 'mg/dL' });
+      expect(cleanUnitAndExtractRange('%')).toEqual({ unit: '%' });
+    });
+
+    it('should normalize UL to U/L', () => {
+      expect(cleanUnitAndExtractRange('UL')).toEqual({ unit: 'U/L' });
+    });
+
+    it('should extract Italian range format "Da X a Y"', () => {
+      const result = cleanUnitAndExtractRange('UL Da5a34');
+      expect(result).toEqual({
+        unit: 'U/L', // UL gets normalized to U/L
+        extractedRange: { low: 5, high: 34 },
+      });
+    });
+
+    it('should extract Italian range with spaces "Da X a Y"', () => {
+      const result = cleanUnitAndExtractRange('U/L Da 5 a 34');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { low: 5, high: 34 },
+      });
+    });
+
+    it('should extract range in parentheses', () => {
+      const result = cleanUnitAndExtractRange('mg/dL (70-100)');
+      expect(result).toEqual({
+        unit: 'mg/dL',
+        extractedRange: { low: 70, high: 100 },
+      });
+    });
+
+    it('should extract range with en-dash', () => {
+      const result = cleanUnitAndExtractRange('U/L (5 – 34)');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { low: 5, high: 34 },
+      });
+    });
+
+    it('should extract range directly after unit', () => {
+      const result = cleanUnitAndExtractRange('U/L 5-34');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { low: 5, high: 34 },
+      });
+    });
+
+    it('should handle decimal values in ranges', () => {
+      const result = cleanUnitAndExtractRange('mg/dL (0.5-1.3)');
+      expect(result).toEqual({
+        unit: 'mg/dL',
+        extractedRange: { low: 0.5, high: 1.3 },
+      });
+    });
+
+    it('should handle comma as decimal separator', () => {
+      const result = cleanUnitAndExtractRange('mg/dL (0,5-1,3)');
+      expect(result).toEqual({
+        unit: 'mg/dL',
+        extractedRange: { low: 0.5, high: 1.3 },
+      });
+    });
+
+    it('should extract Italian "fino a" (up to) format', () => {
+      const result = cleanUnitAndExtractRange('U/L fino a 34');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { high: 34 },
+      });
+    });
+
+    it('should extract Italian "oltre" (above) format', () => {
+      const result = cleanUnitAndExtractRange('U/L oltre 10');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { low: 10 },
+      });
+    });
+
+    it('should extract threshold with unit "< X unit"', () => {
+      const result = cleanUnitAndExtractRange('< 5.0 U/L');
+      expect(result).toEqual({
+        unit: 'U/L',
+        extractedRange: { high: 5.0 },
+      });
+    });
+
+    it('should extract threshold with unit "> X unit"', () => {
+      const result = cleanUnitAndExtractRange('> 10 mg/dL');
+      expect(result).toEqual({
+        unit: 'mg/dL',
+        extractedRange: { low: 10 },
+      });
     });
   });
 });

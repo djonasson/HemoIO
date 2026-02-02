@@ -414,22 +414,37 @@ function calculateOverallConfidence(
 ): number {
   if (biomarkers.length === 0) return 0;
 
-  // Weight factors
-  const aiConfidenceWeight = 0.4;
-  const matchConfidenceWeight = 0.3;
-  const exactMatchWeight = 0.3;
-
+  // Calculate average biomarker confidence from AI extraction
   const avgBiomarkerConfidence =
     biomarkers.reduce((sum, b) => sum + b.confidence, 0) / biomarkers.length;
 
   const exactMatchRatio =
     biomarkers.filter((b) => b.isExactMatch).length / biomarkers.length;
 
-  return (
-    aiAnalysis.overallConfidence * aiConfidenceWeight +
-    avgBiomarkerConfidence * matchConfidenceWeight +
-    exactMatchRatio * exactMatchWeight
-  );
+  // If we have dictionary matches, weight them in the calculation
+  // If no dictionary matches, rely more heavily on AI and biomarker confidence
+  if (exactMatchRatio > 0) {
+    // With dictionary matches: weight all three factors
+    const aiConfidenceWeight = 0.3;
+    const matchConfidenceWeight = 0.4;
+    const exactMatchWeight = 0.3;
+
+    return (
+      aiAnalysis.overallConfidence * aiConfidenceWeight +
+      avgBiomarkerConfidence * matchConfidenceWeight +
+      exactMatchRatio * exactMatchWeight
+    );
+  } else {
+    // Without dictionary matches: rely on AI and biomarker confidence
+    // Don't penalize for unmatched biomarkers (could be foreign language or specialized tests)
+    const aiConfidenceWeight = 0.4;
+    const matchConfidenceWeight = 0.6;
+
+    return (
+      aiAnalysis.overallConfidence * aiConfidenceWeight +
+      avgBiomarkerConfidence * matchConfidenceWeight
+    );
+  }
 }
 
 /**

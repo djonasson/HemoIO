@@ -55,6 +55,8 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const [hasApiKey, setHasApiKey] = useState(false);
   const [apiKeyLastFour, setApiKeyLastFour] = useState<string | undefined>();
   const [ollamaModel, setOllamaModel] = useState<string | undefined>();
+  const [openaiModel, setOpenaiModel] = useState<string | undefined>();
+  const [anthropicModel, setAnthropicModel] = useState<string | undefined>();
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
 
   // Display Settings state
@@ -70,6 +72,8 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     const savedProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
     const savedApiKey = localStorage.getItem('hemoio_ai_api_key');
     const savedOllamaModel = localStorage.getItem('hemoio_ollama_model');
+    const savedOpenaiModel = localStorage.getItem('hemoio_openai_model');
+    const savedAnthropicModel = localStorage.getItem('hemoio_anthropic_model');
 
     if (savedProvider) {
       setAiProvider(savedProvider);
@@ -82,6 +86,14 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
     if (savedOllamaModel) {
       setOllamaModel(savedOllamaModel);
+    }
+
+    if (savedOpenaiModel) {
+      setOpenaiModel(savedOpenaiModel);
+    }
+
+    if (savedAnthropicModel) {
+      setAnthropicModel(savedAnthropicModel);
     }
   }, []);
 
@@ -155,6 +167,18 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const handleOllamaModelChange = useCallback((model: string) => {
     setOllamaModel(model);
     localStorage.setItem('hemoio_ollama_model', model);
+  }, []);
+
+  // Handle OpenAI model change
+  const handleOpenaiModelChange = useCallback((model: string) => {
+    setOpenaiModel(model);
+    localStorage.setItem('hemoio_openai_model', model);
+  }, []);
+
+  // Handle Anthropic model change
+  const handleAnthropicModelChange = useCallback((model: string) => {
+    setAnthropicModel(model);
+    localStorage.setItem('hemoio_anthropic_model', model);
   }, []);
 
   // Handle AI connection test
@@ -304,9 +328,13 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             hasApiKey={hasApiKey}
             apiKeyLastFour={apiKeyLastFour}
             ollamaModel={ollamaModel}
+            openaiModel={openaiModel}
+            anthropicModel={anthropicModel}
             onProviderChange={handleAiProviderChange}
             onApiKeyChange={handleApiKeyChange}
             onOllamaModelChange={handleOllamaModelChange}
+            onOpenaiModelChange={handleOpenaiModelChange}
+            onAnthropicModelChange={handleAnthropicModelChange}
             onTestConnection={handleTestConnection}
             isSaving={aiTestInProgress}
           />

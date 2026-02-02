@@ -51,6 +51,22 @@ export {
 } from './ollamaUtils';
 export type { OllamaModelInfo, OllamaTagsResponse } from './ollamaUtils';
 
+// OpenAI utilities
+export {
+  getOpenAIModels,
+  getDefaultOpenAIModels,
+  testOpenAIApiKey,
+} from './openaiUtils';
+export type { OpenAIModelInfo } from './openaiUtils';
+
+// Anthropic utilities
+export {
+  getAnthropicModels,
+  getDefaultAnthropicModels,
+  testAnthropicApiKey,
+} from './anthropicUtils';
+export type { AnthropicModelInfo } from './anthropicUtils';
+
 // Prompts (for advanced use cases)
 export {
   LAB_REPORT_SYSTEM_PROMPT,

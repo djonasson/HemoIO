@@ -57,6 +57,8 @@ export interface ExtractedBiomarker {
     high?: number;
     unit: string;
   };
+  /** Analytical method used for measurement (e.g., "Enzymatic", "HPLC", "Immunoassay") */
+  method?: string;
   /** Confidence score (0-1) */
   confidence: number;
   /** Additional notes or flags from the lab */

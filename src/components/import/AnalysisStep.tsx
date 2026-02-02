@@ -76,8 +76,8 @@ export interface AnalysisStepProps {
   aiProvider: 'openai' | 'anthropic' | 'ollama';
   /** AI API key (not required for Ollama) */
   aiApiKey: string;
-  /** Ollama model (only used when aiProvider is 'ollama') */
-  ollamaModel?: string;
+  /** AI model to use (provider-specific) */
+  aiModel?: string;
   /** Callback when analysis is complete */
   onComplete: (results: AnalysisResult[]) => void;
   /** Callback to go back */
@@ -91,7 +91,7 @@ export function AnalysisStep({
   files,
   aiProvider,
   aiApiKey,
-  ollamaModel,
+  aiModel,
   onComplete,
   onBack,
 }: AnalysisStepProps) {
@@ -148,7 +148,7 @@ export function AnalysisStep({
               aiProvider,
               aiConfig: {
                 apiKey: aiApiKey,
-                model: aiProvider === 'ollama' ? ollamaModel : undefined,
+                model: aiModel,
               },
               onProgress: (stage, progress) => {
                 if (!cancelled) {
@@ -220,7 +220,7 @@ export function AnalysisStep({
     return () => {
       cancelled = true;
     };
-  }, [files, aiProvider, aiApiKey, fileStatuses.length, updateFileStatus]);
+  }, [files, aiProvider, aiApiKey, aiModel, fileStatuses.length, updateFileStatus]);
 
   // Calculate summary statistics
   const successCount = results.filter((r) => r.success).length;

@@ -375,7 +375,16 @@ function MainContent({
       (localStorage.getItem('hemoio_ai_provider') as 'openai' | 'anthropic' | 'ollama') ||
       'openai';
     const aiApiKey = localStorage.getItem('hemoio_ai_api_key') || '';
-    const ollamaModel = localStorage.getItem('hemoio_ollama_model') || undefined;
+
+    // Get the model for the selected provider
+    let aiModel: string | undefined;
+    if (aiProvider === 'ollama') {
+      aiModel = localStorage.getItem('hemoio_ollama_model') || undefined;
+    } else if (aiProvider === 'openai') {
+      aiModel = localStorage.getItem('hemoio_openai_model') || undefined;
+    } else if (aiProvider === 'anthropic') {
+      aiModel = localStorage.getItem('hemoio_anthropic_model') || undefined;
+    }
 
     // Check if AI is properly configured
     // Ollama doesn't require an API key, but other providers do
@@ -399,7 +408,7 @@ function MainContent({
       <ImportWizard
         aiProvider={aiProvider}
         aiApiKey={aiApiKey}
-        ollamaModel={ollamaModel}
+        aiModel={aiModel}
         onComplete={onImportComplete}
       />
     );

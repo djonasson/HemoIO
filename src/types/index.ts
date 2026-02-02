@@ -24,6 +24,8 @@ export interface TestValue {
   unit: string;
   referenceRangeLow?: number;
   referenceRangeHigh?: number;
+  /** Analytical method used for measurement (e.g., "Enzymatic", "HPLC", "Immunoassay") */
+  method?: string;
   qualitativeType?: QualitativeType;
   ordinalValue?: number;
   rawText?: string;

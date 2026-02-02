@@ -244,6 +244,7 @@ export class AnthropicProvider implements AIProvider {
                 unit: String((b.referenceRange as Record<string, unknown>).unit || b.unit || ''),
               }
             : undefined,
+          method: b.method ? String(b.method) : undefined,
           confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
           notes: b.notes ? String(b.notes) : undefined,
           flaggedAbnormal: Boolean(b.flaggedAbnormal),

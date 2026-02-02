@@ -30,7 +30,14 @@ import {
   IconAlertTriangle,
 } from '@tabler/icons-react';
 import type { AIProviderType } from '@/types';
-import { isOllamaRunning, getOllamaModelNames } from '@/services/ai';
+import {
+  isOllamaRunning,
+  getOllamaModelNames,
+  getOpenAIModels,
+  getDefaultOpenAIModels,
+  getAnthropicModels,
+  getDefaultAnthropicModels,
+} from '@/services/ai';
 
 /**
  * Props for AISettings component
@@ -44,12 +51,20 @@ export interface AISettingsProps {
   apiKeyLastFour?: string;
   /** Currently configured Ollama model */
   ollamaModel?: string;
+  /** Currently configured OpenAI model */
+  openaiModel?: string;
+  /** Currently configured Anthropic model */
+  anthropicModel?: string;
   /** Called when provider changes */
   onProviderChange?: (provider: AIProviderType) => void;
   /** Called when API key is updated */
   onApiKeyChange?: (apiKey: string) => void;
   /** Called when Ollama model changes */
   onOllamaModelChange?: (model: string) => void;
+  /** Called when OpenAI model changes */
+  onOpenaiModelChange?: (model: string) => void;
+  /** Called when Anthropic model changes */
+  onAnthropicModelChange?: (model: string) => void;
   /** Called when test connection is requested */
   onTestConnection?: () => Promise<boolean>;
   /** Whether settings are being saved */
@@ -73,9 +88,13 @@ export function AISettings({
   hasApiKey = false,
   apiKeyLastFour,
   ollamaModel,
+  openaiModel,
+  anthropicModel,
   onProviderChange,
   onApiKeyChange,
   onOllamaModelChange,
+  onOpenaiModelChange,
+  onAnthropicModelChange,
   onTestConnection,
   isSaving = false,
 }: AISettingsProps): React.ReactNode {
@@ -88,6 +107,12 @@ export function AISettings({
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [localOllamaModel, setLocalOllamaModel] = useState<string | undefined>(ollamaModel);
+  const [localOpenaiModel, setLocalOpenaiModel] = useState<string>(openaiModel || 'gpt-4o-mini');
+  const [localAnthropicModel, setLocalAnthropicModel] = useState<string>(anthropicModel || 'claude-sonnet-4-20250514');
+  const [openaiModels, setOpenaiModels] = useState<Array<{ value: string; label: string }>>(getDefaultOpenAIModels());
+  const [isLoadingOpenaiModels, setIsLoadingOpenaiModels] = useState(false);
+  const [anthropicModels, setAnthropicModels] = useState<Array<{ value: string; label: string }>>(getDefaultAnthropicModels());
+  const [isLoadingAnthropicModels, setIsLoadingAnthropicModels] = useState(false);
 
   // Sync local state with props
   useEffect(() => {
@@ -98,6 +123,100 @@ export function AISettings({
   useEffect(() => {
     setLocalOllamaModel(ollamaModel);
   }, [ollamaModel]);
+
+  // Sync OpenAI model with props
+  useEffect(() => {
+    if (openaiModel) {
+      setLocalOpenaiModel(openaiModel);
+    }
+  }, [openaiModel]);
+
+  // Sync Anthropic model with props
+  useEffect(() => {
+    if (anthropicModel) {
+      setLocalAnthropicModel(anthropicModel);
+    }
+  }, [anthropicModel]);
+
+  // Fetch OpenAI models when provider is OpenAI and API key is available
+  useEffect(() => {
+    if (localProvider !== 'openai' || !hasApiKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchModels = async () => {
+      setIsLoadingOpenaiModels(true);
+      try {
+        // Get API key from localStorage to fetch models
+        const apiKey = localStorage.getItem('hemoio_ai_api_key');
+        if (!apiKey || cancelled) return;
+
+        const models = await getOpenAIModels(apiKey);
+        if (!cancelled && models.length > 0) {
+          setOpenaiModels(models);
+          // If current model is not in the list, select the first one
+          if (!models.find(m => m.value === localOpenaiModel)) {
+            setLocalOpenaiModel(models[0].value);
+            onOpenaiModelChange?.(models[0].value);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch OpenAI models:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingOpenaiModels(false);
+        }
+      }
+    };
+
+    fetchModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localProvider, hasApiKey, localOpenaiModel, onOpenaiModelChange]);
+
+  // Fetch Anthropic models when provider is Anthropic and API key is available
+  useEffect(() => {
+    if (localProvider !== 'anthropic' || !hasApiKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchModels = async () => {
+      setIsLoadingAnthropicModels(true);
+      try {
+        // Get API key from localStorage to fetch models
+        const apiKey = localStorage.getItem('hemoio_ai_api_key');
+        if (!apiKey || cancelled) return;
+
+        const models = await getAnthropicModels(apiKey);
+        if (!cancelled && models.length > 0) {
+          setAnthropicModels(models);
+          // If current model is not in the list, select the first one
+          if (!models.find(m => m.value === localAnthropicModel)) {
+            setLocalAnthropicModel(models[0].value);
+            onAnthropicModelChange?.(models[0].value);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to fetch Anthropic models:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAnthropicModels(false);
+        }
+      }
+    };
+
+    fetchModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localProvider, hasApiKey, localAnthropicModel, onAnthropicModelChange]);
 
   // Check Ollama status when provider is Ollama
   useEffect(() => {
@@ -194,6 +313,34 @@ export function AISettings({
       setTimeout(() => setSaveSuccess(false), 2000);
     },
     [onOllamaModelChange]
+  );
+
+  // Handle OpenAI model change
+  const handleOpenaiModelChange = useCallback(
+    (value: string | null) => {
+      if (!value) return;
+      setLocalOpenaiModel(value);
+      onOpenaiModelChange?.(value);
+
+      // Show success briefly
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    },
+    [onOpenaiModelChange]
+  );
+
+  // Handle Anthropic model change
+  const handleAnthropicModelChange = useCallback(
+    (value: string | null) => {
+      if (!value) return;
+      setLocalAnthropicModel(value);
+      onAnthropicModelChange?.(value);
+
+      // Show success briefly
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    },
+    [onAnthropicModelChange]
   );
 
   // Handle save API key
@@ -376,6 +523,44 @@ export function AISettings({
                 your computer, providing complete privacy.
               </Text>
             </Alert>
+          </Stack>
+        )}
+
+        {/* Model Selection (for OpenAI/Anthropic) */}
+        {requiresApiKey && (
+          <Stack gap="xs">
+            <Group justify="space-between">
+              <Text fw={500}>Model</Text>
+              {localProvider === 'openai' && isLoadingOpenaiModels && (
+                <Group gap="xs">
+                  <Loader size="xs" />
+                  <Text size="xs" c="dimmed">Loading models...</Text>
+                </Group>
+              )}
+              {localProvider === 'anthropic' && isLoadingAnthropicModels && (
+                <Group gap="xs">
+                  <Loader size="xs" />
+                  <Text size="xs" c="dimmed">Loading models...</Text>
+                </Group>
+              )}
+            </Group>
+            <Select
+              value={localProvider === 'openai' ? localOpenaiModel : localAnthropicModel}
+              onChange={localProvider === 'openai' ? handleOpenaiModelChange : handleAnthropicModelChange}
+              data={localProvider === 'openai' ? openaiModels : anthropicModels}
+              disabled={isSaving || (localProvider === 'openai' && isLoadingOpenaiModels) || (localProvider === 'anthropic' && isLoadingAnthropicModels)}
+              aria-label={`Select ${localProvider === 'openai' ? 'OpenAI' : 'Anthropic'} model`}
+              placeholder={!hasApiKey ? 'Add API key to see available models' : 'Select a model'}
+            />
+            <Text size="xs" c="dimmed">
+              {localProvider === 'openai'
+                ? hasApiKey
+                  ? 'Models are fetched from your OpenAI account. GPT-4o provides the best accuracy.'
+                  : 'Add your API key to see available models from your OpenAI account.'
+                : hasApiKey
+                  ? 'Models are fetched from your Anthropic account. Claude Sonnet 4 offers the best balance.'
+                  : 'Add your API key to see available models from your Anthropic account.'}
+            </Text>
           </Stack>
         )}
 
