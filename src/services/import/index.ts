@@ -17,3 +17,13 @@ export {
   type ImportResult,
   type ParsedBackupData,
 } from './jsonImport';
+
+export {
+  detectBackupType,
+  detectBackupTypeFromFile,
+  validateEncryptedBackupFile,
+  parseEncryptedBackup,
+  validateBackupPassword,
+  getEncryptedImportPreview,
+  type ParsedEncryptedBackupData,
+} from './encryptedImport';

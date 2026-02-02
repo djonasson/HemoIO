@@ -23,3 +23,9 @@ export {
   type JsonExportOptions,
   type ExportDataSources,
 } from './jsonExport';
+
+export {
+  exportToEncryptedJson,
+  generateEncryptedBackupFilename,
+  downloadEncryptedBackup,
+} from './encryptedExport';

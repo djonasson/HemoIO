@@ -2,6 +2,26 @@
  * Core type definitions for HemoIO
  */
 
+// Re-export backup types
+export type {
+  BackupType,
+  EncryptionMetadata,
+  EncryptedBackupFile,
+  FullBackupData,
+  FullSettingsData,
+  EncryptedExportOptions,
+  EncryptedImportOptions,
+  BackupTypeDetectionResult,
+} from './backup';
+
+export {
+  ENCRYPTED_BACKUP_EXTENSION,
+  STANDARD_BACKUP_EXTENSION,
+  ENCRYPTED_BACKUP_SCHEMA_VERSION,
+  ENCRYPTED_BACKUP_TYPE_ID,
+  isEncryptedBackupFile,
+} from './backup';
+
 // Value types for qualitative results
 export type QualitativeType = 'boolean' | 'ordinal' | 'descriptive';
 
