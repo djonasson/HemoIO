@@ -28,11 +28,13 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 describe('ImportWizard', () => {
+  const mockGetApiKey = vi.fn().mockResolvedValue('sk-test-key');
+
   const defaultProps = {
     onComplete: vi.fn(),
     onCancel: vi.fn(),
     aiProvider: 'openai' as const,
-    aiApiKey: 'sk-test-key',
+    getApiKey: mockGetApiKey,
   };
 
   it('renders the wizard title', () => {

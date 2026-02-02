@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SettingsPage } from './SettingsPage';
 
-// Mock useExportData and useEncryptedDb hooks
+// Mock hooks
 vi.mock('@hooks', () => ({
   useExportData: () => ({
     dataSources: {
@@ -28,6 +28,15 @@ vi.mock('@hooks', () => ({
       savePreferences: vi.fn().mockResolvedValue(1),
     },
     isReady: true,
+  }),
+  useEncryptedApiKey: () => ({
+    isReady: true,
+    hasApiKey: false,
+    apiKeyLastFour: undefined,
+    isLoading: false,
+    getApiKey: vi.fn().mockResolvedValue(null),
+    setApiKey: vi.fn().mockResolvedValue(undefined),
+    removeApiKey: vi.fn(),
   }),
 }));
 

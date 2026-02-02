@@ -17,7 +17,7 @@ import { BackupRestore } from './BackupRestore';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
-import { useExportData, useEncryptedDb } from '@hooks';
+import { useExportData, useEncryptedDb, useEncryptedApiKey } from '@hooks';
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import type { ParsedBackupData } from '@services/import';
 import type { AIProviderType } from '@services/ai/types';
@@ -49,11 +49,16 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const { dataSources, isLoading } = useExportData();
   const { db, isReady } = useEncryptedDb();
   const { colorScheme } = useMantineColorScheme();
+  const {
+    hasApiKey,
+    apiKeyLastFour,
+    getApiKey,
+    setApiKey: saveEncryptedApiKey,
+    removeApiKey,
+  } = useEncryptedApiKey();
 
   // AI Settings state
   const [aiProvider, setAiProvider] = useState<AIProviderType>('openai');
-  const [hasApiKey, setHasApiKey] = useState(false);
-  const [apiKeyLastFour, setApiKeyLastFour] = useState<string | undefined>();
   const [ollamaModel, setOllamaModel] = useState<string | undefined>();
   const [openaiModel, setOpenaiModel] = useState<string | undefined>();
   const [anthropicModel, setAnthropicModel] = useState<string | undefined>();
@@ -70,7 +75,6 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   // Load AI settings from localStorage
   useEffect(() => {
     const savedProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
-    const savedApiKey = localStorage.getItem('hemoio_ai_api_key');
     const savedOllamaModel = localStorage.getItem('hemoio_ollama_model');
     const savedOpenaiModel = localStorage.getItem('hemoio_openai_model');
     const savedAnthropicModel = localStorage.getItem('hemoio_anthropic_model');
@@ -79,10 +83,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       setAiProvider(savedProvider);
     }
 
-    if (savedApiKey) {
-      setHasApiKey(true);
-      setApiKeyLastFour(savedApiKey.slice(-4));
-    }
+    // API key state is managed by useEncryptedApiKey hook
 
     if (savedOllamaModel) {
       setOllamaModel(savedOllamaModel);
@@ -150,18 +151,17 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     localStorage.setItem('hemoio_ai_provider', provider);
   }, []);
 
-  // Handle API key change
-  const handleApiKeyChange = useCallback((apiKey: string) => {
-    if (apiKey) {
-      localStorage.setItem('hemoio_ai_api_key', apiKey);
-      setHasApiKey(true);
-      setApiKeyLastFour(apiKey.slice(-4));
-    } else {
-      localStorage.removeItem('hemoio_ai_api_key');
-      setHasApiKey(false);
-      setApiKeyLastFour(undefined);
-    }
-  }, []);
+  // Handle API key change (async because of encryption)
+  const handleApiKeyChange = useCallback(
+    async (apiKey: string) => {
+      if (apiKey) {
+        await saveEncryptedApiKey(apiKey);
+      } else {
+        removeApiKey();
+      }
+    },
+    [saveEncryptedApiKey, removeApiKey]
+  );
 
   // Handle Ollama model change
   const handleOllamaModelChange = useCallback((model: string) => {
@@ -185,7 +185,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const handleTestConnection = useCallback(async (): Promise<boolean> => {
     setAiTestInProgress(true);
     try {
-      const apiKey = localStorage.getItem('hemoio_ai_api_key');
+      const apiKey = await getApiKey();
       if (!apiKey) {
         return false;
       }
@@ -205,7 +205,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     } finally {
       setAiTestInProgress(false);
     }
-  }, [aiProvider]);
+  }, [aiProvider, getApiKey]);
 
   // Handle theme change
   const handleThemeChange = useCallback((newTheme: ThemeOption) => {
@@ -337,6 +337,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             onAnthropicModelChange={handleAnthropicModelChange}
             onTestConnection={handleTestConnection}
             isSaving={aiTestInProgress}
+            getApiKey={getApiKey}
           />
         </Tabs.Panel>
 

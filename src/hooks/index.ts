@@ -9,3 +9,4 @@ export { useLabResults, type UseLabResultsResult, type LabResultWithDetails, typ
 export { useAlerts, type UseAlertsResult, type BiomarkerAlert, type GroupedAlert, type AlertType } from './useAlerts';
 export { useNotes, type UseNotesResult, type NoteFilters, type CreateNoteInput, type UpdateNoteInput } from './useNotes';
 export { useExportData, type UseExportDataResult } from './useExportData';
+export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncryptedApiKey';

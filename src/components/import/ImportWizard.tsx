@@ -34,8 +34,8 @@ export interface ImportWizardProps {
   onCancel?: () => void;
   /** AI provider type */
   aiProvider: 'openai' | 'anthropic' | 'ollama';
-  /** AI API key (not required for Ollama) */
-  aiApiKey: string;
+  /** Function to get decrypted API key (not required for Ollama) */
+  getApiKey: () => Promise<string | null>;
   /** AI model to use (provider-specific) */
   aiModel?: string;
 }
@@ -57,7 +57,7 @@ export function ImportWizard({
   onComplete,
   onCancel,
   aiProvider,
-  aiApiKey,
+  getApiKey,
   aiModel,
 }: ImportWizardProps) {
   const [activeStep, setActiveStep] = useState(0);
@@ -119,7 +119,7 @@ export function ImportWizard({
           <AnalysisStep
             files={uploadedFiles}
             aiProvider={aiProvider}
-            aiApiKey={aiApiKey}
+            getApiKey={getApiKey}
             aiModel={aiModel}
             onComplete={handleAnalysisComplete}
             onBack={prevStep}

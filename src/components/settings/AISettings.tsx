@@ -56,7 +56,7 @@ export interface AISettingsProps {
   /** Called when provider changes */
   onProviderChange?: (provider: AIProviderType) => void;
   /** Called when API key is updated */
-  onApiKeyChange?: (apiKey: string) => void;
+  onApiKeyChange?: (apiKey: string) => void | Promise<void>;
   /** Called when Ollama model changes */
   onOllamaModelChange?: (model: string) => void;
   /** Called when OpenAI model changes */
@@ -67,6 +67,8 @@ export interface AISettingsProps {
   onTestConnection?: () => Promise<boolean>;
   /** Whether settings are being saved */
   isSaving?: boolean;
+  /** Function to get the decrypted API key (for model fetching) */
+  getApiKey?: () => Promise<string | null>;
 }
 
 /**
@@ -95,6 +97,7 @@ export function AISettings({
   onAnthropicModelChange,
   onTestConnection,
   isSaving = false,
+  getApiKey,
 }: AISettingsProps): React.ReactNode {
   const [localProvider, setLocalProvider] = useState<AIProviderType>(provider);
   const [newApiKey, setNewApiKey] = useState('');
@@ -138,7 +141,7 @@ export function AISettings({
 
   // Fetch OpenAI models when provider is OpenAI and API key is available
   useEffect(() => {
-    if (localProvider !== 'openai' || !hasApiKey) {
+    if (localProvider !== 'openai' || !hasApiKey || !getApiKey) {
       return;
     }
 
@@ -147,8 +150,8 @@ export function AISettings({
     const fetchModels = async () => {
       setIsLoadingOpenaiModels(true);
       try {
-        // Get API key from localStorage to fetch models
-        const apiKey = localStorage.getItem('hemoio_ai_api_key');
+        // Get decrypted API key
+        const apiKey = await getApiKey();
         if (!apiKey || cancelled) return;
 
         const models = await getOpenAIModels(apiKey);
@@ -174,11 +177,11 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, hasApiKey, localOpenaiModel, onOpenaiModelChange]);
+  }, [localProvider, hasApiKey, localOpenaiModel, onOpenaiModelChange, getApiKey]);
 
   // Fetch Anthropic models when provider is Anthropic and API key is available
   useEffect(() => {
-    if (localProvider !== 'anthropic' || !hasApiKey) {
+    if (localProvider !== 'anthropic' || !hasApiKey || !getApiKey) {
       return;
     }
 
@@ -187,8 +190,8 @@ export function AISettings({
     const fetchModels = async () => {
       setIsLoadingAnthropicModels(true);
       try {
-        // Get API key from localStorage to fetch models
-        const apiKey = localStorage.getItem('hemoio_ai_api_key');
+        // Get decrypted API key
+        const apiKey = await getApiKey();
         if (!apiKey || cancelled) return;
 
         const models = await getAnthropicModels(apiKey);
@@ -214,7 +217,7 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, hasApiKey, localAnthropicModel, onAnthropicModelChange]);
+  }, [localProvider, hasApiKey, localAnthropicModel, onAnthropicModelChange, getApiKey]);
 
   // Check Ollama status when provider is Ollama
   useEffect(() => {

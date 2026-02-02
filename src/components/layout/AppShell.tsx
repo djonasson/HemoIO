@@ -25,7 +25,7 @@ import {
   IconDownload,
 } from '@tabler/icons-react';
 import { useAuth } from '@contexts';
-import { useEncryptedDb, useExportData } from '@hooks';
+import { useEncryptedDb, useExportData, useEncryptedApiKey } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -362,6 +362,7 @@ function MainContent({
   isRestoring,
 }: MainContentProps): React.ReactNode {
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
+  const { hasApiKey, getApiKey, isLoading: isLoadingApiKey } = useEncryptedApiKey();
 
   // Render TimelineView for the timeline view
   if (view === 'timeline') {
@@ -374,7 +375,6 @@ function MainContent({
     const aiProvider =
       (localStorage.getItem('hemoio_ai_provider') as 'openai' | 'anthropic' | 'ollama') ||
       'openai';
-    const aiApiKey = localStorage.getItem('hemoio_ai_api_key') || '';
 
     // Get the model for the selected provider
     let aiModel: string | undefined;
@@ -388,7 +388,18 @@ function MainContent({
 
     // Check if AI is properly configured
     // Ollama doesn't require an API key, but other providers do
-    const isAiConfigured = aiProvider === 'ollama' || aiApiKey.length > 0;
+    const isAiConfigured = aiProvider === 'ollama' || hasApiKey;
+
+    // Show loading state while checking API key
+    if (isLoadingApiKey && aiProvider !== 'ollama') {
+      return (
+        <Stack align="center" justify="center" h="50vh" gap="md">
+          <Text size="xl" fw={500}>
+            Loading...
+          </Text>
+        </Stack>
+      );
+    }
 
     if (!isAiConfigured) {
       return (
@@ -407,7 +418,7 @@ function MainContent({
     return (
       <ImportWizard
         aiProvider={aiProvider}
-        aiApiKey={aiApiKey}
+        getApiKey={getApiKey}
         aiModel={aiModel}
         onComplete={onImportComplete}
       />

@@ -74,8 +74,8 @@ export interface AnalysisStepProps {
   files: UploadedFile[];
   /** AI provider type */
   aiProvider: 'openai' | 'anthropic' | 'ollama';
-  /** AI API key (not required for Ollama) */
-  aiApiKey: string;
+  /** Function to get decrypted API key (not required for Ollama) */
+  getApiKey: () => Promise<string | null>;
   /** AI model to use (provider-specific) */
   aiModel?: string;
   /** Callback when analysis is complete */
@@ -90,7 +90,7 @@ export interface AnalysisStepProps {
 export function AnalysisStep({
   files,
   aiProvider,
-  aiApiKey,
+  getApiKey,
   aiModel,
   onComplete,
   onBack,
@@ -131,6 +131,35 @@ export function AnalysisStep({
     async function processFiles() {
       const analysisResults: AnalysisResult[] = [];
 
+      // Get decrypted API key (not needed for Ollama)
+      let apiKey: string | null = null;
+      if (aiProvider !== 'ollama') {
+        apiKey = await getApiKey();
+        if (!apiKey && !cancelled) {
+          // Handle missing API key
+          for (const file of files) {
+            analysisResults.push({
+              fileId: file.id,
+              fileName: file.file.name,
+              success: false,
+              error: 'API key not available',
+              biomarkers: [],
+              confidence: 0,
+              warnings: [],
+            });
+            updateFileStatus(file.id, {
+              status: 'error',
+              progress: 100,
+              error: 'API key not available',
+            });
+          }
+          setResults(analysisResults);
+          setIsProcessing(false);
+          setOverallProgress(100);
+          return;
+        }
+      }
+
       for (let i = 0; i < files.length; i++) {
         if (cancelled) break;
 
@@ -147,7 +176,7 @@ export function AnalysisStep({
             {
               aiProvider,
               aiConfig: {
-                apiKey: aiApiKey,
+                apiKey: apiKey || '',
                 model: aiModel,
               },
               onProgress: (stage, progress) => {
@@ -220,7 +249,7 @@ export function AnalysisStep({
     return () => {
       cancelled = true;
     };
-  }, [files, aiProvider, aiApiKey, aiModel, fileStatuses.length, updateFileStatus]);
+  }, [files, aiProvider, getApiKey, aiModel, fileStatuses.length, updateFileStatus]);
 
   // Calculate summary statistics
   const successCount = results.filter((r) => r.success).length;

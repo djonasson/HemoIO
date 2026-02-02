@@ -28,6 +28,14 @@ import type { StorageProviderType, AIProviderType } from '@/types';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
+import {
+  encryptString,
+  getEncryptionKey,
+  type StoredCredentials,
+} from '@data/encryption';
+
+const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
+const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -89,9 +97,21 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       // Save AI configuration to localStorage
       if (aiProvider) {
         localStorage.setItem('hemoio_ai_provider', aiProvider);
+
+        // Encrypt API key if provided
         if (apiKey) {
-          localStorage.setItem('hemoio_ai_api_key', apiKey);
+          // Get the credentials that were just stored
+          const credentialsJson = localStorage.getItem(CREDENTIALS_STORAGE_KEY);
+          if (credentialsJson) {
+            const credentials = JSON.parse(credentialsJson) as StoredCredentials;
+            // Derive the same encryption key
+            const encryptionKey = await getEncryptionKey(password, credentials);
+            // Encrypt and store the API key
+            const encryptedApiKey = await encryptString(apiKey, encryptionKey);
+            localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+          }
         }
+
         if (aiProvider === 'ollama' && ollamaModel) {
           localStorage.setItem('hemoio_ollama_model', ollamaModel);
         }
