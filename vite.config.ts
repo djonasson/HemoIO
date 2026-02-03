@@ -5,7 +5,7 @@ import path from 'path';
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
-  const base = command === 'build' ? '/hemoio/' : '/';
+  const base = command === 'build' ? '/HemoIO/' : '/';
 
   return {
     base,
