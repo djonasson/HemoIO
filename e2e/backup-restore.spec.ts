@@ -104,6 +104,9 @@ function createValidBackupData() {
   };
 }
 
+// Test encrypted backup password
+const ENCRYPTED_BACKUP_PASSWORD = 'SecureBackup123!';
+
 /**
  * Helper to complete first-run setup
  */
@@ -365,10 +368,13 @@ test.describe('Restore Flow', () => {
     try {
       await uploadBackupFile(page, backupPath);
 
-      // Wait for the modal to appear first
+      // Wait for the modal to appear first with longer timeout for CI
       await expect(
         page.getByRole('heading', { name: 'Restore from Backup' })
-      ).toBeVisible({ timeout: 10000 });
+      ).toBeVisible({ timeout: 15000 });
+
+      // Wait for modal content to be fully rendered
+      await page.waitForTimeout(500);
 
       // Should show backup summary - the modal shows "2 lab results, 3 test values, 1 note"
       await expect(page.getByText(/2 lab result/i)).toBeVisible();
@@ -453,8 +459,8 @@ test.describe('Restore Flow', () => {
     try {
       await uploadBackupFile(page, backupPath);
 
-      // Should show error message
-      await expect(page.getByText(/invalid backup file/i)).toBeVisible();
+      // Should show error message (detectBackupType returns "Unrecognized backup file format")
+      await expect(page.getByText(/unrecognized backup file format/i)).toBeVisible();
     } finally {
       cleanupBackupFile(backupPath);
     }
@@ -567,6 +573,11 @@ test.describe('Backup with Data', () => {
     try {
       await uploadBackupFile(page, backupPath);
 
+      // Wait for the modal to appear
+      await expect(
+        page.getByRole('heading', { name: 'Restore from Backup' })
+      ).toBeVisible({ timeout: 10000 });
+
       // Wait for modal animation
       await page.waitForTimeout(300);
 
@@ -632,5 +643,239 @@ test.describe('Backup with Data', () => {
     } finally {
       cleanupBackupFile(backupPath);
     }
+  });
+});
+
+test.describe('Encrypted Backup', () => {
+  // Helper to click the Encrypted option in the segmented control
+  async function selectEncryptedBackupType(page: Page) {
+    // The segmented control has labels inside, use the label with exact match
+    await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
+  }
+
+  test.describe('Backup Type Selection', () => {
+    test('should show backup type selector', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // Should see the segmented control with Standard and Encrypted options
+      const segmentedControl = page.locator('.mantine-SegmentedControl-root');
+      await expect(segmentedControl.getByText('Standard', { exact: true })).toBeVisible();
+      await expect(segmentedControl.getByText('Encrypted', { exact: true })).toBeVisible();
+    });
+
+    test('should show different descriptions for each backup type', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data so segmented control is enabled
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await expect(
+          page.getByRole('heading', { name: 'Restore from Backup' })
+        ).toBeVisible({ timeout: 10000 });
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        // Standard description should mention no API keys
+        await expect(page.getByText(/does not include api keys/i)).toBeVisible();
+
+        // Switch to encrypted
+        await selectEncryptedBackupType(page);
+
+        // Encrypted description should mention password protection and API keys
+        await expect(page.getByText(/password-protected.*includes api keys/i)).toBeVisible();
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+
+    test('should change button text when selecting encrypted backup', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data so button is enabled
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        // Initially shows "Create Backup"
+        await expect(page.getByRole('button', { name: 'Create Backup' })).toBeVisible();
+
+        // Switch to encrypted
+        await selectEncryptedBackupType(page);
+
+        // Should show "Create Encrypted Backup"
+        await expect(page.getByRole('button', { name: 'Create Encrypted Backup' })).toBeVisible();
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+  });
+
+  test.describe('Encrypted Backup Creation', () => {
+    test('should show password modal when creating encrypted backup', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data so button is enabled
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        // Switch to encrypted
+        await selectEncryptedBackupType(page);
+
+        // Click create encrypted backup
+        await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+
+        // Should show password modal
+        await expect(page.getByRole('heading', { name: 'Set Backup Password' })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Backup Password' })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Confirm Password' })).toBeVisible();
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+
+    test('should show password strength indicator', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        await selectEncryptedBackupType(page);
+        await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+
+        // Type a weak password
+        await page.getByRole('textbox', { name: 'Backup Password' }).fill('weak');
+
+        // Should show strength indicators
+        await expect(page.getByText('At least 8 characters')).toBeVisible();
+        await expect(page.getByText('Uppercase letter')).toBeVisible();
+        await expect(page.getByText('Lowercase letter')).toBeVisible();
+        await expect(page.getByText('Number')).toBeVisible();
+        await expect(page.getByText('Special character')).toBeVisible();
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+
+    test('should show password mismatch error', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        await selectEncryptedBackupType(page);
+        await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+
+        // Enter mismatched passwords
+        await page.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+        await page.getByRole('textbox', { name: 'Confirm Password' }).fill('DifferentPassword123!');
+        await page.getByRole('textbox', { name: 'Confirm Password' }).blur();
+
+        // Should show mismatch error
+        await expect(page.getByText('Passwords do not match')).toBeVisible();
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+
+    test('should download encrypted backup with valid password', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // First restore some data
+      const backupPath = createBackupFile(createValidBackupData());
+      try {
+        await uploadBackupFile(page, backupPath);
+        await page.waitForTimeout(300);
+        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        await restoreButton.click();
+        await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
+        await navigateToSettings(page);
+
+        await selectEncryptedBackupType(page);
+        await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+
+        // Enter valid matching passwords
+        await page.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+        await page.getByRole('textbox', { name: 'Confirm Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+
+        // Set up download listener
+        const downloadPromise = page.waitForEvent('download');
+
+        // Click create encrypted backup in modal
+        await page.locator('.mantine-Modal-content').getByRole('button', { name: 'Create Encrypted Backup' }).click();
+
+        // Wait for download
+        const download = await downloadPromise;
+
+        // Verify filename has .hemoio extension
+        expect(download.suggestedFilename()).toMatch(/hemoio-backup-.*\.hemoio/);
+      } finally {
+        cleanupBackupFile(backupPath);
+      }
+    });
+  });
+
+  test.describe('File Input Acceptance', () => {
+    test('should accept both .json and .hemoio files', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      // Check the accept attribute of the file input
+      const fileInput = page.locator('input[type="file"]');
+      const acceptAttribute = await fileInput.getAttribute('accept');
+      expect(acceptAttribute).toContain('.json');
+      expect(acceptAttribute).toContain('.hemoio');
+    });
+
+    test('should show placeholder mentioning both file types', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      await expect(page.getByText(/\.json or \.hemoio/i)).toBeVisible();
+    });
   });
 });

@@ -290,7 +290,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Creatinine',
-    aliases: ['Creat', 'Serum Creatinine', 'S-Creatinina', 'Creatinina', 'P-Creatinina', 'Creatininemia'],
+    aliases: ['Creat', 'Serum Creatinine', 'S-Creatinina', 'Creatinina', 'P-Creatinina', 'Creatininemia', 'P-Creatinina (metodo enzimatico)'],
     category: 'metabolic',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['µmol/L', 'umol/L'],
@@ -378,7 +378,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'eGFR',
-    aliases: ['Estimated GFR', 'Glomerular Filtration Rate', 'GFR', 'Filtrato Glomerulare', 'Filtrato Glomerulare (eGFR)', 'eGFR (Velocità di filtrazione glomerulare stimata)', 'Velocità di filtrazione glomerulare', 'VFG'],
+    aliases: ['Estimated GFR', 'Glomerular Filtration Rate', 'GFR', 'Filtrato Glomerulare', 'Filtrato Glomerulare (eGFR)', 'eGFR (Velocità di filtrazione glomerulare stimata)', 'Velocità di filtrazione glomerulare', 'VFG', 'Filtrato Glomerulare (eGFR) (calcolato secondo formula CKD-EPI)'],
     category: 'metabolic',
     canonicalUnit: 'mL/min/1.73m²',
     alternativeUnits: ['mL/min/1,73m²', 'mL/min/1,73m^2'],
@@ -467,7 +467,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
 const thyroidBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Thyroid Stimulating Hormone',
-    aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina', 'S-Tirotropina', 'S-Tirotropina (TSH)', 'Tirotropina (TSH)', 'Ormone tireotropo'],
+    aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina', 'S-Tirotropina', 'S-Tirotropina (TSH)', 'Tirotropina (TSH)', 'Ormone tireotropo', 'S-Tirotropina (TSH) (ECLIA Roche)'],
     category: 'thyroid',
     canonicalUnit: 'mIU/L',
     alternativeUnits: ['µIU/mL', 'mU/L', 'μUI/mL', 'mUI/L', 'uIU/mL'],
@@ -650,7 +650,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
 const glycemicBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Hemoglobin A1c',
-    aliases: ['HbA1c', 'A1C', 'Glycated Hemoglobin', 'Glycohemoglobin', 'Sg-HbA1C Emoglobina Glicata', 'Emoglobina Glicata', 'HbA1C Emoglobina Glicata', 'Er-EMOGLOBINA GLICATA', 'EMOGLOBINA GLICATA', 'Sg-HbA1C', 'HbA1c (IFCC)', 'Emoglobina glicosilata'],
+    aliases: ['HbA1c', 'A1C', 'Glycated Hemoglobin', 'Glycohemoglobin', 'Sg-HbA1C Emoglobina Glicata', 'Emoglobina Glicata', 'HbA1C Emoglobina Glicata', 'Er-EMOGLOBINA GLICATA', 'EMOGLOBINA GLICATA', 'Sg-HbA1C', 'HbA1c (IFCC)', 'Emoglobina glicosilata', '% Hb totale'],
     category: 'metabolic',
     canonicalUnit: '%',
     alternativeUnits: ['mmol/mol', 'mmol/molHb'],
@@ -678,7 +678,7 @@ const glycemicBiomarkers: BiomarkerDefinition[] = [
 const urinalysisBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Urine pH',
-    aliases: ['pH', 'Urinary pH', 'pH (urine)', 'pH urinario', 'pH delle urine'],
+    aliases: ['pH', 'Urinary pH', 'pH (urine)', 'pH urinario', 'pH delle urine', 'U-pH'],
     category: 'urinalysis',
     canonicalUnit: '',
     alternativeUnits: [],
@@ -689,7 +689,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Specific Gravity',
-    aliases: ['Specific Gravity', 'SG', 'Urine SG', 'Urine Densità', 'Densità Urinaria', 'Peso Specifico', 'Peso specifico (urine)', 'Densità (urine)', 'Peso specifico urinario'],
+    aliases: ['Specific Gravity', 'SG', 'Urine SG', 'Urine Densità', 'Densità Urinaria', 'Peso Specifico', 'Peso specifico (urine)', 'Densità (urine)', 'Peso specifico urinario', 'U-Peso specifico'],
     category: 'urinalysis',
     canonicalUnit: '',
     alternativeUnits: [],
@@ -700,7 +700,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Protein',
-    aliases: ['Protein', 'Proteinuria', 'Urine Protein Level', 'Proteine (urine)', 'Urine Proteine (standard)', 'U-Proteine totali', 'Proteine urinarie'],
+    aliases: ['Protein', 'Proteinuria', 'Urine Protein Level', 'Proteine (urine)', 'Urine Proteine (standard)', 'U-Proteine totali', 'Proteine urinarie', 'U-Proteine'],
     category: 'urinalysis',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['g/L', 'mg/L'],
@@ -720,7 +720,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Ketones',
-    aliases: ['Ketones', 'Ketonuria', 'Corpi Chetonici', 'Corpi Chetonici (urine)', 'Chetoni', 'Urine Corpi chetonici', 'Corpi chetonici urinari'],
+    aliases: ['Ketones', 'Ketonuria', 'Corpi Chetonici', 'Corpi Chetonici (urine)', 'Chetoni', 'Urine Corpi chetonici', 'Corpi chetonici urinari', 'U-Corpi chetonici'],
     category: 'urinalysis',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['mmol/L'],
@@ -730,7 +730,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Blood',
-    aliases: ['Blood', 'Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Emoglobina (urine)', 'Emoglobina (urine, dipstick)', 'Urine Emoglobina', 'Sangue (urine)'],
+    aliases: ['Blood', 'Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Emoglobina (urine)', 'Emoglobina (urine, dipstick)', 'Urine Emoglobina', 'Sangue (urine)', 'U-Emoglobina', 'Eritrociti'],
     category: 'urinalysis',
     canonicalUnit: 'RBC/HPF',
     alternativeUnits: ['/µL', '/uL', 'cells/µL', 'per campo'],
@@ -770,7 +770,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Microalbumin',
-    aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria'],
+    aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)'],
     category: 'urinalysis',
     canonicalUnit: 'mg/L',
     alternativeUnits: ['µg/min', 'mg/g creatinine', 'mg/g creat.', 'mg/g creat'],
@@ -802,7 +802,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Bilirubin',
-    aliases: ['Bilirubina (urine)', 'Urine Bilirubina', 'Bilirubina urinaria', 'Bilirubin (urine)'],
+    aliases: ['Bilirubina (urine)', 'Urine Bilirubina', 'Bilirubina urinaria', 'Bilirubin (urine)', 'U-Bilirubina'],
     category: 'urinalysis',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['µmol/L'],
@@ -812,7 +812,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Urobilinogen',
-    aliases: ['Urobilinogeno', 'Urobilinogeno (urine)', 'Urine Urobilinogeno', 'Urobilinogen'],
+    aliases: ['Urobilinogeno', 'Urobilinogeno (urine)', 'Urine Urobilinogeno', 'Urobilinogen', 'U-Urobilinogeno'],
     category: 'urinalysis',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['µmol/L', 'EU/dL'],
@@ -1226,7 +1226,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Alpha-1 Globulin',
-    aliases: ['S-Elettroforesi alfa-1', 'Elettroforesi alfa-1', 'Alfa-1 globulina', 'Alpha-1', 'Alfa 1', 'α1-Globulin'],
+    aliases: ['S-Elettroforesi alfa-1', 'Elettroforesi alfa-1', 'Alfa-1 globulina', 'Alpha-1', 'Alfa 1', 'α1-Globulin', 'alfa-1'],
     category: 'metabolic',
     canonicalUnit: '%',
     alternativeUnits: ['g/dL', 'g/L'],
@@ -1237,7 +1237,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Alpha-2 Globulin',
-    aliases: ['S-Elettroforesi alfa-2', 'Elettroforesi alfa-2', 'Alfa-2 globulina', 'Alpha-2', 'Alfa 2', 'α2-Globulin'],
+    aliases: ['S-Elettroforesi alfa-2', 'Elettroforesi alfa-2', 'Alfa-2 globulina', 'Alpha-2', 'Alfa 2', 'α2-Globulin', 'alfa-2'],
     category: 'metabolic',
     canonicalUnit: '%',
     alternativeUnits: ['g/dL', 'g/L'],

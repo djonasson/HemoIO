@@ -68,3 +68,70 @@ Feature: Unit Conversion
     When I convert it to mmol/L
     Then the result should be displayed with appropriate decimal places
     And should not show excessive precision
+
+  # International Alias Support
+  Scenario: Convert using Italian biomarker alias
+    Given a creatinine value labeled "P-Creatinina (metodo enzimatico)" at 67 µmol/L
+    When I convert it to mg/dL
+    Then the result should be approximately 0.76 mg/dL
+    And the biomarker should be recognized as Creatinine
+
+  Scenario: Convert urine creatinine with Italian alias
+    Given a urine creatinine value labeled "U-Creatinina" at 3780 µmol/L
+    When I convert it to g/L
+    Then the result should be approximately 0.43 g/L
+
+  Scenario: Convert protein/creatinine ratio with Italian alias
+    Given a protein/creatinine ratio labeled "U-Proteine/Creatinina" at 15 mg/mmol
+    When I convert it to mg/g
+    Then the result should be approximately 133 mg/g
+
+  # Duplicate Value Detection (Same Measurement in Different Units)
+  Scenario: Detect equivalent values in different units
+    Given a lab report contains creatinine as both 67 µmol/L and 0.76 mg/dL
+    When the values are analyzed
+    Then they should be recognized as the same measurement
+    And only one value should be kept
+    And no duplicate conflict warning should be shown
+
+  Scenario: Detect equivalent urine creatinine values
+    Given a lab report contains urine creatinine as both 3780 µmol/L and 0.42 g/L
+    When the values are analyzed
+    Then they should be recognized as equivalent after unit conversion
+    And the values should be merged without conflict
+
+  Scenario: Detect equivalent protein/creatinine ratio values
+    Given a lab report contains protein/creatinine ratio as both 15 mg/mmolcreat. and 132 mg/gcreat.
+    When the values are analyzed
+    Then they should be recognized as equivalent measurements
+    And the values should be merged without conflict
+
+  Scenario: Flag genuinely different duplicate values as conflict
+    Given a lab report contains creatinine as both 67 µmol/L and 1.5 mg/dL
+    When the values are analyzed
+    Then they should be recognized as conflicting values
+    And a duplicate conflict warning should be shown
+    And the user should choose which value to keep
+
+  # Additional Biomarker Conversions
+  Scenario: Convert hematocrit from percentage to ratio
+    Given a hematocrit value of 45%
+    When I convert it to L/L
+    Then the result should be 0.45 L/L
+
+  Scenario: Convert eGFR with European notation
+    Given an eGFR value of 90 mL/min/1,73m²
+    When the unit is normalized
+    Then it should be recognized as mL/min/1.73m²
+
+  Scenario: Convert enzymes between U/L and IU/L
+    Given an ALT value of 35 U/L
+    When I convert it to IU/L
+    Then the result should be 35 IU/L
+    And the units should be recognized as equivalent
+
+  Scenario: Convert TPO antibodies between unit variants
+    Given a TPO antibodies value of 150 IU/mL
+    When I convert it to kIU/L
+    Then the result should be 150 kIU/L
+    And the units should be recognized as equivalent

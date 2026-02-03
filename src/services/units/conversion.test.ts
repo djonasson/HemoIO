@@ -70,6 +70,13 @@ describe('Unit Conversion Service', () => {
         const result = convertValue('Creatinine', 88.4, 'µmol/L', 'mg/dL');
         expect(result.convertedValue).toBeCloseTo(1.0, 1);
       });
+
+      it('converts using Italian alias P-Creatinina (metodo enzimatico)', () => {
+        // This tests that aliases from the biomarker dictionary are used for conversion lookup
+        // Use precision of 2 to avoid rounding issues (default for mg/dL is 0)
+        const result = convertValue('P-Creatinina (metodo enzimatico)', 67, 'µmol/L', 'mg/dL', 2);
+        expect(result.convertedValue).toBeCloseTo(0.76, 1);
+      });
     });
 
     describe('Vitamin D conversions', () => {
@@ -88,6 +95,42 @@ describe('Unit Conversion Service', () => {
       it('converts between equivalent units', () => {
         const result = convertValue('TSH', 2.5, 'mIU/L', 'µIU/mL');
         expect(result.convertedValue).toBe(2.5);
+      });
+    });
+
+    describe('Urine Creatinine conversions', () => {
+      it('converts from µmol/L to g/L', () => {
+        // 3780 µmol/L should be approximately 0.42 g/L
+        const result = convertValue('Urine Creatinine', 3780, 'µmol/L', 'g/L', 2);
+        expect(result.convertedValue).toBeCloseTo(0.43, 1);
+      });
+
+      it('converts from g/L to µmol/L', () => {
+        const result = convertValue('Urine Creatinine', 0.42, 'g/L', 'µmol/L', 0);
+        expect(result.convertedValue).toBeCloseTo(3713, -1);
+      });
+
+      it('converts using Italian alias U-Creatinina', () => {
+        const result = convertValue('U-Creatinina', 3780, 'µmol/L', 'g/L', 2);
+        expect(result.convertedValue).toBeCloseTo(0.43, 1);
+      });
+    });
+
+    describe('Protein Creatinine Ratio conversions', () => {
+      it('converts from mg/mmol to mg/g', () => {
+        // 15 mg/mmol should be approximately 132 mg/g
+        const result = convertValue('Protein Creatinine Ratio', 15, 'mg/mmol', 'mg/g', 0);
+        expect(result.convertedValue).toBeCloseTo(133, 0);
+      });
+
+      it('converts from mg/gcreat. to mg/mmol', () => {
+        const result = convertValue('Protein Creatinine Ratio', 132, 'mg/gcreat.', 'mg/mmol', 1);
+        expect(result.convertedValue).toBeCloseTo(14.9, 0);
+      });
+
+      it('converts using Italian alias U-Proteine/Creatinina', () => {
+        const result = convertValue('U-Proteine/Creatinina', 15, 'mg/mmolcreat.', 'mg/gcreat.', 0);
+        expect(result.convertedValue).toBeCloseTo(133, 0);
       });
     });
 

@@ -35,6 +35,7 @@ import {
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
+import { findBiomarker } from '../../data/biomarkers/dictionary';
 
 /**
  * Reviewed result with edited biomarkers
@@ -222,7 +223,14 @@ export function ReviewStep({
         const missing: string[] = [];
         if (!b.name) missing.push('name');
         if (b.value === undefined || b.value === null) missing.push('value');
-        if (!b.unit) missing.push('unit');
+        // Check if unit is required - some biomarkers like pH are unitless
+        if (!b.unit) {
+          const biomarkerDef = findBiomarker(b.name || '');
+          // Only require unit if biomarker is not found or has a non-empty canonical unit
+          if (!biomarkerDef || biomarkerDef.canonicalUnit !== '') {
+            missing.push('unit');
+          }
+        }
 
         if (missing.length > 0) {
           const biomarkerLabel = b.name || `Biomarker #${index + 1}`;
