@@ -25,6 +25,9 @@ export {
 // Value types for qualitative results
 export type QualitativeType = 'boolean' | 'ordinal' | 'descriptive';
 
+// Value types for numeric results
+export type NumericValueType = 'single' | 'interval';
+
 // A single lab report/visit
 export interface LabResult {
   id?: number;
@@ -48,6 +51,15 @@ export interface TestValue {
   method?: string;
   qualitativeType?: QualitativeType;
   ordinalValue?: number;
+  /**
+   * Type of numeric value: 'single' for exact values, 'interval' for ranges like "5-10"
+   * When 'interval', the value field contains the midpoint and intervalLow/High contain bounds
+   */
+  numericValueType?: NumericValueType;
+  /** Lower bound for interval values (e.g., 5 for "5-10 eritrociti per campo") */
+  intervalLow?: number;
+  /** Upper bound for interval values (e.g., 10 for "5-10 eritrociti per campo") */
+  intervalHigh?: number;
   rawText?: string;
   confidence?: number;
   createdAt: Date;
@@ -73,6 +85,23 @@ export type BiomarkerCategory =
   | 'vitamin'
   | 'urinalysis'
   | 'fertility'
+  | 'other';
+
+/**
+ * Specimen/matrix type for biomarker measurements
+ * Indicates the biological sample type used for the test
+ */
+export type SpecimenType =
+  | 'serum'       // S- prefix (blood serum after clotting)
+  | 'plasma'      // P- prefix (blood plasma with anticoagulant)
+  | 'urine'       // U- prefix (spot urine sample)
+  | 'urine-24h'   // 24-hour urine collection
+  | 'whole-blood' // Sg- prefix (whole blood, e.g., HbA1c)
+  | 'capillary'   // Finger-prick blood
+  | 'saliva'
+  | 'csf'         // Cerebrospinal fluid
+  | 'stool'
+  | 'semen'       // Semen analysis
   | 'other';
 
 // User's display preferences
@@ -108,6 +137,8 @@ export interface ExtractedValue {
   referenceRange?: { low?: number; high?: number };
   confidence: number;
   rawText: string;
+  /** For interval values like "5-10", contains the bounds */
+  interval?: { low: number; high: number };
 }
 
 export interface AnalysisResult {

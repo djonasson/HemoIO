@@ -10,7 +10,9 @@ import {
   IconArrowDown,
   IconCheck,
   IconMinus,
+  IconTestPipe,
 } from '@tabler/icons-react';
+import type { SpecimenType } from '@/types';
 import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import { findBiomarker } from '@data/biomarkers/dictionary';
 
@@ -95,15 +97,121 @@ function getBiomarkerName(testValue: EnrichedTestValue): string {
 }
 
 /**
- * Format the value for display
+ * Human-readable labels for specimen types
  */
-function formatValue(value: number | string | boolean): string {
+const SPECIMEN_LABELS: Record<SpecimenType, string> = {
+  'serum': 'Serum',
+  'plasma': 'Plasma',
+  'urine': 'Urine',
+  'urine-24h': '24h Urine',
+  'whole-blood': 'Whole Blood',
+  'capillary': 'Capillary',
+  'saliva': 'Saliva',
+  'csf': 'CSF',
+  'stool': 'Stool',
+  'semen': 'Semen',
+  'other': 'Other',
+};
+
+/**
+ * Get human-readable specimen label
+ */
+function getSpecimenLabel(specimenType: SpecimenType | undefined): string {
+  if (!specimenType) return '—';
+  return SPECIMEN_LABELS[specimenType] || specimenType;
+}
+
+/**
+ * Specimen type patterns that can be extracted from biomarker names
+ */
+const SPECIMEN_PATTERNS: { pattern: RegExp; type: SpecimenType }[] = [
+  { pattern: /\s*\(urine,?\s*24h?\)\s*$/i, type: 'urine-24h' },
+  { pattern: /\s*\(24h?\s*urine\)\s*$/i, type: 'urine-24h' },
+  { pattern: /\s*\(urine[^)]*\)\s*$/i, type: 'urine' },
+  { pattern: /\s*\(plasma[^)]*\)\s*$/i, type: 'plasma' },
+  { pattern: /\s*\(serum[^)]*\)\s*$/i, type: 'serum' },
+  { pattern: /\s*\(siero[^)]*\)\s*$/i, type: 'serum' }, // Italian for serum
+  { pattern: /\s*\(sangue[^)]*\)\s*$/i, type: 'whole-blood' }, // Italian for blood
+  { pattern: /\s*\(whole[- ]?blood[^)]*\)\s*$/i, type: 'whole-blood' },
+  { pattern: /\s*\(semen[^)]*\)\s*$/i, type: 'semen' },
+  { pattern: /\s*\(liquido seminale[^)]*\)\s*$/i, type: 'semen' }, // Italian
+  { pattern: /\s*\(csf[^)]*\)\s*$/i, type: 'csf' },
+  { pattern: /\s*\(liquor[^)]*\)\s*$/i, type: 'csf' }, // Alternative name
+  { pattern: /\s*\(saliva[^)]*\)\s*$/i, type: 'saliva' },
+  { pattern: /\s*\(stool[^)]*\)\s*$/i, type: 'stool' },
+  { pattern: /\s*\(feci[^)]*\)\s*$/i, type: 'stool' }, // Italian for stool
+];
+
+/**
+ * Extract specimen type from biomarker name and return clean name
+ */
+function extractSpecimenFromName(name: string): { cleanName: string; extractedSpecimen?: SpecimenType } {
+  for (const { pattern, type } of SPECIMEN_PATTERNS) {
+    if (pattern.test(name)) {
+      return {
+        cleanName: name.replace(pattern, '').trim(),
+        extractedSpecimen: type,
+      };
+    }
+  }
+  return { cleanName: name };
+}
+
+/**
+ * Get biomarker metadata (specimen type and LOINC code) from dictionary
+ */
+function getBiomarkerMetadata(testValue: EnrichedTestValue): {
+  specimenType?: SpecimenType;
+  loincCode?: string;
+  description?: string;
+  cleanName: string;
+} {
+  // Try to find in dictionary by raw text or biomarker name
+  const searchTerm = testValue.biomarkerName || testValue.rawText;
+  const { cleanName, extractedSpecimen } = extractSpecimenFromName(searchTerm || '');
+
+  if (searchTerm) {
+    const found = findBiomarker(searchTerm);
+    if (found) {
+      return {
+        specimenType: found.specimenType,
+        loincCode: found.loincCode,
+        description: found.description,
+        cleanName,
+      };
+    }
+  }
+
+  // If not found in dictionary, still return extracted specimen from name
+  return {
+    specimenType: extractedSpecimen,
+    cleanName,
+  };
+}
+
+/**
+ * Format a numeric value for display
+ */
+function formatNumericValue(value: number): string {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+}
+
+/**
+ * Format the value for display, including interval values
+ */
+function formatValue(testValue: EnrichedTestValue): string {
+  const { value, numericValueType, intervalLow, intervalHigh } = testValue;
+
+  // Handle interval values
+  if (numericValueType === 'interval' && intervalLow !== undefined && intervalHigh !== undefined) {
+    return `${formatNumericValue(intervalLow)}-${formatNumericValue(intervalHigh)}`;
+  }
+
   if (typeof value === 'boolean') {
     return value ? 'Positive' : 'Negative';
   }
   if (typeof value === 'number') {
-    // Round to 2 decimal places if needed
-    return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+    return formatNumericValue(value);
   }
   return String(value);
 }
@@ -128,6 +236,7 @@ export function TestValuesList({
         <Table.Tr>
           <Table.Th>Status</Table.Th>
           <Table.Th>Biomarker</Table.Th>
+          <Table.Th>Specimen</Table.Th>
           <Table.Th>Value</Table.Th>
           <Table.Th>Unit</Table.Th>
           <Table.Th>Reference Range</Table.Th>
@@ -137,12 +246,23 @@ export function TestValuesList({
         {testValues.map((testValue) => {
           const indicator = getStatusIndicator(testValue.status);
           const biomarkerName = getBiomarkerName(testValue);
+          const metadata = getBiomarkerMetadata(testValue);
+
+          // Build tooltip content for LOINC code and description
+          const tooltipParts: string[] = [];
+          if (metadata.loincCode) {
+            tooltipParts.push(`LOINC: ${metadata.loincCode}`);
+          }
+          if (metadata.description) {
+            tooltipParts.push(metadata.description);
+          }
+          const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
 
           return (
             <Table.Tr
               key={testValue.id}
               data-status={testValue.status}
-              aria-label={`${biomarkerName}: ${formatValue(testValue.value)} ${testValue.unit}, ${indicator.label}`}
+              aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}, ${indicator.label}`}
             >
               <Table.Td>
                 <Tooltip label={indicator.label}>
@@ -158,9 +278,25 @@ export function TestValuesList({
                 </Tooltip>
               </Table.Td>
               <Table.Td>
-                <Text size="sm" fw={500}>
-                  {biomarkerName}
-                </Text>
+                {tooltipContent ? (
+                  <Tooltip label={tooltipContent} multiline w={300} withArrow>
+                    <Text size="sm" fw={500} style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                      {metadata.cleanName || biomarkerName}
+                    </Text>
+                  </Tooltip>
+                ) : (
+                  <Text size="sm" fw={500}>
+                    {metadata.cleanName || biomarkerName}
+                  </Text>
+                )}
+              </Table.Td>
+              <Table.Td>
+                <Group gap={4}>
+                  <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                  <Text size="sm" c="dimmed">
+                    {getSpecimenLabel(metadata.specimenType)}
+                  </Text>
+                </Group>
               </Table.Td>
               <Table.Td>
                 <Group gap={4}>
@@ -169,7 +305,7 @@ export function TestValuesList({
                     fw={testValue.status !== 'normal' && testValue.status !== 'unknown' ? 600 : 400}
                     c={testValue.status === 'high' ? 'red' : testValue.status === 'low' ? 'orange' : undefined}
                   >
-                    {formatValue(testValue.value)}
+                    {formatValue(testValue)}
                   </Text>
                 </Group>
               </Table.Td>

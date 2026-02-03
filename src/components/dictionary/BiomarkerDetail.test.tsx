@@ -24,6 +24,8 @@ function createMockBiomarker(): BiomarkerDefinition {
     description: 'Measures the total number of white blood cells, which fight infection.',
     highIndication: 'May indicate infection, inflammation, or immune disorders',
     lowIndication: 'May indicate bone marrow problems or autoimmune conditions',
+    specimenType: 'whole-blood',
+    loincCode: '6690-2',
   };
 }
 
@@ -184,6 +186,65 @@ describe('BiomarkerDetail', () => {
       renderWithProviders(<BiomarkerDetail biomarker={biomarker} onClose={() => {}} />);
 
       expect(screen.getByLabelText('Close biomarker detail')).toBeInTheDocument();
+    });
+  });
+
+  describe('specimen type display', () => {
+    it('should display specimen type when available', () => {
+      const biomarker = createMockBiomarker();
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      expect(screen.getByText(/Specimen: Whole Blood/)).toBeInTheDocument();
+    });
+
+    it('should not display specimen type when not available', () => {
+      const biomarker: BiomarkerDefinition = {
+        ...createMockBiomarker(),
+        specimenType: undefined,
+      };
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      expect(screen.queryByText(/Specimen:/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('LOINC code display', () => {
+    it('should display LOINC code when available', () => {
+      const biomarker = createMockBiomarker();
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      expect(screen.getByText('6690-2')).toBeInTheDocument();
+    });
+
+    it('should link LOINC code to correct URL', () => {
+      const biomarker = createMockBiomarker();
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      const link = screen.getByRole('link', { name: /6690-2/i });
+      expect(link).toHaveAttribute('href', 'https://loinc.org/6690-2');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('should not display LOINC code when not available', () => {
+      const biomarker: BiomarkerDefinition = {
+        ...createMockBiomarker(),
+        loincCode: undefined,
+      };
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      expect(screen.queryByText('LOINC:')).not.toBeInTheDocument();
+    });
+
+    it('should handle missing LOINC and specimen gracefully', () => {
+      const biomarker: BiomarkerDefinition = {
+        ...createMockBiomarker(),
+        loincCode: undefined,
+        specimenType: undefined,
+      };
+      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+
+      // Should still render the component without errors
+      expect(screen.getByText('White Blood Cell Count')).toBeInTheDocument();
     });
   });
 });

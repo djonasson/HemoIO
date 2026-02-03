@@ -936,7 +936,7 @@ const vitaminAConversions: BiomarkerConversions = {
  */
 const urineCreatinineConversions: BiomarkerConversions = {
   biomarker: 'Urine Creatinine',
-  aliases: ['U-Creatinina', 'Creatinina urinaria'],
+  aliases: ['U-Creatinina', 'Creatinina urinaria', 'U-Creatinina (urine)'],
   conversions: [
     // mg/dL conversions
     { from: 'mg/dL', to: 'µmol/L', factor: 88.4 },

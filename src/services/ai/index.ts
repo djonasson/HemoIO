@@ -77,3 +77,7 @@ export {
   RESPONSE_SCHEMA,
   BIOMARKER_CONTEXT,
 } from './prompts';
+
+// Interval value parsing
+export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
+export type { ParsedValue } from './parseIntervalValue';

@@ -47,7 +47,10 @@ export interface OllamaConfig extends Omit<AIProviderConfig, 'apiKey'> {
 export interface ExtractedBiomarker {
   /** Biomarker name as found in the report */
   name: string;
-  /** Numeric value */
+  /**
+   * Numeric value. For interval values (e.g., "5-10"), this is the midpoint.
+   * The original interval bounds are in intervalLow/intervalHigh.
+   */
   value: number;
   /** Unit of measurement */
   unit: string;
@@ -65,6 +68,14 @@ export interface ExtractedBiomarker {
   notes?: string;
   /** Whether this value was flagged as abnormal in the report */
   flaggedAbnormal?: boolean;
+  /** Whether this is an interval value (e.g., "5-10 eritrociti per campo") */
+  isInterval?: boolean;
+  /** Lower bound for interval values */
+  intervalLow?: number;
+  /** Upper bound for interval values */
+  intervalHigh?: number;
+  /** Raw value string before parsing (e.g., "5 - 10") */
+  rawValue?: string;
 }
 
 /**

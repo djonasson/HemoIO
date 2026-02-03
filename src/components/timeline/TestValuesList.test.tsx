@@ -12,10 +12,22 @@ import type { EnrichedTestValue } from '@hooks/useLabResults';
 vi.mock('@data/biomarkers/dictionary', () => ({
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Hemoglobin' || name === 'Hgb') {
-      return { name: 'Hemoglobin', category: 'cbc' };
+      return {
+        name: 'Hemoglobin',
+        category: 'cbc',
+        specimenType: 'whole-blood',
+        loincCode: '718-7',
+        description: 'Protein in red blood cells that carries oxygen.',
+      };
     }
     if (name === 'Glucose') {
-      return { name: 'Glucose', category: 'metabolic' };
+      return {
+        name: 'Glucose',
+        category: 'metabolic',
+        specimenType: 'serum',
+        loincCode: '2345-7',
+        description: 'Blood glucose level.',
+      };
     }
     return undefined;
   }),
@@ -55,6 +67,7 @@ describe('TestValuesList', () => {
 
     expect(screen.getByRole('columnheader', { name: /status/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /biomarker/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /specimen/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /value/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /unit/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /reference range/i })).toBeInTheDocument();
@@ -97,7 +110,8 @@ describe('TestValuesList', () => {
     const testValues = [createTestValue(1, { rawText: 'Unknown' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
-    expect(screen.getByText('—')).toBeInTheDocument();
+    // Two dashes: one for specimen type (unknown biomarker), one for reference range
+    expect(screen.getAllByText('—').length).toBe(2);
   });
 
   it('should display normal status indicator', () => {
@@ -209,5 +223,48 @@ describe('TestValuesList', () => {
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
     expect(screen.getByText('95')).toBeInTheDocument();
+  });
+
+  describe('Specimen type display', () => {
+    it('should display specimen type for known biomarkers', () => {
+      const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      expect(screen.getByText('Whole Blood')).toBeInTheDocument();
+    });
+
+    it('should display serum for glucose', () => {
+      const testValues = [createTestValue(1, { rawText: 'Glucose' })];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      expect(screen.getByText('Serum')).toBeInTheDocument();
+    });
+
+    it('should display dash for unknown biomarkers', () => {
+      const testValues = [createTestValue(1, { rawText: 'Unknown' })];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      // There should be dashes for both reference range and specimen type
+      const dashes = screen.getAllByText('—');
+      expect(dashes.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('LOINC tooltip display', () => {
+    it('should show biomarker name with tooltip styling when LOINC code exists', () => {
+      const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      const hemoglobinText = screen.getByText('Hemoglobin');
+      expect(hemoglobinText).toHaveStyle({ cursor: 'help' });
+    });
+
+    it('should not show tooltip styling for unknown biomarkers', () => {
+      const testValues = [createTestValue(1, { rawText: 'Unknown' })];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      const unknownText = screen.getByText('Unknown');
+      expect(unknownText).not.toHaveStyle({ cursor: 'help' });
+    });
   });
 });

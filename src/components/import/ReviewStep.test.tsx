@@ -12,6 +12,19 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
     if (name.toLowerCase() === 'ph') {
       return { name: 'pH', canonicalUnit: '', aliases: [], category: 'metabolic', description: '', alternativeUnits: [] };
     }
+    // Glucose with full metadata for testing
+    if (name.toLowerCase() === 'glucose') {
+      return {
+        name: 'Glucose',
+        canonicalUnit: 'mg/dL',
+        aliases: ['Blood Sugar'],
+        category: 'metabolic',
+        description: 'Blood glucose level',
+        alternativeUnits: ['mmol/L'],
+        specimenType: 'serum',
+        loincCode: '2345-7',
+      };
+    }
     // Other biomarkers have units
     if (name) {
       return { name, canonicalUnit: 'mg/dL', aliases: [], category: 'metabolic', description: '', alternativeUnits: [] };
@@ -42,6 +55,8 @@ const mockAnalysisResult: AnalysisResult = {
         category: 'metabolic',
         description: 'Blood glucose level',
         alternativeUnits: ['mmol/L'],
+        specimenType: 'serum',
+        loincCode: '2345-7',
       },
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
     },
@@ -245,8 +260,8 @@ describe('ReviewStep', () => {
 
       renderReviewStep({ reviewedResults: [noRangeResult] });
 
-      // Two dashes: one for reference range, one for method
-      expect(screen.getAllByText('—').length).toBe(2);
+      // Three dashes: one for specimen type (no dictionaryMatch), one for reference range, one for method
+      expect(screen.getAllByText('—').length).toBe(3);
     });
 
     it('displays confidence badge for biomarker', () => {
@@ -613,6 +628,83 @@ describe('ReviewStep', () => {
       renderReviewStep({ reviewedResults: [mockReviewedResult, secondResult] });
 
       expect(screen.getByText(/3 biomarker\(s\) from 2 file\(s\)/)).toBeInTheDocument();
+    });
+  });
+
+  describe('Specimen type display', () => {
+    it('renders specimen column header', () => {
+      renderReviewStep();
+
+      expect(screen.getByRole('columnheader', { name: /specimen/i })).toBeInTheDocument();
+    });
+
+    it('displays specimen type for matched biomarkers', () => {
+      renderReviewStep();
+
+      expect(screen.getByText('Serum')).toBeInTheDocument();
+    });
+
+    it('shows dash for unmatched biomarkers', () => {
+      const unmatchedResult: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Unknown Marker',
+            value: 50,
+            unit: 'U/L',
+            confidence: 0.7,
+            isExactMatch: false,
+            normalizedUnit: 'U/L',
+            // No dictionaryMatch
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [unmatchedResult] });
+
+      // Find specimen cells showing dash
+      const cells = screen.getAllByText('—');
+      expect(cells.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('LOINC tooltip display', () => {
+    it('shows biomarker name with tooltip styling when LOINC code exists', () => {
+      renderReviewStep();
+
+      // The biomarker name should have help cursor style (indicating tooltip)
+      const glucoseText = screen.getByText('Glucose');
+      expect(glucoseText).toHaveStyle({ cursor: 'help' });
+    });
+
+    it('does not show tooltip styling for biomarkers without LOINC code', () => {
+      const noLoincResult: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Test Marker',
+            value: 50,
+            unit: 'U/L',
+            confidence: 0.9,
+            isExactMatch: true,
+            normalizedUnit: 'U/L',
+            dictionaryMatch: {
+              name: 'Test Marker',
+              canonicalUnit: 'U/L',
+              aliases: [],
+              category: 'metabolic',
+              description: '',
+              alternativeUnits: [],
+              // No loincCode or description
+            },
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [noLoincResult] });
+
+      const testMarkerText = screen.getByText('Test Marker');
+      expect(testMarkerText).not.toHaveStyle({ cursor: 'help' });
     });
   });
 

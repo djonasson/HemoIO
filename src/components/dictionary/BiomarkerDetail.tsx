@@ -15,13 +15,41 @@ import {
   Box,
   Alert,
   CloseButton,
+  Anchor,
 } from '@mantine/core';
 import {
   IconArrowUp,
   IconArrowDown,
   IconInfoCircle,
   IconFlask,
+  IconTestPipe,
+  IconExternalLink,
 } from '@tabler/icons-react';
+import type { SpecimenType } from '@/types';
+
+/**
+ * Human-readable labels for specimen types
+ */
+const SPECIMEN_LABELS: Record<SpecimenType, string> = {
+  'serum': 'Serum',
+  'plasma': 'Plasma',
+  'urine': 'Urine',
+  'urine-24h': '24h Urine',
+  'whole-blood': 'Whole Blood',
+  'capillary': 'Capillary',
+  'saliva': 'Saliva',
+  'csf': 'CSF',
+  'stool': 'Stool',
+  'semen': 'Semen',
+  'other': 'Other',
+};
+
+/**
+ * Get human-readable specimen label
+ */
+function getSpecimenLabel(specimenType: SpecimenType): string {
+  return SPECIMEN_LABELS[specimenType] || specimenType;
+}
 import { CATEGORY_NAMES, type BiomarkerDefinition } from '@data/biomarkers';
 
 /**
@@ -65,6 +93,34 @@ export function BiomarkerDetail({
             {CATEGORY_NAMES[biomarker.category]}
           </Badge>
         </Group>
+
+        {/* Specimen Type */}
+        {biomarker.specimenType && (
+          <Group gap="xs">
+            <IconTestPipe size={16} style={{ color: 'var(--mantine-color-dimmed)' }} />
+            <Text size="sm" c="dimmed">
+              Specimen: {getSpecimenLabel(biomarker.specimenType)}
+            </Text>
+          </Group>
+        )}
+
+        {/* LOINC Code */}
+        {biomarker.loincCode && (
+          <Group gap="xs">
+            <Text size="sm" c="dimmed">
+              LOINC:{' '}
+              <Anchor
+                href={`https://loinc.org/${biomarker.loincCode}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="sm"
+              >
+                {biomarker.loincCode}
+                <IconExternalLink size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
+              </Anchor>
+            </Text>
+          </Group>
+        )}
 
         <Divider />
 

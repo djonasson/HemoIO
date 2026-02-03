@@ -40,6 +40,10 @@ npm run dev
 
 Daniel Jonasson
 
+## Third-Party Notices
+
+This product includes all or a portion of the LOINC® table, LOINC codes, and LOINC panels and forms file, which are copyrighted © 1995-2024 Regenstrief Institute, Inc. and the LOINC Committee, and are available at no cost under the license at https://loinc.org/license/. LOINC® is a registered trademark of Regenstrief Institute, Inc.
+
 ## License
 
 MIT

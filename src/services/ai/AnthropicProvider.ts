@@ -18,6 +18,7 @@ import {
   createAnalysisPrompt,
   CONNECTION_TEST_PROMPT,
 } from './prompts';
+import { parseIntervalValue } from './parseIntervalValue';
 
 /**
  * Default Anthropic configuration
@@ -229,26 +230,35 @@ export class AnthropicProvider implements AIProvider {
 
       // Validate and normalize biomarkers
       const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
-        (b: Record<string, unknown>) => ({
-          name: String(b.name || ''),
-          value: Number(b.value) || 0,
-          unit: String(b.unit || ''),
-          referenceRange: b.referenceRange
-            ? {
-                low: typeof (b.referenceRange as Record<string, unknown>).low === 'number'
-                  ? (b.referenceRange as Record<string, unknown>).low as number
-                  : undefined,
-                high: typeof (b.referenceRange as Record<string, unknown>).high === 'number'
-                  ? (b.referenceRange as Record<string, unknown>).high as number
-                  : undefined,
-                unit: String((b.referenceRange as Record<string, unknown>).unit || b.unit || ''),
-              }
-            : undefined,
-          method: b.method ? String(b.method) : undefined,
-          confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
-          notes: b.notes ? String(b.notes) : undefined,
-          flaggedAbnormal: Boolean(b.flaggedAbnormal),
-        })
+        (b: Record<string, unknown>) => {
+          // Parse the value, detecting intervals like "5-10"
+          const parsedValue = parseIntervalValue(b.value);
+
+          return {
+            name: String(b.name || ''),
+            value: parsedValue.value,
+            unit: String(b.unit || ''),
+            referenceRange: b.referenceRange
+              ? {
+                  low: typeof (b.referenceRange as Record<string, unknown>).low === 'number'
+                    ? (b.referenceRange as Record<string, unknown>).low as number
+                    : undefined,
+                  high: typeof (b.referenceRange as Record<string, unknown>).high === 'number'
+                    ? (b.referenceRange as Record<string, unknown>).high as number
+                    : undefined,
+                  unit: String((b.referenceRange as Record<string, unknown>).unit || b.unit || ''),
+                }
+              : undefined,
+            method: b.method ? String(b.method) : undefined,
+            confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
+            notes: b.notes ? String(b.notes) : undefined,
+            flaggedAbnormal: Boolean(b.flaggedAbnormal),
+            isInterval: parsedValue.isInterval,
+            intervalLow: parsedValue.intervalLow,
+            intervalHigh: parsedValue.intervalHigh,
+            rawValue: parsedValue.rawValue,
+          };
+        }
       );
 
       return {

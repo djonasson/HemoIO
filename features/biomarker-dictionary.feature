@@ -71,6 +71,18 @@ Feature: Biomarker Dictionary
     And I should see the unit of measurement
     And I should see a description of what the biomarker measures
 
+  Scenario: User sees specimen type in biomarker details
+    Given I am viewing the biomarker dictionary
+    When I select a biomarker with specimen type metadata
+    Then I should see the specimen type displayed
+    And the specimen type should use a descriptive label
+
+  Scenario: User sees LOINC code in biomarker details
+    Given I am viewing the biomarker dictionary
+    When I select a biomarker with a LOINC code
+    Then I should see the LOINC code displayed
+    And the LOINC code should link to the LOINC website
+
   Scenario: View what high values mean
     Given I am viewing the detail for "Glucose"
     Then I should see information about what high values may indicate

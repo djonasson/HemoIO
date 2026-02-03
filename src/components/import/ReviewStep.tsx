@@ -32,10 +32,112 @@ import {
   IconCalendar,
   IconBuilding,
   IconCopy,
+  IconTestPipe,
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { findBiomarker } from '../../data/biomarkers/dictionary';
+import type { SpecimenType } from '../../types';
+
+/**
+ * Human-readable labels for specimen types
+ */
+const SPECIMEN_LABELS: Record<SpecimenType, string> = {
+  'serum': 'Serum',
+  'plasma': 'Plasma',
+  'urine': 'Urine',
+  'urine-24h': '24h Urine',
+  'whole-blood': 'Whole Blood',
+  'capillary': 'Capillary',
+  'saliva': 'Saliva',
+  'csf': 'CSF',
+  'stool': 'Stool',
+  'semen': 'Semen',
+  'other': 'Other',
+};
+
+/**
+ * Get human-readable specimen label
+ */
+function getSpecimenLabel(specimenType: SpecimenType | undefined): string {
+  if (!specimenType) return '—';
+  return SPECIMEN_LABELS[specimenType] || specimenType;
+}
+
+/**
+ * Build tooltip content for biomarker with LOINC code and description
+ */
+function getBiomarkerTooltipContent(biomarker: MatchedBiomarker): string | null {
+  const match = biomarker.dictionaryMatch;
+  if (!match) return null;
+
+  const parts: string[] = [];
+  if (match.loincCode) {
+    parts.push(`LOINC: ${match.loincCode}`);
+  }
+  if (match.description) {
+    parts.push(match.description);
+  }
+
+  return parts.length > 0 ? parts.join('\n') : null;
+}
+
+/**
+ * Specimen type patterns that can be extracted from biomarker names
+ */
+const SPECIMEN_PATTERNS: { pattern: RegExp; type: SpecimenType }[] = [
+  { pattern: /\s*\(urine,?\s*24h?\)\s*$/i, type: 'urine-24h' },
+  { pattern: /\s*\(24h?\s*urine\)\s*$/i, type: 'urine-24h' },
+  { pattern: /\s*\(urine[^)]*\)\s*$/i, type: 'urine' },
+  { pattern: /\s*\(plasma[^)]*\)\s*$/i, type: 'plasma' },
+  { pattern: /\s*\(serum[^)]*\)\s*$/i, type: 'serum' },
+  { pattern: /\s*\(siero[^)]*\)\s*$/i, type: 'serum' }, // Italian for serum
+  { pattern: /\s*\(sangue[^)]*\)\s*$/i, type: 'whole-blood' }, // Italian for blood
+  { pattern: /\s*\(whole[- ]?blood[^)]*\)\s*$/i, type: 'whole-blood' },
+  { pattern: /\s*\(semen[^)]*\)\s*$/i, type: 'semen' },
+  { pattern: /\s*\(liquido seminale[^)]*\)\s*$/i, type: 'semen' }, // Italian
+  { pattern: /\s*\(csf[^)]*\)\s*$/i, type: 'csf' },
+  { pattern: /\s*\(liquor[^)]*\)\s*$/i, type: 'csf' }, // Alternative name
+  { pattern: /\s*\(saliva[^)]*\)\s*$/i, type: 'saliva' },
+  { pattern: /\s*\(stool[^)]*\)\s*$/i, type: 'stool' },
+  { pattern: /\s*\(feci[^)]*\)\s*$/i, type: 'stool' }, // Italian for stool
+];
+
+/**
+ * Extract specimen type from biomarker name and return clean name
+ */
+function extractSpecimenFromName(name: string): { cleanName: string; extractedSpecimen?: SpecimenType } {
+  for (const { pattern, type } of SPECIMEN_PATTERNS) {
+    if (pattern.test(name)) {
+      return {
+        cleanName: name.replace(pattern, '').trim(),
+        extractedSpecimen: type,
+      };
+    }
+  }
+  return { cleanName: name };
+}
+
+/**
+ * Get specimen type - from dictionary match or extracted from name
+ */
+function getEffectiveSpecimen(biomarker: MatchedBiomarker): SpecimenType | undefined {
+  // Prefer dictionary match
+  if (biomarker.dictionaryMatch?.specimenType) {
+    return biomarker.dictionaryMatch.specimenType;
+  }
+  // Fall back to extracting from name
+  const { extractedSpecimen } = extractSpecimenFromName(biomarker.name);
+  return extractedSpecimen;
+}
+
+/**
+ * Get display name - strip specimen suffix if present since it's shown in column
+ */
+function getDisplayName(biomarker: MatchedBiomarker): string {
+  const { cleanName } = extractSpecimenFromName(biomarker.name);
+  return cleanName;
+}
 
 /**
  * Reviewed result with edited biomarkers
@@ -378,6 +480,7 @@ export function ReviewStep({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Biomarker</Table.Th>
+                      <Table.Th>Specimen</Table.Th>
                       <Table.Th>Value</Table.Th>
                       <Table.Th>Unit</Table.Th>
                       <Table.Th>Reference Range</Table.Th>
@@ -400,6 +503,8 @@ export function ReviewStep({
                         rowBg = 'var(--mantine-color-yellow-light)';
                       }
 
+                      const tooltipContent = getBiomarkerTooltipContent(biomarker);
+
                       return (
                         <Table.Tr key={bioIndex} bg={rowBg}>
                           <Table.Td>
@@ -416,7 +521,20 @@ export function ReviewStep({
                               />
                             ) : (
                               <Group gap="xs">
-                                <Text size="sm">{biomarker.name}</Text>
+                                {tooltipContent ? (
+                                  <Tooltip
+                                    label={tooltipContent}
+                                    multiline
+                                    w={300}
+                                    withArrow
+                                  >
+                                    <Text size="sm" style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                      {getDisplayName(biomarker)}
+                                    </Text>
+                                  </Tooltip>
+                                ) : (
+                                  <Text size="sm">{getDisplayName(biomarker)}</Text>
+                                )}
                                 {biomarker.hasDuplicateConflict && (
                                   <Tooltip label="Duplicate with conflicting value - please review">
                                     <ThemeIcon
@@ -443,20 +561,70 @@ export function ReviewStep({
                             )}
                           </Table.Td>
                           <Table.Td>
+                            <Group gap={4}>
+                              <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                              <Text size="sm" c="dimmed">
+                                {getSpecimenLabel(getEffectiveSpecimen(biomarker))}
+                              </Text>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
                             {isEditing ? (
-                              <NumberInput
-                                size="xs"
-                                value={biomarker.value}
-                                onChange={(value) =>
-                                  updateBiomarker(resultIndex, bioIndex, {
-                                    value: Number(value) || 0,
-                                  })
-                                }
-                                decimalScale={2}
-                                placeholder="Value"
-                              />
+                              biomarker.isInterval ? (
+                                <Group gap="xs" wrap="nowrap">
+                                  <NumberInput
+                                    size="xs"
+                                    value={biomarker.intervalLow ?? ''}
+                                    onChange={(value) =>
+                                      updateBiomarker(resultIndex, bioIndex, {
+                                        intervalLow: value === '' ? undefined : Number(value),
+                                        // Update the midpoint value as well
+                                        value: value === '' || biomarker.intervalHigh === undefined
+                                          ? biomarker.value
+                                          : (Number(value) + biomarker.intervalHigh) / 2,
+                                      })
+                                    }
+                                    decimalScale={2}
+                                    placeholder="Low"
+                                    w={60}
+                                  />
+                                  <Text size="xs">-</Text>
+                                  <NumberInput
+                                    size="xs"
+                                    value={biomarker.intervalHigh ?? ''}
+                                    onChange={(value) =>
+                                      updateBiomarker(resultIndex, bioIndex, {
+                                        intervalHigh: value === '' ? undefined : Number(value),
+                                        // Update the midpoint value as well
+                                        value: value === '' || biomarker.intervalLow === undefined
+                                          ? biomarker.value
+                                          : (biomarker.intervalLow + Number(value)) / 2,
+                                      })
+                                    }
+                                    decimalScale={2}
+                                    placeholder="High"
+                                    w={60}
+                                  />
+                                </Group>
+                              ) : (
+                                <NumberInput
+                                  size="xs"
+                                  value={biomarker.value}
+                                  onChange={(value) =>
+                                    updateBiomarker(resultIndex, bioIndex, {
+                                      value: Number(value) || 0,
+                                    })
+                                  }
+                                  decimalScale={2}
+                                  placeholder="Value"
+                                />
+                              )
                             ) : (
-                              <Text size="sm">{biomarker.value}</Text>
+                              <Text size="sm">
+                                {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
+                                  ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
+                                  : biomarker.value}
+                              </Text>
                             )}
                           </Table.Td>
                           <Table.Td>

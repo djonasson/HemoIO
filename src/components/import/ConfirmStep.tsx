@@ -27,6 +27,18 @@ import {
 import type { ReviewedResult } from './ReviewStep';
 
 /**
+ * Format a biomarker value for display, handling interval values
+ */
+function formatBiomarkerValue(biomarker: ReviewedResult['editedBiomarkers'][0]): string {
+  // Check if this is an interval value
+  if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
+    return `${biomarker.intervalLow}-${biomarker.intervalHigh}`;
+  }
+  // Regular value
+  return String(biomarker.value);
+}
+
+/**
  * Props for ConfirmStep
  */
 export interface ConfirmStepProps {
@@ -183,7 +195,7 @@ export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
                     </Table.Td>
                     <Table.Td>
                       <Text size="sm" fw={500}>
-                        {biomarker.value} {biomarker.unit}
+                        {formatBiomarkerValue(biomarker)} {biomarker.unit}
                       </Text>
                     </Table.Td>
                     <Table.Td>

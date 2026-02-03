@@ -278,6 +278,30 @@ test.describe('Import Wizard', () => {
     test.skip('should show date picker for lab date', async () => {
       // Skip: Requires completing analysis step first
     });
+
+    test.skip('should display specimen type column for matched biomarkers', async () => {
+      // Skip: Requires completing analysis step first
+      // When implemented:
+      // 1. Complete analysis with mocked AI response
+      // 2. Verify Specimen column header is visible
+      // 3. Verify matched biomarkers show specimen type (e.g., "Serum", "Urine")
+    });
+
+    test.skip('should extract specimen type from biomarker name when unmatched', async () => {
+      // Skip: Requires completing analysis step first
+      // When implemented:
+      // 1. Complete analysis with mocked AI response including unmatched biomarker like "Albumina/L (urine)"
+      // 2. Verify the Specimen column shows "Urine" (extracted from name)
+      // 3. Verify the biomarker name is displayed without the "(urine)" suffix
+    });
+
+    test.skip('should show LOINC code in tooltip on hover', async () => {
+      // Skip: Requires completing analysis step first
+      // When implemented:
+      // 1. Complete analysis with mocked AI response
+      // 2. Hover over a matched biomarker name
+      // 3. Verify tooltip shows LOINC code and description
+    });
   });
 
   test.describe('Confirm Step', () => {

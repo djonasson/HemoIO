@@ -70,6 +70,18 @@ Feature: Import Wizard
     And each value should show a confidence indicator
     And I should see the reference range if detected
 
+  Scenario: User sees specimen type for matched biomarkers
+    Given the analysis has completed
+    When biomarkers are matched to the dictionary
+    Then each matched biomarker should display its specimen type
+    And unmatched biomarkers should show no specimen type
+
+  Scenario: User sees LOINC code in tooltip
+    Given the analysis has completed
+    When I hover over a matched biomarker name
+    Then I should see the LOINC code in a tooltip
+    And the tooltip should include the biomarker description
+
   Scenario: User sees confidence indicators
     Given I am on the review step
     Then high confidence values should be marked in green

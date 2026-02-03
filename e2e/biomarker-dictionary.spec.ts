@@ -222,6 +222,50 @@ test.describe('Biomarker Dictionary', () => {
       // Should see biomarkers with unit badges
       await expect(page.locator('.mantine-Badge-root').first()).toBeVisible();
     });
+
+    test('should show specimen type in biomarker details', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToBiomarkers(page);
+
+      // Search for glucose (which has specimenType: 'serum')
+      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
+      await page.getByText('Glucose').first().click();
+
+      // Should show specimen type in details
+      await expect(page.getByText(/Specimen:\s*Serum/i)).toBeVisible({ timeout: 5000 });
+    });
+
+    test('should show LOINC code with link in biomarker details', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToBiomarkers(page);
+
+      // Search for glucose (which has loincCode: '2345-7')
+      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
+      await page.getByText('Glucose').first().click();
+
+      // Should show LOINC code
+      await expect(page.getByText('2345-7')).toBeVisible({ timeout: 5000 });
+
+      // LOINC code should be a link to loinc.org
+      const loincLink = page.getByRole('link', { name: /2345-7/i });
+      await expect(loincLink).toHaveAttribute('href', 'https://loinc.org/2345-7');
+      await expect(loincLink).toHaveAttribute('target', '_blank');
+    });
+
+    test('should show specimen type for whole blood biomarkers', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToBiomarkers(page);
+
+      // Search for hemoglobin (which has specimenType: 'whole-blood')
+      await page.locator('input[aria-label="Search biomarkers"]').fill('hemoglobin');
+      await page.getByText('Hemoglobin').first().click();
+
+      // Should show "Whole Blood" as specimen type
+      await expect(page.getByText(/Specimen:\s*Whole Blood/i)).toBeVisible({ timeout: 5000 });
+    });
   });
 
   test.describe('Accessibility', () => {
