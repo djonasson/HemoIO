@@ -4,22 +4,26 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-      manifest: {
-        name: 'HemoIO - Lab Results Tracker',
-        short_name: 'HemoIO',
-        description: 'Personal lab results analysis and tracking. Keep your health data private and secure.',
-        theme_color: '#228be6',
-        background_color: '#ffffff',
-        display: 'standalone',
-        orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+export default defineConfig(({ command }) => {
+  const base = command === 'build' ? '/hemoio/' : '/';
+
+  return {
+    base,
+    plugins: [
+      react(),
+      VitePWA({
+        registerType: 'prompt',
+        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+        manifest: {
+          name: 'HemoIO - Lab Results Tracker',
+          short_name: 'HemoIO',
+          description: 'Personal lab results analysis and tracking. Keep your health data private and secure.',
+          theme_color: '#228be6',
+          background_color: '#ffffff',
+          display: 'standalone',
+          orientation: 'portrait',
+          scope: base,
+          start_url: base,
         categories: ['health', 'medical', 'lifestyle'],
         icons: [
           {
@@ -109,4 +113,5 @@ export default defineConfig({
       '@utils': path.resolve(__dirname, './src/utils'),
     },
   },
+};
 });
