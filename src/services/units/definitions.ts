@@ -377,6 +377,9 @@ const wbcConversions: BiomarkerConversions = {
     // cells/μL to 10^9/L: divide by 10^6
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
     { from: '10^9/L', to: 'cells/μL', factor: 1000000 },
+    // mil/mL = 10^6/mL = 10^9/L (since 1 mL = 10^-3 L)
+    { from: 'mil/mL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'mil/mL', factor: 1 },
   ],
 };
 
@@ -994,6 +997,54 @@ const albuminCreatinineRatioConversions: BiomarkerConversions = {
 };
 
 /**
+ * Time unit conversions (for semen analysis parameters like Sexual Abstinence)
+ * giorni = Italian for "days"
+ */
+const timeConversions: BiomarkerConversions = {
+  biomarker: 'Sexual Abstinence',
+  aliases: ['Astinenza sessuale', 'Abstinence'],
+  conversions: [
+    { from: 'giorni', to: 'days', factor: 1 },
+    { from: 'days', to: 'giorni', factor: 1 },
+  ],
+};
+
+/**
+ * Sperm count conversions
+ * mil. = million (abbreviation variant)
+ * M/mL = million/mL
+ */
+const spermCountConversions: BiomarkerConversions = {
+  biomarker: 'Total Sperm Count',
+  aliases: ['Sperm Count', 'Spermatozoi totali', 'Conta spermatozoi'],
+  conversions: [
+    { from: 'mil.', to: 'million', factor: 1 },
+    { from: 'million', to: 'mil.', factor: 1 },
+    { from: 'M', to: 'million', factor: 1 },
+    { from: 'million', to: 'M', factor: 1 },
+    { from: 'mil.', to: 'M', factor: 1 },
+    { from: 'M', to: 'mil.', factor: 1 },
+  ],
+};
+
+/**
+ * Sperm concentration conversions
+ * mil/mL = million/mL = 10^6/mL
+ */
+const spermConcentrationConversions: BiomarkerConversions = {
+  biomarker: 'Sperm Concentration',
+  aliases: ['Concentrazione spermatozoi', 'Sperm Density'],
+  conversions: [
+    { from: 'mil/mL', to: 'M/mL', factor: 1 },
+    { from: 'M/mL', to: 'mil/mL', factor: 1 },
+    { from: 'mil/mL', to: '10^6/mL', factor: 1 },
+    { from: '10^6/mL', to: 'mil/mL', factor: 1 },
+    { from: 'M/mL', to: '10^6/mL', factor: 1 },
+    { from: '10^6/mL', to: 'M/mL', factor: 1 },
+  ],
+};
+
+/**
  * All conversion definitions
  */
 export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
@@ -1069,6 +1120,11 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   transferrinConversions,
   // Vitamins
   vitaminAConversions,
+  // Time/duration
+  timeConversions,
+  // Semen analysis
+  spermCountConversions,
+  spermConcentrationConversions,
 ];
 
 /**
@@ -1110,9 +1166,15 @@ export function findConversionDefinition(
  * Handles common variations like ASCII 'u' vs Unicode 'µ'
  */
 const UNIT_NORMALIZATIONS: Record<string, string> = {
+  // ASCII 'u' variants
   'umol/l': 'µmol/L',
   'umol/L': 'µmol/L',
+  // Micro sign (U+00B5) variants
   'µmol/l': 'µmol/L',
+  // Greek mu (U+03BC) variants - common in European lab reports
+  'μmol/l': 'µmol/L',
+  'μmol/L': 'µmol/L',
+  // Other units
   'nmol/l': 'nmol/L',
   'pmol/l': 'pmol/L',
   'mg/dl': 'mg/dL',
@@ -1121,23 +1183,48 @@ const UNIT_NORMALIZATIONS: Record<string, string> = {
   'g/l': 'g/L',
   'ng/ml': 'ng/mL',
   'pg/ml': 'pg/mL',
+  // µg variants
   'ug/dl': 'µg/dL',
   'ug/dL': 'µg/dL',
   'µg/dl': 'µg/dL',
+  'μg/dl': 'µg/dL',
+  'μg/dL': 'µg/dL',
+  // mIU/L variants
   'miu/l': 'mIU/L',
   'mIU/l': 'mIU/L',
+  // µIU/mL variants
   'uiu/ml': 'µIU/mL',
   'µiu/ml': 'µIU/mL',
+  'μiu/ml': 'µIU/mL',
+  'μIU/mL': 'µIU/mL',
+  // Other
   'u/l': 'U/L',
   'iu/l': 'IU/L',
   'meq/l': 'mEq/L',
   'ug/min': 'µg/min',
+  'μg/min': 'µg/min',
+  // Creatinine ratio units - normalize to canonical forms
+  'mg/gcreat.': 'mg/g',
+  'mg/g creat.': 'mg/g',
+  'mg/g creat': 'mg/g',
+  'mg/mmolcreat.': 'mg/mmol',
+  'mg/mmol creat.': 'mg/mmol',
 };
+
+/**
+ * Normalize Greek mu (μ, U+03BC) to micro sign (µ, U+00B5)
+ * This ensures consistent handling of units from different sources
+ */
+function normalizeGreekMu(unit: string): string {
+  return unit.replace(/μ/g, 'µ');
+}
 
 function normalizeUnitForLookup(unit: string): string {
   const trimmed = unit.trim();
-  const lowercased = trimmed.toLowerCase();
-  return UNIT_NORMALIZATIONS[lowercased] ?? UNIT_NORMALIZATIONS[trimmed] ?? trimmed;
+  // First normalize Greek mu to micro sign
+  const normalized = normalizeGreekMu(trimmed);
+  const lowercased = normalized.toLowerCase();
+  return UNIT_NORMALIZATIONS[lowercased] ?? UNIT_NORMALIZATIONS[normalized] ?? normalized;
 }
 
 /**

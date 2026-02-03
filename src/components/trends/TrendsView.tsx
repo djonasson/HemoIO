@@ -161,7 +161,8 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
               console.warn(`[HemoIO] Unit conversion failed for ${biomarkerName}: ${testValue.unit} → ${entry.unit}`, e);
             }
           } else {
-            console.warn(`[HemoIO] Cannot convert ${biomarkerName} from ${testValue.unit} to ${entry.unit}`);
+            // Debug level since some units are intentionally not convertible (e.g., microscopy field counts)
+            console.debug(`[HemoIO] Cannot convert ${biomarkerName} from ${testValue.unit} to ${entry.unit}`);
           }
         }
 

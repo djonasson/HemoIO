@@ -431,19 +431,40 @@ function matchBiomarkerToDictionary(
 }
 
 /**
- * Tolerance for comparing converted values (0.5% difference allowed)
+ * Relative tolerance for comparing converted values (2% difference allowed)
+ * This accounts for rounding errors that occur when:
+ * 1. Labs round values before reporting
+ * 2. Labs convert between units and round again
+ * 3. Our conversion math introduces small floating point differences
+ *
+ * Example: Triglycerides 0.9 mmol/L = 79.65 mg/dL ≈ 80 mg/dL
+ * vs the lab's direct measurement of 79 mg/dL - a 1.26% difference
  */
-const VALUE_TOLERANCE = 0.005;
+const RELATIVE_TOLERANCE = 0.02;
+
+/**
+ * Absolute tolerance for small values (1 unit difference allowed)
+ * For small values like 5 vs 6 mg/dL, a percentage-based tolerance
+ * doesn't work well. Labs often round to whole numbers.
+ */
+const ABSOLUTE_TOLERANCE = 1.0;
 
 /**
  * Check if two values are equal within tolerance
+ * Uses both relative tolerance (for larger values) and absolute tolerance (for small values)
  */
 function valuesAreEqual(val1: number, val2: number): boolean {
   if (val1 === val2) return true;
   if (val1 === 0 || val2 === 0) return false;
+
   const diff = Math.abs(val1 - val2);
+
+  // Allow absolute tolerance of 1 unit for any values
+  if (diff <= ABSOLUTE_TOLERANCE) return true;
+
+  // Also check relative tolerance for larger values
   const avg = (Math.abs(val1) + Math.abs(val2)) / 2;
-  return diff / avg <= VALUE_TOLERANCE;
+  return diff / avg <= RELATIVE_TOLERANCE;
 }
 
 /**
