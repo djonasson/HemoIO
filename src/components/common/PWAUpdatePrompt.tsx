@@ -21,11 +21,22 @@ export function PWAUpdatePrompt(): React.ReactNode {
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
-      // Check for updates periodically (every hour)
       if (r) {
+        // Check for updates immediately
+        r.update();
+
+        // Check for updates periodically (every hour)
         setInterval(() => {
           r.update();
         }, 60 * 60 * 1000);
+
+        // Check for updates when the app becomes visible again
+        // This is especially useful for installed PWAs
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            r.update();
+          }
+        });
       }
     },
     onRegisterError(error) {
@@ -36,8 +47,10 @@ export function PWAUpdatePrompt(): React.ReactNode {
   // Compute showPrompt from needRefresh and dismissed state
   const showPrompt = needRefresh && !dismissed;
 
-  const handleUpdate = () => {
-    updateServiceWorker(true);
+  const handleUpdate = async () => {
+    await updateServiceWorker(true);
+    // Reload the page to use the new version
+    window.location.reload();
   };
 
   const handleDismiss = () => {
