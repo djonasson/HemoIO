@@ -15,6 +15,7 @@ export default defineConfig(({ command }) => {
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         manifest: {
+          id: base,
           name: 'HemoIO - Lab Results Tracker',
           short_name: 'HemoIO',
           description: 'Personal lab results analysis and tracking. Keep your health data private and secure.',
@@ -24,8 +25,24 @@ export default defineConfig(({ command }) => {
           orientation: 'portrait',
           scope: base,
           start_url: base,
-        categories: ['health', 'medical', 'lifestyle'],
-        icons: [
+          categories: ['health', 'medical', 'lifestyle'],
+          screenshots: [
+            {
+              src: 'screenshot-wide.png',
+              sizes: '1830x1949',
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'HemoIO Setup Wizard',
+            },
+            {
+              src: 'screenshot-mobile.png',
+              sizes: '780x1688',
+              type: 'image/png',
+              form_factor: 'narrow',
+              label: 'HemoIO Mobile Setup',
+            },
+          ],
+          icons: [
           {
             src: 'pwa-64x64.png',
             sizes: '64x64',

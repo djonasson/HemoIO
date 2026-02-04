@@ -10,6 +10,7 @@ import {
   Stack,
   ThemeIcon,
   Alert,
+  useMatches,
 } from '@mantine/core';
 import {
   IconLock,
@@ -44,6 +45,12 @@ interface SetupWizardProps {
 
 export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const { setupPassword } = useAuth();
+
+  // Responsive stepper orientation - vertical on small screens
+  const stepperOrientation = useMatches({
+    base: 'vertical' as const,
+    sm: 'horizontal' as const,
+  });
 
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -203,6 +210,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           active={activeStep}
           onStepClick={setActiveStep}
           allowNextStepsSelect={false}
+          orientation={stepperOrientation}
           aria-label="Setup wizard progress"
         >
           <Stepper.Step
