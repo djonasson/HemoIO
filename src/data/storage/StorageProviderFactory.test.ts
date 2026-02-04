@@ -70,8 +70,9 @@ describe('StorageProviderFactory', () => {
     it('returns info for all providers', () => {
       const info = getStorageProviderInfo();
 
-      expect(info.length).toBe(3);
+      expect(info.length).toBe(4);
       expect(info.map((i) => i.type)).toContain('local');
+      expect(info.map((i) => i.type)).toContain('filesystem');
       expect(info.map((i) => i.type)).toContain('dropbox');
       expect(info.map((i) => i.type)).toContain('googledrive');
     });

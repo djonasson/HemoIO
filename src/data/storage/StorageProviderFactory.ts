@@ -2,12 +2,14 @@
  * Storage Provider Factory
  *
  * Creates the appropriate storage provider based on user configuration.
- * Currently only supports local storage, but designed to support
- * cloud providers (Dropbox, Google Drive) in the future.
+ * Supports local storage, file system storage (for folder sync),
+ * and will support cloud providers (Dropbox, Google Drive) in the future.
  */
 
 import type { StorageProvider, StorageProviderType } from '@/types';
 import { LocalStorageProvider } from './LocalStorageProvider';
+import { FileSystemStorageProvider } from './FileSystemStorageProvider';
+import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 
 /**
  * Storage provider instances cache
@@ -29,6 +31,13 @@ export function getStorageProvider(type: StorageProviderType): StorageProvider {
   switch (type) {
     case 'local':
       provider = new LocalStorageProvider();
+      break;
+
+    case 'filesystem':
+      if (!isFileSystemAccessSupported()) {
+        throw new Error('File System Access API is not supported in this browser');
+      }
+      provider = new FileSystemStorageProvider();
       break;
 
     case 'dropbox':
@@ -64,6 +73,8 @@ export function isProviderAvailable(type: StorageProviderType): boolean {
   switch (type) {
     case 'local':
       return true;
+    case 'filesystem':
+      return isFileSystemAccessSupported();
     case 'dropbox':
     case 'googledrive':
       return false; // Not yet implemented
@@ -76,7 +87,7 @@ export function isProviderAvailable(type: StorageProviderType): boolean {
  * Get list of all available storage provider types
  */
 export function getAvailableProviders(): StorageProviderType[] {
-  const allTypes: StorageProviderType[] = ['local', 'dropbox', 'googledrive'];
+  const allTypes: StorageProviderType[] = ['local', 'filesystem', 'dropbox', 'googledrive'];
   return allTypes.filter(isProviderAvailable);
 }
 
@@ -98,6 +109,12 @@ export function getStorageProviderInfo(): StorageProviderInfo[] {
       name: 'Local Storage',
       description: 'Store data in your browser. Data stays on this device only.',
       available: true,
+    },
+    {
+      type: 'filesystem',
+      name: 'Local Directory',
+      description: 'Store data in a local folder.',
+      available: isFileSystemAccessSupported(),
     },
     {
       type: 'dropbox',

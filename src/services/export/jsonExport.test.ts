@@ -65,6 +65,7 @@ function createMockPreferences(): UserPreferences {
     unitPreferences: { 1: 'mg/dL' },
     personalTargets: { 1: { low: 70, high: 100 } },
     theme: 'light',
+    dateFormat: 'MM/DD/YYYY',
   };
 }
 

@@ -554,7 +554,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
 const thyroidBiomarkers: BiomarkerDefinition[] = [
   {
     name: 'Thyroid Stimulating Hormone',
-    aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina', 'S-Tirotropina', 'S-Tirotropina (TSH)', 'Tirotropina (TSH)', 'Ormone tireotropo', 'S-Tirotropina (TSH) (ECLIA Roche)'],
+    aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina', 'S-Tirotropina', 'S-Tirotropina (TSH)', 'Tirotropina (TSH)', 'Ormone tireotropo', 'S-Tirotropina (TSH) (ECLIA Roche)', 'TSH (S-Tirotropina)'],
     category: 'thyroid',
     specimenType: 'serum',
     loincCode: '3016-3',
@@ -825,7 +825,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Urine Protein',
-    aliases: ['Protein', 'Proteinuria', 'Urine Protein Level', 'Proteine (urine)', 'Urine Proteine (standard)', 'U-Proteine totali', 'Proteine urinarie', 'U-Proteine', 'U-Proteine totali (urine)', 'Urine Proteine (standard)', 'U-Esame standard Proteine', 'Proteine (urine, dipstick)'],
+    aliases: ['Protein', 'Proteinuria', 'Urine Protein Level', 'Proteine (urine)', 'Urine Proteine (standard)', 'U-Proteine totali', 'Proteine urinarie', 'U-Proteine', 'U-Proteine totali (urine)', 'Urine Proteine (standard)', 'U-Esame standard Proteine', 'Proteine (urine, dipstick)', 'Proteine totali (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '2888-6',
@@ -909,7 +909,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Microalbumin',
-    aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L'],
+    aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '14957-5',
@@ -985,7 +985,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: 'Protein Creatinine Ratio',
-    aliases: ['PCR', 'U-Proteine/Creatinina', 'Protein/Creatinine Ratio', 'Proteine/Creatinina', 'Rapporto proteine/creatinina'],
+    aliases: ['PCR', 'U-Proteine/Creatinina', 'Protein/Creatinine Ratio', 'Proteine/Creatinina', 'Rapporto proteine/creatinina', 'Proteine/Creatinina (urine)', 'U-Proteine/Creatinina (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '2890-2',
@@ -997,8 +997,8 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
-    name: '24-Hour Urine Volume',
-    aliases: ['U-VOLUME (24h)', 'Urine Volume 24h', '24h Urine Volume', 'Diuresi 24h', 'Volume urinario 24h', 'U-VOLUME', 'Urine Volume', 'Volume urinario'],
+    name: 'Urine Volume',
+    aliases: ['U-VOLUME (24h)', 'Urine Volume 24h', '24h Urine Volume', 'Diuresi 24h', 'Volume urinario 24h', 'U-VOLUME', '24-Hour Urine Volume', 'Volume urinario', 'Volume delle urine', 'Volume (urine, 24h)', 'U-VOLUME (urine, 24h)'],
     category: 'urinalysis',
     specimenType: 'urine-24h',
     loincCode: '3167-4',
@@ -1011,7 +1011,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
   },
   {
     name: '24-Hour Urine Albumin',
-    aliases: ['U Albumina 24h', 'Albumina 24h', '24h Albumin', 'Albuminuria 24h', 'Albumina urinaria 24h'],
+    aliases: ['U Albumina 24h', 'Albumina 24h', '24h Albumin', 'Albuminuria 24h', 'Albumina urinaria 24h', 'U-Albumina 24h', 'Urine Albumin 24h', 'U-Albumina 24h (Urine)', 'Albumina 24h (urine)'],
     category: 'urinalysis',
     specimenType: 'urine-24h',
     loincCode: '1755-8',

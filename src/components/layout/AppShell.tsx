@@ -25,7 +25,7 @@ import {
   IconDownload,
 } from '@tabler/icons-react';
 import { useAuth } from '@contexts';
-import { useEncryptedDb, useExportData, useEncryptedApiKey } from '@hooks';
+import { useEncryptedDb, useExportData, useEncryptedApiKey, useFilesystemSync, useAISettings } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -88,6 +88,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const { dataSources, labResultsData, biomarkerOptions, refresh: refreshExportData } = useExportData();
+  const { syncNow } = useFilesystemSync();
 
   const handleNavClick = useCallback(
     (view: View) => {
@@ -134,6 +135,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           });
         }
 
+        // Sync to filesystem if enabled
+        await syncNow();
+
         // Navigate to timeline to show the imported results
         setActiveView('timeline');
       } catch (err) {
@@ -146,7 +150,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         });
       }
     },
-    [db, isReady]
+    [db, isReady, syncNow]
   );
 
   const handleNavigateToImport = useCallback(() => {
@@ -221,6 +225,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         // Refresh export data
         await refreshExportData();
 
+        // Sync to filesystem if enabled
+        await syncNow();
+
         notifications.show({
           title: 'Restore Complete',
           message: `Restored ${data.labResults.length} lab result(s), ${data.testValues.length} test value(s), and ${data.userNotes.length} note(s).`,
@@ -243,7 +250,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         setIsRestoring(false);
       }
     },
-    [db, isReady, refreshExportData]
+    [db, isReady, refreshExportData, syncNow]
   );
 
   return (
@@ -363,6 +370,13 @@ function MainContent({
 }: MainContentProps): React.ReactNode {
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
   const { hasApiKey, getApiKey, isLoading: isLoadingApiKey } = useEncryptedApiKey();
+  const {
+    aiProvider,
+    ollamaModel,
+    openaiModel,
+    anthropicModel,
+    isLoading: isLoadingAISettings,
+  } = useAISettings();
 
   // Render TimelineView for the timeline view
   if (view === 'timeline') {
@@ -371,27 +385,22 @@ function MainContent({
 
   // Render ImportWizard for the import view
   if (view === 'import') {
-    // Get AI settings from localStorage (set during setup)
-    const aiProvider =
-      (localStorage.getItem('hemoio_ai_provider') as 'openai' | 'anthropic' | 'ollama') ||
-      'openai';
-
     // Get the model for the selected provider
     let aiModel: string | undefined;
     if (aiProvider === 'ollama') {
-      aiModel = localStorage.getItem('hemoio_ollama_model') || undefined;
+      aiModel = ollamaModel;
     } else if (aiProvider === 'openai') {
-      aiModel = localStorage.getItem('hemoio_openai_model') || undefined;
+      aiModel = openaiModel;
     } else if (aiProvider === 'anthropic') {
-      aiModel = localStorage.getItem('hemoio_anthropic_model') || undefined;
+      aiModel = anthropicModel;
     }
 
     // Check if AI is properly configured
     // Ollama doesn't require an API key, but other providers do
     const isAiConfigured = aiProvider === 'ollama' || hasApiKey;
 
-    // Show loading state while checking API key
-    if (isLoadingApiKey && aiProvider !== 'ollama') {
+    // Show loading state while checking API key or AI settings
+    if ((isLoadingApiKey && aiProvider !== 'ollama') || isLoadingAISettings) {
       return (
         <Stack align="center" justify="center" h="50vh" gap="md">
           <Text size="xl" fw={500}>

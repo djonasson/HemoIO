@@ -58,6 +58,7 @@ function createMockDataSources(): ExportDataSources {
       unitPreferences: { 1: 'mg/dL' },
       personalTargets: {},
       theme: 'light',
+      dateFormat: 'MM/DD/YYYY',
     },
     settings: {
       id: 1,
@@ -271,7 +272,7 @@ describe('jsonImport', () => {
         testValues: [createMockTestValue(1, 1)],
         userNotes: [createMockNote(1)],
         settings: { storageProvider: 'local', aiProvider: 'openai', language: 'en' },
-        userPreferences: { id: 1, unitPreferences: {}, personalTargets: {}, theme: 'light' },
+        userPreferences: { id: 1, unitPreferences: {}, personalTargets: {}, theme: 'light', dateFormat: 'MM/DD/YYYY' },
         schemaVersion: 1,
         exportedAt: new Date('2024-01-15'),
       };

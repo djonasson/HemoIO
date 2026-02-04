@@ -11,3 +11,5 @@ export { useNotes, type UseNotesResult, type NoteFilters, type CreateNoteInput, 
 export { useExportData, type UseExportDataResult } from './useExportData';
 export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncryptedApiKey';
 export { useFormKeyboardSubmit, type UseFormKeyboardSubmitOptions, type UseFormKeyboardSubmitResult } from './useFormKeyboardSubmit';
+export { useFilesystemSync, triggerGlobalSync, setGlobalSyncCallback } from './useFilesystemSync';
+export { useAISettings, type UseAISettingsResult } from './useAISettings';

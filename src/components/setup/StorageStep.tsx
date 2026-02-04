@@ -1,10 +1,24 @@
-import { Stack, Text, Radio, Group, Paper, ThemeIcon } from '@mantine/core';
-import { IconDeviceDesktop, IconBrandDropbox, IconBrandGoogleDrive } from '@tabler/icons-react';
+import { useState, useCallback } from 'react';
+import { Stack, Text, Radio, Group, Paper, ThemeIcon, Button, Alert } from '@mantine/core';
+import {
+  IconDeviceDesktop,
+  IconFolder,
+  IconBrandDropbox,
+  IconBrandGoogleDrive,
+  IconFolderOpen,
+  IconCheck,
+} from '@tabler/icons-react';
 import type { StorageProviderType } from '@/types';
+import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 
 interface StorageStepProps {
   selectedStorage: StorageProviderType;
   onStorageChange: (storage: StorageProviderType) => void;
+  /** The name of the selected directory (for filesystem storage) */
+  selectedDirectoryName?: string | null;
+  /** Called when a directory is selected */
+  onDirectorySelect?: (directoryName: string) => void;
 }
 
 interface StorageOptionProps {
@@ -13,8 +27,10 @@ interface StorageOptionProps {
   description: string;
   icon: React.ReactNode;
   disabled?: boolean;
+  hidden?: boolean;
   selected: boolean;
   onChange: (value: StorageProviderType) => void;
+  children?: React.ReactNode;
 }
 
 function StorageOption({
@@ -23,9 +39,15 @@ function StorageOption({
   description,
   icon,
   disabled = false,
+  hidden = false,
   selected,
   onChange,
+  children,
 }: StorageOptionProps): React.ReactNode {
+  if (hidden) {
+    return null;
+  }
+
   return (
     <Paper
       withBorder
@@ -74,6 +96,7 @@ function StorageOption({
           <Text size="sm" c="dimmed">
             {description}
           </Text>
+          {children}
         </div>
       </Group>
     </Paper>
@@ -83,7 +106,37 @@ function StorageOption({
 function StorageStep({
   selectedStorage,
   onStorageChange,
+  selectedDirectoryName,
+  onDirectorySelect,
 }: StorageStepProps): React.ReactNode {
+  const [isSelectingDirectory, setIsSelectingDirectory] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+
+  const fileSystemSupported = isFileSystemAccessSupported();
+
+  const handleSelectDirectory = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent the radio button from being triggered
+    setIsSelectingDirectory(true);
+    setDirectoryError(null);
+
+    try {
+      const provider = new FileSystemStorageProvider();
+      const handle = await provider.selectDirectory();
+
+      if (handle) {
+        onDirectorySelect?.(handle.name);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setDirectoryError(error.message);
+      } else {
+        setDirectoryError('Failed to select directory');
+      }
+    } finally {
+      setIsSelectingDirectory(false);
+    }
+  }, [onDirectorySelect]);
+
   return (
     <Stack gap="lg">
       <Text size="sm" c="dimmed">
@@ -100,6 +153,55 @@ function StorageStep({
           selected={selectedStorage === 'local'}
           onChange={onStorageChange}
         />
+
+        <StorageOption
+          value="filesystem"
+          label="Local Directory"
+          description="Store data in a local folder."
+          icon={<IconFolder size={20} />}
+          selected={selectedStorage === 'filesystem'}
+          onChange={onStorageChange}
+          hidden={!fileSystemSupported}
+        >
+          {selectedStorage === 'filesystem' && (
+            <Stack gap="xs" mt="sm" onClick={(e) => e.stopPropagation()}>
+              {selectedDirectoryName ? (
+                <Group gap="xs">
+                  <ThemeIcon size="sm" variant="light" color="green">
+                    <IconCheck size={14} />
+                  </ThemeIcon>
+                  <Text size="sm" fw={500}>
+                    {selectedDirectoryName}
+                  </Text>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={handleSelectDirectory}
+                    loading={isSelectingDirectory}
+                    leftSection={<IconFolderOpen size={14} />}
+                  >
+                    Change
+                  </Button>
+                </Group>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="light"
+                  onClick={handleSelectDirectory}
+                  loading={isSelectingDirectory}
+                  leftSection={<IconFolderOpen size={16} />}
+                >
+                  Choose Folder
+                </Button>
+              )}
+              {directoryError && (
+                <Alert color="red" variant="light" p="xs">
+                  {directoryError}
+                </Alert>
+              )}
+            </Stack>
+          )}
+        </StorageOption>
 
         <StorageOption
           value="dropbox"

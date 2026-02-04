@@ -38,6 +38,7 @@ import {
 
 const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
 const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
+const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -62,6 +63,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   // Step 2: Storage
   const [storageProvider, setStorageProvider] =
     useState<StorageProviderType>('local');
+  const [selectedDirectoryName, setSelectedDirectoryName] = useState<string | null>(null);
 
   // Step 3: AI Configuration
   const [aiProvider, setAiProvider] = useState<AIProviderType | null>(null);
@@ -73,7 +75,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       case 0:
         return isPasswordStepValid(password, confirmPassword);
       case 1:
-        return isStorageStepValid(storageProvider);
+        return isStorageStepValid(storageProvider, selectedDirectoryName);
       case 2:
         // AI step is optional, always can proceed
         return true;
@@ -82,7 +84,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       default:
         return false;
     }
-  }, [activeStep, password, confirmPassword, storageProvider]);
+  }, [activeStep, password, confirmPassword, storageProvider, selectedDirectoryName]);
 
   // Enable Enter key submission from any element in the form
   const { formRef } = useFormKeyboardSubmit({
@@ -106,6 +108,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     try {
       // Setup password and get encryption key
       await setupPassword(password);
+
+      // Save storage provider to localStorage
+      localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
 
       // Save AI configuration to localStorage
       if (aiProvider) {
@@ -137,7 +142,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     } finally {
       setIsSubmitting(false);
     }
-  }, [password, setupPassword, onComplete, aiProvider, apiKey, ollamaModel]);
+  }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -169,6 +174,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           <StorageStep
             selectedStorage={storageProvider}
             onStorageChange={setStorageProvider}
+            selectedDirectoryName={selectedDirectoryName}
+            onDirectorySelect={setSelectedDirectoryName}
           />
         );
       case 2:
@@ -186,6 +193,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
         return (
           <CompletionStep
             storageProvider={storageProvider}
+            directoryName={selectedDirectoryName}
             aiConfigured={isAIConfigured(aiProvider, apiKey)}
           />
         );
@@ -285,11 +293,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
 
 interface CompletionStepProps {
   storageProvider: StorageProviderType;
+  directoryName: string | null;
   aiConfigured: boolean;
 }
 
 function CompletionStep({
   storageProvider,
+  directoryName,
   aiConfigured,
 }: CompletionStepProps): React.ReactNode {
   return (
@@ -332,10 +342,16 @@ function CompletionStep({
             </ThemeIcon>
             <div>
               <Text size="sm" fw={500}>
-                {storageProvider === 'local' ? 'Local Storage' : storageProvider}
+                {storageProvider === 'local'
+                  ? 'Local Storage'
+                  : storageProvider === 'filesystem'
+                    ? `Local Directory: ${directoryName}`
+                    : storageProvider}
               </Text>
               <Text size="xs" c="dimmed">
-                Data stored on this device
+                {storageProvider === 'filesystem'
+                  ? 'Data stored in selected folder'
+                  : 'Data stored on this device'}
               </Text>
             </div>
           </Group>

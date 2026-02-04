@@ -17,10 +17,10 @@ import { BackupRestore } from './BackupRestore';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
-import { useExportData, useEncryptedDb, useEncryptedApiKey } from '@hooks';
+import { StorageSettings } from './StorageSettings';
+import { useExportData, useEncryptedDb, useEncryptedApiKey, useAISettings } from '@hooks';
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import type { ParsedBackupData } from '@services/import';
-import type { AIProviderType } from '@services/ai/types';
 
 /**
  * Theme options
@@ -58,11 +58,17 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     isLoading: isApiKeyLoading,
   } = useEncryptedApiKey();
 
-  // AI Settings state
-  const [aiProvider, setAiProvider] = useState<AIProviderType>('openai');
-  const [ollamaModel, setOllamaModel] = useState<string | undefined>();
-  const [openaiModel, setOpenaiModel] = useState<string | undefined>();
-  const [anthropicModel, setAnthropicModel] = useState<string | undefined>();
+  // AI Settings from hook
+  const {
+    aiProvider,
+    ollamaModel,
+    openaiModel,
+    anthropicModel,
+    setAiProvider: handleAiProviderChange,
+    setOllamaModel: handleOllamaModelChange,
+    setOpenaiModel: handleOpenaiModelChange,
+    setAnthropicModel: handleAnthropicModelChange,
+  } = useAISettings();
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
 
   // Display Settings state
@@ -73,46 +79,50 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const [personalTargets, setPersonalTargets] = useState<PersonalTarget[]>([]);
   const [isSavingTargets, setIsSavingTargets] = useState(false);
 
-  // Load AI settings from localStorage
+  // Load display settings from IndexedDB (with localStorage migration)
   useEffect(() => {
-    const savedProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
-    const savedOllamaModel = localStorage.getItem('hemoio_ollama_model');
-    const savedOpenaiModel = localStorage.getItem('hemoio_openai_model');
-    const savedAnthropicModel = localStorage.getItem('hemoio_anthropic_model');
+    async function loadDisplaySettings() {
+      if (!db || !isReady) return;
 
-    if (savedProvider) {
-      setAiProvider(savedProvider);
+      try {
+        const prefs = await db.getPreferences();
+
+        // Check for localStorage values to migrate
+        const lsDateFormat = localStorage.getItem('hemoio_date_format') as DateFormatOption | null;
+        const lsTheme = localStorage.getItem('hemoio_theme') as ThemeOption | null;
+
+        // Use IndexedDB values if available, otherwise fall back to localStorage for migration
+        const savedDateFormat = prefs?.dateFormat ?? lsDateFormat ?? 'MM/DD/YYYY';
+        const savedTheme = prefs?.theme ?? lsTheme ?? 'system';
+
+        setDateFormat(savedDateFormat);
+        setTheme(savedTheme);
+
+        // Migrate localStorage to IndexedDB if needed
+        if (lsDateFormat || lsTheme) {
+          await db.savePreferences({
+            unitPreferences: prefs?.unitPreferences ?? {},
+            personalTargets: prefs?.personalTargets ?? {},
+            theme: savedTheme,
+            dateFormat: savedDateFormat,
+          });
+          // Clean up localStorage after migration
+          localStorage.removeItem('hemoio_date_format');
+          localStorage.removeItem('hemoio_theme');
+        }
+      } catch (err) {
+        console.error('Failed to load display settings:', err);
+        // Fall back to Mantine's color scheme
+        if (colorScheme === 'auto') {
+          setTheme('system');
+        } else {
+          setTheme(colorScheme);
+        }
+      }
     }
 
-    // API key state is managed by useEncryptedApiKey hook
-
-    if (savedOllamaModel) {
-      setOllamaModel(savedOllamaModel);
-    }
-
-    if (savedOpenaiModel) {
-      setOpenaiModel(savedOpenaiModel);
-    }
-
-    if (savedAnthropicModel) {
-      setAnthropicModel(savedAnthropicModel);
-    }
-  }, []);
-
-  // Load display settings from localStorage and sync with Mantine
-  useEffect(() => {
-    const savedDateFormat = localStorage.getItem('hemoio_date_format') as DateFormatOption | null;
-    if (savedDateFormat) {
-      setDateFormat(savedDateFormat);
-    }
-
-    // Determine theme from Mantine's color scheme
-    if (colorScheme === 'auto') {
-      setTheme('system');
-    } else {
-      setTheme(colorScheme);
-    }
-  }, [colorScheme]);
+    loadDisplaySettings();
+  }, [db, isReady, colorScheme]);
 
   // Load personal targets from database
   useEffect(() => {
@@ -146,12 +156,6 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     loadTargets();
   }, [db, isReady]);
 
-  // Handle AI provider change
-  const handleAiProviderChange = useCallback((provider: AIProviderType) => {
-    setAiProvider(provider);
-    localStorage.setItem('hemoio_ai_provider', provider);
-  }, []);
-
   // Handle API key change (async because of encryption)
   const handleApiKeyChange = useCallback(
     async (apiKey: string) => {
@@ -163,24 +167,6 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     },
     [saveEncryptedApiKey, removeApiKey]
   );
-
-  // Handle Ollama model change
-  const handleOllamaModelChange = useCallback((model: string) => {
-    setOllamaModel(model);
-    localStorage.setItem('hemoio_ollama_model', model);
-  }, []);
-
-  // Handle OpenAI model change
-  const handleOpenaiModelChange = useCallback((model: string) => {
-    setOpenaiModel(model);
-    localStorage.setItem('hemoio_openai_model', model);
-  }, []);
-
-  // Handle Anthropic model change
-  const handleAnthropicModelChange = useCallback((model: string) => {
-    setAnthropicModel(model);
-    localStorage.setItem('hemoio_anthropic_model', model);
-  }, []);
 
   // Handle AI connection test
   const handleTestConnection = useCallback(async (): Promise<boolean> => {
@@ -209,16 +195,46 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   }, [aiProvider, getApiKey]);
 
   // Handle theme change
-  const handleThemeChange = useCallback((newTheme: ThemeOption) => {
-    setTheme(newTheme);
-    localStorage.setItem('hemoio_theme', newTheme);
-  }, []);
+  const handleThemeChange = useCallback(
+    async (newTheme: ThemeOption) => {
+      setTheme(newTheme);
+      if (db && isReady) {
+        try {
+          const prefs = await db.getPreferences();
+          await db.savePreferences({
+            unitPreferences: prefs?.unitPreferences ?? {},
+            personalTargets: prefs?.personalTargets ?? {},
+            theme: newTheme,
+            dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
+          });
+        } catch (err) {
+          console.error('Failed to save theme:', err);
+        }
+      }
+    },
+    [db, isReady]
+  );
 
   // Handle date format change
-  const handleDateFormatChange = useCallback((newFormat: DateFormatOption) => {
-    setDateFormat(newFormat);
-    localStorage.setItem('hemoio_date_format', newFormat);
-  }, []);
+  const handleDateFormatChange = useCallback(
+    async (newFormat: DateFormatOption) => {
+      setDateFormat(newFormat);
+      if (db && isReady) {
+        try {
+          const prefs = await db.getPreferences();
+          await db.savePreferences({
+            unitPreferences: prefs?.unitPreferences ?? {},
+            personalTargets: prefs?.personalTargets ?? {},
+            theme: prefs?.theme ?? 'system',
+            dateFormat: newFormat,
+          });
+        } catch (err) {
+          console.error('Failed to save date format:', err);
+        }
+      }
+    },
+    [db, isReady]
+  );
 
   // Handle set personal target
   const handleSetTarget = useCallback(
@@ -239,6 +255,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           unitPreferences: prefs?.unitPreferences ?? {},
           personalTargets: updatedTargets,
           theme: prefs?.theme ?? 'system',
+          dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
         });
 
         // Update local state
@@ -274,6 +291,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           unitPreferences: prefs?.unitPreferences ?? {},
           personalTargets: currentTargets,
           theme: prefs?.theme ?? 'system',
+          dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
         });
 
         // Update local state
@@ -314,7 +332,8 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         </Tabs.List>
 
         <Tabs.Panel value="data" pt="md">
-          <Stack gap="md">
+          <Stack gap="lg">
+            <StorageSettings />
             <BackupRestore
               dataSources={dataSources}
               onRestore={onRestore}

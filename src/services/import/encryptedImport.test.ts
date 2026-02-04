@@ -55,6 +55,7 @@ describe('encryptedImport', () => {
       unitPreferences: {},
       personalTargets: {},
       theme: 'system',
+      dateFormat: 'MM/DD/YYYY',
     },
     settings: {
       storageProvider: 'local',

@@ -110,6 +110,7 @@ export interface UserPreferences {
   unitPreferences: Record<number, string>; // biomarkerId -> preferred unit
   personalTargets: Record<number, { low?: number; high?: number }>; // biomarkerId -> target range
   theme: 'light' | 'dark' | 'system';
+  dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 }
 
 // Application settings
@@ -118,10 +119,13 @@ export interface Settings {
   storageProvider: StorageProviderType;
   aiProvider: AIProviderType;
   aiApiKey?: string; // Stored encrypted
+  ollamaModel?: string;
+  openaiModel?: string;
+  anthropicModel?: string;
   language: string;
 }
 
-export type StorageProviderType = 'local' | 'dropbox' | 'googledrive';
+export type StorageProviderType = 'local' | 'filesystem' | 'dropbox' | 'googledrive';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama';
 
 // AI analysis types

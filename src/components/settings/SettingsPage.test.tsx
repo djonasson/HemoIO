@@ -38,6 +38,17 @@ vi.mock('@hooks', () => ({
     setApiKey: vi.fn().mockResolvedValue(undefined),
     removeApiKey: vi.fn(),
   }),
+  useAISettings: () => ({
+    aiProvider: 'openai',
+    ollamaModel: undefined,
+    openaiModel: undefined,
+    anthropicModel: undefined,
+    isLoading: false,
+    setAiProvider: vi.fn(),
+    setOllamaModel: vi.fn(),
+    setOpenaiModel: vi.fn(),
+    setAnthropicModel: vi.fn(),
+  }),
 }));
 
 // Mock BIOMARKER_DEFINITIONS
