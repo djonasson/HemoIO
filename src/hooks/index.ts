@@ -10,3 +10,4 @@ export { useAlerts, type UseAlertsResult, type BiomarkerAlert, type GroupedAlert
 export { useNotes, type UseNotesResult, type NoteFilters, type CreateNoteInput, type UpdateNoteInput } from './useNotes';
 export { useExportData, type UseExportDataResult } from './useExportData';
 export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncryptedApiKey';
+export { useFormKeyboardSubmit, type UseFormKeyboardSubmitOptions, type UseFormKeyboardSubmitResult } from './useFormKeyboardSubmit';

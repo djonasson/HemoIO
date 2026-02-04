@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Container,
   Stepper,
@@ -24,6 +24,7 @@ import { PasswordStep} from './PasswordStep';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
+import { useFormKeyboardSubmit } from '@hooks';
 import type { StorageProviderType, AIProviderType } from '@/types';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
@@ -60,7 +61,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const [apiKey, setApiKey] = useState('');
   const [ollamaModel, setOllamaModel] = useState<string | undefined>(undefined);
 
-  const canProceed = useCallback((): boolean => {
+  const canProceed = useMemo((): boolean => {
     switch (activeStep) {
       case 0:
         return isPasswordStepValid(password, confirmPassword);
@@ -75,6 +76,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
         return false;
     }
   }, [activeStep, password, confirmPassword, storageProvider]);
+
+  // Enable Enter key submission from any element in the form
+  const { formRef } = useFormKeyboardSubmit({
+    canSubmit: canProceed,
+  });
 
   const handleNext = useCallback(() => {
     if (activeStep < 3) {
@@ -129,7 +135,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      if (!canProceed()) return;
+      if (!canProceed) return;
 
       if (activeStep < 3) {
         handleNext();
@@ -225,7 +231,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           />
         </Stepper>
 
-        <form onSubmit={handleSubmit}>
+        <form ref={formRef} onSubmit={handleSubmit}>
           <Paper withBorder shadow="sm" p="xl" radius="md">
             {renderStep()}
           </Paper>
@@ -245,7 +251,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
             {activeStep < 3 ? (
               <Button
                 type="submit"
-                disabled={!canProceed()}
+                disabled={!canProceed}
                 rightSection={<IconArrowRight size={16} />}
                 aria-label="Go to next step"
               >
