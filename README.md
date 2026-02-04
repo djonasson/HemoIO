@@ -2,6 +2,8 @@
 
 A client-side application for analyzing, cataloging, and tracking laboratory test results.
 
+**[Try HemoIO](https://djonasson.github.io/HemoIO/)** - No installation required, runs entirely in your browser.
+
 ## Overview
 
 HemoIO helps individuals manage their health data by:
@@ -30,6 +32,47 @@ npm run dev
 | `npm run test`     | Run unit tests (watch mode) |
 | `npm run test:run` | Run unit tests once         |
 | `npm run e2e`      | Run end-to-end tests        |
+
+## AI Providers
+
+HemoIO uses AI to extract values from lab report documents. You can choose from:
+
+- **OpenAI** - Cloud-based, requires API key
+- **Anthropic** - Cloud-based, requires API key
+- **Ollama** - Local, no API key required, data stays on your device
+
+### Using Ollama
+
+[Ollama](https://ollama.com) runs AI models locally on your computer, ensuring your health data never leaves your device.
+
+1. Install Ollama from https://ollama.com
+2. Pull a model: `ollama pull llama3.2:8b`
+3. Start Ollama: `ollama serve`
+
+#### CORS Configuration for Hosted Deployments
+
+If you're using HemoIO from https://djonasson.github.io/HemoIO/ (or any non-localhost URL), your browser will block requests to your local Ollama server due to CORS restrictions.
+
+**Option 1: Run HemoIO locally**
+
+```sh
+git clone https://github.com/djonasson/HemoIO
+cd HemoIO
+npm install
+npm run dev
+```
+
+**Option 2: Configure Ollama to allow the hosted origin**
+
+```sh
+OLLAMA_ORIGINS=https://djonasson.github.io ollama serve
+```
+
+Or to allow all origins (less secure):
+
+```sh
+OLLAMA_ORIGINS=* ollama serve
+```
 
 ## Documentation
 
