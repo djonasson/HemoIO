@@ -5,3 +5,4 @@
  */
 
 export { PWAUpdatePrompt } from './PWAUpdatePrompt';
+export { PWAInstallPrompt } from './PWAInstallPrompt';

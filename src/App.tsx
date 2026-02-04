@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from '@contexts';
 import { SetupWizard } from '@components/setup';
 import { LoginScreen } from '@components/auth';
 import { AppShell } from '@components/layout';
-import { PWAUpdatePrompt } from '@components/common';
+import { PWAUpdatePrompt, PWAInstallPrompt } from '@components/common';
 
 function AppContent(): React.ReactNode {
   const { status } = useAuth();
@@ -47,6 +47,7 @@ function App(): React.ReactNode {
         <AppContent />
       </AuthProvider>
       <PWAUpdatePrompt />
+      <PWAInstallPrompt />
     </MantineProvider>
   );
 }
