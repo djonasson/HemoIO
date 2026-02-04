@@ -36,6 +36,7 @@ import {
   getOpenAIModels,
   getAnthropicModels,
 } from '@/services/ai';
+import { isLocalhost, getCurrentOrigin } from '@/utils/isLocalhost';
 
 /**
  * Props for AISettings component
@@ -524,6 +525,37 @@ export function AISettings({
                 your computer, providing complete privacy.
               </Text>
             </Alert>
+
+            {/* CORS Warning for non-localhost */}
+            {!isLocalhost() && (
+              <Alert
+                color="orange"
+                icon={<IconAlertTriangle size={16} />}
+                variant="light"
+                title="CORS Configuration Required"
+              >
+                <Text size="sm">
+                  Since HemoIO is running from <code>{getCurrentOrigin()}</code>, your browser
+                  will block requests to Ollama on localhost due to CORS restrictions.
+                </Text>
+                <Text size="sm" mt="xs" fw={500}>
+                  To use Ollama, choose one of these options:
+                </Text>
+                <Text size="sm" component="div" mt="xs">
+                  <strong>Option 1:</strong> Run HemoIO locally instead:
+                  <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', borderRadius: '4px', overflow: 'auto' }}>
+                    git clone https://github.com/djonasson/HemoIO{'\n'}
+                    npm install && npm run dev
+                  </pre>
+                </Text>
+                <Text size="sm" component="div" mt="xs">
+                  <strong>Option 2:</strong> Configure Ollama to allow this origin:
+                  <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', borderRadius: '4px', overflow: 'auto' }}>
+                    OLLAMA_ORIGINS={getCurrentOrigin()} ollama serve
+                  </pre>
+                </Text>
+              </Alert>
+            )}
           </Stack>
         )}
 
