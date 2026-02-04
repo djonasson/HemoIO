@@ -226,14 +226,14 @@ export function AIConfigStep({
               </Text>
               <Text size="sm" component="div" mt="xs">
                 <strong>Option 1:</strong> Run HemoIO locally instead:
-                <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', borderRadius: '4px', overflow: 'auto' }}>
+                <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', color: 'var(--mantine-color-gray-3)', borderRadius: '4px', overflow: 'auto' }}>
                   git clone https://github.com/djonasson/HemoIO{'\n'}
                   npm install && npm run dev
                 </pre>
               </Text>
               <Text size="sm" component="div" mt="xs">
                 <strong>Option 2:</strong> Configure Ollama to allow this origin:
-                <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', borderRadius: '4px', overflow: 'auto' }}>
+                <pre style={{ margin: '4px 0', padding: '8px', background: 'var(--mantine-color-dark-7)', color: 'var(--mantine-color-gray-3)', borderRadius: '4px', overflow: 'auto' }}>
                   OLLAMA_ORIGINS={getCurrentOrigin()} ollama serve
                 </pre>
               </Text>

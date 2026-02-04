@@ -126,6 +126,20 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     }
   }, [password, setupPassword, onComplete, aiProvider, apiKey, ollamaModel]);
 
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!canProceed()) return;
+
+      if (activeStep < 3) {
+        handleNext();
+      } else {
+        handleComplete();
+      }
+    },
+    [activeStep, canProceed, handleNext, handleComplete]
+  );
+
   const renderStep = (): React.ReactNode => {
     switch (activeStep) {
       case 0:
@@ -211,42 +225,45 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           />
         </Stepper>
 
-        <Paper withBorder shadow="sm" p="xl" radius="md">
-          {renderStep()}
-        </Paper>
+        <form onSubmit={handleSubmit}>
+          <Paper withBorder shadow="sm" p="xl" radius="md">
+            {renderStep()}
+          </Paper>
 
-        <Group justify="space-between">
-          <Button
-            variant="default"
-            onClick={handleBack}
-            disabled={activeStep === 0}
-            leftSection={<IconArrowLeft size={16} />}
-            aria-label="Go to previous step"
-          >
-            Back
-          </Button>
+          <Group justify="space-between" mt="xl">
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleBack}
+              disabled={activeStep === 0}
+              leftSection={<IconArrowLeft size={16} />}
+              aria-label="Go to previous step"
+            >
+              Back
+            </Button>
 
-          {activeStep < 3 ? (
-            <Button
-              onClick={handleNext}
-              disabled={!canProceed()}
-              rightSection={<IconArrowRight size={16} />}
-              aria-label="Go to next step"
-            >
-              Next
-            </Button>
-          ) : (
-            <Button
-              onClick={handleComplete}
-              loading={isSubmitting}
-              rightSection={<IconRocket size={16} />}
-              color="green"
-              aria-label="Complete setup and get started"
-            >
-              Get Started
-            </Button>
-          )}
-        </Group>
+            {activeStep < 3 ? (
+              <Button
+                type="submit"
+                disabled={!canProceed()}
+                rightSection={<IconArrowRight size={16} />}
+                aria-label="Go to next step"
+              >
+                Next
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                loading={isSubmitting}
+                rightSection={<IconRocket size={16} />}
+                color="green"
+                aria-label="Complete setup and get started"
+              >
+                Get Started
+              </Button>
+            )}
+          </Group>
+        </form>
       </Stack>
     </Container>
   );
