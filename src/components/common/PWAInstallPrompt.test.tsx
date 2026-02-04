@@ -119,6 +119,63 @@ describe('PWAInstallPrompt', () => {
 
       expect(event.prompt).toHaveBeenCalled();
     });
+
+    it('hides prompt after user accepts installation', async () => {
+      renderPWAInstallPrompt();
+
+      const event = createMockInstallPromptEvent('accepted');
+      fireEvent(window, event);
+
+      expect(screen.getByText('Install HemoIO')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
+
+      // Wait for the async operation to complete
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Install HemoIO')).not.toBeInTheDocument();
+      });
+    });
+
+    it('hides prompt after user dismisses browser dialog', async () => {
+      renderPWAInstallPrompt();
+
+      const event = createMockInstallPromptEvent('dismissed');
+      fireEvent(window, event);
+
+      expect(screen.getByText('Install HemoIO')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
+
+      // Wait for the async operation to complete
+      await vi.waitFor(() => {
+        expect(screen.queryByText('Install HemoIO')).not.toBeInTheDocument();
+      });
+    });
+
+    it('handles errors gracefully', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      renderPWAInstallPrompt();
+
+      const event = new Event('beforeinstallprompt') as BeforeInstallPromptEvent;
+      event.prompt = vi.fn().mockRejectedValue(new Error('Test error'));
+      event.userChoice = Promise.resolve({ outcome: 'dismissed' });
+      fireEvent(window, event);
+
+      expect(screen.getByText('Install HemoIO')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
+
+      // Wait for the error to be logged and prompt to be cleared
+      await vi.waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith(
+          'PWA Install: Error showing install prompt',
+          expect.any(Error)
+        );
+      });
+
+      consoleSpy.mockRestore();
+    });
   });
 
   describe('Dismiss', () => {

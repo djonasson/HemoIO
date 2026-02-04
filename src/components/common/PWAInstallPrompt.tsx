@@ -36,6 +36,7 @@ export function PWAInstallPrompt(): React.ReactNode {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(checkIsDismissed);
   const [isInstalled, setIsInstalled] = useState(checkIsInstalled);
+  const [isInstalling, setIsInstalling] = useState(false);
 
   useEffect(() => {
     // Skip if already installed
@@ -62,13 +63,30 @@ export function PWAInstallPrompt(): React.ReactNode {
   }, [isInstalled]);
 
   const handleInstall = async () => {
-    if (!installPrompt) return;
+    if (!installPrompt) {
+      console.warn('PWA Install: No install prompt available');
+      return;
+    }
 
-    await installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
+    setIsInstalling(true);
+    try {
+      await installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
 
-    if (outcome === 'accepted') {
+      if (outcome === 'accepted') {
+        console.log('PWA Install: User accepted the install prompt');
+        setInstallPrompt(null);
+      } else {
+        console.log('PWA Install: User dismissed the install prompt');
+        // The prompt can only be used once, so clear it
+        setInstallPrompt(null);
+      }
+    } catch (error) {
+      console.error('PWA Install: Error showing install prompt', error);
+      // Clear the prompt as it may be invalid
       setInstallPrompt(null);
+    } finally {
+      setIsInstalling(false);
     }
   };
 
@@ -110,6 +128,7 @@ export function PWAInstallPrompt(): React.ReactNode {
         leftSection={<IconDownload size={16} />}
         onClick={handleInstall}
         size="sm"
+        loading={isInstalling}
       >
         Install App
       </Button>
