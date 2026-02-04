@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Test tube body -->
+  <path d="M20 8h24v4H20z" fill="#64748b"/>
+  <rect x="22" y="12" width="20" height="40" rx="2" ry="2" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Rounded bottom -->
+  <path d="M22 52v2a8 8 0 0 0 8 8h4a8 8 0 0 0 8-8v-2H22z" fill="#e2e8f0" stroke="#64748b" stroke-width="2"/>
+
+  <!-- Liquid fill -->
+  <path d="M24 36v16a6 6 0 0 0 6 6h4a6 6 0 0 0 6-6V36H24z" fill="#228be6"/>
+
+  <!-- Liquid surface highlight -->
+  <ellipse cx="32" cy="36" rx="8" ry="2" fill="#3b9ced"/>
+
+  <!-- Tube rim -->
+  <rect x="18" y="6" width="28" height="4" rx="1" fill="#94a3b8"/>
+
+  <!-- Measurement marks -->
+  <line x1="40" y1="20" x2="44" y2="20" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="40" y1="28" x2="44" y2="28" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="40" y1="36" x2="44" y2="36" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="40" y1="44" x2="44" y2="44" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- Glass reflection -->
+  <path d="M26 14v36" stroke="white" stroke-width="2" stroke-opacity="0.4" stroke-linecap="round"/>
+</svg>
