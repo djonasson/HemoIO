@@ -186,6 +186,8 @@ export class AnthropicProvider implements AIProvider {
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
         'anthropic-version': '2023-06-01',
+        // Required for CORS: Anthropic rejects browser-origin requests without this opt-in
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
         model: this.config.model,

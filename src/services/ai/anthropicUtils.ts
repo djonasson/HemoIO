@@ -87,6 +87,7 @@ export async function getAnthropicModels(
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       signal: controller.signal,
     });
@@ -145,6 +146,7 @@ export async function testAnthropicApiKey(apiKey: string): Promise<boolean> {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       signal: controller.signal,
     });

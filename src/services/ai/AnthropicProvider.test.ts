@@ -199,6 +199,7 @@ describe('AnthropicProvider', () => {
           headers: expect.objectContaining({
             'x-api-key': 'sk-ant-test-key',
             'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
           }),
         })
       );
