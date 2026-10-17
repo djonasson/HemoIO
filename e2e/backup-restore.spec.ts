@@ -10,6 +10,8 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
+import { seedLabData } from './steps/data.steps';
+import { expandLabResult } from './steps/timeline.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 
 // Mock lab result data for backup file
@@ -787,5 +789,28 @@ test.describe('Encrypted Backup', () => {
 
       await expect(page.getByText(/\.json or \.hemoio/i)).toBeVisible();
     });
+  });
+});
+
+test.describe('Backups from earlier versions', () => {
+  test('restores a schema version 1 backup with correct biomarker names', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // seedLabData writes schema version 1 backups, which use numeric biomarker
+    // IDs (dictionary positions): 3 was Hemoglobin, 22 was Glucose
+    await seedLabData(page, {
+      labResults: [
+        { id: 1, date: '2024-01-15T10:00:00.000Z', labName: 'Old Lab', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+      ],
+      testValues: [
+        { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+        { id: 2, labResultId: 1, biomarkerId: 22, value: 95, unit: 'mg/dL', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+      ],
+    });
+
+    const card = await expandLabResult(page, '2024-01-15');
+    const rows = card.getByRole('table', { name: 'Test values' }).getByRole('row');
+    await expect(rows.filter({ hasText: '14.5' })).toContainText('Hemoglobin');
+    await expect(rows.filter({ hasText: '95' })).toContainText('Glucose');
   });
 });

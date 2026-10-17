@@ -19,6 +19,7 @@ import {
 } from '@/types/backup';
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
 import { isValidBackupData, BACKUP_SCHEMA_VERSION } from '../export/jsonExport';
+import { migrateBackupData } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
@@ -160,6 +161,8 @@ export async function parseEncryptedBackup(
         `Current version supports up to v${BACKUP_SCHEMA_VERSION}.`
     );
   }
+
+  backupData = migrateBackupData(backupData);
 
   // Deserialize dates
   return {

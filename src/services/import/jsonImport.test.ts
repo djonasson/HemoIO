@@ -12,7 +12,7 @@ import {
   getImportPreview,
   type ParsedBackupData,
 } from './jsonImport';
-import { exportToJson, type ExportDataSources } from '../export/jsonExport';
+import { BACKUP_SCHEMA_VERSION, exportToJson, type ExportDataSources } from '../export/jsonExport';
 import type { LabResult, TestValue, UserNote } from '@/types';
 
 function createMockLabResult(id: number): LabResult {
@@ -155,7 +155,7 @@ describe('jsonImport', () => {
 
       const parsed = parseBackupJson(json);
 
-      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     });
   });
 
@@ -302,6 +302,44 @@ describe('jsonImport', () => {
 
       expect(preview.hasSettings).toBe(false);
       expect(preview.hasPreferences).toBe(false);
+    });
+  });
+
+  describe('schema version 1 backups', () => {
+    const v1 = {
+      schemaVersion: 1,
+      exportedAt: '2024-03-01T00:00:00.000Z',
+      appVersion: '1.0.0',
+      labResults: [
+        { id: 1, date: '2024-01-15T00:00:00.000Z', labName: 'Lab', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
+      ],
+      testValues: [
+        { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
+        { id: 2, labResultId: 1, biomarkerId: 10042, value: 2, unit: 'U/L', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
+      ],
+      userNotes: [
+        { id: 1, biomarkerId: 3, content: 'note', tags: [], createdAt: '2024-01-16T00:00:00.000Z', updatedAt: '2024-01-16T00:00:00.000Z' },
+      ],
+      userPreferences: {
+        theme: 'dark',
+        dateFormat: 'MM/DD/YYYY',
+        personalTargets: { 3: { low: 13 } },
+        unitPreferences: {},
+      },
+      settings: null,
+    };
+
+    it('converts biomarker IDs to keys', () => {
+      const parsed = parseBackupJson(JSON.stringify(v1));
+
+      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual(['hemoglobin', 'unknown:legacy-10042']);
+      expect(parsed.userNotes[0].biomarkerKey).toBe('hemoglobin');
+      expect(parsed.userPreferences?.personalTargets).toEqual({ hemoglobin: { low: 13 } });
+      expect(parsed.schemaVersion).toBe(2);
+    });
+
+    it('rejects backups from a newer version', () => {
+      expect(() => parseBackupJson(JSON.stringify({ ...v1, schemaVersion: 3 }))).toThrow(/newer version/);
     });
   });
 });

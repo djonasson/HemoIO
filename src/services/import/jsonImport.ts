@@ -4,6 +4,11 @@
  * Imports backup data from JSON format.
  */
 
+import {
+  migrateNoteRecord,
+  migratePreferenceMaps,
+  migrateTestValueRecord,
+} from '@data/migrations/biomarkerKeyMigration';
 import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
 import {
   type BackupData,
@@ -132,25 +137,27 @@ function deserializeUserNote(data: SerializedUserNote): UserNote {
 }
 
 /**
- * Migrate backup data from older schema versions
+ * Migrate backup data from older schema versions to the current one
  */
-function migrateBackupData(data: BackupData): BackupData {
-  const migrated = { ...data };
+export function migrateBackupData<T extends BackupData>(data: T): T {
+  let migrated = { ...data };
 
-  // Future migrations would go here
-  // Example:
-  // if (migrated.schemaVersion < 2) {
-  //   // Apply v1 -> v2 migration
-  //   migrated = migrateV1ToV2(migrated);
-  //   migrated.schemaVersion = 2;
-  // }
+  if (migrated.schemaVersion < 2) {
+    // v1 referenced biomarkers by their position in the dictionary
+    migrated = {
+      ...migrated,
+      testValues: migrated.testValues.map(migrateTestValueRecord),
+      userNotes: migrated.userNotes.map(migrateNoteRecord),
+      userPreferences: migrated.userPreferences
+        ? migratePreferenceMaps(migrated.userPreferences)
+        : migrated.userPreferences,
+      schemaVersion: 2,
+    };
+  }
 
   return migrated;
 }
 
-/**
- * Parse and validate backup JSON
- */
 export function parseBackupJson(jsonString: string): ParsedBackupData {
   let data: unknown;
 

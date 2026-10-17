@@ -194,3 +194,9 @@ Feature: Backup and Restore
     Then the backup button should have an accessible label
     And the restore section should have proper labels
     And progress indicators should announce updates
+
+  Scenario: Restore a backup made by an earlier version
+    Given I have a backup file created by an earlier version of HemoIO
+    When I restore it from the Data tab
+    Then my lab results should be restored
+    And each value should keep its biomarker name

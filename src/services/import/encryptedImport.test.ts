@@ -15,6 +15,7 @@ import { exportToEncryptedJson } from '../export/encryptedExport';
 import { exportToJson } from '../export/jsonExport';
 import type { ExportDataSources } from '../export/jsonExport';
 import type { Settings } from '@/types';
+import { encryptForBackup } from '@data/encryption/backupEncryption';
 import {
   ENCRYPTED_BACKUP_TYPE_ID,
   ENCRYPTED_BACKUP_SCHEMA_VERSION,
@@ -208,6 +209,35 @@ describe('encryptedImport', () => {
       expect(result.labResults[0].date).toBeInstanceOf(Date);
       expect(result.labResults[0].createdAt).toBeInstanceOf(Date);
       expect(result.exportedAt).toBeInstanceOf(Date);
+    });
+
+    it('converts biomarker IDs in schema version 1 backups to keys', async () => {
+      const password = 'SecurePassword123!';
+      const v1Payload = {
+        schemaVersion: 1,
+        exportedAt: '2024-03-01T00:00:00.000Z',
+        appVersion: '1.0.0',
+        labResults: [
+          { id: 1, date: '2024-01-15T00:00:00.000Z', labName: 'Lab', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
+        ],
+        testValues: [
+          { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
+        ],
+        userNotes: [],
+        userPreferences: null,
+        settings: null,
+      };
+      const { payload, metadata } = await encryptForBackup(JSON.stringify(v1Payload), password);
+      const encrypted = JSON.stringify({
+        type: ENCRYPTED_BACKUP_TYPE_ID,
+        version: ENCRYPTED_BACKUP_SCHEMA_VERSION,
+        encryption: metadata,
+        payload,
+      });
+
+      const result = await parseEncryptedBackup(encrypted, password);
+
+      expect(result.testValues[0].biomarkerKey).toBe('hemoglobin');
     });
 
     it('should throw error with wrong password', async () => {

@@ -9,7 +9,7 @@ import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '
 /**
  * Schema version for backup compatibility
  */
-export const BACKUP_SCHEMA_VERSION = 1;
+export const BACKUP_SCHEMA_VERSION = 2;
 
 /**
  * Complete backup data structure
