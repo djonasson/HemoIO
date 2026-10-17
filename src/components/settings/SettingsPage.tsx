@@ -332,6 +332,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             <StorageSettings />
             <BackupRestore
               dataSources={dataSources}
+              getApiKey={getApiKey}
               onRestore={onRestore}
               isProcessing={isRestoring || isLoading}
             />

@@ -3,10 +3,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { BackupRestore } from './BackupRestore';
-import type { ExportDataSources } from '@services/export';
+import { exportToEncryptedJson, type ExportDataSources } from '@services/export';
+import type { Settings } from '@/types';
+
+vi.mock('@services/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@services/export')>()),
+  exportToEncryptedJson: vi.fn().mockResolvedValue('{}'),
+  downloadEncryptedBackup: vi.fn(),
+}));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -146,6 +154,32 @@ describe('BackupRestore', () => {
       renderWithProviders(<BackupRestore {...defaultProps} isProcessing />);
 
       expect(screen.getByRole('button', { name: /create backup/i })).toBeDisabled();
+    });
+  });
+
+  describe('encrypted backup', () => {
+    it('includes the API key, which only encrypted backups may contain', async () => {
+      const user = userEvent.setup();
+      const settings = { storageProvider: 'local', aiProvider: 'anthropic', language: 'en' } as Settings;
+      const getApiKey = vi.fn().mockResolvedValue('sk-ant-secret-1234');
+      renderWithProviders(
+        <BackupRestore
+          {...defaultProps}
+          dataSources={{ ...createMockDataSources(), settings }}
+          getApiKey={getApiKey}
+        />
+      );
+
+      await user.click(screen.getByText('Encrypted', { exact: true }));
+      await user.click(screen.getByRole('button', { name: 'Create Encrypted Backup' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/^Backup Password/), 'Str0ng!Backup#Pass');
+      await user.type(within(dialog).getByLabelText(/^Confirm Password/), 'Str0ng!Backup#Pass');
+      await user.click(within(dialog).getByRole('button', { name: 'Create Encrypted Backup' }));
+
+      await waitFor(() => expect(exportToEncryptedJson).toHaveBeenCalled());
+      const [sources] = vi.mocked(exportToEncryptedJson).mock.calls[0];
+      expect(sources.settings).toMatchObject({ aiProvider: 'anthropic', aiApiKey: 'sk-ant-secret-1234' });
     });
   });
 });

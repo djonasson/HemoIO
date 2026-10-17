@@ -67,7 +67,7 @@ function getAppVersion(): string {
 /**
  * Sanitize settings to remove sensitive data
  */
-function sanitizeSettings(settings: Settings | null): Partial<Settings> | null {
+export function sanitizeSettings(settings: Settings | null): Partial<Settings> | null {
   if (!settings) {
     return null;
   }

@@ -11,6 +11,8 @@ const mockDb = {
   getAllLabResults: vi.fn(),
   getAllTestValues: vi.fn(),
   getAllNotes: vi.fn(),
+  getPreferences: vi.fn(),
+  getSettings: vi.fn(),
 };
 
 vi.mock('./useEncryptedDb', () => ({
@@ -23,6 +25,29 @@ vi.mock('./useEncryptedDb', () => ({
 describe('useExportData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDb.getPreferences.mockResolvedValue(undefined);
+    mockDb.getSettings.mockResolvedValue(undefined);
+  });
+
+  it('should include preferences and settings so backups carry them', async () => {
+    const preferences = {
+      unitPreferences: { glucose: 'mmol/L' },
+      personalTargets: { glucose: { high: 99 } },
+      theme: 'dark',
+      dateFormat: 'YYYY-MM-DD',
+    };
+    const settings = { storageProvider: 'local', aiProvider: 'anthropic', anthropicModel: 'claude-x', language: 'en' };
+    mockDb.getAllLabResults.mockResolvedValue([]);
+    mockDb.getAllTestValues.mockResolvedValue([]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+    mockDb.getPreferences.mockResolvedValue(preferences);
+    mockDb.getSettings.mockResolvedValue(settings);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.dataSources.userPreferences).toEqual(preferences);
+    expect(result.current.dataSources.settings).toEqual(settings);
   });
 
   it('should return empty data sources when db returns empty arrays', async () => {

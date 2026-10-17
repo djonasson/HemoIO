@@ -9,9 +9,11 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
+import * as fs from 'fs';
 import { setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { expandLabResult } from './steps/timeline.steps';
+import { configureAnthropic, mockAnthropicApi, openAISettings } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 
 // Mock lab result data for backup file
@@ -812,5 +814,53 @@ test.describe('Backups from earlier versions', () => {
     const rows = card.getByRole('table', { name: 'Test values' }).getByRole('row');
     await expect(rows.filter({ hasText: '14.5' })).toContainText('Hemoglobin');
     await expect(rows.filter({ hasText: '95' })).toContainText('Glucose');
+  });
+});
+
+test.describe('Encrypted backup restores the API key', () => {
+  test('restores data, AI provider and API key from an encrypted backup', async ({ page, browser }) => {
+    // Device A: configure Anthropic with a key, add data, create an encrypted backup
+    await mockAnthropicApi(page);
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await configureAnthropic(page); // saves key ending in "0000"
+    await seedLabData(page);
+    await page.locator('nav').getByText('Settings', { exact: true }).click();
+    await page.getByRole('tab', { name: 'Data' }).click();
+    await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
+    await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+    const exportDialog = page.getByRole('dialog');
+    await exportDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+    await exportDialog.getByRole('textbox', { name: 'Confirm Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+    const backupPath = writeTempFile('restore.hemoio', fs.readFileSync(await (await downloadPromise).path()));
+
+    // Device B: a fresh install restores the backup
+    const otherContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    try {
+      const other = await otherContext.newPage();
+      await mockAnthropicApi(other);
+      await other.goto('/');
+      await setupOrUnlock(other);
+      await other.locator('nav').getByText('Settings', { exact: true }).click();
+      await other.getByRole('tab', { name: 'Data' }).click();
+      await other.locator('input[type="file"]').setInputFiles(backupPath);
+      const passwordDialog = other.getByRole('dialog');
+      await passwordDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+      await passwordDialog.getByRole('button', { name: /Decrypt/ }).click();
+      await other.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+
+      // Data restored
+      await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();
+      // AI provider and API key restored
+      await openAISettings(other);
+      await expect(other.locator('input[aria-label="Select AI provider"]')).toHaveValue(/Anthropic/);
+      await expect(other.getByText('Configured', { exact: true })).toBeVisible();
+      await expect(other.getByText('••••••••0000')).toBeVisible();
+    } finally {
+      await otherContext.close();
+      removeTempFile(backupPath);
+    }
   });
 });

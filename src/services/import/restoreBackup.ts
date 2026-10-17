@@ -1,19 +1,22 @@
 /**
- * Restore a parsed backup into the database, replacing existing data.
+ * Restore a parsed backup into the database, replacing existing lab data
+ * (results, values, notes) and, when the backup has them, preferences.
+ * Device settings (storage location, AI configuration) are left alone.
  *
  * Records get new IDs on insert (IndexedDB auto-increment does not reset when
  * tables are cleared), so references between records are rewritten from the
  * backup's IDs to the newly assigned ones.
  */
 
-import type { LabResult, TestValue, UserNote } from '@/types';
+import type { LabResult, TestValue, UserNote, UserPreferences } from '@/types';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
  * The database operations a restore needs (implemented by EncryptedDb)
  */
 export interface RestoreTarget {
-  clearAllData(): Promise<void>;
+  clearLabData(): Promise<void>;
+  savePreferences(preferences: Omit<UserPreferences, 'id'>): Promise<number>;
   addLabResult(labResult: Omit<LabResult, 'id'>): Promise<number>;
   addTestValue(testValue: Omit<TestValue, 'id'>): Promise<number>;
   addUserNote(note: Omit<UserNote, 'id'>): Promise<number>;
@@ -35,7 +38,7 @@ export async function restoreBackup(
   db: RestoreTarget,
   data: ParsedBackupData
 ): Promise<RestoreSummary> {
-  await db.clearAllData();
+  await db.clearLabData();
   const summary: RestoreSummary = { labResults: 0, testValues: 0, notes: 0 };
 
   const labResultIds = new Map<number, number>();
@@ -61,6 +64,10 @@ export async function restoreBackup(
       testValueId: note.testValueId !== undefined ? testValueIds.get(note.testValueId) : undefined,
     });
     summary.notes++;
+  }
+
+  if (data.userPreferences) {
+    await db.savePreferences(withoutId(data.userPreferences));
   }
 
   return summary;

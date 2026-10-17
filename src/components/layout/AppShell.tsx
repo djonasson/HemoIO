@@ -42,7 +42,7 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
-import { restoreBackup } from '@services/import';
+import { restoreAISettings, restoreBackup } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
@@ -99,6 +99,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [isRestoring, setIsRestoring] = useState(false);
   const { dataSources, labResultsData, biomarkerOptions, refresh: refreshExportData } = useExportData();
   const { isReconciling } = useLegacyKeyReconciliation();
+  const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
+  const { setApiKey } = useEncryptedApiKey();
 
   // Export data loads on mount; reload it once stored keys are reconciled
   useEffect(() => {
@@ -193,6 +195,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
+        await restoreAISettings(data, {
+          setAiProvider,
+          setOpenaiModel,
+          setAnthropicModel,
+          setOllamaModel,
+          setApiKey,
+        });
 
         // Refresh export data
         await refreshExportData();
@@ -222,7 +231,17 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         setIsRestoring(false);
       }
     },
-    [db, isReady, refreshExportData, syncNow]
+    [
+      db,
+      isReady,
+      refreshExportData,
+      syncNow,
+      setAiProvider,
+      setOpenaiModel,
+      setAnthropicModel,
+      setOllamaModel,
+      setApiKey,
+    ]
   );
 
   return (

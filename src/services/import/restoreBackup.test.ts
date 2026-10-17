@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { restoreBackup, type RestoreTarget } from './restoreBackup';
 import type { ParsedBackupData } from './jsonImport';
-import type { LabResult, TestValue, UserNote } from '@/types';
+import type { LabResult, TestValue, UserNote, UserPreferences } from '@/types';
 
 /**
  * In-memory stand-in for the encrypted database. IDs continue from an
@@ -14,12 +14,17 @@ function createFakeDb(idOffset = 100) {
     labResults: [] as LabResult[],
     testValues: [] as TestValue[],
     notes: [] as UserNote[],
+    preferences: undefined as Omit<UserPreferences, 'id'> | undefined,
     calls: [] as string[],
-    async clearAllData() {
+    async clearLabData() {
       db.calls.push('clear');
       db.labResults = [];
       db.testValues = [];
       db.notes = [];
+    },
+    async savePreferences(preferences: Omit<UserPreferences, 'id'>) {
+      db.preferences = preferences;
+      return 1;
     },
     async addLabResult(labResult: Omit<LabResult, 'id'>) {
       const id = nextId++;
@@ -127,5 +132,24 @@ describe('restoreBackup', () => {
 
     const ids = [...db.labResults, ...db.testValues, ...db.notes].map((r) => r.id);
     expect(ids.every((id) => id! >= 100)).toBe(true);
+  });
+
+  it('keeps existing preferences when the backup has none', async () => {
+    const db = createFakeDb();
+    const existing = { unitPreferences: {}, personalTargets: { glucose: { high: 99 } }, theme: 'dark' as const, dateFormat: 'MM/DD/YYYY' as const };
+    db.preferences = existing;
+
+    await restoreBackup(db, backup({ userPreferences: null }));
+
+    expect(db.preferences).toBe(existing);
+  });
+
+  it('restores preferences from the backup', async () => {
+    const db = createFakeDb();
+    const fromBackup = { id: 7, unitPreferences: { glucose: 'mmol/L' }, personalTargets: {}, theme: 'light' as const, dateFormat: 'YYYY-MM-DD' as const };
+
+    await restoreBackup(db, backup({ userPreferences: fromBackup }));
+
+    expect(db.preferences).toEqual({ unitPreferences: { glucose: 'mmol/L' }, personalTargets: {}, theme: 'light', dateFormat: 'YYYY-MM-DD' });
   });
 });

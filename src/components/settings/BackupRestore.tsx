@@ -65,6 +65,8 @@ export interface BackupRestoreProps {
   onRestore: (data: ParsedBackupData | ParsedEncryptedBackupData) => Promise<void>;
   /** Whether backup/restore is currently in progress */
   isProcessing?: boolean;
+  /** Decrypted AI API key; included only in encrypted backups */
+  getApiKey?: () => Promise<string | null>;
 }
 
 /**
@@ -74,6 +76,7 @@ export function BackupRestore({
   dataSources,
   onRestore,
   isProcessing = false,
+  getApiKey,
 }: BackupRestoreProps): React.ReactNode {
   // Backup state
   const [backupType, setBackupType] = useState<BackupType>('standard');
@@ -144,7 +147,13 @@ export function BackupRestore({
     setSuccess(null);
 
     try {
-      const json = await exportToEncryptedJson(dataSources, {
+      // The API key is kept outside the database; add it for this export only
+      const apiKey = getApiKey ? await getApiKey() : null;
+      const sources =
+        apiKey && dataSources.settings
+          ? { ...dataSources, settings: { ...dataSources.settings, aiApiKey: apiKey } }
+          : dataSources;
+      const json = await exportToEncryptedJson(sources, {
         password: exportPassword,
         prettyPrint: false,
       });
@@ -159,7 +168,7 @@ export function BackupRestore({
       setExportPassword('');
       setExportPasswordConfirm('');
     }
-  }, [dataSources, exportPassword, isExportPasswordValid]);
+  }, [dataSources, exportPassword, isExportPasswordValid, getApiKey]);
 
   // Handle backup type selection and create
   const handleCreateBackup = useCallback(() => {

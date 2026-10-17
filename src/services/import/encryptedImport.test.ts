@@ -189,6 +189,27 @@ describe('encryptedImport', () => {
       expect(result.wasEncrypted).toBe(true);
     });
 
+    it('should round-trip AI model choices', async () => {
+      const password = 'SecurePassword123!';
+      const sources = {
+        ...mockDataSources,
+        settings: { ...mockDataSources.settings!, aiProvider: 'anthropic', anthropicModel: 'claude-x', openaiModel: 'gpt-y', ollamaModel: 'llama-z' } as Settings,
+      };
+      const encrypted = await exportToEncryptedJson(sources, { password });
+
+      const result = await parseEncryptedBackup(encrypted, password);
+
+      expect(result.fullSettings).toMatchObject({
+        aiProvider: 'anthropic',
+        anthropicModel: 'claude-x',
+        openaiModel: 'gpt-y',
+        ollamaModel: 'llama-z',
+      });
+      // The unencrypted settings section never carries the key
+      expect(result.settings).not.toHaveProperty('aiApiKey');
+      expect(result.settings).toMatchObject({ anthropicModel: 'claude-x' });
+    });
+
     it('should include fullSettings with API key', async () => {
       const password = 'SecurePassword123!';
       const encrypted = await exportToEncryptedJson(mockDataSources, { password });

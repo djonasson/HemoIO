@@ -18,7 +18,7 @@ import {
   ENCRYPTED_BACKUP_EXTENSION,
 } from '@/types/backup';
 import { encryptForBackup } from '@data/encryption/backupEncryption';
-import { BACKUP_SCHEMA_VERSION, type ExportDataSources } from './jsonExport';
+import { BACKUP_SCHEMA_VERSION, sanitizeSettings, type ExportDataSources } from './jsonExport';
 
 /**
  * Serialize date to ISO string
@@ -46,6 +46,9 @@ function extractFullSettings(settings: Settings | null): FullSettingsData | null
     storageProvider: settings.storageProvider,
     aiProvider: settings.aiProvider,
     aiApiKey: settings.aiApiKey,
+    openaiModel: settings.openaiModel,
+    anthropicModel: settings.anthropicModel,
+    ollamaModel: settings.ollamaModel,
     language: settings.language,
   };
 }
@@ -76,13 +79,7 @@ function createFullBackupData(sources: ExportDataSources): FullBackupData {
     })),
     userPreferences: sources.userPreferences,
     // Settings without API key (for standard fields)
-    settings: sources.settings
-      ? {
-          storageProvider: sources.settings.storageProvider,
-          aiProvider: sources.settings.aiProvider,
-          language: sources.settings.language,
-        }
-      : null,
+    settings: sanitizeSettings(sources.settings),
     // Full settings including API key (only in encrypted backups)
     fullSettings: extractFullSettings(sources.settings),
   };

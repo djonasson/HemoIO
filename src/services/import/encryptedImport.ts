@@ -192,6 +192,9 @@ export async function parseEncryptedBackup(
           storageProvider: backupData.fullSettings.storageProvider as Settings['storageProvider'],
           aiProvider: backupData.fullSettings.aiProvider as Settings['aiProvider'],
           aiApiKey: backupData.fullSettings.aiApiKey,
+          openaiModel: backupData.fullSettings.openaiModel,
+          anthropicModel: backupData.fullSettings.anthropicModel,
+          ollamaModel: backupData.fullSettings.ollamaModel,
           language: backupData.fullSettings.language,
         }
       : null,

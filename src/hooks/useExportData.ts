@@ -76,19 +76,22 @@ export function useExportData(): UseExportDataResult {
 
     try {
       // Fetch all data in parallel
-      const [labResults, testValues, userNotes] = await Promise.all([
+      const [labResults, testValues, userNotes, userPreferences, settings] = await Promise.all([
         db.getAllLabResults(),
         db.getAllTestValues(),
         db.getAllNotes(),
+        db.getPreferences(),
+        db.getSettings(),
       ]);
 
-      // Build data sources for JSON export
+      // Build data sources for JSON export. Exporters decide what of the
+      // settings a backup may contain (standard backups omit the API key).
       const sources: ExportDataSources = {
         labResults,
         testValues,
         userNotes,
-        userPreferences: null, // TODO: Add when preferences are implemented
-        settings: null, // TODO: Add when settings storage is implemented
+        userPreferences: userPreferences ?? null,
+        settings: settings ?? null,
       };
 
       setDataSources(sources);

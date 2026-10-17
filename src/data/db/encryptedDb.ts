@@ -443,13 +443,15 @@ export class EncryptedDb {
     };
   }
 
-  async clearAllData(): Promise<void> {
+  /**
+   * Remove all lab data (results, values, notes). Settings and preferences
+   * are kept: they are device configuration, not lab data.
+   */
+  async clearLabData(): Promise<void> {
     await Promise.all([
       this.db.labResults.clear(),
       this.db.testValues.clear(),
       this.db.userNotes.clear(),
-      this.db.settings.clear(),
-      this.db.userPreferences.clear(),
     ]);
   }
 }

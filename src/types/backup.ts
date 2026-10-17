@@ -78,6 +78,10 @@ export interface FullSettingsData {
   aiProvider?: string;
   /** AI API key (encrypted in app, plaintext in backup payload) */
   aiApiKey?: string;
+  /** Selected model per AI provider */
+  openaiModel?: string;
+  anthropicModel?: string;
+  ollamaModel?: string;
   /** Language preference */
   language?: string;
 }
