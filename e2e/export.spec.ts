@@ -171,11 +171,12 @@ test.describe('Export Dialog', () => {
 });
 
 test.describe('Export with Data', () => {
-  // Named test values (as extracted from a report) so exports can be checked by name
+  // Named test values as a v1 backup stores them: biomarkerId is the legacy
+  // dictionary position (3 = Hemoglobin, 22 = Glucose)
   const TEST_VALUES = [
-    { id: 1, labResultId: 1, biomarkerId: 1, value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-    { id: 2, labResultId: 1, biomarkerId: 2, value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-    { id: 3, labResultId: 2, biomarkerId: 1, value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
+    { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 2, labResultId: 1, biomarkerId: 22, value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 3, labResultId: 2, biomarkerId: 3, value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
   ];
 
   test.beforeEach(async ({ page }) => {

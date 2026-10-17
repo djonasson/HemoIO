@@ -28,11 +28,14 @@ export const SEED_LAB_RESULTS = [
   },
 ];
 
+// Written as a schema version 1 backup: biomarkerId is the legacy dictionary
+// position (3 = Hemoglobin, 22 = Glucose), converted to a key on restore
 export const SEED_TEST_VALUES = [
   {
     id: 1,
     labResultId: 1,
-    biomarkerId: 1,
+    biomarkerId: 3,
+    rawText: 'Hemoglobin',
     value: 14.5,
     unit: 'g/dL',
     referenceRangeLow: 12.0,
@@ -44,7 +47,8 @@ export const SEED_TEST_VALUES = [
   {
     id: 2,
     labResultId: 1,
-    biomarkerId: 2,
+    biomarkerId: 22,
+    rawText: 'Glucose',
     value: 125,
     unit: 'mg/dL',
     referenceRangeLow: 70,
@@ -56,7 +60,8 @@ export const SEED_TEST_VALUES = [
   {
     id: 3,
     labResultId: 2,
-    biomarkerId: 1,
+    biomarkerId: 3,
+    rawText: 'Hemoglobin',
     value: 15.0,
     unit: 'g/dL',
     referenceRangeLow: 12.0,
