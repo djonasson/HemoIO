@@ -182,4 +182,57 @@ describe('BackupRestore', () => {
       expect(sources.settings).toMatchObject({ aiProvider: 'anthropic', aiApiKey: 'sk-ant-secret-1234' });
     });
   });
+
+  describe('restoring AI configuration', () => {
+    function backupFileWithAISettings(): File {
+      const backup = {
+        schemaVersion: 2,
+        exportedAt: '2024-03-01T00:00:00.000Z',
+        appVersion: '1.0.0',
+        labResults: [],
+        testValues: [],
+        userNotes: [],
+        userPreferences: null,
+        settings: { storageProvider: 'local', aiProvider: 'anthropic', anthropicModel: 'claude-x', language: 'en' },
+      };
+      return new File([JSON.stringify(backup)], 'backup.json', { type: 'application/json' });
+    }
+
+    async function openRestoreDialog(hasApiKey: boolean, onRestore = vi.fn().mockResolvedValue(undefined)) {
+      const user = userEvent.setup();
+      renderWithProviders(<BackupRestore {...defaultProps} onRestore={onRestore} hasApiKey={hasApiKey} />);
+      await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, backupFileWithAISettings());
+      const dialog = await screen.findByRole('dialog', { name: 'Restore from Backup' });
+      return { user, dialog, onRestore };
+    }
+
+    it('shows what the backup would change in the AI configuration', async () => {
+      const { dialog } = await openRestoreDialog(false);
+
+      expect(within(dialog).getByText(/anthropic/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/claude-x/)).toBeInTheDocument();
+    });
+
+    it('restores the AI configuration by default when none is set up yet', async () => {
+      const { user, dialog, onRestore } = await openRestoreDialog(false);
+
+      expect(within(dialog).getByRole('checkbox', { name: /restore AI configuration/i })).toBeChecked();
+      await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+      await waitFor(() =>
+        expect(onRestore).toHaveBeenCalledWith(expect.anything(), { restoreAISettings: true })
+      );
+    });
+
+    it('keeps an existing AI configuration unless the user opts in', async () => {
+      const { user, dialog, onRestore } = await openRestoreDialog(true);
+
+      expect(within(dialog).getByRole('checkbox', { name: /restore AI configuration/i })).not.toBeChecked();
+      await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+      await waitFor(() =>
+        expect(onRestore).toHaveBeenCalledWith(expect.anything(), { restoreAISettings: false })
+      );
+    });
+  });
 });

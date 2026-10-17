@@ -817,39 +817,86 @@ test.describe('Backups from earlier versions', () => {
   });
 });
 
-test.describe('Encrypted backup restores the API key', () => {
-  test('restores data, AI provider and API key from an encrypted backup', async ({ page, browser }) => {
-    // Device A: configure Anthropic with a key, add data, create an encrypted backup
-    await mockAnthropicApi(page);
-    await page.goto('/');
-    await setupOrUnlock(page);
-    await configureAnthropic(page); // saves key ending in "0000"
-    await seedLabData(page);
-    await page.locator('nav').getByText('Settings', { exact: true }).click();
-    await page.getByRole('tab', { name: 'Data' }).click();
-    await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
-    await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
-    const exportDialog = page.getByRole('dialog');
-    await exportDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
-    await exportDialog.getByRole('textbox', { name: 'Confirm Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
-    const downloadPromise = page.waitForEvent('download');
-    await exportDialog.getByRole('button', { name: 'Create Encrypted Backup' }).click();
-    const backupPath = writeTempFile('restore.hemoio', fs.readFileSync(await (await downloadPromise).path()));
+/**
+ * On a fresh install: configure Anthropic with the default test key (ending
+ * in "0000"), add data, and create an encrypted backup. Returns its path.
+ */
+async function createEncryptedBackupWithApiKey(page: Page): Promise<string> {
+  await mockAnthropicApi(page);
+  await page.goto('/');
+  await setupOrUnlock(page);
+  await configureAnthropic(page);
+  await seedLabData(page);
+  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Data' }).click();
+  await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
+  await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+  const exportDialog = page.getByRole('dialog');
+  await exportDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+  await exportDialog.getByRole('textbox', { name: 'Confirm Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+  const downloadPromise = page.waitForEvent('download');
+  await exportDialog.getByRole('button', { name: 'Create Encrypted Backup' }).click();
+  return writeTempFile('restore.hemoio', fs.readFileSync(await (await downloadPromise).path()));
+}
 
-    // Device B: a fresh install restores the backup
+/**
+ * Open the restore dialog for an encrypted backup on `page` (already unlocked)
+ */
+async function openEncryptedRestore(page: Page, backupPath: string) {
+  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Data' }).click();
+  await page.locator('input[type="file"]').setInputFiles(backupPath);
+  const passwordDialog = page.getByRole('dialog');
+  await passwordDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
+  await passwordDialog.getByRole('button', { name: /Decrypt/ }).click();
+  return page.getByRole('dialog', { name: 'Restore from Backup' });
+}
+
+test.describe('Encrypted backup restores the API key', () => {
+  test('keeps my own API key unless I choose to restore the backup\'s', async ({ page, browser }) => {
+    const backupPath = await createEncryptedBackupWithApiKey(page);
+
+    // Device B already has its own key, ending in "1111"
     const otherContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
     try {
       const other = await otherContext.newPage();
       await mockAnthropicApi(other);
       await other.goto('/');
       await setupOrUnlock(other);
-      await other.locator('nav').getByText('Settings', { exact: true }).click();
-      await other.getByRole('tab', { name: 'Data' }).click();
-      await other.locator('input[type="file"]').setInputFiles(backupPath);
-      const passwordDialog = other.getByRole('dialog');
-      await passwordDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
-      await passwordDialog.getByRole('button', { name: /Decrypt/ }).click();
-      await other.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+      await configureAnthropic(other, 'sk-ant-test-1111111111111111111111');
+
+      const restoreDialog = await openEncryptedRestore(other, backupPath);
+      const restoreAI = restoreDialog.getByRole('checkbox', { name: /restore AI configuration/i });
+      await expect(restoreAI).not.toBeChecked();
+      await expect(restoreDialog.getByText(/ending in 0000/)).toBeVisible();
+      await expect(restoreDialog.getByText(/Your current API key will be replaced/)).toBeVisible();
+      await restoreDialog.getByRole('button', { name: 'Restore' }).click();
+
+      await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();
+      await openAISettings(other);
+      await expect(other.getByText('••••••••1111')).toBeVisible();
+    } finally {
+      await otherContext.close();
+      removeTempFile(backupPath);
+    }
+  });
+
+  test('restores data, AI provider and API key from an encrypted backup', async ({ page, browser }) => {
+    const backupPath = await createEncryptedBackupWithApiKey(page);
+
+    // Device B: a fresh install with no API key restores the backup
+    const otherContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    try {
+      const other = await otherContext.newPage();
+      await mockAnthropicApi(other);
+      await other.goto('/');
+      await setupOrUnlock(other);
+
+      const restoreDialog = await openEncryptedRestore(other, backupPath);
+      await expect(restoreDialog.getByText(/Anthropic/)).toBeVisible();
+      await expect(restoreDialog.getByText(/ending in 0000/)).toBeVisible();
+      await expect(restoreDialog.getByRole('checkbox', { name: /restore AI configuration/i })).toBeChecked();
+      await restoreDialog.getByRole('button', { name: 'Restore' }).click();
 
       // Data restored
       await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();

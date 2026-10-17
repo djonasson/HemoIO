@@ -20,6 +20,7 @@ import {
   SegmentedControl,
   PasswordInput,
   Badge,
+  Checkbox,
 } from '@mantine/core';
 import {
   IconDownload,
@@ -49,6 +50,7 @@ import {
   validateEncryptedBackupFile,
   parseEncryptedBackup,
   getEncryptedImportPreview,
+  describeBackupAISettings,
   type ParsedBackupData,
   type ParsedEncryptedBackupData,
 } from '@services/import';
@@ -62,12 +64,24 @@ export interface BackupRestoreProps {
   /** Data sources for backup */
   dataSources: ExportDataSources;
   /** Called when restore is initiated */
-  onRestore: (data: ParsedBackupData | ParsedEncryptedBackupData) => Promise<void>;
+  onRestore: (
+    data: ParsedBackupData | ParsedEncryptedBackupData,
+    options: RestoreOptions
+  ) => Promise<void>;
   /** Whether backup/restore is currently in progress */
   isProcessing?: boolean;
   /** Decrypted AI API key; included only in encrypted backups */
   getApiKey?: () => Promise<string | null>;
+  /** Whether an AI API key is currently configured */
+  hasApiKey?: boolean;
 }
+
+export interface RestoreOptions {
+  /** Also apply the backup's AI provider, model and API key */
+  restoreAISettings: boolean;
+}
+
+const AI_PROVIDER_LABELS = { openai: 'OpenAI', anthropic: 'Anthropic', ollama: 'Ollama' } as const;
 
 /**
  * BackupRestore component for the settings page
@@ -77,7 +91,11 @@ export function BackupRestore({
   onRestore,
   isProcessing = false,
   getApiKey,
+  hasApiKey = false,
 }: BackupRestoreProps): React.ReactNode {
+  // A backup's AI configuration decides where lab reports are sent, so it
+  // only replaces an existing setup when the user opts in
+  const [restoreAIConfig, setRestoreAIConfig] = useState(false);
   // Backup state
   const [backupType, setBackupType] = useState<BackupType>('standard');
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
@@ -223,12 +241,13 @@ export function BackupRestore({
         // Parse standard backup directly
         const parsed = parseBackupJson(content);
         setParsedData(parsed);
+        setRestoreAIConfig(!hasApiKey);
         setRestoreConfirmOpen(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read backup file');
     }
-  }, []);
+  }, [hasApiKey]);
 
   // Handle decryption of encrypted backup
   const handleDecryptBackup = useCallback(async () => {
@@ -240,6 +259,7 @@ export function BackupRestore({
     try {
       const parsed = await parseEncryptedBackup(pendingFileContent, importPassword);
       setParsedData(parsed);
+      setRestoreAIConfig(!hasApiKey);
       setShowImportPasswordModal(false);
       setRestoreConfirmOpen(true);
       setPendingFileContent(null);
@@ -248,7 +268,7 @@ export function BackupRestore({
     } finally {
       setIsDecrypting(false);
     }
-  }, [pendingFileContent, importPassword]);
+  }, [pendingFileContent, importPassword, hasApiKey]);
 
   // Handle restore confirmation
   const handleConfirmRestore = useCallback(async () => {
@@ -259,7 +279,9 @@ export function BackupRestore({
     setRestoreConfirmOpen(false);
 
     try {
-      await onRestore(parsedData);
+      await onRestore(parsedData, {
+        restoreAISettings: restoreAIConfig && describeBackupAISettings(parsedData) !== null,
+      });
       setSuccess('Data restored successfully');
       setSelectedFile(null);
       setParsedData(null);
@@ -269,7 +291,7 @@ export function BackupRestore({
     } finally {
       setIsRestoring(false);
     }
-  }, [parsedData, onRestore]);
+  }, [parsedData, onRestore, restoreAIConfig]);
 
   // Handle cancel restore
   const handleCancelRestore = useCallback(() => {
@@ -295,6 +317,8 @@ export function BackupRestore({
   }, []);
 
   // Get import preview - handle both standard and encrypted backups
+  const aiSummary = parsedData ? describeBackupAISettings(parsedData) : null;
+
   const importPreview: {
     labResultCount: number;
     testValueCount: number;
@@ -593,6 +617,23 @@ export function BackupRestore({
                 )}
               </Stack>
             </Paper>
+          )}
+
+          {aiSummary && (
+            <Checkbox
+              checked={restoreAIConfig}
+              onChange={(event) => setRestoreAIConfig(event.currentTarget.checked)}
+              label="Also restore AI configuration"
+              description={
+                `Sets the AI provider to ${AI_PROVIDER_LABELS[aiSummary.provider]}` +
+                (aiSummary.model ? ` (${aiSummary.model})` : '') +
+                (aiSummary.apiKeyLastFour
+                  ? ` and the API key to one ending in ${aiSummary.apiKeyLastFour}`
+                  : '') +
+                '. Lab reports will then be analyzed with this configuration.' +
+                (hasApiKey ? ' Your current API key will be replaced.' : '')
+              }
+            />
           )}
 
           <Group justify="flex-end" gap="sm">

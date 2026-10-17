@@ -134,10 +134,22 @@ Feature: Backup and Restore
 
   Scenario: Restore encrypted backup restores API key
     Given I have a valid .hemoio encrypted backup that includes an API key
+    And I have not configured an API key on this device
     When I restore from the encrypted backup with the correct password
-    Then my data should be restored
+    Then I should see which AI provider and API key the backup would set
+    And my data should be restored
     And my API key should be restored and functional
     And I should see a success message
+
+  Scenario: Restoring a backup does not silently replace my AI configuration
+    Given I have configured an API key on this device
+    And I have an encrypted backup that includes a different API key
+    When I restore from the encrypted backup
+    Then I should see that restoring the AI configuration would replace my API key
+    And restoring the AI configuration should be off by default
+    When I restore without turning it on
+    Then my data should be restored
+    And my own API key should still be configured
 
   # Error Handling
   Scenario: Restore with invalid file format

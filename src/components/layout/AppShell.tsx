@@ -44,6 +44,7 @@ import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
 import { restoreAISettings, restoreBackup } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
+import type { RestoreOptions } from '@components/settings';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
 type View = 'timeline' | 'import' | 'trends' | 'dictionary' | 'settings';
@@ -186,7 +187,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   }, []);
 
   const handleRestore = useCallback(
-    async (data: ParsedBackupData) => {
+    async (data: ParsedBackupData, options: RestoreOptions) => {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
@@ -195,13 +196,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
-        await restoreAISettings(data, {
-          setAiProvider,
-          setOpenaiModel,
-          setAnthropicModel,
-          setOllamaModel,
-          setApiKey,
-        });
+        if (options.restoreAISettings) {
+          await restoreAISettings(data, {
+            setAiProvider,
+            setOpenaiModel,
+            setAnthropicModel,
+            setOllamaModel,
+            setApiKey,
+          });
+        }
 
         // Refresh export data
         await refreshExportData();
@@ -356,7 +359,7 @@ interface MainContentProps {
   view: View;
   onImportComplete: (results: ReviewedResult[]) => void;
   onNavigateToImport: () => void;
-  onRestore: (data: ParsedBackupData) => Promise<void>;
+  onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }
 

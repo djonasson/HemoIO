@@ -16,18 +16,53 @@ export interface AISettingsTarget {
   setApiKey(apiKey: string): Promise<void>;
 }
 
+/** What restoring a backup's AI configuration would change */
+export interface BackupAISettingsSummary {
+  provider: AIProviderType;
+  model?: string;
+  apiKeyLastFour?: string;
+}
+
+function aiSettingsOf(data: ParsedBackupData | ParsedEncryptedBackupData): {
+  settings: Partial<Settings> | null;
+  apiKey?: string;
+} {
+  const fullSettings = 'fullSettings' in data ? data.fullSettings : null;
+  // Only encrypted backups may carry the key
+  return { settings: fullSettings ?? data.settings, apiKey: fullSettings?.aiApiKey };
+}
+
+/**
+ * Summarise a backup's AI configuration so the user can decide whether to
+ * apply it: restoring it changes where lab reports are sent for analysis.
+ */
+export function describeBackupAISettings(
+  data: ParsedBackupData | ParsedEncryptedBackupData
+): BackupAISettingsSummary | null {
+  const { settings, apiKey } = aiSettingsOf(data);
+  if (!settings?.aiProvider) return null;
+  const modelByProvider = {
+    openai: settings.openaiModel,
+    anthropic: settings.anthropicModel,
+    ollama: settings.ollamaModel,
+  };
+  return {
+    provider: settings.aiProvider,
+    model: modelByProvider[settings.aiProvider],
+    apiKeyLastFour: apiKey ? apiKey.slice(-4) : undefined,
+  };
+}
+
 export async function restoreAISettings(
   data: ParsedBackupData | ParsedEncryptedBackupData,
   target: AISettingsTarget
 ): Promise<void> {
-  const fullSettings = 'fullSettings' in data ? data.fullSettings : null;
-  const settings: Partial<Settings> | null = fullSettings ?? data.settings;
+  const { settings, apiKey } = aiSettingsOf(data);
   if (!settings) return;
 
   if (settings.aiProvider) await target.setAiProvider(settings.aiProvider);
   if (settings.openaiModel) await target.setOpenaiModel(settings.openaiModel);
   if (settings.anthropicModel) await target.setAnthropicModel(settings.anthropicModel);
   if (settings.ollamaModel) await target.setOllamaModel(settings.ollamaModel);
-  // Only encrypted backups may carry the key
-  if (fullSettings?.aiApiKey) await target.setApiKey(fullSettings.aiApiKey);
+  if (apiKey) await target.setApiKey(apiKey);
 }

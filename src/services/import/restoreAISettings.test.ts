@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { restoreAISettings, type AISettingsTarget } from './restoreAISettings';
+import {
+  describeBackupAISettings,
+  restoreAISettings,
+  type AISettingsTarget,
+} from './restoreAISettings';
 import type { ParsedBackupData } from './jsonImport';
 import type { ParsedEncryptedBackupData } from './encryptedImport';
 
@@ -65,5 +69,32 @@ describe('restoreAISettings', () => {
     await restoreAISettings(base, t);
 
     Object.values(t).forEach((fn) => expect(fn).not.toHaveBeenCalled());
+  });
+});
+
+describe('describeBackupAISettings', () => {
+  it('summarises provider, model and the last four characters of the key', () => {
+    const encrypted: ParsedEncryptedBackupData = {
+      ...base,
+      wasEncrypted: true,
+      fullSettings: { aiProvider: 'anthropic', anthropicModel: 'claude-x', aiApiKey: 'sk-ant-secret-9876' },
+    };
+
+    expect(describeBackupAISettings(encrypted)).toEqual({
+      provider: 'anthropic',
+      model: 'claude-x',
+      apiKeyLastFour: '9876',
+    });
+  });
+
+  it('describes standard backups without a key', () => {
+    expect(
+      describeBackupAISettings({ ...base, settings: { aiProvider: 'ollama', ollamaModel: 'llama' } })
+    ).toEqual({ provider: 'ollama', model: 'llama', apiKeyLastFour: undefined });
+  });
+
+  it('returns null when the backup has no AI configuration', () => {
+    expect(describeBackupAISettings(base)).toBeNull();
+    expect(describeBackupAISettings({ ...base, settings: { language: 'en' } })).toBeNull();
   });
 });

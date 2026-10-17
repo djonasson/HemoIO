@@ -29,4 +29,9 @@ export {
 } from './encryptedImport';
 
 export { restoreBackup, type RestoreTarget, type RestoreSummary } from './restoreBackup';
-export { restoreAISettings, type AISettingsTarget } from './restoreAISettings';
+export {
+  describeBackupAISettings,
+  restoreAISettings,
+  type AISettingsTarget,
+  type BackupAISettingsSummary,
+} from './restoreAISettings';

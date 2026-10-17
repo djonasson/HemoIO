@@ -22,6 +22,7 @@ import { useExportData, useEncryptedDb, useEncryptedApiKey, useAISettings } from
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import { testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
+import type { RestoreOptions } from './BackupRestore';
 
 /**
  * Theme options
@@ -38,7 +39,7 @@ type DateFormatOption = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
  */
 export interface SettingsPageProps {
   /** Called when data is restored from backup */
-  onRestore: (data: ParsedBackupData) => Promise<void>;
+  onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   /** Whether restore is in progress */
   isRestoring?: boolean;
 }
@@ -334,6 +335,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
               dataSources={dataSources}
               getApiKey={getApiKey}
               onRestore={onRestore}
+              hasApiKey={hasApiKey}
               isProcessing={isRestoring || isLoading}
             />
           </Stack>

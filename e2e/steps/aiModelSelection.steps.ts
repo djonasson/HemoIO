@@ -161,11 +161,11 @@ export async function openAISettings(page: Page): Promise<void> {
 /**
  * And I have configured Anthropic as my AI provider with an API key
  */
-export async function configureAnthropic(page: Page): Promise<void> {
+export async function configureAnthropic(page: Page, apiKey: string = TEST_API_KEY): Promise<void> {
   await openAISettings(page);
   await page.locator('input[aria-label="Select AI provider"]').click();
   await page.getByRole('option', { name: /Anthropic/i }).click();
-  await page.locator('input[aria-label="API key"]').fill(TEST_API_KEY);
+  await page.locator('input[aria-label="API key"]').fill(apiKey);
   await page.getByRole('button', { name: 'Save API Key' }).click();
   await expect(modelSelect(page)).toBeVisible();
 }
