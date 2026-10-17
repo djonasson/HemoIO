@@ -10,7 +10,7 @@ import { NoteDisplay } from './NoteDisplay';
 import type { UserNote } from '@/types';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockNote(overrides: Partial<UserNote> = {}): UserNote {
@@ -65,20 +65,20 @@ describe('NoteDisplay', () => {
       expect(badges).toHaveLength(0);
     });
 
-    it('should show "(edited)" when note was updated', () => {
+    it('should show when the note was edited', () => {
       const note = createMockNote({
         createdAt: new Date('2024-01-15T10:00:00'),
-        updatedAt: new Date('2024-01-15T11:00:00'),
+        updatedAt: new Date('2024-02-03T11:30:00'),
       });
       renderWithProviders(<NoteDisplay {...defaultProps} note={note} />);
 
-      expect(screen.getByText(/\(edited\)/)).toBeInTheDocument();
+      expect(screen.getByText(/\(edited Feb 3, 2024, 11:30\sAM\)/)).toBeInTheDocument();
     });
 
-    it('should not show "(edited)" when note was not updated', () => {
+    it('should not show an edited indicator when note was not updated', () => {
       renderWithProviders(<NoteDisplay {...defaultProps} />);
 
-      expect(screen.queryByText(/\(edited\)/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/edited/)).not.toBeInTheDocument();
     });
 
     it('should render edit and delete buttons', () => {

@@ -123,7 +123,7 @@ export function NoteDisplay({
               <IconNote size={14} color="gray" />
               <Text size="xs" c="dimmed">
                 {formatDate(note.createdAt)}
-                {wasEdited && ' (edited)'}
+                {wasEdited && ` (edited ${formatDate(note.updatedAt)})`}
               </Text>
             </Group>
             <Group gap="xs">

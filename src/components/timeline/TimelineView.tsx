@@ -6,7 +6,8 @@
 
 import { useCallback } from 'react';
 import { Stack, Text, Loader, Alert, Center } from '@mantine/core';
-import { IconAlertCircle } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import { IconAlertCircle, IconCheck, IconX } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
 import { useNotes } from '@hooks/useNotes';
 import { LabResultCard } from './LabResultCard';
@@ -110,8 +111,20 @@ export function TimelineView({
   const handleDelete = async (id: number) => {
     try {
       await deleteResult(id);
+      notifications.show({
+        title: 'Lab result deleted',
+        message: 'The lab result and its values were removed.',
+        color: 'green',
+        icon: <IconCheck size={16} />,
+      });
     } catch (err) {
       console.error('Failed to delete result:', err);
+      notifications.show({
+        title: 'Could not delete lab result',
+        message: 'Please try again.',
+        color: 'red',
+        icon: <IconX size={16} />,
+      });
     }
   };
 

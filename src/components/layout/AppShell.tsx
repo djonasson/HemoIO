@@ -33,6 +33,7 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
+import { restoreBackup } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
@@ -174,53 +175,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setIsRestoring(true);
 
       try {
-        // Clear existing data
-        await db.clearAllData();
-
-        // Restore lab results (strip id to get new ones assigned)
-        for (const labResult of data.labResults) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: _, ...labResultData } = labResult;
-          await db.addLabResult(labResultData);
-        }
-
-        // Build ID mapping for test values
-        const oldLabResults = data.labResults;
-        const newLabResults = await db.getAllLabResults();
-        const labResultIdMap = new Map<number, number>();
-
-        // Map old IDs to new IDs based on position/date match
-        for (let i = 0; i < oldLabResults.length; i++) {
-          const oldResult = oldLabResults[i];
-          const matchingNew = newLabResults.find(
-            (n) =>
-              n.date.getTime() === new Date(oldResult.date).getTime() &&
-              n.labName === oldResult.labName
-          );
-          if (matchingNew && oldResult.id !== undefined) {
-            labResultIdMap.set(oldResult.id, matchingNew.id!);
-          }
-        }
-
-        // Restore test values with updated lab result IDs
-        for (const testValue of data.testValues) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: __, labResultId, ...testValueData } = testValue;
-          const newLabResultId = labResultIdMap.get(labResultId);
-          if (newLabResultId !== undefined) {
-            await db.addTestValue({
-              ...testValueData,
-              labResultId: newLabResultId,
-            });
-          }
-        }
-
-        // Restore user notes (strip id to get new ones assigned)
-        for (const note of data.userNotes) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: ___, ...noteData } = note;
-          await db.addUserNote(noteData);
-        }
+        const restored = await restoreBackup(db, data);
 
         // Refresh export data
         await refreshExportData();
@@ -230,7 +185,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
         notifications.show({
           title: 'Restore Complete',
-          message: `Restored ${data.labResults.length} lab result(s), ${data.testValues.length} test value(s), and ${data.userNotes.length} note(s).`,
+          message: `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).`,
           color: 'green',
           icon: <IconCheck size={16} />,
         });
@@ -307,6 +262,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             {NAV_ITEMS.slice(0, 4).map((item) => (
               <NavLink
                 key={item.view}
+                // Without an href NavLink renders a bare <a>, which has no role
+                // and cannot be reached with Tab
+                component="button"
                 label={item.label}
                 description={item.description}
                 leftSection={item.icon}
@@ -319,6 +277,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             <Divider my="sm" />
 
             <NavLink
+              component="button"
               label="Settings"
               description="App settings and preferences"
               leftSection={<IconSettings size={20} />}
@@ -418,6 +377,21 @@ function MainContent({
           </Text>
           <Text c="dimmed">
             Please configure your AI API key in Settings before importing lab
+            reports.
+          </Text>
+        </Stack>
+      );
+    }
+
+    // Cloud providers have no built-in default model: the user must pick one
+    if (aiProvider !== 'ollama' && !aiModel) {
+      return (
+        <Stack align="center" justify="center" h="50vh" gap="md">
+          <Title order={2} size="h3">
+            Model Selection Required
+          </Title>
+          <Text c="dimmed" ta="center">
+            Please select a model in Settings → AI Configuration before importing lab
             reports.
           </Text>
         </Stack>

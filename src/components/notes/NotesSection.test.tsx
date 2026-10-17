@@ -10,7 +10,7 @@ import { NotesSection } from './NotesSection';
 import type { UserNote } from '@/types';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockNote(id: number, overrides: Partial<UserNote> = {}): UserNote {
@@ -93,6 +93,36 @@ describe('NotesSection', () => {
 
       // Content should not be visible
       expect(screen.queryByText('No notes yet')).not.toBeVisible();
+    });
+
+    it('should follow defaultCollapsed when it changes before the user toggles', () => {
+      // Lab result cards render before their notes have loaded, so the
+      // default changes from collapsed (no notes) to expanded (has notes)
+      const { rerender } = renderWithProviders(<NotesSection {...defaultProps} defaultCollapsed />);
+      rerender(
+        <MantineProvider env="test">
+          <NotesSection {...defaultProps} defaultCollapsed={false} />
+        </MantineProvider>
+      );
+
+      expect(
+        screen.getByRole('button', { name: /section, expanded/ })
+      ).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('should keep the user\'s choice when defaultCollapsed changes', async () => {
+      const user = userEvent.setup();
+      const { rerender } = renderWithProviders(<NotesSection {...defaultProps} defaultCollapsed />);
+
+      await user.click(screen.getByRole('button', { name: /section, collapsed/ }));
+      await user.click(screen.getByRole('button', { name: /section, expanded/ }));
+      rerender(
+        <MantineProvider env="test">
+          <NotesSection {...defaultProps} defaultCollapsed={false} />
+        </MantineProvider>
+      );
+
+      expect(screen.getByRole('button', { name: /section, collapsed/ })).toBeInTheDocument();
     });
 
     it('should toggle collapse when header is clicked', async () => {

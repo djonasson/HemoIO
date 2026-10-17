@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { PWAInstallPrompt } from './PWAInstallPrompt';
 
@@ -10,7 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 function renderPWAInstallPrompt() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <PWAInstallPrompt />
     </MantineProvider>
   );
@@ -118,6 +118,10 @@ describe('PWAInstallPrompt', () => {
       fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
 
       expect(event.prompt).toHaveBeenCalled();
+      // Let the install flow finish so its state updates happen inside the test
+      await waitFor(() => {
+        expect(screen.queryByText('Install HemoIO')).not.toBeInTheDocument();
+      });
     });
 
     it('hides prompt after user accepts installation', async () => {
@@ -131,7 +135,7 @@ describe('PWAInstallPrompt', () => {
       fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
 
       // Wait for the async operation to complete
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(screen.queryByText('Install HemoIO')).not.toBeInTheDocument();
       });
     });
@@ -147,7 +151,7 @@ describe('PWAInstallPrompt', () => {
       fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
 
       // Wait for the async operation to complete
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(screen.queryByText('Install HemoIO')).not.toBeInTheDocument();
       });
     });
@@ -167,7 +171,7 @@ describe('PWAInstallPrompt', () => {
       fireEvent.click(screen.getByRole('button', { name: /Install App/i }));
 
       // Wait for the error to be logged and prompt to be cleared
-      await vi.waitFor(() => {
+      await waitFor(() => {
         expect(consoleSpy).toHaveBeenCalledWith(
           'PWA Install: Error showing install prompt',
           expect.any(Error)

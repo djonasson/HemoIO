@@ -9,9 +9,17 @@ import { LabResultCard } from './LabResultCard';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
 
 // Mock the biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
+vi.mock('@data/biomarkers/dictionary', () => {
+  const mock = {
   findBiomarker: vi.fn(() => null),
-}));
+  };
+  return {
+    ...mock,
+    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
+    getBiomarkerById: () => undefined,
+    getBiomarkerForTestValue: () => mock.findBiomarker(),
+  };
+});
 
 // Clean up after each test to ensure modals are properly unmounted
 afterEach(() => {
@@ -19,7 +27,7 @@ afterEach(() => {
 });
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockTestValue(

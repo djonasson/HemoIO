@@ -7,7 +7,12 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { TimelineView } from './TimelineView';
+import { notifications } from '@mantine/notifications';
 import type { LabResultWithDetails } from '@hooks/useLabResults';
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: vi.fn() },
+}));
 
 // Mock useLabResults hook
 vi.mock('@hooks/useLabResults', () => ({
@@ -42,7 +47,7 @@ import { useLabResults } from '@hooks/useLabResults';
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <DatesProvider settings={{ locale: 'en' }}>{ui}</DatesProvider>
     </MantineProvider>
   );
@@ -293,5 +298,51 @@ describe('TimelineView', () => {
     fireEvent.change(searchInput, { target: { value: 'Quest' } });
 
     expect(mockSetFilters).toHaveBeenCalledWith({ searchTerm: 'Quest' });
+  });
+
+  describe('deleting a lab result', () => {
+    async function deleteFirstResult(deleteResult: () => Promise<void>) {
+      vi.mocked(useLabResults).mockReturnValue({
+        results: [createMockResult(1, '2024-01-15', 'Quest Diagnostics')],
+        isLoading: false,
+        error: null,
+        filters: {},
+        setFilters: vi.fn(),
+        refresh: vi.fn(),
+        deleteResult,
+      });
+      renderWithProviders(<TimelineView onNavigateToImport={vi.fn()} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Delete this lab result' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    }
+
+    it('shows a success notification after deleting', async () => {
+      const deleteResult = vi.fn().mockResolvedValue(undefined);
+
+      await deleteFirstResult(deleteResult);
+
+      await waitFor(() => {
+        expect(notifications.show).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Lab result deleted', color: 'green' })
+        );
+      });
+      expect(deleteResult).toHaveBeenCalledWith(1);
+    });
+
+    it('shows an error notification when deleting fails', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const deleteResult = vi.fn().mockRejectedValue(new Error('Database error'));
+
+      await deleteFirstResult(deleteResult);
+
+      await waitFor(() => {
+        expect(notifications.show).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Could not delete lab result', color: 'red' })
+        );
+      });
+      expect(consoleError).toHaveBeenCalledWith('Failed to delete result:', expect.any(Error));
+    });
   });
 });

@@ -50,12 +50,15 @@ export function NotesSection({
   showEditorByDefault = false,
   editorPlaceholder,
 }: NotesSectionProps): React.ReactNode {
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  // Follow defaultCollapsed until the user toggles: callers may only know
+  // the right default once their notes have loaded
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
+  const isCollapsed = userCollapsed ?? defaultCollapsed;
   const [showEditor, setShowEditor] = useState(showEditorByDefault);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleToggleCollapse = () => {
-    setIsCollapsed((prev) => !prev);
+    setUserCollapsed(!isCollapsed);
   };
 
   const handleShowEditor = () => {

@@ -9,7 +9,7 @@ import { MantineProvider } from '@mantine/core';
 import { NoteEditor } from './NoteEditor';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('NoteEditor', () => {

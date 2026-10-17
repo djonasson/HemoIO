@@ -27,3 +27,5 @@ export {
   getEncryptedImportPreview,
   type ParsedEncryptedBackupData,
 } from './encryptedImport';
+
+export { restoreBackup, type RestoreTarget, type RestoreSummary } from './restoreBackup';

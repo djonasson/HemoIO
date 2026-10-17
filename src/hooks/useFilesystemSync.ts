@@ -88,7 +88,6 @@ export function useFilesystemSync(): {
       await provider.save(encryptedData);
 
       lastSyncTimeRef.current = new Date();
-      console.log('Synced encrypted data to filesystem at', lastSyncTimeRef.current);
     } catch (error) {
       console.error('Failed to sync to filesystem:', error);
       syncErrorRef.current = error instanceof Error ? error.message : 'Sync failed';

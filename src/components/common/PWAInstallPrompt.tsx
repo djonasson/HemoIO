@@ -71,16 +71,9 @@ export function PWAInstallPrompt(): React.ReactNode {
     setIsInstalling(true);
     try {
       await installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-
-      if (outcome === 'accepted') {
-        console.log('PWA Install: User accepted the install prompt');
-        setInstallPrompt(null);
-      } else {
-        console.log('PWA Install: User dismissed the install prompt');
-        // The prompt can only be used once, so clear it
-        setInstallPrompt(null);
-      }
+      await installPrompt.userChoice;
+      // The prompt can only be used once, whether accepted or dismissed
+      setInstallPrompt(null);
     } catch (error) {
       console.error('PWA Install: Error showing install prompt', error);
       // Clear the prompt as it may be invalid
