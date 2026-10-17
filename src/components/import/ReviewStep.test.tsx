@@ -49,6 +49,7 @@ const mockAnalysisResult: AnalysisResult = {
       isExactMatch: true,
       normalizedUnit: 'mg/dL',
       dictionaryMatch: {
+        key: 'glucose',
         name: 'Glucose',
         canonicalUnit: 'mg/dL',
         aliases: ['Blood Sugar'],
@@ -689,6 +690,7 @@ describe('ReviewStep', () => {
             isExactMatch: true,
             normalizedUnit: 'U/L',
             dictionaryMatch: {
+              key: 'test-marker',
               name: 'Test Marker',
               canonicalUnit: 'U/L',
               aliases: [],

@@ -23,6 +23,11 @@ import type { Biomarker, BiomarkerCategory, SpecimenType } from '@/types';
  * Extended biomarker definition with additional reference information
  */
 export interface BiomarkerDefinition extends Omit<Biomarker, 'id'> {
+  /**
+   * Permanent identifier used in stored data. Never change or reuse a key:
+   * renaming a biomarker keeps its key. See ISSUED_BIOMARKER_KEYS.
+   */
+  key: string;
   /** Common aliases/abbreviations for this biomarker */
   aliases: string[];
   /** Specimen/matrix type (serum, plasma, urine, etc.) */
@@ -48,6 +53,7 @@ export interface BiomarkerDefinition extends Omit<Biomarker, 'id'> {
  */
 const cbcBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'white-blood-cell-count',
     name: 'White Blood Cell Count',
     aliases: ['WBC', 'Leukocytes', 'White Blood Cells', 'Globuli Bianchi', 'Leucociti'],
     category: 'cbc',
@@ -61,6 +67,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate bone marrow problems or autoimmune conditions',
   },
   {
+    key: 'red-blood-cell-count',
     name: 'Red Blood Cell Count',
     aliases: ['RBC', 'Erythrocytes', 'Red Blood Cells', 'Globuli Rossi', 'Eritrociti'],
     category: 'cbc',
@@ -74,6 +81,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate anemia',
   },
   {
+    key: 'hemoglobin',
     name: 'Hemoglobin',
     aliases: ['Hgb', 'Hb', 'HGB', 'Emoglobina'],
     category: 'cbc',
@@ -87,6 +95,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate anemia or blood loss',
   },
   {
+    key: 'hematocrit',
     name: 'Hematocrit',
     aliases: ['Hct', 'HCT', 'PCV', 'Packed Cell Volume', 'Ematocrito'],
     category: 'cbc',
@@ -100,6 +109,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate anemia',
   },
   {
+    key: 'platelet-count',
     name: 'Platelet Count',
     aliases: ['PLT', 'Platelets', 'Thrombocytes', 'Piastrine', 'Trombociti'],
     category: 'cbc',
@@ -113,6 +123,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate bleeding risk or bone marrow problems',
   },
   {
+    key: 'mean-corpuscular-volume',
     name: 'Mean Corpuscular Volume',
     aliases: ['MCV', 'Volume Globulare Medio', 'Volume Corpuscolare Medio'],
     category: 'cbc',
@@ -126,6 +137,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency (microcytic anemia)',
   },
   {
+    key: 'mean-corpuscular-hemoglobin',
     name: 'Mean Corpuscular Hemoglobin',
     aliases: ['MCH', 'Contenuto Medio di Hb', 'Contenuto Emoglobinico Corpuscolare Medio'],
     category: 'cbc',
@@ -139,6 +151,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency',
   },
   {
+    key: 'mean-corpuscular-hemoglobin-concentration',
     name: 'Mean Corpuscular Hemoglobin Concentration',
     aliases: ['MCHC', 'Concentrazione Media di Hb', 'Concentrazione Emoglobinica Corpuscolare Media'],
     category: 'cbc',
@@ -152,6 +165,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency or thalassemia',
   },
   {
+    key: 'red-cell-distribution-width',
     name: 'Red Cell Distribution Width',
     aliases: ['RDW', 'RDW-CV'],
     category: 'cbc',
@@ -165,6 +179,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'neutrophils',
     name: 'Neutrophils',
     aliases: ['Neutrophil Count', 'Neutrofili', 'Neutrofili (assoluti)', 'Neutrophils Absolute', 'ANC', 'Granulociti Neutrofili'],
     category: 'cbc',
@@ -178,6 +193,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate neutropenia, risk of infection',
   },
   {
+    key: 'neutrophils-percentage',
     name: 'Neutrophils Percentage',
     aliases: ['Neutrophils %', 'Neutrofili (%)', 'Neutrophil %', '% Neutrophils'],
     category: 'cbc',
@@ -191,6 +207,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate viral infection or other conditions',
   },
   {
+    key: 'lymphocytes',
     name: 'Lymphocytes',
     aliases: ['Lymphocyte Count', 'Linfociti', 'Linfociti (assoluti)', 'Lymphocytes Absolute', 'ALC'],
     category: 'cbc',
@@ -204,6 +221,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate immunodeficiency or HIV',
   },
   {
+    key: 'lymphocytes-percentage',
     name: 'Lymphocytes Percentage',
     aliases: ['Lymphocytes %', 'Linfociti (%)', 'Lymphocyte %', '% Lymphocytes'],
     category: 'cbc',
@@ -217,6 +235,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate bacterial infection or immunodeficiency',
   },
   {
+    key: 'monocytes',
     name: 'Monocytes',
     aliases: ['Monocyte Count', 'Monociti', 'Monociti (assoluti)', 'Monocytes Absolute'],
     category: 'cbc',
@@ -230,6 +249,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'monocytes-percentage',
     name: 'Monocytes Percentage',
     aliases: ['Monocytes %', 'Monociti (%)', 'Monocyte %', '% Monocytes'],
     category: 'cbc',
@@ -243,6 +263,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'eosinophils',
     name: 'Eosinophils',
     aliases: ['Eosinophil Count', 'Eosinofili', 'Eosinofili (assoluti)', 'Eosinophils Absolute', 'AEC'],
     category: 'cbc',
@@ -256,6 +277,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'eosinophils-percentage',
     name: 'Eosinophils Percentage',
     aliases: ['Eosinophils %', 'Eosinofili (%)', 'Eosinophil %', '% Eosinophils'],
     category: 'cbc',
@@ -269,6 +291,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'basophils',
     name: 'Basophils',
     aliases: ['Basophil Count', 'Basofili', 'Basofili (assoluti)', 'Basophils Absolute'],
     category: 'cbc',
@@ -282,6 +305,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'basophils-percentage',
     name: 'Basophils Percentage',
     aliases: ['Basophils %', 'Basofili (%)', 'Basophil %', '% Basophils'],
     category: 'cbc',
@@ -301,6 +325,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
  */
 const inflammationBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'erythrocyte-sedimentation-rate',
     name: 'Erythrocyte Sedimentation Rate',
     aliases: ['ESR', 'Sed Rate', 'V.E.S.', 'VES', 'Velocità di Eritrosedimentazione'],
     category: 'cbc',
@@ -314,6 +339,7 @@ const inflammationBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not clinically significant',
   },
   {
+    key: 'c-reactive-protein',
     name: 'C-Reactive Protein',
     aliases: ['CRP', 'Proteina C Reattiva', 'PCR', 'C-Reactive Protein High Sensitivity', 'hs-CRP'],
     category: 'metabolic',
@@ -333,6 +359,7 @@ const inflammationBiomarkers: BiomarkerDefinition[] = [
  */
 const metabolicBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'glucose',
     name: 'Glucose',
     aliases: ['Blood Sugar', 'Fasting Glucose', 'FBG', 'Blood Glucose', 'Glucosio', 'S-Glucosio', 'Glicemia', 'P-Glucosio', 'Glicemia a digiuno'],
     category: 'metabolic',
@@ -346,6 +373,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypoglycemia',
   },
   {
+    key: 'creatinine',
     name: 'Creatinine',
     aliases: ['Creat', 'Serum Creatinine', 'S-Creatinina', 'Creatinina', 'P-Creatinina', 'Creatininemia', 'P-Creatinina (metodo enzimatico)'],
     category: 'metabolic',
@@ -359,6 +387,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate low muscle mass',
   },
   {
+    key: 'blood-urea-nitrogen',
     name: 'Blood Urea Nitrogen',
     aliases: ['BUN', 'Urea Nitrogen', 'Urea'],
     category: 'metabolic',
@@ -372,6 +401,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate liver disease or malnutrition',
   },
   {
+    key: 'sodium',
     name: 'Sodium',
     aliases: ['Na', 'Na+', 'Serum Sodium', 'S-Na Sodio', 'Sodio', 'S-Na'],
     category: 'metabolic',
@@ -385,6 +415,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate overhydration or kidney problems',
   },
   {
+    key: 'potassium',
     name: 'Potassium',
     aliases: ['K', 'K+', 'Serum Potassium', 'S-K Potassio', 'Potassio', 'S-K'],
     category: 'metabolic',
@@ -398,6 +429,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate diuretic use or GI losses',
   },
   {
+    key: 'chloride',
     name: 'Chloride',
     aliases: ['Cl', 'Cl-', 'Serum Chloride'],
     category: 'metabolic',
@@ -411,6 +443,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate vomiting or hormone imbalance',
   },
   {
+    key: 'carbon-dioxide',
     name: 'Carbon Dioxide',
     aliases: ['CO2', 'Bicarbonate', 'HCO3', 'Total CO2'],
     category: 'metabolic',
@@ -424,6 +457,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate metabolic acidosis or kidney disease',
   },
   {
+    key: 'calcium',
     name: 'Calcium',
     aliases: ['Ca', 'Ca++', 'Serum Calcium', 'Total Calcium', 'S-Calcio', 'Calcio', 'Calcemia'],
     category: 'metabolic',
@@ -437,6 +471,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate vitamin D deficiency or kidney disease',
   },
   {
+    key: 'magnesium',
     name: 'Magnesium',
     aliases: ['Mg', 'Serum Magnesium', 'S-Mg', 'S-Mg Magnesio', 'Magnesio', 'Magnesiemia'],
     category: 'metabolic',
@@ -450,6 +485,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate malnutrition, alcoholism, diabetes, or medication effects',
   },
   {
+    key: 'egfr',
     name: 'eGFR',
     aliases: ['Estimated GFR', 'Glomerular Filtration Rate', 'GFR', 'Filtrato Glomerulare', 'Filtrato Glomerulare (eGFR)', 'eGFR (Velocità di filtrazione glomerulare stimata)', 'Velocità di filtrazione glomerulare', 'VFG', 'Filtrato Glomerulare (eGFR) (calcolato secondo formula CKD-EPI)'],
     category: 'metabolic',
@@ -469,6 +505,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
  */
 const lipidBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'total-cholesterol',
     name: 'Total Cholesterol',
     aliases: ['Cholesterol', 'TC', 'Chol', 'S-Colesterolo Totale', 'Colesterolo Totale', 'Colesterolo', 'S-Cholesterolo Totale', 'Cholesterolo Totale', 'Cholesterolo', 'P-Colesterolo', 'Colesterolemia'],
     category: 'lipid',
@@ -482,6 +519,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate malnutrition or hyperthyroidism',
   },
   {
+    key: 'ldl-cholesterol',
     name: 'LDL Cholesterol',
     aliases: ['LDL', 'LDL-C', 'Bad Cholesterol'],
     category: 'lipid',
@@ -495,6 +533,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally desirable',
   },
   {
+    key: 'hdl-cholesterol',
     name: 'HDL Cholesterol',
     aliases: ['HDL', 'HDL-C', 'Good Cholesterol', 'S-Colesterolo HDL', 'Colesterolo HDL', 'P-Colesterolo HDL', 'HDL Colesterolo'],
     category: 'lipid',
@@ -508,6 +547,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Increased cardiovascular risk',
   },
   {
+    key: 'triglycerides',
     name: 'Triglycerides',
     aliases: ['TG', 'Trigs', 'TRIG', 'Trigliceridi', 'S-Trigliceridi', 'P-Trigliceridi', 'Trigliceridemia'],
     category: 'lipid',
@@ -521,6 +561,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'vldl-cholesterol',
     name: 'VLDL Cholesterol',
     aliases: ['VLDL', 'VLDL-C'],
     category: 'lipid',
@@ -534,6 +575,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'non-hdl-cholesterol',
     name: 'Non-HDL Cholesterol',
     aliases: ['Non-HDL', 'Non-HDL-C'],
     category: 'lipid',
@@ -553,6 +595,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
  */
 const thyroidBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'thyroid-stimulating-hormone',
     name: 'Thyroid Stimulating Hormone',
     aliases: ['TSH', 'Thyrotropin', 'S-TSH Tirotropina', 'Tirotropina', 'S-TSH', 'Tireotropina', 'S-TSH Tireotropina', 'S-Tirotropina', 'S-Tirotropina (TSH)', 'Tirotropina (TSH)', 'Ormone tireotropo', 'S-Tirotropina (TSH) (ECLIA Roche)', 'TSH (S-Tirotropina)'],
     category: 'thyroid',
@@ -566,6 +609,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hyperthyroidism',
   },
   {
+    key: 'free-t4',
     name: 'Free T4',
     aliases: ['FT4', 'Free Thyroxine', 'Thyroxine Free', 'S-FT4', 'S-FT4 Tiroxina libera', 'Tiroxina libera', 'FT4 Tiroxina libera'],
     category: 'thyroid',
@@ -579,6 +623,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypothyroidism',
   },
   {
+    key: 'total-t4',
     name: 'Total T4',
     aliases: ['T4', 'Thyroxine', 'Serum T4'],
     category: 'thyroid',
@@ -592,6 +637,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypothyroidism',
   },
   {
+    key: 'free-t3',
     name: 'Free T3',
     aliases: ['FT3', 'Free Triiodothyronine', 'S-FT3', 'S-FT3 Triiodotironina libera', 'Triiodotironina libera', 'FT3 Triiodotironina libera'],
     category: 'thyroid',
@@ -605,6 +651,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypothyroidism or illness',
   },
   {
+    key: 'total-t3',
     name: 'Total T3',
     aliases: ['T3', 'Triiodothyronine'],
     category: 'thyroid',
@@ -618,6 +665,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypothyroidism',
   },
   {
+    key: 'tpo-antibodies',
     name: 'TPO Antibodies',
     aliases: ['Anti-TPO', 'Thyroid Peroxidase Antibodies', 'S-Anticorpi anti Tireoperossidasi', 'Anticorpi anti Tireoperossidasi', 'Anti-Tireoperossidasi', 'TPOAb', 'Thyroid Peroxidase Ab'],
     category: 'thyroid',
@@ -637,6 +685,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
  */
 const ironBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'serum-iron',
     name: 'Serum Iron',
     aliases: ['Iron', 'Fe', 'Iron Level'],
     category: 'iron',
@@ -650,6 +699,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency',
   },
   {
+    key: 'ferritin',
     name: 'Ferritin',
     aliases: ['Serum Ferritin'],
     category: 'iron',
@@ -663,6 +713,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency',
   },
   {
+    key: 'total-iron-binding-capacity',
     name: 'Total Iron Binding Capacity',
     aliases: ['TIBC', 'Iron Binding Capacity'],
     category: 'iron',
@@ -676,6 +727,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron overload or chronic disease',
   },
   {
+    key: 'transferrin-saturation',
     name: 'Transferrin Saturation',
     aliases: ['TSAT', 'Iron Saturation', 'Transferrin Sat'],
     category: 'iron',
@@ -689,6 +741,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate iron deficiency',
   },
   {
+    key: 'transferrin',
     name: 'Transferrin',
     aliases: ['Serum Transferrin'],
     category: 'iron',
@@ -708,6 +761,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
  */
 const vitaminBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'vitamin-b12',
     name: 'Vitamin B12',
     aliases: ['B12', 'Cobalamin', 'Cyanocobalamin', 'Vitamina B12', 'S-Vitamina B12', 'S-Vitamina B 12 attiva', 'Vitamina B 12 attiva', 'Active B12', 'Holotranscobalamin'],
     category: 'vitamin',
@@ -721,6 +775,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate deficiency causing anemia or neuropathy',
   },
   {
+    key: 'vitamin-d',
     name: 'Vitamin D',
     aliases: ['25-OH Vitamin D', '25-Hydroxyvitamin D', 'Calcidiol', 'Vitamin D Total', 'S-25-OH Vitamina D', '25-OH Vitamina D', 'Vitamina D', 'S-Vitamina D', 'Colecalciferolo'],
     category: 'vitamin',
@@ -734,6 +789,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate deficiency affecting bones and immunity',
   },
   {
+    key: 'folate',
     name: 'Folate',
     aliases: ['Folic Acid', 'Vitamin B9', 'Serum Folate'],
     category: 'vitamin',
@@ -747,6 +803,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate deficiency causing anemia',
   },
   {
+    key: 'vitamin-a',
     name: 'Vitamin A',
     aliases: ['Retinol', 'Serum Retinol'],
     category: 'vitamin',
@@ -766,6 +823,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
  */
 const glycemicBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'hemoglobin-a1c',
     name: 'Hemoglobin A1c',
     aliases: ['HbA1c', 'A1C', 'Glycated Hemoglobin', 'Glycohemoglobin', 'Sg-HbA1C Emoglobina Glicata', 'Emoglobina Glicata', 'HbA1C Emoglobina Glicata', 'Er-EMOGLOBINA GLICATA', 'EMOGLOBINA GLICATA', 'Sg-HbA1C', 'HbA1c (IFCC)', 'Emoglobina glicosilata', '% Hb totale'],
     category: 'metabolic',
@@ -779,6 +837,7 @@ const glycemicBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hypoglycemia or hemolytic conditions',
   },
   {
+    key: 'fructosamine',
     name: 'Fructosamine',
     aliases: ['Glycated Albumin', 'Glycated Serum Protein'],
     category: 'metabolic',
@@ -798,6 +857,7 @@ const glycemicBiomarkers: BiomarkerDefinition[] = [
  */
 const urinalysisBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'urine-ph',
     name: 'Urine pH',
     aliases: ['pH', 'Urinary pH', 'pH (urine)', 'pH urinario', 'pH delle urine', 'U-pH', 'U-Esame standard pH', 'pH (urine, dipstick)'],
     category: 'urinalysis',
@@ -811,6 +871,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate acidosis or high protein diet',
   },
   {
+    key: 'urine-specific-gravity',
     name: 'Urine Specific Gravity',
     aliases: ['Specific Gravity', 'SG', 'Urine SG', 'Urine Densità', 'Densità Urinaria', 'Peso Specifico', 'Peso specifico (urine)', 'Densità (urine)', 'Peso specifico urinario', 'U-Peso specifico', 'U-Esame standard Peso specifico', 'Peso specifico (urine, dipstick)'],
     category: 'urinalysis',
@@ -824,6 +885,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate overhydration or kidney problems',
   },
   {
+    key: 'urine-protein',
     name: 'Urine Protein',
     aliases: ['Protein', 'Proteinuria', 'Urine Protein Level', 'Proteine (urine)', 'Urine Proteine (standard)', 'U-Proteine totali', 'Proteine urinarie', 'U-Proteine', 'U-Proteine totali (urine)', 'Urine Proteine (standard)', 'U-Esame standard Proteine', 'Proteine (urine, dipstick)', 'Proteine totali (urine)'],
     category: 'urinalysis',
@@ -836,6 +898,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-glucose',
     name: 'Urine Glucose',
     aliases: ['Glucose', 'Glycosuria', 'Urine Sugar', 'Urine Glucosio', 'Glucosio Urinario', 'U-Glucosio', 'Glucosio (urine)', 'U-Esame standard Glucosio', 'Glucosio (urine, dipstick)'],
     category: 'urinalysis',
@@ -848,6 +911,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-ketones',
     name: 'Urine Ketones',
     aliases: ['Ketones', 'Ketonuria', 'Corpi Chetonici', 'Corpi Chetonici (urine)', 'Chetoni', 'Urine Corpi chetonici', 'Corpi chetonici urinari', 'U-Corpi chetonici', 'U-Esame standard Corpi chetonici', 'Corpi chetonici (urine, dipstick)'],
     category: 'urinalysis',
@@ -860,6 +924,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-blood',
     name: 'Urine Blood',
     aliases: ['Blood', 'Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Emoglobina (urine)', 'Emoglobina (urine, dipstick)', 'Urine Emoglobina', 'Sangue (urine)', 'U-Emoglobina', 'Eritrociti', 'Eritrociti (urine, per campo)', 'Esame morfologico - eritrociti per campo', 'Esame morfologico eritrociti', 'U-Esame standard Emoglobina', 'Emoglobina (urine, per campo)', 'Esame morfologico: eritrociti per campo'],
     category: 'urinalysis',
@@ -872,6 +937,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-wbc',
     name: 'Urine WBC',
     aliases: ['WBC in Urine', 'Leucociti (urine)', 'Leucociti Urine', 'Urine Leukocytes', 'White Blood Cells Urine'],
     category: 'urinalysis',
@@ -884,6 +950,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-leukocyte-esterase',
     name: 'Urine Leukocyte Esterase',
     aliases: ['Leukocyte Esterase', 'LE', 'WBC Esterase', 'Esterasi leucocitaria', 'Esterasi leucocitaria (urine)', 'U-Esame standard Esterasi leucocitaria', 'Esterasi leucocitaria (urine, dipstick)'],
     category: 'urinalysis',
@@ -896,6 +963,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-nitrites',
     name: 'Urine Nitrites',
     aliases: ['Nitrites', 'Nitrite', 'Nitriti', 'Nitriti (urine)', 'U-Esame standard Nitriti', 'Nitriti (urine, dipstick)'],
     category: 'urinalysis',
@@ -908,6 +976,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'microalbumin',
     name: 'Microalbumin',
     aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
     category: 'urinalysis',
@@ -921,6 +990,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-epithelial-cells',
     name: 'Urine Epithelial Cells',
     aliases: ['Epithelial Cells', 'Cellule epiteliali (urine)', 'Cellule Epiteliali Urine', 'Squamous Epithelial Cells'],
     category: 'urinalysis',
@@ -933,6 +1003,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-creatinine',
     name: 'Urine Creatinine',
     aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)'],
     category: 'urinalysis',
@@ -946,6 +1017,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate dilute urine or kidney dysfunction',
   },
   {
+    key: 'urine-bilirubin',
     name: 'Urine Bilirubin',
     aliases: ['Bilirubina (urine)', 'Urine Bilirubina', 'Bilirubina urinaria', 'Bilirubin (urine)', 'U-Bilirubina', 'U-Esame standard Bilirubina', 'Bilirubina (urine, dipstick)'],
     category: 'urinalysis',
@@ -958,6 +1030,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-urobilinogen',
     name: 'Urine Urobilinogen',
     aliases: ['Urobilinogeno', 'Urobilinogeno (urine)', 'Urine Urobilinogeno', 'Urobilinogen', 'U-Urobilinogeno', 'U-Esame standard Urobilinogeno', 'Urobilinogeno (urine, dipstick)'],
     category: 'urinalysis',
@@ -971,6 +1044,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate bile duct obstruction',
   },
   {
+    key: 'albumin-creatinine-ratio',
     name: 'Albumin Creatinine Ratio',
     aliases: ['ACR', 'Albumina / Creatinina', 'Albumin/Creatinine Ratio', 'U-Albumina/Creatinina', 'UACR', 'Rapporto albumina/creatinina'],
     category: 'urinalysis',
@@ -984,6 +1058,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'protein-creatinine-ratio',
     name: 'Protein Creatinine Ratio',
     aliases: ['PCR', 'U-Proteine/Creatinina', 'Protein/Creatinine Ratio', 'Proteine/Creatinina', 'Rapporto proteine/creatinina', 'Proteine/Creatinina (urine)', 'U-Proteine/Creatinina (urine)'],
     category: 'urinalysis',
@@ -997,6 +1072,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'urine-volume',
     name: 'Urine Volume',
     aliases: ['U-VOLUME (24h)', 'Urine Volume 24h', '24h Urine Volume', 'Diuresi 24h', 'Volume urinario 24h', 'U-VOLUME', '24-Hour Urine Volume', 'Volume urinario', 'Volume delle urine', 'Volume (urine, 24h)', 'U-VOLUME (urine, 24h)'],
     category: 'urinalysis',
@@ -1010,6 +1086,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate dehydration or kidney disease',
   },
   {
+    key: '24-hour-urine-albumin',
     name: '24-Hour Urine Albumin',
     aliases: ['U Albumina 24h', 'Albumina 24h', '24h Albumin', 'Albuminuria 24h', 'Albumina urinaria 24h', 'U-Albumina 24h', 'Urine Albumin 24h', 'U-Albumina 24h (Urine)', 'Albumina 24h (urine)'],
     category: 'urinalysis',
@@ -1029,6 +1106,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
  */
 const liverBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'alanine-aminotransferase',
     name: 'Alanine Aminotransferase',
     aliases: ['ALT', 'SGPT', 'Alanine Transaminase', 'S-ALT Alanina Amino Trasferasi', 'Alanina Amino Trasferasi', 'S-ALT', 'P-ALT', 'P-ALT (alanina aminotransferasi)', 'GPT', 'ALT (GPT)'],
     category: 'metabolic',
@@ -1042,6 +1120,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'aspartate-aminotransferase',
     name: 'Aspartate Aminotransferase',
     aliases: ['AST', 'SGOT', 'Aspartate Transaminase', 'S-AST Aspartato Amino Trasferasi', 'Aspartato Amino Trasferasi', 'S-AST', 'P-AST', 'P-AST (aspartato aminotransferasi)', 'GOT', 'AST (GOT)'],
     category: 'metabolic',
@@ -1055,6 +1134,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'alkaline-phosphatase',
     name: 'Alkaline Phosphatase',
     aliases: ['ALP', 'Alk Phos'],
     category: 'metabolic',
@@ -1068,6 +1148,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate malnutrition or hypothyroidism',
   },
   {
+    key: 'bilirubin-total',
     name: 'Bilirubin Total',
     aliases: ['Total Bilirubin', 'TBIL', 'Bilirubin'],
     category: 'metabolic',
@@ -1081,6 +1162,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'bilirubin-direct',
     name: 'Bilirubin Direct',
     aliases: ['Direct Bilirubin', 'Conjugated Bilirubin', 'DBIL'],
     category: 'metabolic',
@@ -1094,6 +1176,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'gamma-glutamyl-transferase',
     name: 'Gamma-Glutamyl Transferase',
     aliases: ['GGT', 'Gamma GT', 'GGTP', 'S-GGT Gamma Glutamil Trasferasi', 'Gamma Glutamil Trasferasi', 'S-GGT'],
     category: 'metabolic',
@@ -1107,6 +1190,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Generally not concerning',
   },
   {
+    key: 'albumin',
     name: 'Albumin',
     aliases: ['Serum Albumin', 'ALB'],
     category: 'metabolic',
@@ -1120,6 +1204,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate liver disease or malnutrition',
   },
   {
+    key: 'total-protein',
     name: 'Total Protein',
     aliases: ['Protein Total', 'TP', 'Serum Protein', 'P-Proteine totali', 'Proteine totali', 'Proteine Totali Sieriche', 'Protidemia'],
     category: 'metabolic',
@@ -1133,6 +1218,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate liver disease or malnutrition',
   },
   {
+    key: 'amylase',
     name: 'Amylase',
     aliases: ['S-Amilasi', 'Amilasi', 'S-Amilasi Totale', 'Amilasi Totale', 'Serum Amylase', 'AMY'],
     category: 'metabolic',
@@ -1146,6 +1232,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate pancreatic insufficiency or liver disease',
   },
   {
+    key: 'alpha-fetoprotein',
     name: 'Alpha-fetoprotein',
     aliases: ['AFP', 'S-AFP', 'α-fetoprotein', 'Alpha Fetoprotein', 'S-AFP alfa-fetoproteina', 'Alfa-fetoproteina', 'S-AFP Alfa-Fetoproteina'],
     category: 'metabolic',
@@ -1165,6 +1252,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
  */
 const fertilityBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'sexual-abstinence',
     name: 'Sexual Abstinence',
     aliases: ['Astinenza sessuale', 'Abstinence', 'Days of Abstinence'],
     category: 'fertility',
@@ -1177,6 +1265,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Short abstinence may result in lower sperm count',
   },
   {
+    key: 'semen-volume',
     name: 'Semen Volume',
     aliases: ['Volume', 'Ejaculate Volume', 'Volume eiaculato', 'Volume sperma'],
     category: 'fertility',
@@ -1190,6 +1279,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate obstruction, retrograde ejaculation, or hormonal issues',
   },
   {
+    key: 'liquefaction-time',
     name: 'Liquefaction Time',
     aliases: ['Fluidità completa dopo minuti', 'Liquefaction', 'Tempo di fluidificazione', 'Fluidificazione'],
     category: 'fertility',
@@ -1203,6 +1293,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'sperm-concentration',
     name: 'Sperm Concentration',
     aliases: ['Spermatozoi', 'Sperm Count', 'Concentrazione spermatozoi', 'Sperm Density'],
     category: 'fertility',
@@ -1216,6 +1307,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Oligozoospermia - may affect fertility',
   },
   {
+    key: 'total-sperm-count',
     name: 'Total Sperm Count',
     aliases: ['Conta totale spermatozoi', 'Total Sperm', 'Numero totale spermatozoi', 'TSC'],
     category: 'fertility',
@@ -1229,6 +1321,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate reduced fertility potential',
   },
   {
+    key: 'round-cells',
     name: 'Round Cells',
     aliases: ['Cellule rotonde', 'Round Cells Count'],
     category: 'fertility',
@@ -1241,6 +1334,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'immature-sperm-forms',
     name: 'Immature Sperm Forms',
     aliases: ['Forme immature', 'Immature Forms', 'Forme immature spermatiche'],
     category: 'fertility',
@@ -1253,6 +1347,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'progressive-motility-rapid',
     name: 'Progressive Motility (Rapid)',
     aliases: ['Rapida progressiva', 'Progressive Motility A', 'PR-A', 'Motilità progressiva rapida', 'Type A Motility'],
     category: 'fertility',
@@ -1265,6 +1360,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate asthenozoospermia',
   },
   {
+    key: 'progressive-motility-slow',
     name: 'Progressive Motility (Slow)',
     aliases: ['Deb. Progressiva', 'Progressive Motility B', 'PR-B', 'Motilità progressiva lenta', 'Type B Motility', 'Debole progressiva'],
     category: 'fertility',
@@ -1277,6 +1373,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal when combined with good rapid progressive motility',
   },
   {
+    key: 'non-progressive-motility',
     name: 'Non-Progressive Motility',
     aliases: ['In situ', 'Non-Progressive', 'Motilità non progressiva', 'Type C Motility', 'NP'],
     category: 'fertility',
@@ -1289,6 +1386,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'immotile-sperm',
     name: 'Immotile Sperm',
     aliases: ['Immobili', 'Immotile', 'Spermatozoi immobili', 'Type D Motility', 'IM'],
     category: 'fertility',
@@ -1301,6 +1399,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Positive for fertility',
   },
   {
+    key: 'normal-sperm-morphology',
     name: 'Normal Sperm Morphology',
     aliases: ['Forme normali', 'Normal Forms', 'Morfologia normale', 'Normal Morphology'],
     category: 'fertility',
@@ -1314,6 +1413,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Teratozoospermia - may affect fertility',
   },
   {
+    key: 'head-abnormalities',
     name: 'Head Abnormalities',
     aliases: ['Anomalie della testa', 'Head Defects', 'Difetti della testa'],
     category: 'fertility',
@@ -1326,6 +1426,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'midpiece-abnormalities',
     name: 'Midpiece Abnormalities',
     aliases: ['Anomalie del collo-tratto intermedio', 'Midpiece Defects', 'Neck Defects', 'Anomalie del collo', 'Difetti del tratto intermedio'],
     category: 'fertility',
@@ -1338,6 +1439,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'tail-abnormalities',
     name: 'Tail Abnormalities',
     aliases: ['Anomalie della coda', 'Tail Defects', 'Difetti della coda'],
     category: 'fertility',
@@ -1350,6 +1452,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'cytoplasmic-residue',
     name: 'Cytoplasmic Residue',
     aliases: ['Forme con residui citoplasmatici', 'Cytoplasmic Droplet', 'Residui citoplasmatici', 'Excess Residual Cytoplasm'],
     category: 'fertility',
@@ -1362,6 +1465,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Normal finding',
   },
   {
+    key: 'sperm-vitality',
     name: 'Sperm Vitality',
     aliases: ['Eosina Test', 'Eosin Test', 'Test di vitalità', 'Vitality', 'Vitalità spermatica', 'Eosina Test (test di vitalità)'],
     category: 'fertility',
@@ -1375,6 +1479,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Necrozoospermia - may indicate infection or epididymal dysfunction',
   },
   {
+    key: 'total-progressive-motility',
     name: 'Total Progressive Motility',
     aliases: ['Motilità progressiva totale', 'PR', 'Progressive Motility', 'Total PR'],
     category: 'fertility',
@@ -1388,6 +1493,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'Asthenozoospermia - may affect fertility',
   },
   {
+    key: 'total-motility',
     name: 'Total Motility',
     aliases: ['Motilità totale', 'Total Motile', 'PR + NP'],
     category: 'fertility',
@@ -1401,6 +1507,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May affect fertility potential',
   },
   {
+    key: 'semen-ph',
     name: 'Semen pH',
     aliases: ['pH', 'pH sperma', 'pH seminale'],
     category: 'fertility',
@@ -1420,6 +1527,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
  */
 const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
   {
+    key: 'serum-albumin-electrophoresis',
     name: 'Serum Albumin (Electrophoresis)',
     aliases: ['S-Elettroforesi albumina', 'Elettroforesi albumina', 'Albumina (elettroforesi)', 'SPE Albumin', 'Albumina %'],
     category: 'metabolic',
@@ -1433,6 +1541,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate liver disease, malnutrition, or inflammation',
   },
   {
+    key: 'alpha-1-globulin',
     name: 'Alpha-1 Globulin',
     aliases: ['S-Elettroforesi alfa-1', 'Elettroforesi alfa-1', 'Alfa-1 globulina', 'Alpha-1', 'Alfa 1', 'α1-Globulin', 'alfa-1', 'alfa-1 (electrophoresis)', 'alfa-1 (elettroforesi)'],
     category: 'metabolic',
@@ -1446,6 +1555,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate alpha-1 antitrypsin deficiency',
   },
   {
+    key: 'alpha-2-globulin',
     name: 'Alpha-2 Globulin',
     aliases: ['S-Elettroforesi alfa-2', 'Elettroforesi alfa-2', 'Alfa-2 globulina', 'Alpha-2', 'Alfa 2', 'α2-Globulin', 'alfa-2', 'alfa-2 (electrophoresis)', 'alfa-2 (elettroforesi)'],
     category: 'metabolic',
@@ -1459,6 +1569,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate hemolysis or malnutrition',
   },
   {
+    key: 'beta-globulin',
     name: 'Beta Globulin',
     aliases: ['S-Elettroforesi beta', 'Elettroforesi beta', 'Beta globulina', 'β-Globulin', 'Beta', 'beta (electrophoresis)', 'beta (elettroforesi)'],
     category: 'metabolic',
@@ -1472,6 +1583,7 @@ const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
     lowIndication: 'May indicate malnutrition',
   },
   {
+    key: 'gamma-globulin',
     name: 'Gamma Globulin',
     aliases: ['S-Elettroforesi gamma', 'Elettroforesi gamma', 'Gamma globulina', 'γ-Globulin', 'Gamma', 'Immunoglobulins', 'gamma (electrophoresis)', 'gamma (elettroforesi)'],
     category: 'metabolic',
@@ -1548,6 +1660,43 @@ export function getBiomarkerForTestValue(testValue: {
 }): BiomarkerDefinition | undefined {
   return (
     getBiomarkerById(testValue.biomarkerId) ??
+    (testValue.rawText ? findBiomarker(testValue.rawText) : undefined)
+  );
+}
+
+const BY_KEY = new Map(BIOMARKER_DEFINITIONS.map((b) => [b.key, b]));
+const UNKNOWN_PREFIX = 'unknown:';
+
+/**
+ * Dictionary entry for a stored biomarker key (undefined for unknown biomarkers)
+ */
+export function getBiomarkerByKey(key: string): BiomarkerDefinition | undefined {
+  return BY_KEY.get(key);
+}
+
+/**
+ * Key for a biomarker that is not in the dictionary, derived from its name so
+ * the same name always gets the same key
+ */
+export function unknownBiomarkerKey(extractedName: string): string {
+  const normalized = extractedName.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  return `${UNKNOWN_PREFIX}${normalized || 'unnamed'}`;
+}
+
+export function isUnknownBiomarkerKey(key: string): boolean {
+  return key.startsWith(UNKNOWN_PREFIX);
+}
+
+/**
+ * Dictionary entry for a stored test value. The stored key wins over the
+ * extracted text: it reflects the match the user confirmed during review.
+ */
+export function getBiomarkerForKeyedTestValue(testValue: {
+  biomarkerKey: string;
+  rawText?: string;
+}): BiomarkerDefinition | undefined {
+  return (
+    getBiomarkerByKey(testValue.biomarkerKey) ??
     (testValue.rawText ? findBiomarker(testValue.rawText) : undefined)
   );
 }

@@ -15,6 +15,7 @@ function renderWithProviders(ui: React.ReactElement) {
 
 function createMockBiomarker(): BiomarkerDefinition {
   return {
+    key: 'white-blood-cell-count',
     name: 'White Blood Cell Count',
     aliases: ['WBC', 'Leukocytes'],
     category: 'cbc',

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  getBiomarkerByKey,
+  getBiomarkerForKeyedTestValue,
+  unknownBiomarkerKey,
+  isUnknownBiomarkerKey,
   getBiomarkerId,
   getBiomarkerById,
   getBiomarkerForTestValue,
@@ -11,6 +15,7 @@ import {
   getCanonicalUnit,
   isValidUnit,
 } from './dictionary';
+import { ISSUED_BIOMARKER_KEYS } from './keys.snapshot';
 
 describe('Biomarker Dictionary', () => {
   describe('BIOMARKER_DEFINITIONS', () => {
@@ -222,6 +227,56 @@ describe('Biomarker Dictionary', () => {
         'Glucose'
       );
       expect(getBiomarkerForTestValue({ biomarkerId: 10042, rawText: 'Zorblatin' })).toBeUndefined();
+    });
+  });
+
+  describe('biomarker keys', () => {
+    it('gives every biomarker a unique kebab-case key', () => {
+      const keys = BIOMARKER_DEFINITIONS.map((b) => b.key);
+      expect(new Set(keys).size).toBe(keys.length);
+      keys.forEach((key) => expect(key).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/));
+    });
+
+    it('never drops or changes an issued key', () => {
+      const keys = new Set(BIOMARKER_DEFINITIONS.map((b) => b.key));
+      ISSUED_BIOMARKER_KEYS.forEach((issued) => expect(keys.has(issued), issued).toBe(true));
+    });
+
+    it('has every dictionary key in the issued list', () => {
+      // A new biomarker must be appended to ISSUED_BIOMARKER_KEYS
+      const issued = new Set(ISSUED_BIOMARKER_KEYS);
+      BIOMARKER_DEFINITIONS.forEach((b) => expect(issued.has(b.key), b.key).toBe(true));
+    });
+
+    it('looks up a biomarker by key', () => {
+      expect(getBiomarkerByKey('glucose')?.name).toBe('Glucose');
+      expect(getBiomarkerByKey('no-such-key')).toBeUndefined();
+    });
+
+    it('builds stable keys for unknown biomarkers', () => {
+      expect(unknownBiomarkerKey('Zorblatin')).toBe('unknown:zorblatin');
+      expect(unknownBiomarkerKey('  Zorb-latin (serum) ')).toBe('unknown:zorblatinserum');
+      expect(isUnknownBiomarkerKey('unknown:zorblatin')).toBe(true);
+      expect(isUnknownBiomarkerKey('glucose')).toBe(false);
+    });
+
+    it('never builds an empty unknown key', () => {
+      expect(unknownBiomarkerKey('—')).toBe('unknown:unnamed');
+      expect(unknownBiomarkerKey('')).toBe('unknown:unnamed');
+      // Non-Latin names keep their letters
+      expect(unknownBiomarkerKey('血糖')).toBe('unknown:血糖');
+    });
+
+    it('identifies a stored value by its key before its extracted text', () => {
+      expect(
+        getBiomarkerForKeyedTestValue({ biomarkerKey: 'hemoglobin', rawText: 'Hemo-globin' })?.name
+      ).toBe('Hemoglobin');
+      expect(
+        getBiomarkerForKeyedTestValue({ biomarkerKey: 'unknown:bloodsugar', rawText: 'Blood Sugar' })?.name
+      ).toBe('Glucose');
+      expect(
+        getBiomarkerForKeyedTestValue({ biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin' })
+      ).toBeUndefined();
     });
   });
 });
