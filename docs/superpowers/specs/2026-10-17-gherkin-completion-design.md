@@ -55,20 +55,27 @@ ID of 10000 or more.
   - `userNotes`
   - `userPreferences.personalTargets` and `userPreferences.unitPreferences`
   - alert acknowledgements (sub-project 2)
-- Unknown biomarkers use `unknown:<normalized extracted name>`, where the name
-  is lower-cased and stripped to letters and digits. The same unknown name
+- Unknown biomarkers use `unknown:<normalized extracted name>`: the name is
+  NFKC-normalised, lower-cased, and reduced to letters, combining marks,
+  digits, `%` and `#` (the last two distinguish e.g. "Reticulocytes %" from
+  "Reticulocytes #"). The same unknown name
   therefore always gets the same key. That keeps working when a user maps it
   to a known biomarker later: the stored value is rewritten to the known key.
 - **Dexie version 3 upgrade.** Converts stored numeric IDs to keys using
   `LEGACY_ID_ORDER`. This is a frozen copy of the dictionary's name order at
   migration time, kept in the migration module and never edited. Numeric IDs of
-  10000 or more become `unknown:legacy-<id>`, because the hash can't be reversed.
-  Their display name still comes from `rawText`, as it does today. The upgrade
+  10000 or more (hashes of the extracted name) first become
+  `unknown:legacy-<id>`. Because the hash input is the stored `rawText`, which
+  is encrypted, a pass after unlock then rewrites each to
+  `unknown:<normalized rawText>`, so its history joins later imports of the
+  same name. v1 backups do this during import, since their `rawText` is
+  plaintext. The upgrade
   only touches unencrypted fields, so it runs without the encryption key.
 - **Backups.** Backup schema version 2 writes keys. Restoring a version-1
   backup converts IDs with the same `LEGACY_ID_ORDER` mapping, through the
-  existing migration slot in `jsonImport.ts`. The filesystem sync file uses the
-  backup format and is covered by the same change.
+  existing migration slot in `jsonImport.ts`. The filesystem sync file has
+  its own format (`{ version, exportedAt, data }`); its version becomes 2, so a
+  future reader can tell numeric-ID files (v1) from key-based ones.
 - **Lookup.** `getBiomarkerByKey(key)` and `getBiomarkerForTestValue(tv)`
   (key first, then `rawText`) replace the numeric helpers added in the
   previous fix.

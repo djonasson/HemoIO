@@ -15,6 +15,12 @@ import { encrypt } from '@data/encryption';
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 /**
+ * Format version of the encrypted sync file. Version 2 stores biomarker keys
+ * (version 1 stored dictionary positions); a future reader must migrate v1.
+ */
+const SYNC_FILE_VERSION = 2;
+
+/**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
  */
 export function useFilesystemSync(): {
@@ -74,7 +80,7 @@ export function useFilesystemSync(): {
 
       // Convert to JSON and then to ArrayBuffer
       const jsonString = JSON.stringify({
-        version: 1,
+        version: SYNC_FILE_VERSION,
         exportedAt: new Date().toISOString(),
         data: exportData,
       });
