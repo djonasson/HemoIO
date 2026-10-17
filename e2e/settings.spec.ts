@@ -9,62 +9,39 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-
-// Test data constants
-const TEST_PASSWORD = 'TestPassword123!';
-
-/**
- * Helper to complete first-run setup
- */
-async function completeSetup(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByPlaceholder(/enter your password/i).fill(password);
-  await page.getByPlaceholder(/confirm your password/i).fill(password);
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Complete setup and get started' }).click();
-}
-
-/**
- * Helper to unlock the application
- */
-async function unlockApp(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByRole('textbox', { name: /password/i }).fill(password);
-  await page.getByRole('button', { name: /unlock/i }).click();
-}
-
-/**
- * Helper to detect if app needs setup or just unlock
- */
-async function isSetupNeeded(page: Page): Promise<boolean> {
-  const hasSetupStepper = await page
-    .locator('.mantine-Stepper-root')
-    .isVisible({ timeout: 2000 })
-    .catch(() => false);
-  const hasSetupText = await page
-    .getByText(/set up your password|create.*password/i)
-    .isVisible({ timeout: 500 })
-    .catch(() => false);
-  return hasSetupStepper || hasSetupText;
-}
-
-/**
- * Helper to setup or unlock as needed
- */
-async function setupOrUnlock(page: Page, password: string = TEST_PASSWORD) {
-  const needsSetup = await isSetupNeeded(page);
-  if (needsSetup) {
-    await completeSetup(page, password);
-  } else {
-    await unlockApp(page, password);
-  }
-}
+import * as fs from 'fs';
+import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
+import {
+  configureAnthropic,
+  mockAnthropicApi,
+  selectModel,
+} from './steps/aiModelSelection.steps';
 
 /**
  * Helper to navigate to settings page
  */
 async function navigateToSettings(page: Page) {
   await page.locator('nav').getByText('Settings', { exact: true }).click();
+}
+
+function glucoseTargetRow(page: Page) {
+  return page.getByRole('row').filter({ has: page.getByText('Glucose', { exact: true }) });
+}
+
+/**
+ * Set a personal target range for Glucose from the Personal Targets tab
+ */
+async function setGlucoseTarget(page: Page, low: string, high: string) {
+  await page.getByRole('tab', { name: /Personal Targets/i }).click();
+  await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
+  await page.getByRole('button', { name: 'Set personal target for Glucose', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Set Personal Target for Glucose', exact: true });
+  await dialog.getByRole('textbox', { name: 'Personal target low value' }).fill(low);
+  await dialog.getByRole('textbox', { name: 'Personal target high value' }).fill(high);
+  await dialog.getByRole('button', { name: 'Save Target' }).click();
+  await expect(dialog).toBeHidden();
 }
 
 test.describe('Settings Page', () => {
@@ -132,14 +109,8 @@ test.describe('Settings Page', () => {
       // Select dark theme - click the Dark label in the SegmentedControl
       await page.locator('.mantine-SegmentedControl-root').getByText('Dark').click();
 
-      // Wait for theme to apply
-      await page.waitForTimeout(500);
-
-      // Verify dark mode is applied (check for dark color scheme)
-      const colorScheme = await page.evaluate(() => {
-        return document.documentElement.getAttribute('data-mantine-color-scheme');
-      });
-      expect(colorScheme).toBe('dark');
+      // Verify dark mode is applied
+      await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'dark');
     });
 
     test('should change theme to light mode', async ({ page }) => {
@@ -153,14 +124,8 @@ test.describe('Settings Page', () => {
       // Select light theme - click the Light label in the SegmentedControl
       await page.locator('.mantine-SegmentedControl-root').getByText('Light').click();
 
-      // Wait for theme to apply
-      await page.waitForTimeout(500);
-
       // Verify light mode is applied
-      const colorScheme = await page.evaluate(() => {
-        return document.documentElement.getAttribute('data-mantine-color-scheme');
-      });
-      expect(colorScheme).toBe('light');
+      await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'light');
     });
 
     test('theme preference should persist after reload', async ({ page }) => {
@@ -172,18 +137,14 @@ test.describe('Settings Page', () => {
       await page.getByRole('tab', { name: /Display/i }).click();
       await page.locator('.mantine-SegmentedControl-root').getByText('Dark').click();
 
-      // Wait for theme to apply and localStorage to be saved
-      await page.waitForTimeout(500);
+      await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'dark');
 
       // Reload page
       await page.reload();
       await unlockApp(page);
 
       // Theme should still be dark
-      const colorScheme = await page.evaluate(() => {
-        return document.documentElement.getAttribute('data-mantine-color-scheme');
-      });
-      expect(colorScheme).toBe('dark');
+      await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'dark');
     });
   });
 
@@ -268,9 +229,6 @@ test.describe('Settings Page', () => {
       await page.locator('input[aria-label="Select AI provider"]').click();
       await page.getByRole('option', { name: /Ollama/i }).click();
 
-      // Wait for UI to update
-      await page.waitForTimeout(1000);
-
       // API key section should not be visible for Ollama
       // Instead, we should see Ollama-specific content - use specific text match
       await expect(page.getByText('Ollama runs AI models locally')).toBeVisible({ timeout: 10000 });
@@ -279,12 +237,30 @@ test.describe('Settings Page', () => {
       await expect(page.locator('input[aria-label="API key"]')).not.toBeVisible();
     });
 
-    test.skip('should mask API key after saving', async () => {
-      // Skip: Requires actual API key storage and display
+    test('should mask API key after saving', async ({ page }) => {
+      await mockAnthropicApi(page);
+      await page.goto('/');
+      await setupOrUnlock(page);
+      // Saves the key "sk-ant-test-0000000000000000000000"
+      await configureAnthropic(page);
+
+      await expect(page.getByText('Configured', { exact: true })).toBeVisible();
+      await expect(page.getByText('••••••••0000')).toBeVisible();
+      await expect(page.locator('input[aria-label="API key"]')).toHaveCount(0);
+      await expect(page.getByText(/sk-ant-test/)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Update API Key' })).toBeVisible();
     });
 
-    test.skip('should test AI connection', async () => {
-      // Skip: Requires network mocking for AI providers
+    test('should test AI connection', async ({ page }) => {
+      await mockAnthropicApi(page);
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await configureAnthropic(page);
+      await selectModel(page, 'claude-sonnet-5-5');
+
+      await page.getByRole('button', { name: 'Test Connection' }).click();
+
+      await expect(page.getByText('Connection successful! Your API key is working.')).toBeVisible();
     });
   });
 
@@ -313,12 +289,37 @@ test.describe('Settings Page', () => {
       await expect(page.getByText(/Glucose/i).first()).toBeVisible({ timeout: 10000 });
     });
 
-    test.skip('should allow setting personal target for a biomarker', async () => {
-      // Skip: Requires complex interaction with biomarker selection and input
+    test('should allow setting personal target for a biomarker', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+      await setGlucoseTarget(page, '80', '95');
+
+      const glucoseRow = glucoseTargetRow(page);
+      await expect(glucoseRow.getByText('80 - 95')).toBeVisible();
+
+      // The target is persisted, not just held in component state
+      await page.reload();
+      await unlockApp(page);
+      await navigateToSettings(page);
+      await page.getByRole('tab', { name: /Personal Targets/i }).click();
+      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
+      await expect(
+        glucoseTargetRow(page).getByText('80 - 95')
+      ).toBeVisible();
     });
 
-    test.skip('should allow clearing personal target', async () => {
-      // Skip: Requires setting a target first
+    test('should allow clearing personal target', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+      await setGlucoseTarget(page, '80', '95');
+
+      await page.getByRole('button', { name: 'Clear personal target for Glucose', exact: true }).click();
+
+      const glucoseRow = glucoseTargetRow(page);
+      await expect(glucoseRow.getByText('Using standard')).toBeVisible();
+      await expect(glucoseRow.getByText('80 - 95')).toHaveCount(0);
     });
   });
 
@@ -352,12 +353,32 @@ test.describe('Settings Page', () => {
       ).toBeVisible();
     });
 
-    test.skip('should download backup file when clicking export', async () => {
-      // Skip: Requires download handling
+    test('should download backup file when clicking export', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await seedLabData(page);
+      await navigateToSettings(page);
+
+      const downloadPromise = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'Create Backup' }).click();
+      const download = await downloadPromise;
+
+      expect(download.suggestedFilename()).toMatch(/^hemoio-backup-.*\.json$/);
+      const backup = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
+      expect(backup.labResults).toHaveLength(SEED_LAB_RESULTS.length);
+      expect(backup.testValues).toHaveLength(SEED_TEST_VALUES.length);
     });
 
-    test.skip('should restore from backup file', async () => {
-      // Skip: Requires file upload and restore flow
+    test('should restore from backup file', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+
+      // Restores through Settings and lands on the timeline
+      await seedLabData(page);
+
+      const main = page.getByRole('main');
+      await expect(main.getByText('Quest Diagnostics')).toBeVisible();
+      await expect(main.getByText('LabCorp')).toBeVisible();
     });
   });
 

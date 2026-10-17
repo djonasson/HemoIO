@@ -1,183 +1,437 @@
 /**
  * E2E Tests for Trend Charts
  *
- * Tests the trends visualization functionality including:
- * - Navigation to trends view
- * - Empty state display
- * - Accessibility
+ * Implements features/trend-charts.feature: navigation, empty states, the
+ * single-biomarker chart (reference range, out-of-range markers, date
+ * filtering, trend direction, statistics, tooltip, responsiveness), and
+ * multi-marker comparison.
  */
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { test, expect, type Page } from '@playwright/test';
+import { setupOrUnlock } from './steps/app.steps';
+import {
+  GLUCOSE,
+  HDL,
+  HEMOGLOBIN,
+  LDL,
+  VITAMIN_D,
+  biomarkerSelect,
+  dataPoints,
+  goToTrends,
+  pickDate,
+  seedVisits,
+  selectBiomarker,
+  type LabVisit,
+} from './steps/trends.steps';
 
 /**
- * Helper to clear storage and set up fresh
+ * "I have multiple lab results imported over time"
+ *
+ * Hemoglobin rises steadily (normal); glucose is normal, high, low, normal;
+ * vitamin D was measured only once.
  */
-async function setupFreshApp(page: Page) {
+const VISITS: LabVisit[] = [
+  {
+    date: '2023-11-10',
+    labName: 'Quest Diagnostics',
+    values: [
+      { biomarker: HEMOGLOBIN, value: 12.8 },
+      { biomarker: GLUCOSE, value: 92 },
+      { biomarker: LDL, value: 130 },
+      { biomarker: HDL, value: 45 },
+    ],
+  },
+  {
+    date: '2024-02-15',
+    labName: 'LabCorp',
+    values: [
+      { biomarker: HEMOGLOBIN, value: 13.4 },
+      { biomarker: GLUCOSE, value: 140 },
+      { biomarker: LDL, value: 120 },
+      { biomarker: HDL, value: 48 },
+    ],
+  },
+  {
+    date: '2024-05-20',
+    labName: 'Quest Diagnostics',
+    values: [
+      { biomarker: HEMOGLOBIN, value: 14.1 },
+      { biomarker: GLUCOSE, value: 60 },
+      { biomarker: LDL, value: 110 },
+      { biomarker: HDL, value: 52 },
+      { biomarker: VITAMIN_D, value: 42 },
+    ],
+  },
+  {
+    date: '2024-09-05',
+    labName: 'LabCorp',
+    values: [
+      { biomarker: HEMOGLOBIN, value: 14.9 },
+      { biomarker: GLUCOSE, value: 95 },
+      { biomarker: LDL, value: 95 },
+      { biomarker: HDL, value: 55 },
+    ],
+  },
+];
+
+/** X-axis tick labels for VISITS, as the chart formats them */
+const ALL_TICKS = ['Nov 10, 23', 'Feb 15, 24', 'May 20, 24', 'Sep 5, 24'];
+
+const RED = '#fa5252';
+const ORANGE = '#fd7e14';
+const STANDARD_GREEN = '#40c057';
+
+async function seedAndOpenTrends(page: Page): Promise<void> {
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-
-  // Complete setup wizard
-  const passwordInput = page.getByPlaceholder('Enter your password');
-  const confirmInput = page.getByPlaceholder('Confirm your password');
-
-  await passwordInput.fill('MySecurePass123!');
-  await confirmInput.fill('MySecurePass123!');
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Storage step
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // AI step
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Complete step
-  await page.getByRole('button', { name: 'Complete setup and get started' }).click();
-
-  // Wait for main app
-  await expect(page.getByRole('heading', { name: 'HemoIO', level: 3 })).toBeVisible();
+  await setupOrUnlock(page);
+  await seedVisits(page, VISITS);
+  await goToTrends(page);
 }
 
-/**
- * Helper to navigate to trends view
- */
-async function navigateToTrends(page: Page) {
-  // Click on the Trends nav item in the navigation (use exact match)
-  await page.getByRole('navigation').getByText('Trends', { exact: true }).click();
+function xAxisTicks(page: Page) {
+  return page.getByRole('main').locator('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value');
 }
 
 test.describe('Trend Charts', () => {
   test.beforeEach(async ({ page }) => {
-    await setupFreshApp(page);
+    await page.goto('/');
+    await setupOrUnlock(page);
   });
 
   test.describe('Navigation', () => {
     test('should be able to navigate to Trends view', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      // Should see the trends header or empty state
-      await expect(page.getByText(/trends|no lab results/i).first()).toBeVisible();
+      await expect(page.getByRole('main').getByText(/no lab results yet/i)).toBeVisible();
     });
 
     test('trends nav should show active state', async ({ page }) => {
-      await navigateToTrends(page);
+      const trendsNav = page.getByRole('navigation').getByRole('button', { name: /^Trends/ });
+      await trendsNav.click();
 
-      // The Trends nav item should be visible and active
-      const trendsNav = page.getByRole('navigation').getByText('Trends', { exact: true });
-      await expect(trendsNav).toBeVisible();
+      await expect(trendsNav).toHaveAttribute('aria-current', 'page');
     });
   });
 
   test.describe('Empty State', () => {
     test('should display empty state when no lab results', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      await expect(page.getByText(/no lab results yet/i)).toBeVisible();
+      await expect(page.getByRole('main').getByText(/no lab results yet/i)).toBeVisible();
     });
 
     test('should have import CTA button in empty state', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      const importButton = page.getByRole('button', { name: /import lab results/i });
-      await expect(importButton).toBeVisible();
+      await expect(
+        page.getByRole('main').getByRole('button', { name: /import lab results/i })
+      ).toBeVisible();
     });
 
     test('clicking import button should navigate to import view', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      await page.getByRole('button', { name: /import lab results/i }).click();
+      await page.getByRole('main').getByRole('button', { name: /import lab results/i }).click();
 
-      // Should be on import view - may show AI config required or file upload
-      await expect(page.getByText(/AI Configuration Required|Drag files here/i)).toBeVisible();
+      await expect(
+        page.getByRole('navigation').getByRole('button', { name: /^Import/ })
+      ).toHaveAttribute('aria-current', 'page');
     });
   });
 
   test.describe('Accessibility', () => {
     test('trends view should be keyboard navigable', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
+      await expect(importButton).toBeVisible();
 
-      await page.keyboard.press('Tab');
-
-      const focusedElement = await page.evaluate(() => document.activeElement?.tagName);
-      expect(focusedElement).toBeTruthy();
+      // Tab moves focus forward through the page until it reaches the CTA
+      await expect(async () => {
+        await page.keyboard.press('Tab');
+        await expect(importButton).toBeFocused({ timeout: 100 });
+      }).toPass();
     });
 
     test('import button in empty state should be focusable', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      const importButton = page.getByRole('button', { name: /import lab results/i });
+      const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await importButton.focus();
       await expect(importButton).toBeFocused();
     });
 
     test('import button should be activatable with Enter key', async ({ page }) => {
-      await navigateToTrends(page);
+      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
 
-      const importButton = page.getByRole('button', { name: /import lab results/i });
+      const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await importButton.focus();
       await page.keyboard.press('Enter');
 
-      // Should navigate to import view - may show AI config required or file upload
-      await expect(page.getByText(/AI Configuration Required|Drag files here/i)).toBeVisible();
+      await expect(
+        page.getByRole('navigation').getByRole('button', { name: /^Import/ })
+      ).toHaveAttribute('aria-current', 'page');
     });
   });
 });
 
 test.describe('Trend Charts with Data', () => {
-  // These tests require seeding the database with test data
-  // In a real implementation, you would:
-  // 1. Use Playwright fixtures to seed IndexedDB
-  // 2. Or mock the database at the network level
-
-  test.skip('should display biomarker selection when data available', async ({ page }) => {
-    await setupFreshApp(page);
-    await navigateToTrends(page);
-    await expect(page.getByPlaceholder(/choose a biomarker/i)).toBeVisible();
+  test.beforeEach(async ({ page }) => {
+    await seedAndOpenTrends(page);
   });
 
-  test.skip('should show trend chart when biomarker selected', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Empty state when no biomarker selected
+  test('should display biomarker selection when data available', async ({ page }) => {
+    const main = page.getByRole('main');
+
+    await expect(main.getByText('Select a biomarker to view its trend')).toBeVisible();
+    await expect(main.getByText('Choose from 5 available biomarkers')).toBeVisible();
+    await expect(biomarkerSelect(page)).toBeVisible();
+    await expect(biomarkerSelect(page)).toHaveValue('');
+
+    await biomarkerSelect(page).click();
+    // Options are grouped by category, so only membership is asserted
+    await expect(page.getByRole('option')).toHaveCount(5);
+    for (const label of [
+      'Hemoglobin (4 values)',
+      'Glucose (4 values)',
+      'LDL Cholesterol (4 values)',
+      'HDL Cholesterol (4 values)',
+      'Vitamin D (1 value)',
+    ]) {
+      await expect(page.getByRole('option', { name: label, exact: true })).toBeVisible();
+    }
   });
 
-  test.skip('should display reference range on chart', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: View single biomarker trend chart
+  test('should show trend chart when biomarker selected', async ({ page }) => {
+    await selectBiomarker(page, 'Hemoglobin');
+    const main = page.getByRole('main');
+
+    await expect(main.getByText('Hemoglobin (g/dL)', { exact: true })).toBeVisible();
+    await expect(main.locator('.recharts-line-curve')).toBeVisible();
+    await expect(dataPoints(page)).toHaveCount(4);
+
+    // X-axis: dates in chronological order
+    await expect(xAxisTicks(page)).toHaveText(ALL_TICKS);
+
+    // Y-axis: labelled with the unit
+    await expect(main.locator('text.recharts-label').filter({ hasText: /^g\/dL$/ })).toBeVisible();
   });
 
-  test.skip('should highlight values outside reference range', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Reference range displayed on chart
+  test('should display reference range on chart', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+    const main = page.getByRole('main');
+
+    const band = main.locator('.recharts-reference-area-rect');
+    await expect(band).toBeVisible();
+    await expect(main.locator('text.recharts-label', { hasText: 'Low: 70' })).toBeVisible();
+    await expect(main.locator('text.recharts-label', { hasText: 'High: 100' })).toBeVisible();
+
+    // The band spans exactly from the low reference value to the high one
+    await expect(band).toHaveAttribute('y1', '70');
+    await expect(band).toHaveAttribute('y2', '100');
+    const lowLine = main.locator('line.recharts-reference-line-line[y="70"]');
+    const highLine = main.locator('line.recharts-reference-line-line[y="100"]');
+    const bandTop = Number(await band.getAttribute('y'));
+    const bandBottom = bandTop + Number(await band.getAttribute('height'));
+    expect(bandTop).toBeCloseTo(Number(await highLine.getAttribute('y1')), 1);
+    expect(bandBottom).toBeCloseTo(Number(await lowLine.getAttribute('y1')), 1);
+
+    // Visually distinct from the data line
+    const bandFill = await band.getAttribute('fill');
+    const lineStroke = await main.locator('.recharts-line-curve').getAttribute('stroke');
+    expect(bandFill).toBeTruthy();
+    expect(bandFill).not.toBe(lineStroke);
   });
 
-  test.skip('should filter chart by date range', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Identify values outside reference range
+  test('should highlight values outside reference range', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+
+    const highPoint = dataPoints(page).and(page.locator('[aria-label$="(high)"]'));
+    const lowPoint = dataPoints(page).and(page.locator('[aria-label$="(low)"]'));
+    const normalPoints = dataPoints(page).and(page.locator('[aria-label$="(normal)"]'));
+
+    await expect(highPoint).toHaveCount(1);
+    await expect(highPoint).toHaveAttribute('aria-label', 'Feb 15, 24: 140 mg/dL (high)');
+    await expect(highPoint).toHaveAttribute('fill', RED);
+
+    await expect(lowPoint).toHaveCount(1);
+    await expect(lowPoint).toHaveAttribute('aria-label', 'May 20, 24: 60 mg/dL (low)');
+    await expect(lowPoint).toHaveAttribute('fill', ORANGE);
+
+    await expect(normalPoints).toHaveCount(2);
+    for (const point of await normalPoints.all()) {
+      await expect(point).toHaveAttribute('fill', STANDARD_GREEN);
+    }
   });
 
-  test.skip('should display trend direction indicator', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Filter trend chart by date range
+  test('should filter chart by date range', async ({ page }) => {
+    await selectBiomarker(page, 'Hemoglobin');
+    await expect(dataPoints(page)).toHaveCount(4);
+
+    await pickDate(page, 'Filter from date', '2024-01-01');
+    await pickDate(page, 'Filter to date', '2024-06-30');
+
+    await expect(dataPoints(page)).toHaveCount(2);
+    await expect(page.getByRole('main').locator('[aria-label="Feb 15, 24: 13.4 g/dL (normal)"]')).toBeVisible();
+    await expect(page.getByRole('main').locator('[aria-label="May 20, 24: 14.1 g/dL (normal)"]')).toBeVisible();
+    await expect(xAxisTicks(page)).toHaveText(['Feb 15, 24', 'May 20, 24']);
   });
 
-  test.skip('should display statistics summary', async ({ page }) => {
-    // Requires seeded data
+  // Scenarios: View trend statistics summary, View rate of change statistic
+  test('should display statistics summary', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+    const main = page.getByRole('main');
+
+    const summary = main.locator('div.mantine-Paper-root', {
+      has: page.getByText('Statistics Summary', { exact: true }),
+    });
+    await expect(summary).toBeVisible();
+
+    const stat = (label: string) =>
+      summary.locator('div.mantine-Paper-root', { has: page.getByText(label, { exact: true }) }).first();
+
+    await expect(stat('Minimum')).toContainText('60');
+    await expect(stat('Maximum')).toContainText('140');
+    await expect(stat('Average')).toContainText('96.8');
+    await expect(stat('Latest Value')).toContainText('95');
+    await expect(stat('Total Readings')).toContainText('4');
+
+    // Trend direction is shown alongside the statistics
+    await expect(main.getByText(/^(Increasing|Decreasing|Stable)$/)).toBeVisible();
+
+    // Rate of change: average change per time period
+    const rate = summary.locator('div.mantine-Paper-root', { has: page.getByText('Rate of Change') });
+    await expect(rate).toBeVisible();
+    await expect(rate.getByText('Per Month')).toBeVisible();
+    await expect(rate.getByText(/^[+-][\d.]+ mg\/dL$/).first()).toBeVisible();
   });
 
-  test.skip('should open compare modal when compare button clicked', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Handle different units on multi-marker chart
+  test('should open compare modal when compare button clicked', async ({ page }) => {
+    await selectBiomarker(page, 'Hemoglobin');
+    await page.getByRole('main').getByRole('button', { name: 'Compare Markers' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Compare Biomarkers' });
+    await expect(dialog).toBeVisible();
+
+    // Hemoglobin is pre-selected; add glucose (different unit)
+    await dialog.getByRole('textbox', { name: 'Select biomarkers to compare' }).click();
+    await page.getByRole('option', { name: /^Glucose \(/ }).click();
+
+    await expect(dialog.locator('.recharts-yAxis')).toHaveCount(2);
+    await expect(dialog.locator('.recharts-yAxis.yAxis').first()).toBeVisible();
+    await expect(dialog.getByText('Left: g/dL')).toBeVisible();
+    await expect(dialog.getByText('Right: mg/dL')).toBeVisible();
+    await expect(dialog.locator('.recharts-line')).toHaveCount(2);
   });
 
-  test.skip('should compare multiple biomarkers', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Compare multiple biomarkers
+  test('should compare multiple biomarkers', async ({ page }) => {
+    await selectBiomarker(page, 'LDL Cholesterol');
+    await page.getByRole('main').getByRole('button', { name: 'Compare Markers' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Compare Biomarkers' });
+    await expect(dialog).toBeVisible();
+    // The biomarker being viewed is pre-selected as the first marker
+    await expect(dialog.locator('.mantine-Pill-label', { hasText: 'LDL Cholesterol' })).toBeVisible();
+
+    const markerInput = dialog.getByRole('textbox', { name: 'Select biomarkers to compare' });
+    await markerInput.click();
+    await page.getByRole('option', { name: /^HDL Cholesterol \(/ }).click();
+
+    const lines = dialog.locator('.recharts-line-curve');
+    await expect(lines).toHaveCount(2);
+    const strokes = await Promise.all((await lines.all()).map((l) => l.getAttribute('stroke')));
+    expect(new Set(strokes).size).toBe(2);
+
+    const legend = dialog.locator('.recharts-legend-wrapper');
+    await expect(legend.getByText(/LDL Cholesterol/)).toBeVisible();
+    await expect(legend.getByText(/HDL Cholesterol/)).toBeVisible();
   });
 
-  test.skip('should show single data point message', async ({ page }) => {
-    // Requires seeded data with single value
+  // Scenario: View chart with single data point
+  test('should show single data point message', async ({ page }) => {
+    await selectBiomarker(page, 'Vitamin D');
+    const main = page.getByRole('main');
+
+    await expect(main.getByText('More data needed for trend analysis')).toBeVisible();
+    await expect(main.getByText('42', { exact: true })).toBeVisible();
+    await expect(main.getByText('ng/mL', { exact: true })).toBeVisible();
+    await expect(main.getByText('May 20, 24', { exact: true })).toBeVisible();
   });
 
-  test.skip('should show tooltip on hover', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Hover to see data point details
+  test('should show tooltip on hover', async ({ page }) => {
+    await selectBiomarker(page, 'Hemoglobin');
+
+    await page.getByRole('main').locator('[aria-label="Feb 15, 24: 13.4 g/dL (normal)"]').hover();
+
+    const tooltip = page.getByRole('main').locator('.recharts-tooltip-wrapper');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toContainText('Feb 15, 24'); // Date
+    await expect(tooltip).toContainText('Value:13.4 g/dL'); // Value
+    await expect(tooltip).toContainText('Reference:12 - 17.5'); // Reference range
+    await expect(tooltip).toContainText('LabCorp'); // Lab name
   });
 
-  test.skip('chart should be responsive', async ({ page }) => {
-    // Requires seeded data
+  // Scenario: Responsive chart sizing
+  test('chart should be responsive', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await selectBiomarker(page, 'Hemoglobin');
+
+    const surface = page.getByRole('main').locator('svg.recharts-surface');
+    const title = page.getByRole('main').getByText('Hemoglobin (g/dL)', { exact: true });
+    await expect(dataPoints(page)).toHaveCount(4);
+    const wideWidth = (await surface.boundingBox())!.width;
+
+    await page.setViewportSize({ width: 700, height: 900 });
+
+    await expect.poll(async () => (await surface.boundingBox())?.width).toBeLessThan(wideWidth);
+    const narrowBox = (await surface.boundingBox())!;
+    expect(narrowBox.x + narrowBox.width).toBeLessThanOrEqual(700);
+
+    await expect(dataPoints(page)).toHaveCount(4);
+    for (const point of await dataPoints(page).all()) {
+      await expect(point).toBeInViewport();
+    }
+    await expect(title).toBeVisible();
+    await expect(title).toBeInViewport();
+  });
+});
+
+// Scenario: View trend direction indicator
+test.describe('Trend direction indicator', () => {
+  test('should display trend direction indicator', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // Three hemoglobin readings a month apart, rising ~1.5 g/dL per month
+    await seedVisits(page, [
+      { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
+      { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
+      { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 15.5 }] },
+    ]);
+    await goToTrends(page);
+    await selectBiomarker(page, 'Hemoglobin');
+
+    await expect(dataPoints(page)).toHaveCount(3);
+    await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toBeVisible();
+  });
+
+  test('should show stable when values barely change', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedVisits(page, [
+      { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
+      { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.1 }] },
+      { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
+    ]);
+    await goToTrends(page);
+    await selectBiomarker(page, 'Hemoglobin');
+
+    await expect(page.getByRole('main').getByText('Stable', { exact: true })).toBeVisible();
   });
 });

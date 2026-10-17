@@ -57,3 +57,10 @@ Feature: Keyboard Navigation
     Given a modal is open
     When I press Escape
     Then the modal should close
+
+  @keyboard @accessibility
+  Scenario: Main navigation is reachable with the keyboard
+    Given I am logged into the application
+    When I press Tab repeatedly
+    Then focus should reach each item in the main navigation
+    And pressing Enter on a navigation item should open that view

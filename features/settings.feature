@@ -72,7 +72,7 @@ Feature: Application Settings
 
   # Personal Target Ranges
   Scenario: View personal targets section
-    When I click on the Data tab
+    When I click on the Personal Targets tab
     Then I should see the Personal Target Ranges section
     And I should see a list of biomarkers I can customize
 
@@ -87,7 +87,7 @@ Feature: Application Settings
 
   Scenario: Clear personal target range
     Given I have set a personal target for a biomarker
-    When I click "Reset to Default" for that biomarker
+    When I click "Clear personal target" for that biomarker
     Then my personal target should be removed
     And the standard reference range should be used again
 

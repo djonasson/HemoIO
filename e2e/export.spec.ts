@@ -9,65 +9,26 @@
  * - File download
  */
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-
 import { test, expect, type Page } from '@playwright/test';
-
-/**
- * Helper to complete first-run setup
- */
-async function completeSetup(page: Page, password: string = 'TestPassword123!') {
-  // Enter password - be specific to avoid matching unlock screen
-  await page.getByPlaceholder(/enter your password/i).fill(password);
-  await page.getByPlaceholder(/confirm your password/i).fill(password);
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Skip storage setup (use local)
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Skip AI setup (just proceed without configuring)
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Complete setup on the final step (use exact aria-label to avoid matching stepper)
-  await page.getByRole('button', { name: 'Complete setup and get started' }).click();
-}
-
-/**
- * Helper to unlock the application
- */
-async function unlockApp(page: Page, password: string = 'TestPassword123!') {
-  // Wait for unlock screen - use textbox role to be specific
-  await page.getByRole('textbox', { name: /password/i }).fill(password);
-  await page.getByRole('button', { name: /unlock/i }).click();
-}
-
-/**
- * Helper to detect if app needs setup or just unlock
- */
-async function isSetupNeeded(page: Page): Promise<boolean> {
-  // Check for setup-specific elements (stepper or setup text)
-  const hasSetupStepper = await page.locator('.mantine-Stepper-root').isVisible({ timeout: 2000 }).catch(() => false);
-  const hasSetupText = await page.getByText(/set up your password|create.*password/i).isVisible({ timeout: 500 }).catch(() => false);
-  return hasSetupStepper || hasSetupText;
-}
+import * as fs from 'fs';
+import { setupOrUnlock } from './steps/app.steps';
+import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 
 /**
  * Helper to open export dialog
  */
 async function openExportDialog(page: Page) {
   await page.getByRole('button', { name: /export data/i }).click();
+  await expect(exportDialog(page)).toBeVisible();
 }
 
-/**
- * Helper to setup or unlock as needed
- */
-async function setupOrUnlock(page: Page, password: string = 'TestPassword123!') {
-  const needsSetup = await isSetupNeeded(page);
-  if (needsSetup) {
-    await completeSetup(page, password);
-  } else {
-    await unlockApp(page, password);
-  }
+function exportDialog(page: Page) {
+  return page.getByRole('dialog', { name: 'Export Data' });
+}
+
+async function selectExportFormat(page: Page, format: string) {
+  await exportDialog(page).getByRole('textbox', { name: 'Select export format' }).click();
+  await page.getByRole('option', { name: format }).click();
 }
 
 test.describe('Export Dialog', () => {
@@ -87,7 +48,7 @@ test.describe('Export Dialog', () => {
       await openExportDialog(page);
 
       // Dialog should be visible
-      await expect(page.getByText('Export Data')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Export Data' })).toBeVisible();
     });
 
     test('should show format selection options', async ({ page }) => {
@@ -129,7 +90,7 @@ test.describe('Export Dialog', () => {
       await page.getByRole('button', { name: /cancel/i }).click();
 
       // Dialog should be closed
-      await expect(page.getByText('Export Data')).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Export Data' })).not.toBeVisible();
     });
   });
 
@@ -141,15 +102,22 @@ test.describe('Export Dialog', () => {
       await openExportDialog(page);
 
       // CSV should be default, so options should be visible
-      await expect(page.getByText('Date Range')).toBeVisible();
-      await expect(page.getByText('Biomarkers')).toBeVisible();
-      await expect(page.getByText('Include reference ranges')).toBeVisible();
+      const dialog = page.getByRole('dialog', { name: 'Export Data' });
+      await expect(dialog.getByText('Date Range')).toBeVisible();
+      await expect(dialog.getByText('Biomarkers')).toBeVisible();
+      await expect(dialog.getByText('Include reference ranges')).toBeVisible();
     });
   });
 
   test.describe('JSON Export', () => {
-    test.skip('should show JSON description when JSON format selected', async ({ page }) => {
-      // Skipped due to Mantine Select interaction complexity
+    test('should show JSON description when JSON format selected', async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await openExportDialog(page);
+
+      await selectExportFormat(page, 'JSON (Full Backup)');
+
+      await expect(exportDialog(page).getByText(/JSON export includes all lab results/)).toBeVisible();
     });
   });
 
@@ -197,32 +165,71 @@ test.describe('Export Dialog', () => {
       await page.keyboard.press('Escape');
 
       // Dialog should be closed
-      await expect(page.getByText('Export Data')).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Export Data' })).not.toBeVisible();
     });
   });
 });
 
 test.describe('Export with Data', () => {
-  // These tests require seeding the database with test data
-  // In a real implementation, you would use fixtures to seed IndexedDB
+  // Named test values (as extracted from a report) so exports can be checked by name
+  const TEST_VALUES = [
+    { id: 1, labResultId: 1, biomarkerId: 1, value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 2, labResultId: 1, biomarkerId: 2, value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 3, labResultId: 2, biomarkerId: 1, value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
+  ];
 
-  test.skip('should show data counts in export preview', async ({ page }) => {
-    // This test requires seeded data
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, { testValues: TEST_VALUES });
+    await openExportDialog(page);
   });
 
-  test.skip('should download CSV file when exporting', async ({ page }) => {
-    // This test requires seeded data and download handling
+  test('should show data counts in export preview', async ({ page }) => {
+    await expect(exportDialog(page).getByText('2 lab results, 3 test values')).toBeVisible();
   });
 
-  test.skip('should download JSON file when exporting full backup', async ({ page }) => {
-    // This test requires seeded data and download handling
+  test('should download CSV file when exporting', async ({ page }) => {
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/\.csv$/);
+    const csv = fs.readFileSync(await download.path(), 'utf-8');
+    expect(csv).toContain('Quest Diagnostics');
+    expect(csv).toContain('LabCorp');
+    expect(csv).toContain('Glucose');
+    expect(csv).toContain('Hemoglobin');
   });
 
-  test.skip('should filter by date range', async ({ page }) => {
-    // This test requires seeded data
+  test('should download JSON file when exporting full backup', async ({ page }) => {
+    await selectExportFormat(page, 'JSON (Full Backup)');
+    await expect(exportDialog(page).getByText('2 lab results, 3 test values, 0 notes')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/\.json$/);
+    const backup = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
+    expect(backup.labResults).toHaveLength(SEED_LAB_RESULTS.length);
+    expect(backup.testValues).toHaveLength(TEST_VALUES.length);
   });
 
-  test.skip('should filter by selected biomarkers', async ({ page }) => {
-    // This test requires seeded data
+  test('should filter by date range', async ({ page }) => {
+    // The seeded results are from 2024, so a recent range excludes all of them
+    await exportDialog(page).getByRole('textbox', { name: 'Select date range' }).click();
+    await page.getByRole('option', { name: 'Last 30 Days' }).click();
+
+    await expect(exportDialog(page).getByText('0 lab results, 0 test values')).toBeVisible();
+    await expect(exportDialog(page).getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+  });
+
+  test('should filter by selected biomarkers', async ({ page }) => {
+    await exportDialog(page).getByRole('textbox', { name: 'Select biomarkers to include' }).click();
+    await page.getByRole('option', { name: 'Glucose' }).click();
+
+    // Both lab results remain in range; only the one Glucose value is included
+    await expect(exportDialog(page).getByText('2 lab results, 1 test value')).toBeVisible();
   });
 });

@@ -99,6 +99,12 @@ async function setupOllamaMocks(
   });
 }
 
+// Helper to open the AI Configuration tab in Settings
+async function openAISettings(page: Page) {
+  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await page.getByRole('tab', { name: /AI Configuration/i }).click();
+}
+
 // Helper to navigate to AI step in setup wizard
 async function navigateToAIStep(page: Page) {
   const passwordInput = page.getByPlaceholder('Enter your password');
@@ -122,7 +128,7 @@ async function completeSetupWithOllama(page: Page) {
   await navigateToAIStep(page);
 
   // Select Ollama
-  const providerSelect = page.getByLabel('AI Provider');
+  const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
   await providerSelect.click();
   await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -150,7 +156,7 @@ test.describe('Ollama Integration - Setup Wizard', () => {
     await setupOllamaMocks(page);
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
 
     await expect(page.getByRole('option', { name: 'Ollama (Local)' })).toBeVisible();
@@ -160,19 +166,19 @@ test.describe('Ollama Integration - Setup Wizard', () => {
     await setupOllamaMocks(page);
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
     await expect(page.getByText('No API key required')).toBeVisible();
-    await expect(page.getByLabel('API Key')).not.toBeVisible();
+    await expect(page.getByLabel('API Key', { exact: true })).not.toBeVisible();
   });
 
   test('shows connection status when Ollama is running', async ({ page }) => {
     await setupOllamaMocks(page, { isRunning: true });
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -184,7 +190,7 @@ test.describe('Ollama Integration - Setup Wizard', () => {
     await setupOllamaMocks(page, { isRunning: false });
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -197,13 +203,13 @@ test.describe('Ollama Integration - Setup Wizard', () => {
     await setupOllamaMocks(page);
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
     await expect(page.getByText('Ollama connected')).toBeVisible({ timeout: 5000 });
 
-    const modelSelect = page.getByLabel('Model');
+    const modelSelect = page.getByRole('textbox', { name: 'Model', exact: true });
     await expect(modelSelect).toBeVisible();
 
     await modelSelect.click();
@@ -215,13 +221,13 @@ test.describe('Ollama Integration - Setup Wizard', () => {
     await setupOllamaMocks(page);
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
     await expect(page.getByText('Ollama connected')).toBeVisible({ timeout: 5000 });
 
-    const modelSelect = page.getByLabel('Model');
+    const modelSelect = page.getByRole('textbox', { name: 'Model', exact: true });
     await expect(modelSelect).toHaveValue('llama3.2:8b');
   });
 
@@ -247,22 +253,22 @@ test.describe('Ollama Integration - Settings', () => {
 
   test('can access AI settings', async ({ page }) => {
     // Navigate to settings
-    await page.getByRole('button', { name: /Settings/ }).click();
+    await openAISettings(page);
 
     await expect(page.getByRole('heading', { name: 'AI Configuration' })).toBeVisible();
   });
 
   test('shows Ollama connected status in settings', async ({ page }) => {
-    await page.getByRole('button', { name: /Settings/ }).click();
+    await openAISettings(page);
 
-    await expect(page.getByText('Connected')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Connected', { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/\d+ models? available/)).toBeVisible();
   });
 
   test('can change Ollama model in settings', async ({ page }) => {
-    await page.getByRole('button', { name: /Settings/ }).click();
+    await openAISettings(page);
 
-    const modelSelect = page.getByLabel('Select Ollama model');
+    const modelSelect = page.getByRole('textbox', { name: 'Select Ollama model' });
     await modelSelect.click();
     await page.getByRole('option', { name: 'mistral:7b' }).click();
 
@@ -270,7 +276,7 @@ test.describe('Ollama Integration - Settings', () => {
   });
 
   test('can test connection in settings', async ({ page }) => {
-    await page.getByRole('button', { name: /Settings/ }).click();
+    await openAISettings(page);
 
     const testButton = page.getByRole('button', { name: 'Test Connection' });
     await testButton.click();
@@ -279,7 +285,7 @@ test.describe('Ollama Integration - Settings', () => {
   });
 
   test('shows privacy notice for Ollama', async ({ page }) => {
-    await page.getByRole('button', { name: /Settings/ }).click();
+    await openAISettings(page);
 
     await expect(
       page.getByText(/runs AI models locally on your device/)
@@ -300,7 +306,7 @@ test.describe('Ollama Integration - Error Handling', () => {
     await setupOllamaMocks(page, { isRunning: true });
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -313,7 +319,7 @@ test.describe('Ollama Integration - Error Handling', () => {
 
     // Try to retry connection or switch away and back
     await providerSelect.click();
-    await page.getByRole('option', { name: 'OpenAI (GPT-4)' }).click();
+    await page.getByRole('option', { name: 'OpenAI (GPT-5)' }).click();
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -324,21 +330,21 @@ test.describe('Ollama Integration - Error Handling', () => {
     await setupOllamaMocks(page, { isRunning: false });
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
     await expect(page.getByText('Ollama not detected')).toBeVisible({ timeout: 5000 });
 
     // Model select should not be visible when not connected
-    await expect(page.getByLabel('Model')).not.toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Model', exact: true })).not.toBeVisible();
   });
 
   test('shows retry button when Ollama not detected', async ({ page }) => {
     await setupOllamaMocks(page, { isRunning: false });
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -361,19 +367,19 @@ test.describe('Ollama Integration - Switching Providers', () => {
     await navigateToAIStep(page);
 
     // First select OpenAI
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
-    await page.getByRole('option', { name: 'OpenAI (GPT-4)' }).click();
+    await page.getByRole('option', { name: 'OpenAI (GPT-5)' }).click();
 
     // API key field should appear
-    await expect(page.getByLabel('API Key')).toBeVisible();
+    await expect(page.getByLabel('API Key', { exact: true })).toBeVisible();
 
     // Switch to Ollama
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
     // API key field should disappear
-    await expect(page.getByLabel('API Key')).not.toBeVisible();
+    await expect(page.getByLabel('API Key', { exact: true })).not.toBeVisible();
     await expect(page.getByText('No API key required')).toBeVisible();
   });
 
@@ -381,7 +387,7 @@ test.describe('Ollama Integration - Switching Providers', () => {
     await navigateToAIStep(page);
 
     // First select Ollama
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 
@@ -392,7 +398,7 @@ test.describe('Ollama Integration - Switching Providers', () => {
     await page.getByRole('option', { name: 'Anthropic (Claude)' }).click();
 
     // API key field should appear
-    await expect(page.getByLabel('API Key')).toBeVisible();
+    await expect(page.getByLabel('API Key', { exact: true })).toBeVisible();
     await expect(page.getByText('No API key required')).not.toBeVisible();
   });
 });
@@ -409,11 +415,13 @@ test.describe('Ollama Integration - Accessibility', () => {
     await navigateToAIStep(page);
 
     // Tab to provider select
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.focus();
 
-    // Open dropdown with keyboard
+    // Open dropdown with keyboard; nothing is highlighted until the first
+    // ArrowDown, and Ollama is the third option
     await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
@@ -425,7 +433,7 @@ test.describe('Ollama Integration - Accessibility', () => {
   test('status messages are accessible to screen readers', async ({ page }) => {
     await navigateToAIStep(page);
 
-    const providerSelect = page.getByLabel('AI Provider');
+    const providerSelect = page.getByRole('textbox', { name: 'AI Provider', exact: true });
     await providerSelect.click();
     await page.getByRole('option', { name: 'Ollama (Local)' }).click();
 

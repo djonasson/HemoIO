@@ -9,16 +9,8 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import * as path from 'path';
-import * as fs from 'fs';
-import { fileURLToPath } from 'url';
-
-// ES module compatible __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Test data constants
-const TEST_PASSWORD = 'TestPassword123!';
+import { setupOrUnlock } from './steps/app.steps';
+import { removeTempFile, writeTempFile } from './steps/tempFiles';
 
 // Mock lab result data for backup file
 const MOCK_LAB_RESULTS = [
@@ -108,59 +100,6 @@ function createValidBackupData() {
 const ENCRYPTED_BACKUP_PASSWORD = 'SecureBackup123!';
 
 /**
- * Helper to complete first-run setup
- */
-async function completeSetup(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByPlaceholder(/enter your password/i).fill(password);
-  await page.getByPlaceholder(/confirm your password/i).fill(password);
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Skip storage setup (use local)
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Skip AI setup (just proceed without configuring)
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-
-  // Complete setup on the final step
-  await page.getByRole('button', { name: 'Complete setup and get started' }).click();
-}
-
-/**
- * Helper to unlock the application
- */
-async function unlockApp(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByRole('textbox', { name: /password/i }).fill(password);
-  await page.getByRole('button', { name: /unlock/i }).click();
-}
-
-/**
- * Helper to detect if app needs setup or just unlock
- */
-async function isSetupNeeded(page: Page): Promise<boolean> {
-  const hasSetupStepper = await page
-    .locator('.mantine-Stepper-root')
-    .isVisible({ timeout: 2000 })
-    .catch(() => false);
-  const hasSetupText = await page
-    .getByText(/set up your password|create.*password/i)
-    .isVisible({ timeout: 500 })
-    .catch(() => false);
-  return hasSetupStepper || hasSetupText;
-}
-
-/**
- * Helper to setup or unlock as needed
- */
-async function setupOrUnlock(page: Page, password: string = TEST_PASSWORD) {
-  const needsSetup = await isSetupNeeded(page);
-  if (needsSetup) {
-    await completeSetup(page, password);
-  } else {
-    await unlockApp(page, password);
-  }
-}
-
-/**
  * Helper to navigate to settings
  */
 async function navigateToSettings(page: Page) {
@@ -175,22 +114,14 @@ function createBackupFile(
   content: object,
   filename: string = 'test-backup.json'
 ): string {
-  const tempDir = path.join(__dirname, '..', 'test-results', 'temp');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
-  const filePath = path.join(tempDir, filename);
-  fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
-  return filePath;
+  return writeTempFile(filename, JSON.stringify(content, null, 2));
 }
 
 /**
  * Helper to cleanup temp file
  */
 function cleanupBackupFile(filePath: string) {
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
+  removeTempFile(filePath);
 }
 
 /**
@@ -373,13 +304,12 @@ test.describe('Restore Flow', () => {
         page.getByRole('heading', { name: 'Restore from Backup' })
       ).toBeVisible({ timeout: 15000 });
 
-      // Wait for modal content to be fully rendered
-      await page.waitForTimeout(500);
 
       // Should show backup summary - the modal shows "2 lab results, 3 test values, 1 note"
-      await expect(page.getByText(/2 lab result/i)).toBeVisible();
-      await expect(page.getByText(/3 test value/i)).toBeVisible();
-      await expect(page.getByText(/1 note/i)).toBeVisible();
+      const dialog = page.getByRole('dialog', { name: 'Restore from Backup' });
+      await expect(dialog.getByText(/2 lab result/i)).toBeVisible();
+      await expect(dialog.getByText(/3 test value/i)).toBeVisible();
+      await expect(dialog.getByText(/1 note/i)).toBeVisible();
     } finally {
       cleanupBackupFile(backupPath);
     }
@@ -399,11 +329,9 @@ test.describe('Restore Flow', () => {
       const modalHeading = page.getByRole('heading', { name: 'Restore from Backup' });
       await expect(modalHeading).toBeVisible();
 
-      // Wait a bit for modal animation to complete
-      await page.waitForTimeout(300);
 
       // Click the Restore button in the modal (it's inside the dialog)
-      const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+      const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
       await restoreButton.click();
 
       // Wait for restore to complete - should show notification and navigate to timeline
@@ -472,12 +400,7 @@ test.describe('Restore Flow', () => {
     await navigateToSettings(page);
 
     // Create a corrupted backup file (invalid JSON)
-    const tempDir = path.join(__dirname, '..', 'test-results', 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    const backupPath = path.join(tempDir, 'corrupted-backup.json');
-    fs.writeFileSync(backupPath, '{ this is not valid JSON }}}');
+    const backupPath = writeTempFile('corrupted-backup.json', '{ this is not valid JSON }}}');
 
     try {
       await uploadBackupFile(page, backupPath);
@@ -505,11 +428,9 @@ test.describe('Restore Flow', () => {
         page.getByRole('heading', { name: 'Restore from Backup' })
       ).toBeVisible({ timeout: 10000 });
 
-      // Wait for modal animation
-      await page.waitForTimeout(300);
 
       // Click restore button in modal
-      const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+      const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
       await restoreButton.click();
 
       // Wait for navigation to timeline - check for timeline heading
@@ -538,11 +459,9 @@ test.describe('Backup with Data', () => {
     try {
       await uploadBackupFile(page, backupPath);
 
-      // Wait for modal animation
-      await page.waitForTimeout(300);
 
       // Click restore button in modal
-      const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+      const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
       await restoreButton.click();
 
       // Wait for navigation to timeline (restore navigates there on success)
@@ -578,11 +497,9 @@ test.describe('Backup with Data', () => {
         page.getByRole('heading', { name: 'Restore from Backup' })
       ).toBeVisible({ timeout: 10000 });
 
-      // Wait for modal animation
-      await page.waitForTimeout(300);
 
       // Click restore button in modal
-      const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+      const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
       await restoreButton.click();
 
       // Wait for navigation to timeline (restore navigates there on success)
@@ -593,9 +510,10 @@ test.describe('Backup with Data', () => {
       // Navigate back to settings
       await navigateToSettings(page);
 
-      // Should show data counts in the backup section
-      await expect(page.getByText(/2 lab result/i)).toBeVisible();
-      await expect(page.getByText(/3 test value/i)).toBeVisible();
+      // Should show data counts in the backup section (not the restore notification)
+      const main = page.getByRole('main');
+      await expect(main.getByText(/2 lab result/i)).toBeVisible();
+      await expect(main.getByText(/3 test value/i)).toBeVisible();
     } finally {
       cleanupBackupFile(backupPath);
     }
@@ -614,11 +532,9 @@ test.describe('Backup with Data', () => {
     try {
       await uploadBackupFile(page, backupPath);
 
-      // Wait for modal animation
-      await page.waitForTimeout(300);
 
       // Click restore button in modal
-      const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+      const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
       await restoreButton.click();
 
       // Wait for navigation to timeline (restore navigates there on success)
@@ -677,8 +593,7 @@ test.describe('Encrypted Backup', () => {
         await expect(
           page.getByRole('heading', { name: 'Restore from Backup' })
         ).toBeVisible({ timeout: 10000 });
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);
@@ -705,8 +620,7 @@ test.describe('Encrypted Backup', () => {
       const backupPath = createBackupFile(createValidBackupData());
       try {
         await uploadBackupFile(page, backupPath);
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);
@@ -735,8 +649,7 @@ test.describe('Encrypted Backup', () => {
       const backupPath = createBackupFile(createValidBackupData());
       try {
         await uploadBackupFile(page, backupPath);
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);
@@ -765,8 +678,7 @@ test.describe('Encrypted Backup', () => {
       const backupPath = createBackupFile(createValidBackupData());
       try {
         await uploadBackupFile(page, backupPath);
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);
@@ -797,8 +709,7 @@ test.describe('Encrypted Backup', () => {
       const backupPath = createBackupFile(createValidBackupData());
       try {
         await uploadBackupFile(page, backupPath);
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);
@@ -827,8 +738,7 @@ test.describe('Encrypted Backup', () => {
       const backupPath = createBackupFile(createValidBackupData());
       try {
         await uploadBackupFile(page, backupPath);
-        await page.waitForTimeout(300);
-        const restoreButton = page.locator('.mantine-Modal-content').getByRole('button', { name: 'Restore' });
+        const restoreButton = page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' });
         await restoreButton.click();
         await expect(page.getByPlaceholder('Search by lab name')).toBeVisible({ timeout: 10000 });
         await navigateToSettings(page);

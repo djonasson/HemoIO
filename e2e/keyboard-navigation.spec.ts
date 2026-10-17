@@ -186,9 +186,9 @@ test.describe('Keyboard Navigation', () => {
       await expect(page.getByRole('navigation').getByText('Timeline')).toBeVisible();
     });
 
-    test('Escape closes settings modal', async ({ page }) => {
-      // Open settings
-      await page.getByRole('button', { name: /settings/i }).click();
+    test('Escape closes modals', async ({ page }) => {
+      // Open the export dialog
+      await page.getByRole('button', { name: 'Export data' }).click();
 
       // Modal should be open
       await expect(page.getByRole('dialog')).toBeVisible();
@@ -198,6 +198,22 @@ test.describe('Keyboard Navigation', () => {
 
       // Modal should be closed
       await expect(page.getByRole('dialog')).not.toBeVisible();
+    });
+
+    test('main navigation is reachable with Tab and opens views with Enter', async ({ page }) => {
+      const nav = page.getByRole('navigation');
+      const settingsItem = nav.getByRole('button', { name: /^Settings/ });
+
+      // Tab through the page until the Settings navigation item is focused
+      for (let i = 0; i < 30; i++) {
+        await page.keyboard.press('Tab');
+        if (await settingsItem.evaluate((el) => el === document.activeElement)) break;
+      }
+      await expect(settingsItem).toBeFocused();
+
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+      await expect(settingsItem).toHaveAttribute('aria-current', 'page');
     });
   });
 });

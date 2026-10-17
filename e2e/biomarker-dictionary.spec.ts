@@ -1,5 +1,5 @@
 /**
- * E2E Tests for Biomarker Dictionary
+ * E2E Tests for Biomarker Dictionary (features/biomarker-dictionary.feature)
  *
  * Tests the biomarker dictionary feature including:
  * - Viewing categories and biomarkers
@@ -8,307 +8,292 @@
  * - Keyboard navigation
  */
 
-import { test, expect, type Page } from '@playwright/test';
-
-// Test data constants
-const TEST_PASSWORD = 'TestPassword123!';
+import { test, expect, type Locator, type Page } from '@playwright/test';
+import { setupOrUnlock } from './steps/app.steps';
+import { waitForAnimations } from './steps/timeline.steps';
 
 /**
- * Helper to complete first-run setup
+ * Given I am logged into the application / And I navigate to the Biomarkers page
  */
-async function completeSetup(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByPlaceholder(/enter your password/i).fill(password);
-  await page.getByPlaceholder(/confirm your password/i).fill(password);
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Go to next step' }).click();
-  await page.getByRole('button', { name: 'Complete setup and get started' }).click();
+async function openDictionary(page: Page): Promise<void> {
+  await page.goto('/');
+  await setupOrUnlock(page);
+  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
+  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
+}
+
+function searchField(page: Page): Locator {
+  return page.getByRole('textbox', { name: 'Search biomarkers' });
 }
 
 /**
- * Helper to unlock the application
+ * A category's accordion control; its accessible name is "<category> <count>"
  */
-async function unlockApp(page: Page, password: string = TEST_PASSWORD) {
-  await page.getByRole('textbox', { name: /password/i }).fill(password);
-  await page.getByRole('button', { name: /unlock/i }).click();
+function categoryControl(page: Page, category: string): Locator {
+  return page.getByRole('main').getByRole('button', { name: new RegExp(`^${category} \\d+$`) });
 }
 
 /**
- * Helper to detect if app needs setup or just unlock
+ * Expand a category and return its panel
  */
-async function isSetupNeeded(page: Page): Promise<boolean> {
-  const hasSetupStepper = await page
-    .locator('.mantine-Stepper-root')
-    .isVisible({ timeout: 2000 })
-    .catch(() => false);
-  const hasSetupText = await page
-    .getByText(/set up your password|create.*password/i)
-    .isVisible({ timeout: 500 })
-    .catch(() => false);
-  return hasSetupStepper || hasSetupText;
+async function openCategory(page: Page, category: string): Promise<Locator> {
+  const control = categoryControl(page, category);
+  await control.click();
+  await expect(control).toHaveAttribute('aria-expanded', 'true');
+  const panelId = await control.getAttribute('aria-controls');
+  const panel = page.locator(`[id="${panelId}"]`);
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /**
- * Helper to setup or unlock as needed
+ * List entries, each a button named "View details for <name>"
  */
-async function setupOrUnlock(page: Page, password: string = TEST_PASSWORD) {
-  const needsSetup = await isSetupNeeded(page);
-  if (needsSetup) {
-    await completeSetup(page, password);
-  } else {
-    await unlockApp(page, password);
-  }
+function biomarkerItems(container: Locator): Locator {
+  return container.getByRole('button', { name: /^View details for / });
 }
 
 /**
- * Helper to navigate to biomarkers page
+ * Then I should see "<label>" — the label is either a biomarker's name or
+ * the abbreviation shown next to it, e.g. "Blood Urea Nitrogen (BUN)".
  */
-async function navigateToBiomarkers(page: Page) {
-  await page.locator('nav').getByText('Biomarkers', { exact: true }).click();
+async function expectBiomarkerListed(container: Locator, label: string): Promise<void> {
+  const item = biomarkerItems(container).filter({
+    has: container.page().getByText(label, { exact: true }).or(container.page().getByText(`(${label})`, { exact: true })),
+  });
+  await expect(item).toHaveCount(1);
+  await expect(item).toBeVisible();
+}
+
+/**
+ * The detail panel for a biomarker, identified by its heading
+ */
+function biomarkerDetail(page: Page, name: string): Locator {
+  return page
+    .getByRole('main')
+    .locator('.mantine-Paper-root')
+    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
+}
+
+async function viewDetail(page: Page, name: string): Promise<Locator> {
+  await searchField(page).fill(name);
+  await page.getByRole('button', { name: `View details for ${name}`, exact: true }).click();
+  const detail = biomarkerDetail(page, name);
+  await expect(detail).toBeVisible();
+  return detail;
 }
 
 test.describe('Biomarker Dictionary', () => {
+  test.beforeEach(async ({ page }) => {
+    await openDictionary(page);
+  });
+
   test.describe('Navigation', () => {
     test('should display biomarker dictionary when navigating to Biomarkers', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Should see the Biomarker Dictionary title
-      await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
+      await expect(
+        page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ })
+      ).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('main').getByRole('heading', { name: 'Biomarker Dictionary', level: 2 })).toBeVisible();
     });
 
     test('should display search field', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Should see the search input
-      await expect(page.locator('input[aria-label="Search biomarkers"]')).toBeVisible();
+      await expect(searchField(page)).toBeVisible();
+      await expect(searchField(page)).toBeEditable();
+      await expect(searchField(page)).toHaveValue('');
     });
   });
 
   test.describe('Browsing by Category', () => {
     test('should display biomarker categories', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Should see category accordion items
-      await expect(page.getByText('Complete Blood Count')).toBeVisible();
-      await expect(page.getByText('Metabolic Panel')).toBeVisible();
-      await expect(page.getByText('Lipid Panel')).toBeVisible();
+      for (const category of [
+        'Complete Blood Count',
+        'Metabolic Panel',
+        'Lipid Panel',
+        'Thyroid Panel',
+        'Iron Studies',
+        'Vitamins',
+      ]) {
+        await expect(categoryControl(page, category)).toBeVisible();
+      }
     });
 
     test('should expand category to show biomarkers', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const panel = await openCategory(page, 'Complete Blood Count');
 
-      // Click on Complete Blood Count category
-      await page.getByText('Complete Blood Count').click();
-
-      // Should see biomarkers in that category
-      await expect(page.getByText('Hemoglobin').first()).toBeVisible();
+      await expect(biomarkerItems(panel).first()).toBeVisible();
+      for (const name of [
+        'White Blood Cells (WBC)',
+        'Red Blood Cells (RBC)',
+        'Hemoglobin',
+        'Hematocrit',
+        'Platelets',
+      ]) {
+        await expectBiomarkerListed(panel, name);
+      }
     });
 
     test('should expand Metabolic Panel category', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const panel = await openCategory(page, 'Metabolic Panel');
 
-      // Click on Metabolic Panel category
-      await page.getByText('Metabolic Panel').click();
-
-      // Should see biomarkers in that category
-      await expect(page.getByText('Glucose').first()).toBeVisible();
-      await expect(page.getByText('Creatinine').first()).toBeVisible();
+      for (const name of ['Glucose', 'Creatinine', 'BUN', 'Sodium', 'Potassium']) {
+        await expectBiomarkerListed(panel, name);
+      }
+      // Only metabolic biomarkers are listed
+      await expect(panel.getByRole('button', { name: 'View details for Hemoglobin', exact: true })).toHaveCount(0);
     });
 
     test('should expand Lipid Panel category', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const panel = await openCategory(page, 'Lipid Panel');
 
-      // Click on Lipid Panel category
-      await page.getByText('Lipid Panel').click();
-
-      // Should see biomarkers in that category
-      await expect(page.getByText('Total Cholesterol').first()).toBeVisible();
+      for (const name of ['Total Cholesterol', 'LDL Cholesterol', 'HDL Cholesterol', 'Triglycerides']) {
+        await expectBiomarkerListed(panel, name);
+      }
     });
   });
 
   test.describe('Searching', () => {
     test('should search for biomarker by name', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      await searchField(page).fill('glucose');
 
-      // Type in search field
-      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
+      const results = biomarkerItems(page.getByRole('main'));
+      await expect(page.getByRole('button', { name: 'View details for Glucose', exact: true })).toBeVisible();
 
-      // Should see search results
-      await expect(page.getByText(/\d+ results? found/)).toBeVisible();
-      await expect(page.getByText('Glucose').first()).toBeVisible();
+      // Results are filtered: the count matches the list, and every entry
+      // mentions the search term
+      const count = await results.count();
+      await expect(page.getByText(`${count} result${count === 1 ? '' : 's'} found`, { exact: true })).toBeVisible();
+      for (const item of await results.all()) {
+        await expect(item).toContainText(/gluc/i);
+      }
+      await expect(page.getByRole('button', { name: 'View details for Hemoglobin', exact: true })).toHaveCount(0);
+      await expect(categoryControl(page, 'Complete Blood Count')).toHaveCount(0);
     });
 
     test('should search for biomarker by abbreviation', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      await searchField(page).fill('WBC');
 
-      // Type abbreviation in search field
-      await page.locator('input[aria-label="Search biomarkers"]').fill('WBC');
-
-      // Should see White Blood Cells in results
-      await expect(page.getByText(/White Blood Cells|WBC/i).first()).toBeVisible();
+      await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cells (WBC)');
     });
 
     test('should show no results message for invalid search', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      await searchField(page).fill('xyz123');
 
-      // Type invalid search term
-      await page.locator('input[aria-label="Search biomarkers"]').fill('xyz123');
-
-      // Should see no results message
-      await expect(page.getByText(/No biomarkers found/i)).toBeVisible();
+      await expect(page.getByText('0 results found', { exact: true })).toBeVisible();
+      await expect(page.getByText('No biomarkers found matching "xyz123"', { exact: true })).toBeVisible();
+      await expect(biomarkerItems(page.getByRole('main'))).toHaveCount(0);
     });
 
     test('should clear search and return to category view', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      await searchField(page).fill('glucose');
+      await expect(page.getByText(/^\d+ results? found$/)).toBeVisible();
+      await expect(categoryControl(page, 'Complete Blood Count')).toHaveCount(0);
 
-      // Search for something
-      const searchInput = page.locator('input[aria-label="Search biomarkers"]');
-      await searchInput.fill('glucose');
+      await searchField(page).clear();
 
-      // Verify search results are shown
-      await expect(page.getByText(/\d+ results? found/)).toBeVisible();
-
-      // Clear search
-      await searchInput.clear();
-
-      // Should see categories again
-      await expect(page.getByText('Complete Blood Count')).toBeVisible();
+      await expect(page.getByText(/^\d+ results? found$/)).toHaveCount(0);
+      for (const category of ['Complete Blood Count', 'Metabolic Panel', 'Lipid Panel']) {
+        await expect(categoryControl(page, category)).toBeVisible();
+      }
     });
   });
 
   test.describe('Viewing Details', () => {
     test('should show biomarker details when clicking on a biomarker', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const detail = await viewDetail(page, 'Glucose');
 
-      // Search for glucose to find it easily
-      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
-      await page.getByText('Glucose').first().click();
-
-      // Should show details panel (depends on implementation)
-      // Look for unit or reference range info
-      await expect(page.getByText(/mg\/dL|mmol\/L/).first()).toBeVisible({ timeout: 5000 });
+      // Name, standard reference range, units and description
+      await expect(detail.getByRole('heading', { level: 3 })).toHaveText('Glucose');
+      await expect(detail.getByText('Reference Range', { exact: true })).toBeVisible();
+      await expect(detail.getByText('70 - 100 mg/dL', { exact: true })).toBeVisible();
+      await expect(detail.getByText('Units', { exact: true })).toBeVisible();
+      await expect(detail.getByText('mg/dL', { exact: true })).toBeVisible();
+      await expect(detail.getByText('Description', { exact: true })).toBeVisible();
+      await expect(
+        detail.getByText('Blood sugar level, primary energy source for cells.', { exact: true })
+      ).toBeVisible();
     });
 
     test('should show category badge on biomarker', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const detail = await viewDetail(page, 'Glucose');
+      await expect(detail.getByText('Metabolic Panel', { exact: true })).toBeVisible();
+    });
 
-      // Expand a category
-      await page.getByText('Metabolic Panel').click();
+    test('should show what high and low values may indicate', async ({ page }) => {
+      const detail = await viewDetail(page, 'Glucose');
 
-      // Should see biomarkers with unit badges
-      await expect(page.locator('.mantine-Badge-root').first()).toBeVisible();
+      await expect(detail.getByText('What Abnormal Values May Indicate', { exact: true })).toBeVisible();
+      const high = detail.getByRole('alert').filter({ hasText: 'High Values' });
+      await expect(high).toContainText('May indicate diabetes or prediabetes');
+      const low = detail.getByRole('alert').filter({ hasText: 'Low Values' });
+      await expect(low).toContainText('May indicate hypoglycemia');
     });
 
     test('should show specimen type in biomarker details', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Search for glucose (which has specimenType: 'serum')
-      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
-      await page.getByText('Glucose').first().click();
-
-      // Should show specimen type in details
-      await expect(page.getByText(/Specimen:\s*Serum/i)).toBeVisible({ timeout: 5000 });
+      const detail = await viewDetail(page, 'Glucose');
+      await expect(detail.getByText('Specimen: Serum', { exact: true })).toBeVisible();
     });
 
     test('should show LOINC code with link in biomarker details', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const detail = await viewDetail(page, 'Glucose');
 
-      // Search for glucose (which has loincCode: '2345-7')
-      await page.locator('input[aria-label="Search biomarkers"]').fill('glucose');
-      await page.getByText('Glucose').first().click();
-
-      // Should show LOINC code
-      await expect(page.getByText('2345-7')).toBeVisible({ timeout: 5000 });
-
-      // LOINC code should be a link to loinc.org
-      const loincLink = page.getByRole('link', { name: /2345-7/i });
+      const loincLink = detail.getByRole('link', { name: '2345-7' });
+      await expect(loincLink).toBeVisible();
       await expect(loincLink).toHaveAttribute('href', 'https://loinc.org/2345-7');
       await expect(loincLink).toHaveAttribute('target', '_blank');
+      await expect(loincLink).toHaveAttribute('rel', /noopener/);
     });
 
     test('should show specimen type for whole blood biomarkers', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Search for hemoglobin (which has specimenType: 'whole-blood')
-      await page.locator('input[aria-label="Search biomarkers"]').fill('hemoglobin');
-      await page.getByText('Hemoglobin').first().click();
-
-      // Should show "Whole Blood" as specimen type
-      await expect(page.getByText(/Specimen:\s*Whole Blood/i)).toBeVisible({ timeout: 5000 });
+      const detail = await viewDetail(page, 'Hemoglobin');
+      await expect(detail.getByText('Specimen: Whole Blood', { exact: true })).toBeVisible();
     });
   });
 
   test.describe('Accessibility', () => {
     test('should be keyboard navigable', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      // Tab from the search field reaches the category controls
+      await searchField(page).focus();
+      await page.keyboard.press('Tab');
+      const cbc = categoryControl(page, 'Complete Blood Count');
+      await expect(cbc).toBeFocused();
 
-      // Focus the search input directly
-      const searchInput = page.locator('input[aria-label="Search biomarkers"]');
-      await searchInput.focus();
+      // Enter expands the category; Tab moves into its biomarkers
+      await page.keyboard.press('Enter');
+      await expect(cbc).toHaveAttribute('aria-expanded', 'true');
+      // Items inside the collapsing panel cannot take focus until it has opened
+      const panel = page.locator(`[id="${await cbc.getAttribute('aria-controls')}"]`);
+      await waitForAnimations(panel.locator('xpath=..'));
+      await page.keyboard.press('Tab');
+      const wbc = page.getByRole('button', { name: 'View details for White Blood Cell Count', exact: true });
+      await expect(wbc).toBeFocused();
 
-      // Search input should be focused
-      await expect(searchInput).toBeFocused();
-
-      // Should be able to type in it
-      await page.keyboard.type('glucose');
-      await expect(searchInput).toHaveValue('glucose');
+      // Enter opens the detail; its close button is reachable too
+      await page.keyboard.press('Enter');
+      const detail = biomarkerDetail(page, 'White Blood Cell Count');
+      await expect(detail).toBeVisible();
+      const close = detail.getByRole('button', { name: 'Close biomarker detail' });
+      await close.focus();
+      await page.keyboard.press('Enter');
+      await expect(detail).toHaveCount(0);
     });
 
     test('search input should have accessible label', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
-
-      // Search input should have aria-label
-      const searchInput = page.locator('input[aria-label="Search biomarkers"]');
-      await expect(searchInput).toBeVisible();
-      await expect(searchInput).toHaveAttribute('aria-label', 'Search biomarkers');
+      // Located by its accessible name, which screen readers announce
+      await expect(searchField(page)).toBeVisible();
+      await expect(searchField(page)).toHaveAccessibleName('Search biomarkers');
     });
 
     test('categories should be expandable with keyboard', async ({ page }) => {
-      await page.goto('/');
-      await setupOrUnlock(page);
-      await navigateToBiomarkers(page);
+      const control = categoryControl(page, 'Complete Blood Count');
+      await expect(control).toHaveAttribute('aria-expanded', 'false');
 
-      // Focus the first accordion button directly and press Enter
-      const firstAccordionButton = page.locator('.mantine-Accordion-control').first();
-      await firstAccordionButton.focus();
+      await control.focus();
       await page.keyboard.press('Enter');
 
-      // Should see biomarkers in expanded category
-      await expect(page.getByText('Hemoglobin').first()).toBeVisible({ timeout: 5000 });
+      await expect(control).toHaveAttribute('aria-expanded', 'true');
+      await expect(
+        page.getByRole('button', { name: 'View details for Hemoglobin', exact: true })
+      ).toBeVisible();
     });
   });
 });

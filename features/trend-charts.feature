@@ -25,7 +25,7 @@ Feature: Trend Charts
     Then data points outside the reference range should be highlighted
     And high values should be indicated with a red marker
     And low values should be indicated with an orange marker
-    And normal values should use the standard blue color
+    And normal values should use the standard green color
 
   Scenario: Filter trend chart by date range
     When I navigate to the Trends view
@@ -48,10 +48,10 @@ Feature: Trend Charts
     And it should show the average change per time period
 
   Scenario: Compare multiple biomarkers
-    When I navigate to the Trends view
-    And I click "Compare Markers"
-    And I select "LDL Cholesterol" as the first marker
-    And I select "HDL Cholesterol" as the second marker
+    Given I am viewing the trend chart for "LDL Cholesterol"
+    When I click "Compare Markers"
+    Then "LDL Cholesterol" should already be selected as the first marker
+    When I select "HDL Cholesterol" as the second marker
     Then I should see both biomarkers plotted on the same chart
     And each biomarker should have a distinct color
     And the legend should identify each line
