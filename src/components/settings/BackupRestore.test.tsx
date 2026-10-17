@@ -9,7 +9,7 @@ import { BackupRestore } from './BackupRestore';
 import type { ExportDataSources } from '@services/export';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockDataSources(isEmpty = false): ExportDataSources {

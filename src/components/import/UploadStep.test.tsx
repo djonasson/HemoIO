@@ -16,7 +16,7 @@ vi.mock('../../services/ocr', () => ({
 
 // Wrapper with Mantine provider
 const TestWrapper = ({ children }: { children: React.ReactNode }) => (
-  <MantineProvider>{children}</MantineProvider>
+  <MantineProvider env="test">{children}</MantineProvider>
 );
 
 describe('UploadStep', () => {

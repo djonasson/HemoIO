@@ -45,7 +45,7 @@ function renderBackupPasswordInput(props: BackupPasswordInputTestProps = {}) {
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <BackupPasswordInput {...defaultProps} />
     </MantineProvider>
   );

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { beforeEach, afterEach } from 'vitest';
 
 // Mock window.matchMedia for Mantine
 Object.defineProperty(window, 'matchMedia', {
@@ -15,6 +16,10 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
+// jsdom does not implement scrollIntoView; Mantine Select calls it when
+// opening its dropdown
+Element.prototype.scrollIntoView = () => {};
+
 // Mock ResizeObserver
 window.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -22,11 +27,36 @@ window.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
-// Mock crypto.subtle for Web Crypto API
-// Note: jsdom provides a basic crypto implementation, but we need to ensure
-// the subtle API is available for our encryption tests
-if (!window.crypto.subtle) {
-  // In case subtle is not available, we'll skip encryption tests
-  // Real encryption tests should run in a browser environment
-  console.warn('crypto.subtle not available in test environment');
-}
+// Test output must be clean: any console output (including React act()
+// warnings, which React reports through console.error) fails the test.
+// Tests that exercise an expected log must capture it explicitly, e.g.
+// `vi.spyOn(console, 'error').mockImplementation(() => {})`, and should
+// assert on it.
+const CONSOLE_METHODS = ['log', 'info', 'warn', 'error', 'debug'] as const;
+type ConsoleMethod = (typeof CONSOLE_METHODS)[number];
+const originalConsole = Object.fromEntries(
+  CONSOLE_METHODS.map((method) => [method, console[method]])
+) as Record<ConsoleMethod, (...args: unknown[]) => void>;
+let unexpectedOutput: string[] = [];
+
+beforeEach(() => {
+  unexpectedOutput = [];
+  for (const method of CONSOLE_METHODS) {
+    console[method] = (...args: unknown[]) => {
+      unexpectedOutput.push(
+        `console.${method}: ${args.map((arg) => (arg instanceof Error ? arg.message : String(arg))).join(' ')}`
+      );
+    };
+  }
+});
+
+afterEach(() => {
+  for (const method of CONSOLE_METHODS) {
+    console[method] = originalConsole[method];
+  }
+  if (unexpectedOutput.length > 0) {
+    const output = unexpectedOutput.map((line) => line.split('\n')[0]).join('\n');
+    unexpectedOutput = [];
+    throw new Error(`Unexpected console output during test:\n${output}`);
+  }
+});

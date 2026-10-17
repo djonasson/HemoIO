@@ -81,7 +81,7 @@ const defaultProps = {
 
 function renderReviewStep(props: Partial<typeof defaultProps> = {}) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <ReviewStep {...defaultProps} {...props} />
     </MantineProvider>
   );

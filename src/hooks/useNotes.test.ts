@@ -73,6 +73,7 @@ describe('useNotes', () => {
     });
 
     it('should handle fetch error', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockDb.getAllNotes.mockRejectedValue(new Error('Database error'));
 
       const { result } = renderHook(() => useNotes());
@@ -82,6 +83,7 @@ describe('useNotes', () => {
       });
 
       expect(result.current.error).toBe('Database error');
+      expect(consoleError).toHaveBeenCalledWith('Failed to fetch notes:', expect.any(Error));
     });
 
     it('should not fetch when db is not ready', async () => {
@@ -214,6 +216,10 @@ describe('useNotes', () => {
       });
 
       expect(result.current.filters.searchTerm).toBe('test');
+      // Changing filters triggers a refetch; let it settle before the test ends
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
     });
   });
 

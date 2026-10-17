@@ -6,7 +6,7 @@ import { PasswordStep } from './PasswordStep';
 import { isPasswordStepValid } from './passwordUtils';
 
 function renderWithMantine(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('PasswordStep', () => {

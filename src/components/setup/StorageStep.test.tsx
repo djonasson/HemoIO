@@ -15,7 +15,7 @@ function renderStorageStep(props: Partial<{
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <StorageStep {...defaultProps} />
     </MantineProvider>
   );

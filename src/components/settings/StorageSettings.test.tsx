@@ -21,7 +21,7 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('StorageSettings', () => {

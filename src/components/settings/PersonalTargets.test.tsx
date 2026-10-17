@@ -9,7 +9,7 @@ import { MantineProvider } from '@mantine/core';
 import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockTargets(): PersonalTarget[] {

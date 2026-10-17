@@ -44,7 +44,7 @@ function renderTrendStatistics(props: TrendStatisticsTestProps = {}) {
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <TrendStatistics {...defaultProps} />
     </MantineProvider>
   );

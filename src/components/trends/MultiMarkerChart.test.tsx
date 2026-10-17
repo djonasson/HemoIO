@@ -53,7 +53,7 @@ function renderMultiMarkerChart(props: MultiMarkerChartTestProps = {}) {
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <MultiMarkerChart {...defaultProps} />
     </MantineProvider>
   );

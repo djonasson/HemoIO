@@ -33,7 +33,7 @@ vi.mock('@data/encryption', () => ({
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <AuthProvider>{ui}</AuthProvider>
     </MantineProvider>
   );

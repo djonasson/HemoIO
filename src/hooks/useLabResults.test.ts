@@ -303,6 +303,7 @@ describe('useLabResults', () => {
   });
 
   it('should handle errors during fetch', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockDb = createMockDb();
     mockDb.getAllLabResults.mockRejectedValue(new Error('Database error'));
     vi.mocked(useEncryptedDb).mockReturnValue({
@@ -318,6 +319,7 @@ describe('useLabResults', () => {
 
     expect(result.current.error).toBe('Database error');
     expect(result.current.results).toEqual([]);
+    expect(consoleError).toHaveBeenCalledWith('Error fetching lab results:', expect.any(Error));
   });
 
   it('should handle errors during delete', async () => {

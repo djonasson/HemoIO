@@ -36,7 +36,7 @@ function renderAIConfigStep(props: AIConfigStepTestProps = {}) {
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <AIConfigStep {...defaultProps} />
     </MantineProvider>
   );
@@ -135,10 +135,12 @@ describe('AIConfigStep', () => {
   });
 
   describe('Ollama provider', () => {
-    it('shows no API key required message when Ollama is selected', () => {
+    it('shows no API key required message when Ollama is selected', async () => {
       renderAIConfigStep({ aiProvider: 'ollama' });
 
       expect(screen.getByText(/No API key required/)).toBeInTheDocument();
+      // Let the Ollama status check finish before the test ends
+      expect(await screen.findByText('Ollama not detected')).toBeInTheDocument();
     });
 
     it('shows checking status initially', () => {

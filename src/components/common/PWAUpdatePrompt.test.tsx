@@ -18,7 +18,7 @@ vi.mock('virtual:pwa-register/react', () => ({
 
 function renderPWAUpdatePrompt() {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <PWAUpdatePrompt />
     </MantineProvider>
   );

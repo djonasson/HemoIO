@@ -9,7 +9,7 @@ import { MantineProvider } from '@mantine/core';
 import { DisplaySettings } from './DisplaySettings';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('DisplaySettings', () => {
@@ -97,15 +97,18 @@ describe('DisplaySettings', () => {
       expect(screen.getByText(/15\/01\/2024/)).toBeInTheDocument();
     });
 
-    it.skip('should call onDateFormatChange when format is changed', async () => {
-      // Skipped due to Mantine Select interaction complexity
+    it('should call onDateFormatChange when format is changed', async () => {
+      const user = userEvent.setup();
       const onDateFormatChange = vi.fn();
 
       renderWithProviders(
         <DisplaySettings {...defaultProps} onDateFormatChange={onDateFormatChange} />
       );
 
-      // Would need to interact with Select component
+      await user.click(screen.getByRole('textbox', { name: 'Select date format' }));
+      await user.click(await screen.findByRole('option', { name: /DD\/MM\/YYYY \(European\)/ }));
+
+      expect(onDateFormatChange).toHaveBeenCalledWith('DD/MM/YYYY');
     });
   });
 

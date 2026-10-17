@@ -44,10 +44,18 @@ const defaultProps = {
 
 function renderAnalysisStep(props: Partial<typeof defaultProps> = {}) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <AnalysisStep {...defaultProps} {...props} />
     </MantineProvider>
   );
+}
+
+/**
+ * Analysis starts on mount; wait until it finishes (the Back button only
+ * appears then) so its state updates don't land after the test has ended.
+ */
+async function waitForAnalysisToFinish(): Promise<void> {
+  await screen.findByRole('button', { name: /Back/i });
 }
 
 describe('AnalysisStep', () => {
@@ -56,25 +64,31 @@ describe('AnalysisStep', () => {
   });
 
   describe('Initial rendering', () => {
-    it('renders overall progress section', () => {
+    it('renders overall progress section', async () => {
       renderAnalysisStep();
 
       expect(screen.getByText('Overall Progress')).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
 
-    it('displays processing message initially', () => {
+    it('displays processing message initially', async () => {
       renderAnalysisStep();
 
       expect(screen.getByText(/Processing.*file/)).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
 
-    it('displays file names in list', () => {
+    it('displays file names in list', async () => {
       renderAnalysisStep();
 
       expect(screen.getByText('test-report.pdf')).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
 
-    it('displays multiple files', () => {
+    it('displays multiple files', async () => {
       const secondFile: UploadedFile = {
         file: new File(['content'], 'second-report.pdf', { type: 'application/pdf' }),
         id: 'file2',
@@ -85,16 +99,20 @@ describe('AnalysisStep', () => {
 
       expect(screen.getByText('test-report.pdf')).toBeInTheDocument();
       expect(screen.getByText('second-report.pdf')).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
   });
 
   describe('Progress display', () => {
-    it('shows progress bar', () => {
+    it('shows progress bar', async () => {
       renderAnalysisStep();
 
       // Progress bar should be present
       const progressBar = document.querySelector('.mantine-Progress-root');
       expect(progressBar).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
   });
 
@@ -120,15 +138,17 @@ describe('AnalysisStep', () => {
   });
 
   describe('File list rendering', () => {
-    it('shows file status icons', () => {
+    it('shows file status icons', async () => {
       renderAnalysisStep();
 
       // Initial state should show pending icons
       const listItems = document.querySelectorAll('.mantine-List-item');
       expect(listItems.length).toBe(1);
+
+      await waitForAnalysisToFinish();
     });
 
-    it('displays correct file count in progress message', () => {
+    it('displays correct file count in progress message', async () => {
       const files = [
         mockUploadedFile,
         { ...mockUploadedFile, id: 'file2', file: new File([''], 'file2.pdf') },
@@ -138,6 +158,8 @@ describe('AnalysisStep', () => {
       renderAnalysisStep({ files });
 
       expect(screen.getByText(/Processing 3 file/)).toBeInTheDocument();
+
+      await waitForAnalysisToFinish();
     });
   });
 });

@@ -14,7 +14,7 @@ vi.mock('@contexts/useAuth', () => ({
 }));
 
 function renderWithMantine(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('LoginScreen', () => {

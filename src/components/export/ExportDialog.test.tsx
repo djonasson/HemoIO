@@ -13,7 +13,7 @@ import type { LabResult, TestValue } from '@/types';
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <DatesProvider settings={{ locale: 'en' }}>{ui}</DatesProvider>
     </MantineProvider>
   );
@@ -168,8 +168,7 @@ describe('ExportDialog', () => {
       expect(screen.getByText('Include reference ranges')).toBeInTheDocument();
     });
 
-    it.skip('should show JSON description when JSON selected', async () => {
-      // Skipped due to Mantine Select interaction issues in test environment
+    it('should show JSON description when JSON selected', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ExportDialog {...defaultProps} />);
 
@@ -178,8 +177,7 @@ describe('ExportDialog', () => {
       await user.click(formatSelect);
 
       // Select JSON option
-      const jsonOption = screen.getByText('JSON (Full Backup)');
-      await user.click(jsonOption);
+      await user.click(await screen.findByRole('option', { name: 'JSON (Full Backup)' }));
 
       expect(screen.getByText(/JSON export includes all lab results/)).toBeInTheDocument();
     });
@@ -192,8 +190,7 @@ describe('ExportDialog', () => {
       expect(screen.getByText('Date Range')).toBeInTheDocument();
     });
 
-    it.skip('should show custom date inputs when custom is selected', async () => {
-      // Skipped due to Mantine Select scrollIntoView issue in test environment
+    it('should show custom date inputs when custom is selected', async () => {
       const user = userEvent.setup();
       renderWithProviders(<ExportDialog {...defaultProps} />);
 
@@ -202,8 +199,7 @@ describe('ExportDialog', () => {
       await user.click(dateRangeSelect);
 
       // Select custom option
-      const customOption = screen.getByText('Custom Range');
-      await user.click(customOption);
+      await user.click(await screen.findByRole('option', { name: 'Custom Range' }));
 
       await waitFor(() => {
         expect(screen.getByLabelText('Start date')).toBeInTheDocument();

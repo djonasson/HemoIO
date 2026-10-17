@@ -9,7 +9,7 @@ import { TrendChart } from './TrendChart';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createDataPoint(

@@ -41,7 +41,7 @@ function renderTrendChartControls(props: TrendChartControlsTestProps = {}) {
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <TrendChartControls {...defaultProps} />
     </MantineProvider>
   );

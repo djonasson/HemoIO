@@ -11,7 +11,7 @@ import type { LabResultFilters } from '@hooks/useLabResults';
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <DatesProvider settings={{ locale: 'en' }}>{ui}</DatesProvider>
     </MantineProvider>
   );

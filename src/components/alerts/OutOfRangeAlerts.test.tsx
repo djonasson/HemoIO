@@ -29,7 +29,7 @@ vi.mock('@data/biomarkers/dictionary', () => ({
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockAlert(id: string, options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {

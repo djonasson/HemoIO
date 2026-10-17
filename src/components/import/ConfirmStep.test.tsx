@@ -47,7 +47,7 @@ function renderConfirmStep(props: Partial<React.ComponentProps<typeof ConfirmSte
   };
 
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <ConfirmStep {...defaultProps} />
     </MantineProvider>
   );

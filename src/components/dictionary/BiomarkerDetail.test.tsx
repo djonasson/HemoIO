@@ -10,7 +10,7 @@ import { BiomarkerDetail } from './BiomarkerDetail';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createMockBiomarker(): BiomarkerDefinition {

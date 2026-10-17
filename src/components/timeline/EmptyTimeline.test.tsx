@@ -8,7 +8,7 @@ import { MantineProvider } from '@mantine/core';
 import { EmptyTimeline } from './EmptyTimeline';
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 describe('EmptyTimeline', () => {
