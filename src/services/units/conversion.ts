@@ -71,6 +71,21 @@ function getPrecisionForUnit(unit: string): number {
   return DEFAULT_PRECISION[normalizedUnit] ?? 2;
 }
 
+/** Fewest significant figures a displayed value may have */
+const MIN_SIGNIFICANT_FIGURES = 2;
+
+/**
+ * Decimal places for displaying a value in a unit: the unit's usual
+ * precision, increased when needed so small values (e.g. creatinine
+ * 0.76 mg/dL) keep at least MIN_SIGNIFICANT_FIGURES instead of rounding to 1.
+ */
+function getPrecisionForValue(value: number, unit: string): number {
+  const unitPrecision = getPrecisionForUnit(unit);
+  if (value === 0 || !Number.isFinite(value)) return unitPrecision;
+  const magnitude = Math.floor(Math.log10(Math.abs(value)));
+  return Math.max(unitPrecision, MIN_SIGNIFICANT_FIGURES - 1 - magnitude);
+}
+
 /**
  * Round a number to specified decimal places
  */
@@ -102,7 +117,7 @@ export function convertValue(
 
   // Handle same unit case
   if (normalizedFrom.toLowerCase() === normalizedTo.toLowerCase()) {
-    const usedPrecision = precision ?? getPrecisionForUnit(normalizedTo);
+    const usedPrecision = precision ?? getPrecisionForValue(value, normalizedTo);
     return {
       originalValue: value,
       originalUnit: normalizedFrom,
@@ -128,7 +143,7 @@ export function convertValue(
     );
   }
 
-  const usedPrecision = precision ?? getPrecisionForUnit(normalizedTo);
+  const usedPrecision = precision ?? getPrecisionForValue(value * factor, normalizedTo);
   const convertedValue = roundToPrecision(value * factor, usedPrecision);
 
   return {
@@ -156,7 +171,8 @@ export function convertReferenceRange(
   toUnit: string,
   precision?: number
 ): ReferenceRange {
-  const usedPrecision = precision ?? getPrecisionForUnit(toUnit);
+  // Without an explicit precision, each bound gets its own value-aware precision
+  const usedPrecision = precision;
 
   const result: ReferenceRange = {
     unit: toUnit,
@@ -238,7 +254,7 @@ export function formatValueWithUnit(
   unit: string,
   precision?: number
 ): string {
-  const usedPrecision = precision ?? getPrecisionForUnit(unit);
+  const usedPrecision = precision ?? getPrecisionForValue(value, unit);
   const formattedValue = roundToPrecision(value, usedPrecision);
 
   // Handle units that don't need a space (like %)

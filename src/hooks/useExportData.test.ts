@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useExportData } from './useExportData';
 
 // Mock useEncryptedDb
@@ -119,7 +119,56 @@ describe('useExportData', () => {
     );
   });
 
+  it('should name biomarkers from their extracted names, not their IDs', async () => {
+    mockDb.getAllLabResults.mockResolvedValue([
+      { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllTestValues.mockResolvedValue([
+      {
+        id: 1,
+        labResultId: 1,
+        // Unknown-biomarker ID range: identified by the extracted name
+        biomarkerId: 10007,
+        value: 95,
+        unit: 'mg/dL',
+        // Alias of the dictionary entry "Glucose"
+        rawText: 'Blood Sugar',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        labResultId: 1,
+        biomarkerId: 10008,
+        value: 3,
+        unit: 'U/L',
+        // Not in the dictionary: keep the name from the report
+        rawText: 'Exotic Marker',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.biomarkerOptions).toEqual(
+      expect.arrayContaining([
+        { value: '10007', label: 'Glucose' },
+        { value: '10008', label: 'Exotic Marker' },
+      ])
+    );
+    const names = result.current.labResultsData[0].biomarkerNames;
+    expect(names.get(10007)).toBe('Glucose');
+    expect(names.get(10008)).toBe('Exotic Marker');
+  });
+
   it('should handle errors', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockDb.getAllLabResults.mockRejectedValue(new Error('Database error'));
     mockDb.getAllTestValues.mockResolvedValue([]);
     mockDb.getAllNotes.mockResolvedValue([]);
@@ -131,6 +180,7 @@ describe('useExportData', () => {
     });
 
     expect(result.current.error).toBe('Database error');
+    expect(consoleError).toHaveBeenCalledWith('Error fetching export data:', expect.any(Error));
   });
 
   it('should refresh data when refresh is called', async () => {
@@ -150,7 +200,9 @@ describe('useExportData', () => {
     mockDb.getAllNotes.mockClear();
 
     // Call refresh
-    await result.current.refresh();
+    await act(async () => {
+      await result.current.refresh();
+    });
 
     expect(mockDb.getAllLabResults).toHaveBeenCalled();
     expect(mockDb.getAllTestValues).toHaveBeenCalled();

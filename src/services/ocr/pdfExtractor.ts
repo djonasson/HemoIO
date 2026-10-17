@@ -296,3 +296,56 @@ export class PDFExtractionError extends Error {
     this.name = 'PDFExtractionError';
   }
 }
+
+/**
+ * Options for rendering PDF pages to images
+ */
+export interface RenderPdfPagesOptions {
+  /** Render scale; 2 gives OCR enough resolution for typical lab report fonts */
+  scale?: number;
+  /** Maximum number of pages to render */
+  maxPages?: number;
+  /** Progress callback (pages rendered, pages to render) */
+  onProgress?: (current: number, total: number) => void;
+}
+
+/**
+ * Render PDF pages to PNG images, e.g. so a scanned PDF can be OCR'd
+ *
+ * @param file - PDF file to render
+ * @param options - Rendering options
+ * @returns One PNG image per rendered page
+ */
+export async function renderPdfPages(
+  file: File | ArrayBuffer,
+  options: RenderPdfPagesOptions = {}
+): Promise<Blob[]> {
+  const { scale = 2, maxPages, onProgress } = options;
+  const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pagesToRender = maxPages ? Math.min(maxPages, pdf.numPages) : pdf.numPages;
+  const images: Blob[] = [];
+
+  for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+
+    await page.render({ canvas, viewport }).promise;
+    images.push(await canvasToPng(canvas));
+    onProgress?.(pageNum, pagesToRender);
+  }
+
+  return images;
+}
+
+function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new PDFExtractionError('Could not render PDF page to an image'));
+    }, 'image/png');
+  });
+}

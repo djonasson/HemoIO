@@ -16,7 +16,7 @@ import {
   type TrendSeverity,
 } from '@services/statistics/trendAnalysis';
 import { detectConsecutiveAbnormal } from '@services/statistics/patterns';
-import { findBiomarker } from '@data/biomarkers/dictionary';
+import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 
 /**
  * Alert type
@@ -246,7 +246,7 @@ export function useAlerts(): UseAlertsResult {
     for (const [biomarkerId, { values, labInfo }] of biomarkerValues.entries()) {
       // Get biomarker info from dictionary
       const firstValue = values[0];
-      const biomarkerDef = findBiomarker(firstValue.rawText || '');
+      const biomarkerDef = getBiomarkerForTestValue(firstValue);
       const biomarkerName = biomarkerDef?.name || firstValue.rawText || `Biomarker ${biomarkerId}`;
 
       // Sort by date (most recent first)

@@ -18,3 +18,9 @@ export {
   type UnitConversion,
   type BiomarkerConversions,
 } from './definitions';
+
+export {
+  convertMeasurement,
+  type Measurement,
+  type ConvertedMeasurement,
+} from './convertMeasurement';

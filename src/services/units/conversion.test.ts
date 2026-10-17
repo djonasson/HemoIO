@@ -98,6 +98,24 @@ describe('Unit Conversion Service', () => {
       });
     });
 
+    describe('precision of small values', () => {
+      it('keeps at least two significant figures when converting into a coarse unit', () => {
+        // mg/dL normally shows no decimals, but creatinine is a small number
+        const result = convertValue('Creatinine', 67, 'µmol/L', 'mg/dL');
+        expect(result.convertedValue).toBe(0.76);
+      });
+
+      it('keeps the unit precision for values that already have enough digits', () => {
+        const result = convertValue('Glucose', 5.5, 'mmol/L', 'mg/dL');
+        expect(result.convertedValue).toBe(99);
+      });
+
+      it('respects an explicitly requested precision', () => {
+        const result = convertValue('Creatinine', 67, 'µmol/L', 'mg/dL', 0);
+        expect(result.convertedValue).toBe(1);
+      });
+    });
+
     describe('Urine Creatinine conversions', () => {
       it('converts from µmol/L to g/L', () => {
         // 3780 µmol/L should be approximately 0.42 g/L

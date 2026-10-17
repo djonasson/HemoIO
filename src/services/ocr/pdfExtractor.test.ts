@@ -4,6 +4,7 @@ import {
   needsOCR,
   getPageCount,
   extractPageRange,
+  renderPdfPages,
   PDFExtractionError,
 } from './pdfExtractor';
 
@@ -47,6 +48,8 @@ vi.mock('pdfjs-dist', () => {
     getOperatorList: vi.fn().mockResolvedValue(
       mockConfig.isScanned ? mockOperatorListWithImages : mockOperatorList
     ),
+    getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 100 * scale, height: 150 * scale })),
+    render: vi.fn(() => ({ promise: Promise.resolve() })),
   });
 
   const createMockDocument = () => ({
@@ -310,6 +313,45 @@ describe('PDF Text Extractor', () => {
 
       expect(error.name).toBe('PDFExtractionError');
       expect(error.message).toBe('Test error');
+    });
+  });
+
+  describe('renderPdfPages', () => {
+    let renderedSizes: string[];
+
+    beforeEach(() => {
+      renderedSizes = [];
+      // jsdom has no canvas implementation
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+        {} as CanvasRenderingContext2D
+      );
+      vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
+        this: HTMLCanvasElement,
+        callback: BlobCallback
+      ) {
+        renderedSizes.push(`${this.width}x${this.height}`);
+        callback(new Blob(['png'], { type: 'image/png' }));
+      });
+    });
+
+    it('renders each page to a PNG image at the requested scale', async () => {
+      __setMockConfig({ numPages: 3, isScanned: true });
+
+      const images = await renderPdfPages(new ArrayBuffer(100), { scale: 2 });
+
+      expect(images).toHaveLength(3);
+      expect(images[0].type).toBe('image/png');
+      expect(renderedSizes).toEqual(['200x300', '200x300', '200x300']);
+    });
+
+    it('reports progress per page and honours maxPages', async () => {
+      __setMockConfig({ numPages: 5, isScanned: true });
+      const onProgress = vi.fn();
+
+      const images = await renderPdfPages(new ArrayBuffer(100), { maxPages: 2, onProgress });
+
+      expect(images).toHaveLength(2);
+      expect(onProgress).toHaveBeenLastCalledWith(2, 2);
     });
   });
 });

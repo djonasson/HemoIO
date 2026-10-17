@@ -14,7 +14,11 @@ import {
 } from '@tabler/icons-react';
 import type { SpecimenType } from '@/types';
 import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
-import { findBiomarker } from '@data/biomarkers/dictionary';
+import {
+  findBiomarker,
+  getBiomarkerById,
+  getBiomarkerForTestValue,
+} from '@data/biomarkers/dictionary';
 
 export interface TestValuesListProps {
   /** Test values to display */
@@ -84,16 +88,12 @@ function getBiomarkerName(testValue: EnrichedTestValue): string {
     return testValue.biomarkerName;
   }
 
-  // Try to find in dictionary by raw text
-  if (testValue.rawText) {
-    const found = findBiomarker(testValue.rawText);
-    if (found) {
-      return found.name;
-    }
-    return testValue.rawText;
+  const found = getBiomarkerForTestValue(testValue);
+  if (found) {
+    return found.name;
   }
 
-  return `Biomarker #${testValue.biomarkerId}`;
+  return testValue.rawText || `Biomarker #${testValue.biomarkerId}`;
 }
 
 /**
@@ -166,20 +166,19 @@ function getBiomarkerMetadata(testValue: EnrichedTestValue): {
   description?: string;
   cleanName: string;
 } {
-  // Try to find in dictionary by raw text or biomarker name
   const searchTerm = testValue.biomarkerName || testValue.rawText;
   const { cleanName, extractedSpecimen } = extractSpecimenFromName(searchTerm || '');
 
-  if (searchTerm) {
-    const found = findBiomarker(searchTerm);
-    if (found) {
-      return {
-        specimenType: found.specimenType,
-        loincCode: found.loincCode,
-        description: found.description,
-        cleanName,
-      };
-    }
+  // The stored ID wins; biomarkerName may carry a specimen suffix the raw text lacks
+  const found =
+    getBiomarkerById(testValue.biomarkerId) ?? (searchTerm ? findBiomarker(searchTerm) : undefined);
+  if (found) {
+    return {
+      specimenType: found.specimenType,
+      loincCode: found.loincCode,
+      description: found.description,
+      cleanName: found.name,
+    };
   }
 
   // If not found in dictionary, still return extracted specimen from name

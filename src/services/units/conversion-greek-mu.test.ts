@@ -6,13 +6,8 @@ describe('Greek mu (μ) vs micro sign (µ) handling', () => {
     // μ is Greek mu (U+03BC), commonly used in European lab reports
     expect(canConvert('Creatinine', 'μmol/L', 'mg/dL')).toBe(true);
     const result = convertValue('Creatinine', 67, 'μmol/L', 'mg/dL');
-    // 67 * 0.0113 = 0.7571 mg/dL, default precision for mg/dL is 0
-    // So it rounds to 1 mg/dL - but lab shows 0.75, so we need more precision
-    expect(result.convertedValue).toBe(1);  // Default precision is 0 decimal places
-    
-    // With precision override, we should get closer
-    const resultWithPrecision = convertValue('Creatinine', 67, 'μmol/L', 'mg/dL', 2);
-    expect(resultWithPrecision.convertedValue).toBeCloseTo(0.76, 1);
+    // 67 * 0.0113 = 0.7571 mg/dL: small values keep two significant figures
+    expect(result.convertedValue).toBe(0.76);
   });
 
   test('should convert Urine Creatinine with Greek mu character', () => {

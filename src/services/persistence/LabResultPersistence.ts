@@ -8,7 +8,7 @@ import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb } from '@data/db';
 import type { LabResult, TestValue } from '@/types';
-import { findBiomarker, BIOMARKER_DEFINITIONS } from '@data/biomarkers/dictionary';
+import { findBiomarker, getBiomarkerId } from '@data/biomarkers/dictionary';
 
 /**
  * Output from saving a lab result
@@ -93,22 +93,10 @@ function parseLabDate(dateStr: string | undefined): Date {
  */
 function resolveBiomarkerId(biomarker: MatchedBiomarker): number {
   // If we have a dictionary match, find its index in the definitions
-  if (biomarker.dictionaryMatch) {
-    const index = BIOMARKER_DEFINITIONS.findIndex(
-      (b) => b.name === biomarker.dictionaryMatch!.name
-    );
-    if (index >= 0) {
-      return index + 1; // 1-based ID
-    }
-  }
-
-  // Try to find by name
-  const found = findBiomarker(biomarker.name);
-  if (found) {
-    const index = BIOMARKER_DEFINITIONS.findIndex((b) => b.name === found.name);
-    if (index >= 0) {
-      return index + 1;
-    }
+  const definition = biomarker.dictionaryMatch ?? findBiomarker(biomarker.name);
+  if (definition) {
+    const id = getBiomarkerId(definition);
+    if (id > 0) return id;
   }
 
   // Return a high ID for unknown biomarkers (will be stored but not matched to dictionary)

@@ -20,8 +20,8 @@ import {
   analyzeTrend,
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
-import { findBiomarker } from '@data/biomarkers/dictionary';
-import { convertValue, canConvert } from '@services/units';
+import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
+import { convertMeasurement } from '@services/units';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -114,7 +114,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
         if (typeof testValue.value !== 'number') continue;
 
         const biomarkerId = testValue.biomarkerId;
-        const biomarkerDef = findBiomarker(testValue.rawText || '');
+        const biomarkerDef = getBiomarkerForTestValue(testValue);
 
         if (!map.has(biomarkerId)) {
           // Use canonical unit from dictionary if available, otherwise first unit encountered
@@ -134,47 +134,26 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
           labName: result.labName,
         });
 
-        // Convert value to canonical unit if needed
-        let convertedValue = testValue.value as number;
-        let convertedRefLow = testValue.referenceRangeLow;
-        let convertedRefHigh = testValue.referenceRangeHigh;
+        // Convert to the biomarker's chart unit; values that cannot be
+        // converted keep the unit they were measured in
         const biomarkerName = biomarkerDef?.name || testValue.rawText || '';
-
-        if (testValue.unit !== entry.unit && biomarkerName) {
-          // Try to convert value to canonical unit
-          if (canConvert(biomarkerName, testValue.unit, entry.unit)) {
-            try {
-              const result = convertValue(biomarkerName, testValue.value as number, testValue.unit, entry.unit);
-              convertedValue = result.convertedValue;
-
-              // Also convert reference ranges if present
-              if (testValue.referenceRangeLow !== undefined) {
-                const lowResult = convertValue(biomarkerName, testValue.referenceRangeLow, testValue.unit, entry.unit);
-                convertedRefLow = lowResult.convertedValue;
-              }
-              if (testValue.referenceRangeHigh !== undefined) {
-                const highResult = convertValue(biomarkerName, testValue.referenceRangeHigh, testValue.unit, entry.unit);
-                convertedRefHigh = highResult.convertedValue;
-              }
-            } catch (e) {
-              // Conversion failed, use original values
-              console.warn(`[HemoIO] Unit conversion failed for ${biomarkerName}: ${testValue.unit} → ${entry.unit}`, e);
-            }
-          } else {
-            // Debug level since some units are intentionally not convertible (e.g., microscopy field counts)
-            console.debug(`[HemoIO] Cannot convert ${biomarkerName} from ${testValue.unit} to ${entry.unit}`);
-          }
-        }
+        const converted = convertMeasurement(
+          biomarkerName,
+          {
+            value: testValue.value,
+            unit: testValue.unit,
+            referenceRangeLow: testValue.referenceRangeLow,
+            referenceRangeHigh: testValue.referenceRangeHigh,
+          },
+          entry.unit
+        );
 
         entry.dataPoints.push({
           date: result.date,
-          value: convertedValue,
-          unit: entry.unit,
+          value: converted.value,
+          unit: converted.unit,
           status: testValue.status,
-          referenceRange: {
-            low: convertedRefLow,
-            high: convertedRefHigh,
-          },
+          referenceRange: converted.referenceRange,
           labName: result.labName,
         });
       }

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { TrendsView } from './TrendsView';
@@ -39,25 +39,9 @@ vi.mock('@hooks/useNotes', () => ({
 }));
 
 // Mock unit conversion service
-vi.mock('@services/units', () => ({
-  convertValue: vi.fn((biomarkerName: string, value: number, fromUnit: string, toUnit: string) => {
-    // Simple mock conversion for Glucose: mmol/L to mg/dL (multiply by 18.0182)
-    if (biomarkerName === 'Glucose' && fromUnit === 'mmol/L' && toUnit === 'mg/dL') {
-      return { convertedValue: Math.round(value * 18.0182), originalValue: value, originalUnit: fromUnit, targetUnit: toUnit, precision: 0 };
-    }
-    return { convertedValue: value, originalValue: value, originalUnit: fromUnit, targetUnit: toUnit, precision: 2 };
-  }),
-  canConvert: vi.fn((biomarkerName: string, fromUnit: string, toUnit: string) => {
-    // Glucose supports conversion between mg/dL and mmol/L
-    if (biomarkerName === 'Glucose') {
-      return (fromUnit === 'mmol/L' && toUnit === 'mg/dL') || (fromUnit === 'mg/dL' && toUnit === 'mmol/L');
-    }
-    return false;
-  }),
-}));
-
 // Mock biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
+vi.mock('@data/biomarkers/dictionary', () => {
+  const mock = {
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Glucose') {
       return { name: 'Glucose', category: 'metabolic', canonicalUnit: 'mg/dL' };
@@ -77,7 +61,14 @@ vi.mock('@data/biomarkers/dictionary', () => ({
     urinalysis: 'Urinalysis',
     other: 'Other',
   },
-}));
+  };
+  return {
+    ...mock,
+    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
+    getBiomarkerById: () => undefined,
+    getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
+  };
+});
 
 // Mock ResizeObserver for Recharts
 class ResizeObserverMock {
@@ -92,7 +83,7 @@ beforeAll(() => {
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <DatesProvider settings={{ locale: 'en' }}>{ui}</DatesProvider>
     </MantineProvider>
   );
@@ -507,9 +498,10 @@ describe('TrendsView', () => {
       expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
     });
 
-    // Verify that the unit conversion function was called
-    const { canConvert, convertValue } = await import('@services/units');
-    expect(canConvert).toHaveBeenCalledWith('Glucose', 'mmol/L', 'mg/dL');
-    expect(convertValue).toHaveBeenCalledWith('Glucose', 5.55, 'mmol/L', 'mg/dL');
+    // The latest value (5.55 mmol/L) is shown converted to the chart's unit
+    const latestCard = screen.getByText('Latest Value').closest('.mantine-Paper-root') as HTMLElement;
+    expect(within(latestCard).getByText('100.0')).toBeInTheDocument();
+    expect(within(latestCard).getByText('mg/dL')).toBeInTheDocument();
+    expect(screen.queryByText('5.55')).not.toBeInTheDocument();
   });
 });

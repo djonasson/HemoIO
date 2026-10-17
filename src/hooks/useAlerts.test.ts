@@ -14,7 +14,8 @@ vi.mock('./useLabResults', () => ({
 }));
 
 // Mock biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
+vi.mock('@data/biomarkers/dictionary', () => {
+  const mock = {
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Glucose' || name.toLowerCase().includes('glucose')) {
       return { name: 'Glucose', category: 'metabolic' };
@@ -24,7 +25,14 @@ vi.mock('@data/biomarkers/dictionary', () => ({
     }
     return null;
   }),
-}));
+  };
+  return {
+    ...mock,
+    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
+    getBiomarkerById: () => undefined,
+    getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
+  };
+});
 
 function createMockTestValue(
   id: number,

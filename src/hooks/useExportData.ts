@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
+import { getBiomarkerForTestValue } from '@data/biomarkers';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
@@ -101,17 +102,16 @@ export function useExportData(): UseExportDataResult {
         testValuesByLabResult.set(tv.labResultId, existing);
       }
 
-      // Build biomarker names map (using IDs as names for now)
-      // TODO: Look up actual names from biomarker dictionary
-      const allBiomarkerIds = new Set<number>();
-      for (const tv of testValues) {
-        allBiomarkerIds.add(tv.biomarkerId);
-      }
-
+      // Name each biomarker the way the trends view does: its dictionary entry,
+      // else the name extracted from the report
       const biomarkerNames = new Map<number, string>();
-      for (const id of allBiomarkerIds) {
-        // For now, just use the ID - this would be looked up from dictionary
-        biomarkerNames.set(id, `Biomarker ${id}`);
+      for (const tv of testValues) {
+        if (!biomarkerNames.has(tv.biomarkerId)) {
+          biomarkerNames.set(
+            tv.biomarkerId,
+            getBiomarkerForTestValue(tv)?.name || tv.rawText || `Biomarker ${tv.biomarkerId}`
+          );
+        }
       }
 
       // Build lab results data
@@ -124,9 +124,9 @@ export function useExportData(): UseExportDataResult {
       setLabResultsData(resultsData);
 
       // Build biomarker options for filtering
-      const options = Array.from(allBiomarkerIds).map((id) => ({
+      const options = Array.from(biomarkerNames, ([id, name]) => ({
         value: id.toString(),
-        label: biomarkerNames.get(id) || `Biomarker ${id}`,
+        label: name,
       }));
 
       setBiomarkerOptions(options);

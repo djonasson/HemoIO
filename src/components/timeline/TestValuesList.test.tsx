@@ -2,39 +2,15 @@
  * Tests for TestValuesList component
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
+import { findBiomarker, getBiomarkerId } from '@data/biomarkers/dictionary';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
 
-// Mock the biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
-  findBiomarker: vi.fn((name: string) => {
-    if (name === 'Hemoglobin' || name === 'Hgb') {
-      return {
-        name: 'Hemoglobin',
-        category: 'cbc',
-        specimenType: 'whole-blood',
-        loincCode: '718-7',
-        description: 'Protein in red blood cells that carries oxygen.',
-      };
-    }
-    if (name === 'Glucose') {
-      return {
-        name: 'Glucose',
-        category: 'metabolic',
-        specimenType: 'serum',
-        loincCode: '2345-7',
-        description: 'Blood glucose level.',
-      };
-    }
-    return undefined;
-  }),
-}));
-
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
 
 function createTestValue(
@@ -44,7 +20,8 @@ function createTestValue(
   return {
     id,
     labResultId: 1,
-    biomarkerId: 1,
+    // Unknown-biomarker ID range, so the name comes from rawText
+    biomarkerId: 10001,
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',
@@ -59,6 +36,16 @@ describe('TestValuesList', () => {
     renderWithProviders(<TestValuesList testValues={[]} />);
 
     expect(screen.getByText(/no test values recorded/i)).toBeInTheDocument();
+  });
+
+  it('should name a value by its stored biomarker ID, not its extracted text', () => {
+    // "Hemo-globin" was matched to Hemoglobin when the result was imported
+    const hemoglobinId = getBiomarkerId(findBiomarker('Hemoglobin')!);
+    const testValues = [createTestValue(1, { biomarkerId: hemoglobinId, rawText: 'Hemo-globin' })];
+    renderWithProviders(<TestValuesList testValues={testValues} />);
+
+    expect(screen.getByText('Hemoglobin')).toBeInTheDocument();
+    expect(screen.queryByText('Hemo-globin')).not.toBeInTheDocument();
   });
 
   it('should render table with headers', () => {

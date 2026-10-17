@@ -12,6 +12,8 @@ import {
   detectDocumentType,
   extractTextFromPDF,
   recognizeImage,
+  recognizeImages,
+  renderPdfPages,
 } from '../ocr';
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
@@ -212,8 +214,7 @@ export async function analyzeLabReport(
     } else {
       // Use OCR for scanned PDFs and images
       if (documentType === 'scanned-pdf') {
-        // For scanned PDFs, we need to convert pages to images first
-        // For now, we'll extract what we can and note it may be incomplete
+        // Use any embedded text layer if there is a meaningful amount of it
         const pdfResult = await extractTextFromPDF(file);
         if (pdfResult.fullText.length > 100) {
           // Some text was found, use it
@@ -223,11 +224,36 @@ export async function analyzeLabReport(
             'This appears to be a scanned PDF. Some text may be missing or inaccurate.'
           );
         } else {
-          // Need OCR - this would require rendering PDF pages to images
-          warnings.push(
-            'Scanned PDF detected. Full OCR support requires PDF page rendering.'
-          );
-          extractedText = pdfResult.fullText || 'Unable to extract text from scanned PDF';
+          // Render each page to an image and OCR it
+          const pageImages = await renderPdfPages(file, {
+            onProgress: (current, total) => {
+              options.onProgress?.(`Rendering page ${current}/${total}`, 0.3 + (current / total) * 0.05);
+            },
+          });
+          let pagesDone = 0;
+          const ocrResults = await recognizeImages(pageImages, {
+            language: options.language,
+            onProgress: (progress) => {
+              const total = pageImages.length;
+              options.onProgress?.(
+                `OCR: ${progress.status} (page ${pagesDone + 1}/${total})`,
+                0.35 + ((pagesDone + progress.progress) / total) * 0.15
+              );
+            },
+            onImageProgress: (done) => {
+              pagesDone = done;
+            },
+          });
+          extractedText = ocrResults.map((r) => r.text.trim()).filter(Boolean).join('\n\n');
+          extractionMethod = 'ocr';
+
+          const averageConfidence =
+            ocrResults.reduce((sum, r) => sum + r.confidence, 0) / Math.max(ocrResults.length, 1);
+          if (averageConfidence < 70) {
+            warnings.push(
+              `Low OCR confidence (${Math.round(averageConfidence)}%). Results may be inaccurate.`
+            );
+          }
         }
       } else {
         // Image file - use OCR
@@ -387,41 +413,21 @@ function matchBiomarkerToDictionary(
 ): MatchedBiomarker {
   const normalizedUnit = normalizeUnit(biomarker.unit);
 
-  // Try exact match first
+  // Exact name or alias first, then variations (punctuation, spacing)
   const exactMatch = findBiomarker(biomarker.name);
-  if (exactMatch) {
-    // Verify unit is compatible
-    const allUnits = [exactMatch.canonicalUnit, ...exactMatch.alternativeUnits];
+  const candidate = exactMatch ?? findFuzzyMatch(biomarker.name);
+
+  if (candidate) {
+    const allUnits = [candidate.canonicalUnit, ...candidate.alternativeUnits];
     const unitCompatible =
-      allUnits.some(
-        (u: string) => u.toLowerCase() === normalizedUnit.toLowerCase()
-      ) || canConvert(exactMatch.name, biomarker.unit, exactMatch.canonicalUnit);
+      allUnits.some((u: string) => u.toLowerCase() === normalizedUnit.toLowerCase()) ||
+      canConvert(candidate.name, biomarker.unit, candidate.canonicalUnit);
 
-    if (unitCompatible) {
-      return {
-        ...biomarker,
-        dictionaryMatch: exactMatch,
-        isExactMatch: true,
-        normalizedUnit,
-      };
-    }
+    // An incompatible unit means the name may be misread: suggest, don't assume
+    return unitCompatible
+      ? { ...biomarker, dictionaryMatch: candidate, isExactMatch: exactMatch !== undefined, normalizedUnit }
+      : { ...biomarker, suggestedMatch: candidate, isExactMatch: false, normalizedUnit };
   }
-
-  // Try fuzzy matching with common aliases
-  const fuzzyMatch = findFuzzyMatch(biomarker.name);
-  if (fuzzyMatch) {
-    return {
-      ...biomarker,
-      suggestedMatch: fuzzyMatch,
-      isExactMatch: false,
-      normalizedUnit,
-    };
-  }
-
-  // Log unmatched biomarkers to console for dictionary improvement
-  console.warn(
-    `[HemoIO] Unmatched biomarker: "${biomarker.name}" (unit: ${biomarker.unit}, value: ${biomarker.value})`
-  );
 
   return {
     ...biomarker,
@@ -442,27 +448,22 @@ function matchBiomarkerToDictionary(
  */
 const RELATIVE_TOLERANCE = 0.02;
 
-/**
- * Absolute tolerance for small values (1 unit difference allowed)
- * For small values like 5 vs 6 mg/dL, a percentage-based tolerance
- * doesn't work well. Labs often round to whole numbers.
- */
-const ABSOLUTE_TOLERANCE = 1.0;
+/** Decimal places used when converting values only to compare them */
+const COMPARISON_PRECISION = 10;
 
 /**
- * Check if two values are equal within tolerance
- * Uses both relative tolerance (for larger values) and absolute tolerance (for small values)
+ * Check if two values (already in the same unit) are equal within tolerance.
+ *
+ * The tolerance is relative only: an absolute allowance would treat small
+ * values that differ substantially (e.g. creatinine 0.76 vs 1.5 mg/dL) as
+ * the same. Anything outside the tolerance is flagged for user review rather
+ * than merged, so a borderline rounding difference costs a review, not data.
  */
 function valuesAreEqual(val1: number, val2: number): boolean {
   if (val1 === val2) return true;
   if (val1 === 0 || val2 === 0) return false;
 
   const diff = Math.abs(val1 - val2);
-
-  // Allow absolute tolerance of 1 unit for any values
-  if (diff <= ABSOLUTE_TOLERANCE) return true;
-
-  // Also check relative tolerance for larger values
   const avg = (Math.abs(val1) + Math.abs(val2)) / 2;
   return diff / avg <= RELATIVE_TOLERANCE;
 }
@@ -532,6 +533,8 @@ function deduplicateBiomarkers(
       originalValue: number;
       originalUnit: string;
       convertedValue: number;
+      /** Unrounded converted value: rounding before comparing adds error */
+      comparisonValue: number;
       conversionSucceeded: boolean;
     }> = [];
 
@@ -542,6 +545,7 @@ function deduplicateBiomarkers(
           originalValue: biomarker.value,
           originalUnit: biomarker.unit,
           convertedValue: biomarker.value,
+          comparisonValue: biomarker.value,
           conversionSucceeded: true,
         });
       } else if (canConvert(canonicalName, biomarker.unit, canonicalUnit)) {
@@ -552,11 +556,19 @@ function deduplicateBiomarkers(
             biomarker.unit,
             canonicalUnit
           );
+          const unrounded = convertValue(
+            canonicalName,
+            biomarker.value,
+            biomarker.unit,
+            canonicalUnit,
+            COMPARISON_PRECISION
+          );
           convertedValues.push({
             biomarker,
             originalValue: biomarker.value,
             originalUnit: biomarker.unit,
             convertedValue: result.convertedValue,
+            comparisonValue: unrounded.convertedValue,
             conversionSucceeded: true,
           });
         } catch {
@@ -565,6 +577,7 @@ function deduplicateBiomarkers(
             originalValue: biomarker.value,
             originalUnit: biomarker.unit,
             convertedValue: biomarker.value,
+            comparisonValue: biomarker.value,
             conversionSucceeded: false,
           });
         }
@@ -574,6 +587,7 @@ function deduplicateBiomarkers(
           originalValue: biomarker.value,
           originalUnit: biomarker.unit,
           convertedValue: biomarker.value,
+          comparisonValue: biomarker.value,
           conversionSucceeded: false,
         });
       }
@@ -608,9 +622,9 @@ function deduplicateBiomarkers(
     }
 
     // Check if all values match after conversion
-    const firstValue = successfulConversions[0].convertedValue;
+    const firstValue = successfulConversions[0].comparisonValue;
     const allMatch = successfulConversions.every((cv) =>
-      valuesAreEqual(cv.convertedValue, firstValue)
+      valuesAreEqual(cv.comparisonValue, firstValue)
     );
 
     if (allMatch) {
@@ -621,14 +635,6 @@ function deduplicateBiomarkers(
         ) || convertedValues[0];
 
       deduplicated.push(preferredEntry.biomarker);
-
-      // Log the merge
-      console.info(
-        `[HemoIO] Merged duplicate biomarker "${canonicalName}": ` +
-          convertedValues
-            .map((cv) => `${cv.originalValue} ${cv.originalUnit}`)
-            .join(' = ')
-      );
     } else {
       // Values don't match - flag as conflict for user review
       const conflict: DuplicateConflict = {

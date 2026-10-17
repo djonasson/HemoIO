@@ -1520,6 +1520,39 @@ export const CATEGORY_NAMES: Record<BiomarkerCategory, string> = {
 };
 
 /**
+ * Stored biomarker ID for a dictionary entry: its 1-based position in
+ * BIOMARKER_DEFINITIONS, or 0 if it is not in the dictionary. Unknown
+ * biomarkers are stored with IDs >= 10000.
+ */
+export function getBiomarkerId(definition: Pick<BiomarkerDefinition, 'name'>): number {
+  // Match by name: definitions may be copies (e.g. from a serialized match)
+  return BIOMARKER_DEFINITIONS.findIndex((b) => b.name === definition.name) + 1;
+}
+
+/**
+ * Dictionary entry for a stored biomarker ID (undefined for unknown biomarkers)
+ */
+export function getBiomarkerById(id: number): BiomarkerDefinition | undefined {
+  return Number.isInteger(id) && id >= 1 ? BIOMARKER_DEFINITIONS[id - 1] : undefined;
+}
+
+/**
+ * Dictionary entry for a stored test value.
+ *
+ * The stored ID wins over the extracted text: it reflects the match the user
+ * confirmed during review (e.g. "Hemo-globin" mapped to Hemoglobin).
+ */
+export function getBiomarkerForTestValue(testValue: {
+  biomarkerId: number;
+  rawText?: string;
+}): BiomarkerDefinition | undefined {
+  return (
+    getBiomarkerById(testValue.biomarkerId) ??
+    (testValue.rawText ? findBiomarker(testValue.rawText) : undefined)
+  );
+}
+
+/**
  * Find a biomarker by name or alias (case-insensitive)
  */
 export function findBiomarker(nameOrAlias: string): BiomarkerDefinition | undefined {

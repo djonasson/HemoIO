@@ -25,6 +25,8 @@ vi.mock('@data/biomarkers/dictionary', () => ({
     { name: 'Glucose', category: 'metabolic' },
     { name: 'Creatinine', category: 'metabolic' },
   ],
+  getBiomarkerId: (definition: { name: string }) =>
+    ['Hemoglobin', 'Glucose', 'Creatinine'].indexOf(definition.name) + 1,
 }));
 
 // Create mock db

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  getBiomarkerId,
+  getBiomarkerById,
+  getBiomarkerForTestValue,
   BIOMARKER_DEFINITIONS,
   CATEGORY_NAMES,
   findBiomarker,
@@ -192,6 +195,33 @@ describe('Biomarker Dictionary', () => {
     it('is case-insensitive', () => {
       expect(isValidUnit('Glucose', 'MG/DL')).toBe(true);
       expect(isValidUnit('Glucose', 'MMOL/L')).toBe(true);
+    });
+  });
+
+  describe('biomarker IDs', () => {
+    it('round-trips a definition through its ID', () => {
+      const hemoglobin = findBiomarker('Hemoglobin')!;
+      expect(getBiomarkerById(getBiomarkerId(hemoglobin))).toBe(hemoglobin);
+    });
+
+    it('returns undefined for IDs outside the dictionary (unknown biomarkers)', () => {
+      expect(getBiomarkerById(0)).toBeUndefined();
+      expect(getBiomarkerById(10042)).toBeUndefined();
+    });
+
+    it('identifies a stored test value by its ID before its extracted text', () => {
+      // A name the user mapped to Hemoglobin during review
+      const hemoglobinId = getBiomarkerId(findBiomarker('Hemoglobin')!);
+      expect(
+        getBiomarkerForTestValue({ biomarkerId: hemoglobinId, rawText: 'Hemo-globin' })?.name
+      ).toBe('Hemoglobin');
+    });
+
+    it('falls back to the extracted text for unknown IDs', () => {
+      expect(getBiomarkerForTestValue({ biomarkerId: 10042, rawText: 'Blood Sugar' })?.name).toBe(
+        'Glucose'
+      );
+      expect(getBiomarkerForTestValue({ biomarkerId: 10042, rawText: 'Zorblatin' })).toBeUndefined();
     });
   });
 });
