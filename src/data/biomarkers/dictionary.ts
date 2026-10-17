@@ -1643,10 +1643,19 @@ export function getBiomarkerByKey(key: string): BiomarkerDefinition | undefined 
 
 /**
  * Key for a biomarker that is not in the dictionary, derived from its name so
- * the same name always gets the same key
+ * the same name always gets the same key.
+ *
+ * Normalised to NFKC so composed and decomposed spellings match. Letters,
+ * combining marks and digits are kept, as are "%" and "#", which distinguish
+ * percentage and absolute-count variants of the same marker (e.g.
+ * "Reticulocytes %" vs "Reticulocytes #"). Keys are permanent: changing these
+ * rules requires a data migration.
  */
 export function unknownBiomarkerKey(extractedName: string): string {
-  const normalized = extractedName.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  const normalized = extractedName
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}%#]/gu, '');
   return `${UNKNOWN_PREFIX}${normalized || 'unnamed'}`;
 }
 

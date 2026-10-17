@@ -208,14 +208,17 @@ describe('Biomarker Dictionary', () => {
       keys.forEach((key) => expect(key).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/));
     });
 
-    it('never drops or changes an issued key', () => {
-      const keys = new Set(BIOMARKER_DEFINITIONS.map((b) => b.key));
-      ISSUED_BIOMARKER_KEYS.forEach((issued) => expect(keys.has(issued), issued).toBe(true));
+    it('keeps every issued key on the biomarker it was issued for', () => {
+      // Moving or swapping keys would relabel stored data. A rename must update
+      // the snapshot name in the same, reviewed change.
+      ISSUED_BIOMARKER_KEYS.forEach(([key, name]) =>
+        expect(getBiomarkerByKey(key)?.name, key).toBe(name)
+      );
     });
 
     it('has every dictionary key in the issued list', () => {
       // A new biomarker must be appended to ISSUED_BIOMARKER_KEYS
-      const issued = new Set(ISSUED_BIOMARKER_KEYS);
+      const issued = new Set(ISSUED_BIOMARKER_KEYS.map(([key]) => key));
       BIOMARKER_DEFINITIONS.forEach((b) => expect(issued.has(b.key), b.key).toBe(true));
     });
 
@@ -229,6 +232,24 @@ describe('Biomarker Dictionary', () => {
       expect(unknownBiomarkerKey('  Zorb-latin (serum) ')).toBe('unknown:zorblatinserum');
       expect(isUnknownBiomarkerKey('unknown:zorblatin')).toBe(true);
       expect(isUnknownBiomarkerKey('glucose')).toBe(false);
+    });
+
+    it('keeps percentage and absolute-count variants apart', () => {
+      // e.g. "Reticulocytes %" vs "Reticulocytes #", "IG%" vs "IG#"
+      expect(unknownBiomarkerKey('Reticulocytes %')).not.toBe(unknownBiomarkerKey('Reticulocytes #'));
+      expect(unknownBiomarkerKey('IG%')).toBe('unknown:ig%');
+      expect(unknownBiomarkerKey('IG#')).toBe('unknown:ig#');
+    });
+
+    it('gives the same key to the same name in different Unicode forms', () => {
+      const composed = 'Glicemia à digiuno'.normalize('NFC');
+      const decomposed = 'Glicemia à digiuno'.normalize('NFD');
+      expect(unknownBiomarkerKey(decomposed)).toBe(unknownBiomarkerKey(composed));
+    });
+
+    it('keeps combining marks that distinguish names', () => {
+      // Devanagari vowel signs are combining marks; dropping them merges names
+      expect(unknownBiomarkerKey('रक्त')).not.toBe(unknownBiomarkerKey('रकत'));
     });
 
     it('never builds an empty unknown key', () => {
