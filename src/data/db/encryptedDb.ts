@@ -10,6 +10,11 @@
 
 import { db, HemoIODatabase } from './index';
 import { encryptString, decryptString } from '@data/encryption';
+import {
+  legacyUnknownKeyMapping,
+  remapPreferenceMaps,
+} from '@data/migrations/biomarkerKeyMigration';
+import { LEGACY_UNKNOWN_PREFIX } from '@data/migrations/legacyBiomarkerIds';
 import type {
   LabResult,
   TestValue,
@@ -81,9 +86,54 @@ export class EncryptedDb {
   private key: CryptoKey;
   private db: HemoIODatabase;
 
-  constructor(encryptionKey: CryptoKey) {
+  constructor(encryptionKey: CryptoKey, database: HemoIODatabase = db) {
     this.key = encryptionKey;
-    this.db = db;
+    this.db = database;
+  }
+
+  // ============ Migrations needing the encryption key ============
+
+  /**
+   * Give unknown biomarkers stored before biomarker keys existed
+   * ("unknown:legacy-<hash>") the key their extracted name gets today, so
+   * their history joins values imported since. Needs rawText, which is
+   * encrypted, so it runs after unlock rather than in the schema upgrade.
+   *
+   * @returns Number of legacy keys reconciled (0 when nothing to do)
+   */
+  async reconcileLegacyUnknownKeys(): Promise<number> {
+    const legacyValues = await this.db.testValues
+      .where('biomarkerKey')
+      .startsWith(LEGACY_UNKNOWN_PREFIX)
+      .toArray();
+    if (legacyValues.length === 0) return 0;
+
+    const decrypted = await Promise.all(
+      legacyValues.map((tv) => decryptFields(tv, ENCRYPTED_FIELDS.testValues, this.key))
+    );
+    const mapping = legacyUnknownKeyMapping(decrypted);
+    if (mapping.size === 0) return 0;
+    const legacyKeys = [...mapping.keys()];
+
+    await this.db.transaction('rw', this.db.testValues, this.db.userNotes, this.db.userPreferences, async () => {
+      await this.db.testValues
+        .where('biomarkerKey')
+        .anyOf(legacyKeys)
+        .modify((record) => {
+          record.biomarkerKey = mapping.get(record.biomarkerKey)!;
+        });
+      await this.db.userNotes
+        .where('biomarkerKey')
+        .anyOf(legacyKeys)
+        .modify((record) => {
+          record.biomarkerKey = mapping.get(record.biomarkerKey!)!;
+        });
+      await this.db.userPreferences.toCollection().modify((record, ref) => {
+        ref.value = remapPreferenceMaps(record, mapping);
+      });
+    });
+
+    return mapping.size;
   }
 
   // ============ Lab Results ============

@@ -5,9 +5,12 @@
  */
 
 import {
+  legacyUnknownKeyMapping,
   migrateNoteRecord,
   migratePreferenceMaps,
   migrateTestValueRecord,
+  remapBiomarkerKey,
+  remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
 import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
 import {
@@ -144,13 +147,20 @@ export function migrateBackupData<T extends BackupData>(data: T): T {
 
   if (migrated.schemaVersion < 2) {
     // v1 referenced biomarkers by their position in the dictionary
+    const testValues = migrated.testValues.map(migrateTestValueRecord);
+    // Unknown biomarkers had hash IDs; rawText is plaintext in a backup, so
+    // give them the key their name gets today
+    const unknownKeys = legacyUnknownKeyMapping(testValues);
+    const userPreferences = migrated.userPreferences
+      ? remapPreferenceMaps(migratePreferenceMaps(migrated.userPreferences), unknownKeys)
+      : migrated.userPreferences;
     migrated = {
       ...migrated,
-      testValues: migrated.testValues.map(migrateTestValueRecord),
-      userNotes: migrated.userNotes.map(migrateNoteRecord),
-      userPreferences: migrated.userPreferences
-        ? migratePreferenceMaps(migrated.userPreferences)
-        : migrated.userPreferences,
+      testValues: testValues.map((tv) => remapBiomarkerKey(tv, unknownKeys)),
+      userNotes: migrated.userNotes.map((note) =>
+        remapBiomarkerKey(migrateNoteRecord(note), unknownKeys)
+      ),
+      userPreferences,
       schemaVersion: 2,
     };
   }

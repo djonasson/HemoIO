@@ -6,7 +6,8 @@
  * are pure and idempotent.
  */
 
-import { legacyIdToKey } from './legacyBiomarkerIds';
+import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { LEGACY_UNKNOWN_PREFIX, legacyIdToKey } from './legacyBiomarkerIds';
 
 export interface LegacyKeyed {
   biomarkerId?: number;
@@ -56,5 +57,53 @@ export function migratePreferenceMaps<
     ...prefs,
     ...(prefs.personalTargets && { personalTargets: rekey(prefs.personalTargets) }),
     ...(prefs.unitPreferences && { unitPreferences: rekey(prefs.unitPreferences) }),
+  };
+}
+
+/**
+ * Reconciling legacy unknown keys.
+ *
+ * Unknown biomarkers stored before keys existed have "unknown:legacy-<hash>"
+ * keys, but new imports of the same name get "unknown:<name>", which would
+ * split one biomarker's history in two. The old hash came from the extracted
+ * name (stored as rawText), so each legacy key maps to the key that name gets
+ * today. rawText is encrypted in the database, so this runs where plaintext is
+ * available: during backup import, and after unlock for stored data.
+ */
+export function legacyUnknownKeyMapping(
+  testValues: ReadonlyArray<{ biomarkerKey: string; rawText?: string }>
+): Map<string, string> {
+  const mapping = new Map<string, string>();
+  for (const { biomarkerKey, rawText } of testValues) {
+    if (biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX) && rawText && !mapping.has(biomarkerKey)) {
+      mapping.set(biomarkerKey, unknownBiomarkerKey(rawText));
+    }
+  }
+  return mapping;
+}
+
+export function remapBiomarkerKey<T extends object>(
+  record: T,
+  mapping: ReadonlyMap<string, string>
+): T {
+  const { biomarkerKey } = record as T & LegacyKeyed;
+  const remapped = biomarkerKey !== undefined ? mapping.get(biomarkerKey) : undefined;
+  return remapped ? { ...record, biomarkerKey: remapped } : record;
+}
+
+function remapMapKeys<V>(
+  map: Record<string, V>,
+  mapping: ReadonlyMap<string, string>
+): Record<string, V> {
+  return Object.fromEntries(Object.entries(map).map(([key, value]) => [mapping.get(key) ?? key, value]));
+}
+
+export function remapPreferenceMaps<
+  T extends { personalTargets?: Record<string, unknown>; unitPreferences?: Record<string, unknown> },
+>(prefs: T, mapping: ReadonlyMap<string, string>): T {
+  return {
+    ...prefs,
+    ...(prefs.personalTargets && { personalTargets: remapMapKeys(prefs.personalTargets, mapping) }),
+    ...(prefs.unitPreferences && { unitPreferences: remapMapKeys(prefs.unitPreferences, mapping) }),
   };
 }

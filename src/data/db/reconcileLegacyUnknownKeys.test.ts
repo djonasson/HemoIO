@@ -1,0 +1,65 @@
+import 'fake-indexeddb/auto';
+import { describe, it, expect, afterEach } from 'vitest';
+import Dexie from 'dexie';
+import { HemoIODatabase } from './index';
+import { EncryptedDb } from './encryptedDb';
+import { deriveKey, generateSalt } from '@data/encryption';
+
+const databases: HemoIODatabase[] = [];
+afterEach(async () => {
+  for (const database of databases.splice(0)) {
+    database.close();
+    await Dexie.delete(database.name);
+  }
+});
+
+async function setup(name: string) {
+  const database = new HemoIODatabase(name);
+  databases.push(database);
+  const key = await deriveKey('test-password', generateSalt());
+  return { database, encryptedDb: new EncryptedDb(key, database) };
+}
+
+const now = new Date('2024-01-15');
+
+describe('EncryptedDb.reconcileLegacyUnknownKeys', () => {
+  it('gives upgraded unknown biomarkers the key new imports of their name get', async () => {
+    const { database, encryptedDb } = await setup('reconcile-1');
+    const valueId = await encryptedDb.addTestValue({
+      labResultId: 1, biomarkerKey: 'unknown:legacy-12345', rawText: 'Zorblatin',
+      value: 3, unit: 'U/L', createdAt: now, updatedAt: now,
+    });
+    await encryptedDb.addTestValue({
+      labResultId: 1, biomarkerKey: 'glucose', rawText: 'Glucose',
+      value: 95, unit: 'mg/dL', createdAt: now, updatedAt: now,
+    });
+    await encryptedDb.addNote({
+      biomarkerKey: 'unknown:legacy-12345', content: 'note', tags: [], createdAt: now, updatedAt: now,
+    });
+    await encryptedDb.savePreferences({
+      unitPreferences: {}, personalTargets: { 'unknown:legacy-12345': { high: 5 } },
+      theme: 'system', dateFormat: 'MM/DD/YYYY',
+    });
+
+    const changed = await encryptedDb.reconcileLegacyUnknownKeys();
+
+    expect(changed).toBe(1);
+    expect((await encryptedDb.getTestValue(valueId))?.biomarkerKey).toBe('unknown:zorblatin');
+    expect((await encryptedDb.getAllNotes())[0].biomarkerKey).toBe('unknown:zorblatin');
+    expect((await encryptedDb.getPreferences())?.personalTargets).toEqual({
+      'unknown:zorblatin': { high: 5 },
+    });
+    // Other biomarkers are untouched
+    expect(await database.testValues.where('biomarkerKey').equals('glucose').count()).toBe(1);
+  });
+
+  it('does nothing when there are no legacy unknown keys', async () => {
+    const { encryptedDb } = await setup('reconcile-2');
+    await encryptedDb.addTestValue({
+      labResultId: 1, biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin',
+      value: 3, unit: 'U/L', createdAt: now, updatedAt: now,
+    });
+
+    expect(await encryptedDb.reconcileLegacyUnknownKeys()).toBe(0);
+  });
+});

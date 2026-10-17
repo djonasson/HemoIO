@@ -338,6 +338,22 @@ describe('jsonImport', () => {
       expect(parsed.schemaVersion).toBe(2);
     });
 
+    it('gives unknown biomarkers the same key new imports of that name get', () => {
+      // Hash IDs (>= 10000) were derived from the extracted name, kept as rawText
+      const parsed = parseBackupJson(
+        JSON.stringify({
+          ...v1,
+          testValues: [{ ...v1.testValues[1], rawText: 'Zorblatin' }],
+          userNotes: [{ ...v1.userNotes[0], biomarkerId: 10042 }],
+          userPreferences: { ...v1.userPreferences, personalTargets: { 10042: { high: 5 } } },
+        })
+      );
+
+      expect(parsed.testValues[0].biomarkerKey).toBe('unknown:zorblatin');
+      expect(parsed.userNotes[0].biomarkerKey).toBe('unknown:zorblatin');
+      expect(parsed.userPreferences?.personalTargets).toEqual({ 'unknown:zorblatin': { high: 5 } });
+    });
+
     it('rejects backups from a newer version', () => {
       expect(() => parseBackupJson(JSON.stringify({ ...v1, schemaVersion: 3 }))).toThrow(/newer version/);
     });

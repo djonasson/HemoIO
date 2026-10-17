@@ -3,6 +3,9 @@ import {
   migrateTestValueRecord,
   migrateNoteRecord,
   migratePreferenceMaps,
+  legacyUnknownKeyMapping,
+  remapBiomarkerKey,
+  remapPreferenceMaps,
 } from './biomarkerKeyMigration';
 
 describe('migrateTestValueRecord', () => {
@@ -56,5 +59,57 @@ describe('migratePreferenceMaps', () => {
   it('is idempotent for maps already keyed by biomarker key', () => {
     const prefs = { personalTargets: { glucose: { high: 99 } }, unitPreferences: {} };
     expect(migratePreferenceMaps(migratePreferenceMaps(prefs))).toEqual(prefs);
+  });
+});
+
+describe('legacyUnknownKeyMapping', () => {
+  it('maps legacy unknown keys to the key their extracted name gets today', () => {
+    const mapping = legacyUnknownKeyMapping([
+      { biomarkerKey: 'unknown:legacy-12345', rawText: 'Zorblatin' },
+      { biomarkerKey: 'unknown:legacy-12345', rawText: 'Zorblatin' },
+      { biomarkerKey: 'unknown:legacy-777', rawText: 'Reticulocytes %' },
+    ]);
+
+    expect(Object.fromEntries(mapping)).toEqual({
+      'unknown:legacy-12345': 'unknown:zorblatin',
+      'unknown:legacy-777': 'unknown:reticulocytes%',
+    });
+  });
+
+  it('ignores dictionary keys, new unknown keys and values without a name', () => {
+    const mapping = legacyUnknownKeyMapping([
+      { biomarkerKey: 'glucose', rawText: 'Glucose' },
+      { biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin' },
+      { biomarkerKey: 'unknown:legacy-42', rawText: undefined },
+    ]);
+
+    expect(mapping.size).toBe(0);
+  });
+});
+
+describe('remapBiomarkerKey', () => {
+  const mapping = new Map([['unknown:legacy-1', 'unknown:zorblatin']]);
+
+  it('rewrites mapped keys and leaves others unchanged', () => {
+    expect(remapBiomarkerKey({ id: 1, biomarkerKey: 'unknown:legacy-1' }, mapping)).toEqual({
+      id: 1,
+      biomarkerKey: 'unknown:zorblatin',
+    });
+    const other = { id: 2, biomarkerKey: 'glucose' };
+    expect(remapBiomarkerKey(other, mapping)).toBe(other);
+    const noKey = { id: 3 };
+    expect(remapBiomarkerKey(noKey, mapping)).toBe(noKey);
+  });
+
+  it('remaps preference map keys', () => {
+    expect(
+      remapPreferenceMaps(
+        { personalTargets: { 'unknown:legacy-1': { low: 1 } }, unitPreferences: { glucose: 'mmol/L' } },
+        mapping
+      )
+    ).toEqual({
+      personalTargets: { 'unknown:zorblatin': { low: 1 } },
+      unitPreferences: { glucose: 'mmol/L' },
+    });
   });
 });

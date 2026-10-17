@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   AppShell as MantineAppShell,
   Burger,
@@ -10,6 +10,8 @@ import {
   Text,
   Divider,
   Stack,
+  Center,
+  Loader,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -25,7 +27,14 @@ import {
   IconDownload,
 } from '@tabler/icons-react';
 import { useAuth } from '@contexts';
-import { useEncryptedDb, useExportData, useEncryptedApiKey, useFilesystemSync, useAISettings } from '@hooks';
+import {
+  useEncryptedDb,
+  useExportData,
+  useEncryptedApiKey,
+  useFilesystemSync,
+  useAISettings,
+  useLegacyKeyReconciliation,
+} from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -89,6 +98,14 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const { dataSources, labResultsData, biomarkerOptions, refresh: refreshExportData } = useExportData();
+  const { isReconciling } = useLegacyKeyReconciliation();
+
+  // Export data loads on mount; reload it once stored keys are reconciled
+  useEffect(() => {
+    if (!isReconciling) {
+      void refreshExportData();
+    }
+  }, [isReconciling, refreshExportData]);
   const { syncNow } = useFilesystemSync();
 
   const handleNavClick = useCallback(
@@ -289,7 +306,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
-          {children ?? (
+          {isReconciling ? (
+            <Center h="50vh">
+              <Loader aria-label="Preparing your data" />
+            </Center>
+          ) : children ?? (
             <MainContent
               view={activeView}
               onImportComplete={handleImportComplete}

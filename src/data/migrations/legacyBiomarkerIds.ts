@@ -121,9 +121,11 @@ export const LEGACY_ID_ORDER: readonly string[] = [
  * dictionary position (hash IDs, corrupt values) become distinct unknown
  * keys rather than being guessed.
  */
+export const LEGACY_UNKNOWN_PREFIX = 'unknown:legacy-';
+
 export function legacyIdToKey(id: number): string {
   if (Number.isInteger(id) && id >= 1 && id <= LEGACY_ID_ORDER.length) {
     return LEGACY_ID_ORDER[id - 1];
   }
-  return `unknown:legacy-${id}`;
+  return `${LEGACY_UNKNOWN_PREFIX}${id}`;
 }
