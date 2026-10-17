@@ -6,7 +6,6 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
-import { findBiomarker, getBiomarkerId } from '@data/biomarkers/dictionary';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -20,8 +19,8 @@ function createTestValue(
   return {
     id,
     labResultId: 1,
-    // Unknown-biomarker ID range, so the name comes from rawText
-    biomarkerId: 10001,
+    // Not a dictionary key, so the name comes from rawText
+    biomarkerKey: 'unknown:test',
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',
@@ -40,8 +39,7 @@ describe('TestValuesList', () => {
 
   it('should name a value by its stored biomarker ID, not its extracted text', () => {
     // "Hemo-globin" was matched to Hemoglobin when the result was imported
-    const hemoglobinId = getBiomarkerId(findBiomarker('Hemoglobin')!);
-    const testValues = [createTestValue(1, { biomarkerId: hemoglobinId, rawText: 'Hemo-globin' })];
+    const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemo-globin' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
     expect(screen.getByText('Hemoglobin')).toBeInTheDocument();

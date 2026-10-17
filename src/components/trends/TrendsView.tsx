@@ -67,7 +67,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
   // Get notes for selected biomarker
   const selectedBiomarkerNotes = useMemo(() => {
     if (!selectedBiomarkerId) return [];
-    return getNotesForBiomarker(parseInt(selectedBiomarkerId));
+    return getNotesForBiomarker(selectedBiomarkerId);
   }, [selectedBiomarkerId, getNotesForBiomarker]);
 
   // Handle note creation for selected biomarker
@@ -75,7 +75,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
     async (content: string, tags: string[]) => {
       if (!selectedBiomarkerId) return;
       await createNote({
-        biomarkerId: parseInt(selectedBiomarkerId),
+        biomarkerKey: selectedBiomarkerId,
         content,
         tags,
       });
@@ -101,7 +101,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
 
   // Build map of biomarker data with unit conversion to canonical units
   const biomarkerDataMap = useMemo(() => {
-    const map = new Map<number, {
+    const map = new Map<string, {
       name: string;
       unit: string;
       category: BiomarkerCategory;
@@ -113,14 +113,14 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
       for (const testValue of result.testValues) {
         if (typeof testValue.value !== 'number') continue;
 
-        const biomarkerId = testValue.biomarkerId;
+        const biomarkerKey = testValue.biomarkerKey;
         const biomarkerDef = getBiomarkerForTestValue(testValue);
 
-        if (!map.has(biomarkerId)) {
+        if (!map.has(biomarkerKey)) {
           // Use canonical unit from dictionary if available, otherwise first unit encountered
           const canonicalUnit = biomarkerDef?.canonicalUnit || testValue.unit;
-          map.set(biomarkerId, {
-            name: biomarkerDef?.name || testValue.rawText || `Biomarker ${biomarkerId}`,
+          map.set(biomarkerKey, {
+            name: biomarkerDef?.name || testValue.rawText || 'Unknown biomarker',
             unit: canonicalUnit,
             category: biomarkerDef?.category || 'other',
             dataPoints: [],
@@ -128,7 +128,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
           });
         }
 
-        const entry = map.get(biomarkerId)!;
+        const entry = map.get(biomarkerKey)!;
         entry.labInfoMap.set(testValue.labResultId, {
           date: result.date,
           labName: result.labName,
@@ -171,9 +171,9 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
   const biomarkerOptions = useMemo((): BiomarkerOption[] => {
     const options: BiomarkerOption[] = [];
 
-    for (const [biomarkerId, data] of biomarkerDataMap.entries()) {
+    for (const [biomarkerKey, data] of biomarkerDataMap.entries()) {
       options.push({
-        value: biomarkerId.toString(),
+        value: biomarkerKey,
         label: data.name,
         category: data.category,
         dataPointCount: data.dataPoints.length,
@@ -186,7 +186,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
   // Get selected biomarker data
   const selectedBiomarkerData = useMemo(() => {
     if (!selectedBiomarkerId) return null;
-    return biomarkerDataMap.get(parseInt(selectedBiomarkerId)) || null;
+    return biomarkerDataMap.get(selectedBiomarkerId) || null;
   }, [selectedBiomarkerId, biomarkerDataMap]);
 
   // Filter data points by date range
@@ -240,7 +240,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
   const compareMarkerData = useMemo((): MarkerData[] => {
     return compareMarkers
       .map((id, index) => {
-        const biomarkerData = biomarkerDataMap.get(parseInt(id));
+        const biomarkerData = biomarkerDataMap.get(id);
         if (!biomarkerData) return null;
 
         let points = [...biomarkerData.dataPoints];

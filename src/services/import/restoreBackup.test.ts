@@ -50,13 +50,13 @@ function backup(overrides: Partial<ParsedBackupData> = {}): ParsedBackupData {
       { id: 2, date: now, labName: 'Quest', createdAt: now, updatedAt: now },
     ],
     testValues: [
-      { id: 10, labResultId: 1, biomarkerId: 5, value: 1, unit: 'u', createdAt: now, updatedAt: now },
-      { id: 11, labResultId: 2, biomarkerId: 5, value: 2, unit: 'u', createdAt: now, updatedAt: now },
+      { id: 10, labResultId: 1, biomarkerKey: 'marker-5', value: 1, unit: 'u', createdAt: now, updatedAt: now },
+      { id: 11, labResultId: 2, biomarkerKey: 'marker-5', value: 2, unit: 'u', createdAt: now, updatedAt: now },
     ],
     userNotes: [
       { id: 20, labResultId: 2, content: 'on result 2', tags: [], createdAt: now, updatedAt: now },
       { id: 21, testValueId: 11, content: 'on value 11', tags: [], createdAt: now, updatedAt: now },
-      { id: 22, biomarkerId: 5, content: 'on biomarker', tags: [], createdAt: now, updatedAt: now },
+      { id: 22, biomarkerKey: 'marker-5', content: 'on biomarker', tags: [], createdAt: now, updatedAt: now },
     ],
     settings: null,
     userPreferences: null,
@@ -104,14 +104,14 @@ describe('restoreBackup', () => {
     await restoreBackup(db, backup());
 
     const note = db.notes.find((n) => n.content === 'on biomarker');
-    expect(note).toMatchObject({ biomarkerId: 5, labResultId: undefined, testValueId: undefined });
+    expect(note).toMatchObject({ biomarkerKey: 'marker-5', labResultId: undefined, testValueId: undefined });
   });
 
   it('skips test values whose lab result is not in the backup', async () => {
     const db = createFakeDb();
     const data = backup();
     data.testValues.push({
-      id: 12, labResultId: 99, biomarkerId: 5, value: 3, unit: 'u', createdAt: now, updatedAt: now,
+      id: 12, labResultId: 99, biomarkerKey: 'marker-5', value: 3, unit: 'u', createdAt: now, updatedAt: now,
     });
 
     const summary = await restoreBackup(db, data);

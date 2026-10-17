@@ -8,7 +8,7 @@ import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb } from '@data/db';
 import type { LabResult, TestValue } from '@/types';
-import { findBiomarker, getBiomarkerId } from '@data/biomarkers/dictionary';
+import { findBiomarker, unknownBiomarkerKey } from '@data/biomarkers/dictionary';
 
 /**
  * Output from saving a lab result
@@ -86,28 +86,12 @@ function parseLabDate(dateStr: string | undefined): Date {
 }
 
 /**
- * Resolve biomarker ID from a matched biomarker
- *
- * Uses the dictionary match if available, otherwise looks up by name.
- * Returns a stable ID based on the biomarker's position in the dictionary.
+ * Resolve the stored biomarker key: the dictionary match, else a dictionary
+ * lookup by name, else a stable key for the unknown name.
  */
-function resolveBiomarkerId(biomarker: MatchedBiomarker): number {
-  // If we have a dictionary match, find its index in the definitions
+function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
   const definition = biomarker.dictionaryMatch ?? findBiomarker(biomarker.name);
-  if (definition) {
-    const id = getBiomarkerId(definition);
-    if (id > 0) return id;
-  }
-
-  // Return a high ID for unknown biomarkers (will be stored but not matched to dictionary)
-  // Use a hash of the name for consistency
-  let hash = 0;
-  for (let i = 0; i < biomarker.name.length; i++) {
-    const char = biomarker.name.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return 10000 + Math.abs(hash % 90000);
+  return definition?.key ?? unknownBiomarkerKey(biomarker.name);
 }
 
 /**
@@ -118,11 +102,10 @@ function transformBiomarkerToTestValue(
   labResultId: number
 ): Omit<TestValue, 'id'> {
   const now = new Date();
-  const biomarkerId = resolveBiomarkerId(biomarker);
 
   return {
     labResultId,
-    biomarkerId,
+    biomarkerKey: resolveBiomarkerKey(biomarker),
     value: biomarker.value,
     unit: biomarker.unit,
     referenceRangeLow: biomarker.referenceRange?.low,

@@ -32,7 +32,7 @@ function createMockLabResultForExport(): LabResultForExport {
     {
       id: 1,
       labResultId: 1,
-      biomarkerId: 1,
+      biomarkerKey: 'marker-1',
       value: 95,
       unit: 'mg/dL',
       referenceRangeLow: 70,
@@ -45,7 +45,7 @@ function createMockLabResultForExport(): LabResultForExport {
   return {
     labResult,
     testValues,
-    biomarkerNames: new Map([[1, 'Glucose']]),
+    biomarkerNames: new Map([['marker-1', 'Glucose']]),
   };
 }
 
@@ -64,7 +64,7 @@ function createMockDataSources(): ExportDataSources {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 95,
         unit: 'mg/dL',
         createdAt: new Date(),

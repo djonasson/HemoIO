@@ -1,4 +1,9 @@
 import Dexie, { type EntityTable } from 'dexie';
+import {
+  migrateNoteRecord,
+  migratePreferenceMaps,
+  migrateTestValueRecord,
+} from '@data/migrations/biomarkerKeyMigration';
 import type {
   LabResult,
   TestValue,
@@ -22,8 +27,8 @@ export class HemoIODatabase extends Dexie {
   settings!: EntityTable<Settings, 'id'>;
   userNotes!: EntityTable<UserNote, 'id'>;
 
-  constructor() {
-    super('HemoIO');
+  constructor(name = 'HemoIO') {
+    super(name);
 
     this.version(1).stores({
       labResults: '++id, date, labName',
@@ -42,6 +47,30 @@ export class HemoIODatabase extends Dexie {
       settings: '++id',
       userNotes: '++id, labResultId, biomarkerId, testValueId, createdAt, *tags',
     });
+
+    // Version 3: biomarkers are referenced by permanent keys instead of their
+    // position in the dictionary (which shifted when entries were inserted)
+    this.version(3)
+      .stores({
+        labResults: '++id, date, labName',
+        testValues: '++id, labResultId, biomarkerKey, [labResultId+biomarkerKey]',
+        biomarkers: '++id, name, category',
+        userPreferences: '++id',
+        settings: '++id',
+        userNotes: '++id, labResultId, biomarkerKey, testValueId, createdAt, *tags',
+      })
+      .upgrade(async (tx) => {
+        // Only unencrypted fields are touched, so no encryption key is needed
+        await tx.table('testValues').toCollection().modify((record, ref) => {
+          ref.value = migrateTestValueRecord(record);
+        });
+        await tx.table('userNotes').toCollection().modify((record, ref) => {
+          ref.value = migrateNoteRecord(record);
+        });
+        await tx.table('userPreferences').toCollection().modify((record, ref) => {
+          ref.value = migratePreferenceMaps(record);
+        });
+      });
   }
 }
 

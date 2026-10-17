@@ -451,7 +451,7 @@ export function OutOfRangeAlerts({
           </Text>
           {filteredGroups.map((group) => (
             <GroupedAlertCard
-              key={group.biomarkerId}
+              key={group.biomarkerKey}
               group={group}
               onDismiss={dismissAlert}
               onAcknowledge={acknowledgeAlert}

@@ -29,7 +29,7 @@ vi.mock('@data/biomarkers/dictionary', () => {
   return {
     ...mock,
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerById: () => undefined,
+    getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
   };
 });
@@ -42,7 +42,7 @@ function createMockTestValue(
   return {
     id,
     labResultId,
-    biomarkerId: options.biomarkerId || 1,
+    biomarkerKey: options.biomarkerKey || 'marker-1',
     value: options.value ?? 100,
     unit: options.unit || 'mg/dL',
     status: options.status || 'normal',
@@ -157,7 +157,7 @@ describe('useAlerts', () => {
       status: 'low',
       referenceRangeLow: 12,
       rawText: 'Hemoglobin',
-      biomarkerId: 2,
+      biomarkerKey: 'marker-2',
     });
 
     vi.mocked(useLabResults).mockReturnValue({
@@ -207,7 +207,7 @@ describe('useAlerts', () => {
           value: 110,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -215,7 +215,7 @@ describe('useAlerts', () => {
           value: 200, // Very high - critical
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 2,
+          biomarkerKey: 'marker-2',
           rawText: 'Different',
         }),
       ]),
@@ -302,7 +302,7 @@ describe('useAlerts', () => {
           value: 110,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           rawText: 'Glucose',
         }),
       ]),
@@ -311,7 +311,7 @@ describe('useAlerts', () => {
           value: 115,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           rawText: 'Glucose',
         }),
       ]),
@@ -341,14 +341,14 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           rawText: 'Glucose',
         }),
         createMockTestValue(2, 1, {
           value: 10,
           status: 'low',
           referenceRangeLow: 12,
-          biomarkerId: 2,
+          biomarkerKey: 'marker-2',
           rawText: 'Hemoglobin',
         }),
       ]),
@@ -382,7 +382,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -390,7 +390,7 @@ describe('useAlerts', () => {
           value: 155,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
         }),
       ]),
       createMockResult(3, '2024-01-25', [
@@ -398,7 +398,7 @@ describe('useAlerts', () => {
           value: 10,
           status: 'low',
           referenceRangeLow: 12,
-          biomarkerId: 2,
+          biomarkerKey: 'marker-2',
           rawText: 'Hemoglobin',
         }),
       ]),
@@ -416,10 +416,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const biomarker1Alerts = result.current.getAlertsForBiomarker(1);
+    const biomarker1Alerts = result.current.getAlertsForBiomarker('marker-1');
     expect(biomarker1Alerts).toHaveLength(2);
 
-    const biomarker2Alerts = result.current.getAlertsForBiomarker(2);
+    const biomarker2Alerts = result.current.getAlertsForBiomarker('marker-2');
     expect(biomarker2Alerts).toHaveLength(1);
   });
 
@@ -464,7 +464,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           rawText: 'Glucose',
         }),
       ]),
@@ -474,7 +474,7 @@ describe('useAlerts', () => {
           status: 'normal',
           referenceRangeLow: 70,
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           rawText: 'Glucose',
         }),
       ]),
@@ -527,7 +527,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -536,7 +536,7 @@ describe('useAlerts', () => {
           status: 'normal',
           referenceRangeLow: 70,
           referenceRangeHigh: 100,
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
         }),
       ]),
     ];

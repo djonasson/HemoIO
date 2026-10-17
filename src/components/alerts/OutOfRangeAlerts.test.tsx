@@ -37,7 +37,7 @@ function createMockAlert(id: string, options: Partial<BiomarkerAlert> = {}): Bio
     id,
     type: 'out_of_range',
     severity: 'warning',
-    biomarkerId: 1,
+    biomarkerKey: 'marker-1',
     biomarkerName: 'Glucose',
     category: 'metabolic',
     value: 150,

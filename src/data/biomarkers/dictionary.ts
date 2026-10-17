@@ -1631,39 +1631,6 @@ export const CATEGORY_NAMES: Record<BiomarkerCategory, string> = {
   other: 'Other',
 };
 
-/**
- * Stored biomarker ID for a dictionary entry: its 1-based position in
- * BIOMARKER_DEFINITIONS, or 0 if it is not in the dictionary. Unknown
- * biomarkers are stored with IDs >= 10000.
- */
-export function getBiomarkerId(definition: Pick<BiomarkerDefinition, 'name'>): number {
-  // Match by name: definitions may be copies (e.g. from a serialized match)
-  return BIOMARKER_DEFINITIONS.findIndex((b) => b.name === definition.name) + 1;
-}
-
-/**
- * Dictionary entry for a stored biomarker ID (undefined for unknown biomarkers)
- */
-export function getBiomarkerById(id: number): BiomarkerDefinition | undefined {
-  return Number.isInteger(id) && id >= 1 ? BIOMARKER_DEFINITIONS[id - 1] : undefined;
-}
-
-/**
- * Dictionary entry for a stored test value.
- *
- * The stored ID wins over the extracted text: it reflects the match the user
- * confirmed during review (e.g. "Hemo-globin" mapped to Hemoglobin).
- */
-export function getBiomarkerForTestValue(testValue: {
-  biomarkerId: number;
-  rawText?: string;
-}): BiomarkerDefinition | undefined {
-  return (
-    getBiomarkerById(testValue.biomarkerId) ??
-    (testValue.rawText ? findBiomarker(testValue.rawText) : undefined)
-  );
-}
-
 const BY_KEY = new Map(BIOMARKER_DEFINITIONS.map((b) => [b.key, b]));
 const UNKNOWN_PREFIX = 'unknown:';
 
@@ -1691,7 +1658,7 @@ export function isUnknownBiomarkerKey(key: string): boolean {
  * Dictionary entry for a stored test value. The stored key wins over the
  * extracted text: it reflects the match the user confirmed during review.
  */
-export function getBiomarkerForKeyedTestValue(testValue: {
+export function getBiomarkerForTestValue(testValue: {
   biomarkerKey: string;
   rawText?: string;
 }): BiomarkerDefinition | undefined {

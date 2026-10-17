@@ -27,7 +27,7 @@ describe('encryptedExport', () => {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 100,
         unit: 'mg/dL',
         createdAt: new Date('2024-01-15'),

@@ -34,7 +34,7 @@ import {
  * Personal target range for a biomarker
  */
 export interface PersonalTarget {
-  biomarkerId: number;
+  biomarkerKey: string;
   biomarkerName: string;
   unit: string;
   standardLow?: number;
@@ -50,9 +50,9 @@ export interface PersonalTargetsProps {
   /** List of biomarkers with their targets */
   targets: PersonalTarget[];
   /** Called when a personal target is set */
-  onSetTarget: (biomarkerId: number, low: number | undefined, high: number | undefined) => void;
+  onSetTarget: (biomarkerKey: string, low: number | undefined, high: number | undefined) => void;
   /** Called when a personal target is cleared */
-  onClearTarget: (biomarkerId: number) => void;
+  onClearTarget: (biomarkerKey: string) => void;
   /** Whether changes are being saved */
   isSaving?: boolean;
 }
@@ -96,7 +96,7 @@ export function PersonalTargets({
     const low = editLow === '' ? undefined : editLow;
     const high = editHigh === '' ? undefined : editHigh;
 
-    onSetTarget(editingTarget.biomarkerId, low, high);
+    onSetTarget(editingTarget.biomarkerKey, low, high);
     setEditingTarget(null);
 
     // Show success briefly
@@ -106,8 +106,8 @@ export function PersonalTargets({
 
   // Handle clear target
   const handleClearTarget = useCallback(
-    (biomarkerId: number) => {
-      onClearTarget(biomarkerId);
+    (biomarkerKey: string) => {
+      onClearTarget(biomarkerKey);
 
       // Show success briefly
       setSaveSuccess(true);
@@ -180,7 +180,7 @@ export function PersonalTargets({
                 </Table.Thead>
                 <Table.Tbody>
                   {filteredTargets.map((target) => (
-                    <Table.Tr key={target.biomarkerId}>
+                    <Table.Tr key={target.biomarkerKey}>
                       <Table.Td>
                         <Text size="sm" fw={500}>
                           {target.biomarkerName}
@@ -222,7 +222,7 @@ export function PersonalTargets({
                               <ActionIcon
                                 variant="subtle"
                                 color="red"
-                                onClick={() => handleClearTarget(target.biomarkerId)}
+                                onClick={() => handleClearTarget(target.biomarkerKey)}
                                 disabled={isSaving}
                                 aria-label={`Clear personal target for ${target.biomarkerName}`}
                               >

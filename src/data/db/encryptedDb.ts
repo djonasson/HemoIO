@@ -189,10 +189,10 @@ export class EncryptedDb {
     );
   }
 
-  async getTestValuesByBiomarker(biomarkerId: number): Promise<TestValue[]> {
+  async getTestValuesByBiomarker(biomarkerKey: string): Promise<TestValue[]> {
     const results = await this.db.testValues
-      .where('biomarkerId')
-      .equals(biomarkerId)
+      .where('biomarkerKey')
+      .equals(biomarkerKey)
       .toArray();
     return Promise.all(
       results.map((r) => decryptFields(r, ENCRYPTED_FIELDS.testValues, this.key))
@@ -313,10 +313,10 @@ export class EncryptedDb {
     );
   }
 
-  async getNotesByBiomarker(biomarkerId: number): Promise<UserNote[]> {
+  async getNotesByBiomarker(biomarkerKey: string): Promise<UserNote[]> {
     const results = await this.db.userNotes
-      .where('biomarkerId')
-      .equals(biomarkerId)
+      .where('biomarkerKey')
+      .equals(biomarkerKey)
       .toArray();
     return Promise.all(
       results.map((r) => decryptFields(r, ENCRYPTED_FIELDS.userNotes, this.key))

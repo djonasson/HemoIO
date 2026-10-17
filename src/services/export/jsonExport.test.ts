@@ -31,7 +31,7 @@ function createMockTestValue(id: number, labResultId: number): TestValue {
   return {
     id,
     labResultId,
-    biomarkerId: 1,
+    biomarkerKey: 'marker-1',
     value: 95,
     unit: 'mg/dL',
     createdAt: new Date('2024-01-15'),

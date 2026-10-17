@@ -56,7 +56,7 @@ describe('useExportData', () => {
     const testValue = {
       id: 1,
       labResultId: 1,
-      biomarkerId: 42,
+      biomarkerKey: 'marker-42',
       value: 95,
       unit: 'mg/dL',
       createdAt: new Date(),
@@ -86,7 +86,7 @@ describe('useExportData', () => {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 95,
         unit: 'mg/dL',
         createdAt: new Date(),
@@ -95,7 +95,7 @@ describe('useExportData', () => {
       {
         id: 2,
         labResultId: 1,
-        biomarkerId: 2,
+        biomarkerKey: 'marker-2',
         value: 100,
         unit: 'mg/dL',
         createdAt: new Date(),
@@ -113,8 +113,8 @@ describe('useExportData', () => {
     expect(result.current.biomarkerOptions).toHaveLength(2);
     expect(result.current.biomarkerOptions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ value: '1' }),
-        expect.objectContaining({ value: '2' }),
+        expect.objectContaining({ value: 'marker-1' }),
+        expect.objectContaining({ value: 'marker-2' }),
       ])
     );
   });
@@ -128,7 +128,7 @@ describe('useExportData', () => {
         id: 1,
         labResultId: 1,
         // Unknown-biomarker ID range: identified by the extracted name
-        biomarkerId: 10007,
+        biomarkerKey: 'marker-10007',
         value: 95,
         unit: 'mg/dL',
         // Alias of the dictionary entry "Glucose"
@@ -139,7 +139,7 @@ describe('useExportData', () => {
       {
         id: 2,
         labResultId: 1,
-        biomarkerId: 10008,
+        biomarkerKey: 'marker-10008',
         value: 3,
         unit: 'U/L',
         // Not in the dictionary: keep the name from the report
@@ -158,13 +158,13 @@ describe('useExportData', () => {
 
     expect(result.current.biomarkerOptions).toEqual(
       expect.arrayContaining([
-        { value: '10007', label: 'Glucose' },
-        { value: '10008', label: 'Exotic Marker' },
+        { value: 'marker-10007', label: 'Glucose' },
+        { value: 'marker-10008', label: 'Exotic Marker' },
       ])
     );
     const names = result.current.labResultsData[0].biomarkerNames;
-    expect(names.get(10007)).toBe('Glucose');
-    expect(names.get(10008)).toBe('Exotic Marker');
+    expect(names.get('marker-10007')).toBe('Glucose');
+    expect(names.get('marker-10008')).toBe('Exotic Marker');
   });
 
   it('should handle errors', async () => {
@@ -216,9 +216,9 @@ describe('useExportData', () => {
     ];
 
     const testValues = [
-      { id: 1, labResultId: 1, biomarkerId: 1, value: 10, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
-      { id: 2, labResultId: 1, biomarkerId: 2, value: 20, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
-      { id: 3, labResultId: 2, biomarkerId: 1, value: 30, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+      { id: 1, labResultId: 1, biomarkerKey: 'marker-1', value: 10, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, labResultId: 1, biomarkerKey: 'marker-2', value: 20, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+      { id: 3, labResultId: 2, biomarkerKey: 'marker-1', value: 30, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.getAllLabResults.mockResolvedValue(labResults);

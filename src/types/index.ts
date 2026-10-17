@@ -42,7 +42,8 @@ export interface LabResult {
 export interface TestValue {
   id?: number;
   labResultId: number;
-  biomarkerId: number;
+  /** Permanent dictionary key, or an "unknown:" key for unmatched names */
+  biomarkerKey: string;
   value: number | string | boolean;
   unit: string;
   referenceRangeLow?: number;
@@ -107,8 +108,8 @@ export type SpecimenType =
 // User's display preferences
 export interface UserPreferences {
   id?: number;
-  unitPreferences: Record<number, string>; // biomarkerId -> preferred unit
-  personalTargets: Record<number, { low?: number; high?: number }>; // biomarkerId -> target range
+  unitPreferences: Record<string, string>; // biomarkerKey -> preferred unit
+  personalTargets: Record<string, { low?: number; high?: number }>; // biomarkerKey -> target range
   theme: 'light' | 'dark' | 'system';
   dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 }
@@ -169,7 +170,7 @@ export interface UserNote {
   /** The lab result this note is attached to (optional) */
   labResultId?: number;
   /** The biomarker this note relates to (optional) */
-  biomarkerId?: number;
+  biomarkerKey?: string;
   /** The specific test value this note is attached to (optional) */
   testValueId?: number;
   /** The note content (may include markdown) */

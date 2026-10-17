@@ -13,10 +13,10 @@ import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 vi.mock('@data/biomarkers/dictionary', () => ({
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Hemoglobin' || name === 'Hgb') {
-      return { name: 'Hemoglobin', category: 'cbc' };
+      return { key: 'hemoglobin', name: 'Hemoglobin', category: 'cbc' };
     }
     if (name === 'Glucose') {
-      return { name: 'Glucose', category: 'metabolic' };
+      return { key: 'glucose', name: 'Glucose', category: 'metabolic' };
     }
     return undefined;
   }),
@@ -25,8 +25,7 @@ vi.mock('@data/biomarkers/dictionary', () => ({
     { name: 'Glucose', category: 'metabolic' },
     { name: 'Creatinine', category: 'metabolic' },
   ],
-  getBiomarkerId: (definition: { name: string }) =>
-    ['Hemoglobin', 'Glucose', 'Creatinine'].indexOf(definition.name) + 1,
+  unknownBiomarkerKey: (name: string) => `unknown:${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
 }));
 
 // Create mock db

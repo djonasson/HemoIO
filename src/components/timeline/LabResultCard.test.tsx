@@ -16,7 +16,7 @@ vi.mock('@data/biomarkers/dictionary', () => {
   return {
     ...mock,
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerById: () => undefined,
+    getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: () => mock.findBiomarker(),
   };
 });
@@ -37,7 +37,7 @@ function createMockTestValue(
   return {
     id,
     labResultId: 1,
-    biomarkerId: 1,
+    biomarkerKey: 'marker-1',
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',

@@ -133,7 +133,7 @@ export function ExportDialog({
       let values = result.testValues;
       if (selectedBiomarkers.length > 0) {
         values = values.filter((tv) =>
-          selectedBiomarkers.includes(tv.biomarkerId.toString())
+          selectedBiomarkers.includes(tv.biomarkerKey)
         );
       }
       testValueCount += values.length;
@@ -154,10 +154,7 @@ export function ExportDialog({
         const csv = exportToCsv(labResultsData, {
           startDate: effectiveDateRange.start ?? undefined,
           endDate: effectiveDateRange.end ?? undefined,
-          biomarkerIds:
-            selectedBiomarkers.length > 0
-              ? selectedBiomarkers.map((id) => parseInt(id, 10))
-              : undefined,
+          biomarkerKeys: selectedBiomarkers.length > 0 ? selectedBiomarkers : undefined,
           includeReferenceRanges,
         });
         const filename = generateCsvFilename({

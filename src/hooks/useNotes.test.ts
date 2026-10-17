@@ -116,19 +116,19 @@ describe('useNotes', () => {
       expect(result.current.notes).toHaveLength(1);
     });
 
-    it('should filter by biomarkerId', async () => {
-      const notes = [createMockNote(1, { biomarkerId: 50 })];
+    it('should filter by biomarker', async () => {
+      const notes = [createMockNote(1, { biomarkerKey: 'marker-50' })];
       mockDb.getNotesByBiomarker.mockResolvedValue(notes);
 
       const { result } = renderHook(() =>
-        useNotes({ biomarkerId: 50 })
+        useNotes({ biomarkerKey: 'marker-50' })
       );
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(mockDb.getNotesByBiomarker).toHaveBeenCalledWith(50);
+      expect(mockDb.getNotesByBiomarker).toHaveBeenCalledWith('marker-50');
     });
 
     it('should filter by testValueId', async () => {
@@ -390,8 +390,8 @@ describe('useNotes', () => {
 
     it('should get notes for biomarker', async () => {
       const notes = [
-        createMockNote(1, { biomarkerId: 50 }),
-        createMockNote(2, { biomarkerId: 60 }),
+        createMockNote(1, { biomarkerKey: 'marker-50' }),
+        createMockNote(2, { biomarkerKey: 'marker-60' }),
       ];
       mockDb.getAllNotes.mockResolvedValue(notes);
 
@@ -401,7 +401,7 @@ describe('useNotes', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      const filtered = result.current.getNotesForBiomarker(50);
+      const filtered = result.current.getNotesForBiomarker('marker-50');
       expect(filtered).toHaveLength(1);
     });
 

@@ -14,8 +14,8 @@ export interface CsvExportOptions {
   startDate?: Date;
   /** Filter by end date */
   endDate?: Date;
-  /** Filter by specific biomarker IDs */
-  biomarkerIds?: number[];
+  /** Filter by specific biomarkers */
+  biomarkerKeys?: string[];
   /** Include reference ranges in output */
   includeReferenceRanges?: boolean;
   /** Include confidence scores in output */
@@ -30,7 +30,7 @@ export interface CsvExportOptions {
 export interface LabResultForExport {
   labResult: LabResult;
   testValues: TestValue[];
-  biomarkerNames: Map<number, string>;
+  biomarkerNames: Map<string, string>;
 }
 
 /**
@@ -137,11 +137,11 @@ function filterResults(
  * Filter test values based on options
  */
 function filterTestValues(testValues: TestValue[], options: CsvExportOptions): TestValue[] {
-  if (!options.biomarkerIds || options.biomarkerIds.length === 0) {
+  if (!options.biomarkerKeys || options.biomarkerKeys.length === 0) {
     return testValues;
   }
 
-  return testValues.filter((tv) => options.biomarkerIds!.includes(tv.biomarkerId));
+  return testValues.filter((tv) => options.biomarkerKeys!.includes(tv.biomarkerKey));
 }
 
 /**
@@ -163,7 +163,7 @@ export function exportToCsv(
     const filteredTestValues = filterTestValues(result.testValues, options);
 
     for (const testValue of filteredTestValues) {
-      const biomarkerName = result.biomarkerNames.get(testValue.biomarkerId) || 'Unknown';
+      const biomarkerName = result.biomarkerNames.get(testValue.biomarkerKey) || 'Unknown';
       const row = buildRow(result.labResult, testValue, biomarkerName, options);
       rows.push(row);
     }

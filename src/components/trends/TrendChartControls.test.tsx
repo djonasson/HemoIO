@@ -13,7 +13,7 @@ const mockBiomarkerOptions: BiomarkerOption[] = [
 interface TrendChartControlsTestProps {
   biomarkerOptions?: BiomarkerOption[];
   selectedBiomarkerId?: string | null;
-  onBiomarkerChange?: (biomarkerId: string | null) => void;
+  onBiomarkerChange?: (biomarkerKey: string | null) => void;
   startDate?: Date | null;
   endDate?: Date | null;
   onStartDateChange?: (date: Date | null) => void;

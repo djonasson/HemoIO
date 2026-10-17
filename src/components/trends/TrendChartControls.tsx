@@ -34,7 +34,7 @@ export interface TrendChartControlsProps {
   /** Currently selected biomarker ID */
   selectedBiomarkerId: string | null;
   /** Callback when biomarker selection changes */
-  onBiomarkerChange: (biomarkerId: string | null) => void;
+  onBiomarkerChange: (biomarkerKey: string | null) => void;
   /** Start date filter */
   startDate: Date | null;
   /** End date filter */

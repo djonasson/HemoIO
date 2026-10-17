@@ -135,10 +135,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         const targetsMap = prefs?.personalTargets ?? {};
 
         // Build targets list from biomarker definitions
-        const targets: PersonalTarget[] = BIOMARKER_DEFINITIONS.map((biomarker, index) => {
-          const target = targetsMap[index + 1]; // biomarkerId is 1-indexed
+        const targets: PersonalTarget[] = BIOMARKER_DEFINITIONS.map((biomarker) => {
+          const target = targetsMap[biomarker.key];
           return {
-            biomarkerId: index + 1,
+            biomarkerKey: biomarker.key,
             biomarkerName: biomarker.name,
             unit: biomarker.canonicalUnit,
             standardLow: biomarker.defaultReferenceRange?.low,
@@ -234,7 +234,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
   // Handle set personal target
   const handleSetTarget = useCallback(
-    async (biomarkerId: number, low: number | undefined, high: number | undefined) => {
+    async (biomarkerKey: string, low: number | undefined, high: number | undefined) => {
       if (!db || !isReady) return;
 
       setIsSavingTargets(true);
@@ -244,7 +244,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
         const updatedTargets = {
           ...currentTargets,
-          [biomarkerId]: { low, high },
+          [biomarkerKey]: { low, high },
         };
 
         await db.savePreferences({
@@ -257,7 +257,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         // Update local state
         setPersonalTargets((prev) =>
           prev.map((t) =>
-            t.biomarkerId === biomarkerId
+            t.biomarkerKey === biomarkerKey
               ? { ...t, personalLow: low, personalHigh: high }
               : t
           )
@@ -273,7 +273,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
   // Handle clear personal target
   const handleClearTarget = useCallback(
-    async (biomarkerId: number) => {
+    async (biomarkerKey: string) => {
       if (!db || !isReady) return;
 
       setIsSavingTargets(true);
@@ -281,7 +281,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         const prefs = await db.getPreferences();
         const currentTargets = { ...(prefs?.personalTargets ?? {}) };
 
-        delete currentTargets[biomarkerId];
+        delete currentTargets[biomarkerKey];
 
         await db.savePreferences({
           unitPreferences: prefs?.unitPreferences ?? {},
@@ -293,7 +293,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         // Update local state
         setPersonalTargets((prev) =>
           prev.map((t) =>
-            t.biomarkerId === biomarkerId
+            t.biomarkerKey === biomarkerKey
               ? { ...t, personalLow: undefined, personalHigh: undefined }
               : t
           )

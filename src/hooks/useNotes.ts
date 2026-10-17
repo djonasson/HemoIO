@@ -15,8 +15,8 @@ import type { UserNote } from '@/types';
 export interface NoteFilters {
   /** Filter by lab result ID */
   labResultId?: number;
-  /** Filter by biomarker ID */
-  biomarkerId?: number;
+  /** Filter by biomarker */
+  biomarkerKey?: string;
   /** Filter by test value ID */
   testValueId?: number;
   /** Filter by tag */
@@ -36,7 +36,7 @@ export interface CreateNoteInput {
   /** The lab result this note is attached to */
   labResultId?: number;
   /** The biomarker this note relates to */
-  biomarkerId?: number;
+  biomarkerKey?: string;
   /** The specific test value this note is attached to */
   testValueId?: number;
   /** The note content */
@@ -80,7 +80,7 @@ export interface UseNotesResult {
   /** Get notes for a specific lab result */
   getNotesForLabResult: (labResultId: number) => UserNote[];
   /** Get notes for a specific biomarker */
-  getNotesForBiomarker: (biomarkerId: number) => UserNote[];
+  getNotesForBiomarker: (biomarkerKey: string) => UserNote[];
   /** Get notes for a specific test value */
   getNotesForTestValue: (testValueId: number) => UserNote[];
   /** Get all unique tags */
@@ -114,8 +114,8 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
       // Fetch based on filters
       if (filters.labResultId !== undefined) {
         fetchedNotes = await db.getNotesByLabResult(filters.labResultId);
-      } else if (filters.biomarkerId !== undefined) {
-        fetchedNotes = await db.getNotesByBiomarker(filters.biomarkerId);
+      } else if (filters.biomarkerKey !== undefined) {
+        fetchedNotes = await db.getNotesByBiomarker(filters.biomarkerKey);
       } else if (filters.testValueId !== undefined) {
         fetchedNotes = await db.getNotesByTestValue(filters.testValueId);
       } else if (filters.tag !== undefined) {
@@ -172,7 +172,7 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
       const now = new Date();
       const note: Omit<UserNote, 'id'> = {
         labResultId: input.labResultId,
-        biomarkerId: input.biomarkerId,
+        biomarkerKey: input.biomarkerKey,
         testValueId: input.testValueId,
         content: input.content,
         tags: input.tags || [],
@@ -242,8 +242,8 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
    * Get notes for a specific biomarker
    */
   const getNotesForBiomarker = useCallback(
-    (biomarkerId: number): UserNote[] => {
-      return notes.filter((n) => n.biomarkerId === biomarkerId);
+    (biomarkerKey: string): UserNote[] => {
+      return notes.filter((n) => n.biomarkerKey === biomarkerKey);
     },
     [notes]
   );

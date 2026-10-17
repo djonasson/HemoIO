@@ -75,6 +75,7 @@ vi.mock('@hooks', () => ({
 vi.mock('@data/biomarkers', () => ({
   BIOMARKER_DEFINITIONS: [
     {
+      key: 'glucose',
       name: 'Glucose',
       aliases: ['Blood Sugar'],
       category: 'metabolic',

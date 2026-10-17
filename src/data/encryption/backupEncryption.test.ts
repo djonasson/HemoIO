@@ -222,7 +222,7 @@ describe('backupEncryption', () => {
           date: new Date().toISOString(),
           labName: `Lab ${i}`,
           values: Array.from({ length: 50 }, (_, j) => ({
-            biomarkerId: j,
+            biomarkerKey: `marker-${j}`,
             value: Math.random() * 1000,
             unit: 'mg/dL',
           })),

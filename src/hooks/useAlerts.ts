@@ -34,7 +34,7 @@ export interface BiomarkerAlert {
   /** Severity level */
   severity: TrendSeverity;
   /** Biomarker ID */
-  biomarkerId: number;
+  biomarkerKey: string;
   /** Biomarker name */
   biomarkerName: string;
   /** Biomarker category */
@@ -69,7 +69,7 @@ export interface BiomarkerAlert {
  */
 export interface GroupedAlert {
   /** Biomarker ID */
-  biomarkerId: number;
+  biomarkerKey: string;
   /** Biomarker name */
   biomarkerName: string;
   /** Biomarker category */
@@ -107,14 +107,14 @@ export interface UseAlertsResult {
   /** Filter alerts by category */
   filterByCategory: (category: string | null) => BiomarkerAlert[];
   /** Get alerts for a specific biomarker */
-  getAlertsForBiomarker: (biomarkerId: number) => BiomarkerAlert[];
+  getAlertsForBiomarker: (biomarkerKey: string) => BiomarkerAlert[];
 }
 
 /**
  * Generate a unique alert ID
  */
-function generateAlertId(biomarkerId: number, labResultId: number, type: AlertType): string {
-  return `${type}_${biomarkerId}_${labResultId}`;
+function generateAlertId(biomarkerKey: string, labResultId: number, type: AlertType): string {
+  return `${type}_${biomarkerKey}_${labResultId}`;
 }
 
 /**
@@ -226,28 +226,28 @@ export function useAlerts(): UseAlertsResult {
     const alertList: BiomarkerAlert[] = [];
 
     // Create a map of biomarker ID to all test values across results
-    const biomarkerValues = new Map<number, { values: EnrichedTestValue[]; labInfo: Map<number, { date: Date; labName: string }> }>();
+    const biomarkerValues = new Map<string, { values: EnrichedTestValue[]; labInfo: Map<number, { date: Date; labName: string }> }>();
 
     for (const result of results) {
       for (const testValue of result.testValues) {
         if (typeof testValue.value !== 'number') continue;
 
-        if (!biomarkerValues.has(testValue.biomarkerId)) {
-          biomarkerValues.set(testValue.biomarkerId, { values: [], labInfo: new Map() });
+        if (!biomarkerValues.has(testValue.biomarkerKey)) {
+          biomarkerValues.set(testValue.biomarkerKey, { values: [], labInfo: new Map() });
         }
 
-        const entry = biomarkerValues.get(testValue.biomarkerId)!;
+        const entry = biomarkerValues.get(testValue.biomarkerKey)!;
         entry.values.push(testValue);
         entry.labInfo.set(testValue.labResultId, { date: result.date, labName: result.labName });
       }
     }
 
     // Process each biomarker
-    for (const [biomarkerId, { values, labInfo }] of biomarkerValues.entries()) {
+    for (const [biomarkerKey, { values, labInfo }] of biomarkerValues.entries()) {
       // Get biomarker info from dictionary
       const firstValue = values[0];
       const biomarkerDef = getBiomarkerForTestValue(firstValue);
-      const biomarkerName = biomarkerDef?.name || firstValue.rawText || `Biomarker ${biomarkerId}`;
+      const biomarkerName = biomarkerDef?.name || firstValue.rawText || 'Unknown biomarker';
 
       // Sort by date (most recent first)
       const sortedValues = [...values].sort((a, b) => {
@@ -260,7 +260,7 @@ export function useAlerts(): UseAlertsResult {
       for (const testValue of sortedValues) {
         if (testValue.status === 'high' || testValue.status === 'low') {
           const info = labInfo.get(testValue.labResultId)!;
-          const alertId = generateAlertId(biomarkerId, testValue.labResultId, 'out_of_range');
+          const alertId = generateAlertId(biomarkerKey, testValue.labResultId, 'out_of_range');
 
           const referenceRange = {
             low: testValue.referenceRangeLow,
@@ -275,7 +275,7 @@ export function useAlerts(): UseAlertsResult {
               testValue.status,
               referenceRange
             ),
-            biomarkerId,
+            biomarkerKey,
             biomarkerName,
             category: biomarkerDef?.category,
             value: testValue.value as number,
@@ -313,13 +313,13 @@ export function useAlerts(): UseAlertsResult {
             if (severity && severity !== 'positive') {
               const latestValue = sortedValues[0];
               const info = labInfo.get(latestValue.labResultId)!;
-              const alertId = generateAlertId(biomarkerId, latestValue.labResultId, 'trend');
+              const alertId = generateAlertId(biomarkerKey, latestValue.labResultId, 'trend');
 
               alertList.push({
                 id: alertId,
                 type: 'trend',
                 severity,
-                biomarkerId,
+                biomarkerKey,
                 biomarkerName,
                 category: biomarkerDef?.category,
                 value: latestValue.value as number,
@@ -355,13 +355,13 @@ export function useAlerts(): UseAlertsResult {
       ) {
         const latestValue = sortedValues[0];
         const info = labInfo.get(latestValue.labResultId)!;
-        const alertId = generateAlertId(biomarkerId, latestValue.labResultId, 'improvement');
+        const alertId = generateAlertId(biomarkerKey, latestValue.labResultId, 'improvement');
 
         alertList.push({
           id: alertId,
           type: 'improvement',
           severity: 'positive',
-          biomarkerId,
+          biomarkerKey,
           biomarkerName,
           category: biomarkerDef?.category,
           value: latestValue.value as number,
@@ -408,18 +408,18 @@ export function useAlerts(): UseAlertsResult {
    * Group alerts by biomarker
    */
   const groupedAlerts = useMemo(() => {
-    const groups = new Map<number, BiomarkerAlert[]>();
+    const groups = new Map<string, BiomarkerAlert[]>();
 
     for (const alert of alerts) {
-      if (!groups.has(alert.biomarkerId)) {
-        groups.set(alert.biomarkerId, []);
+      if (!groups.has(alert.biomarkerKey)) {
+        groups.set(alert.biomarkerKey, []);
       }
-      groups.get(alert.biomarkerId)!.push(alert);
+      groups.get(alert.biomarkerKey)!.push(alert);
     }
 
     const result: GroupedAlert[] = [];
 
-    for (const [biomarkerId, biomarkerAlerts] of groups.entries()) {
+    for (const [biomarkerKey, biomarkerAlerts] of groups.entries()) {
       const latestAlert = biomarkerAlerts[0]; // Already sorted by date
       const unacknowledgedCount = biomarkerAlerts.filter((a) => !a.acknowledged).length;
 
@@ -437,7 +437,7 @@ export function useAlerts(): UseAlertsResult {
       );
 
       result.push({
-        biomarkerId,
+        biomarkerKey,
         biomarkerName: latestAlert.biomarkerName,
         category: latestAlert.category,
         alerts: biomarkerAlerts,
@@ -505,8 +505,8 @@ export function useAlerts(): UseAlertsResult {
    * Get alerts for a specific biomarker
    */
   const getAlertsForBiomarker = useCallback(
-    (biomarkerId: number) => {
-      return alerts.filter((alert) => alert.biomarkerId === biomarkerId);
+    (biomarkerKey: string) => {
+      return alerts.filter((alert) => alert.biomarkerKey === biomarkerKey);
     },
     [alerts]
   );

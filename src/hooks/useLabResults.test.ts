@@ -46,7 +46,7 @@ const mockTestValues: Record<number, TestValue[]> = {
     {
       id: 1,
       labResultId: 1,
-      biomarkerId: 1,
+      biomarkerKey: 'marker-1',
       value: 14.5,
       unit: 'g/dL',
       referenceRangeLow: 12.0,
@@ -57,7 +57,7 @@ const mockTestValues: Record<number, TestValue[]> = {
     {
       id: 2,
       labResultId: 1,
-      biomarkerId: 2,
+      biomarkerKey: 'marker-2',
       value: 125,
       unit: 'mg/dL',
       referenceRangeLow: 70,
@@ -70,7 +70,7 @@ const mockTestValues: Record<number, TestValue[]> = {
     {
       id: 3,
       labResultId: 2,
-      biomarkerId: 1,
+      biomarkerKey: 'marker-1',
       value: 11.0,
       unit: 'g/dL',
       referenceRangeLow: 12.0,
@@ -373,7 +373,7 @@ describe('useLabResults', () => {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 14.5,
         unit: 'g/dL',
         // No reference range
@@ -402,7 +402,7 @@ describe('useLabResults', () => {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 'Positive',
         unit: '',
         referenceRangeLow: 0,

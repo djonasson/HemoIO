@@ -104,12 +104,12 @@ export function useExportData(): UseExportDataResult {
 
       // Name each biomarker the way the trends view does: its dictionary entry,
       // else the name extracted from the report
-      const biomarkerNames = new Map<number, string>();
+      const biomarkerNames = new Map<string, string>();
       for (const tv of testValues) {
-        if (!biomarkerNames.has(tv.biomarkerId)) {
+        if (!biomarkerNames.has(tv.biomarkerKey)) {
           biomarkerNames.set(
-            tv.biomarkerId,
-            getBiomarkerForTestValue(tv)?.name || tv.rawText || `Biomarker ${tv.biomarkerId}`
+            tv.biomarkerKey,
+            getBiomarkerForTestValue(tv)?.name || tv.rawText || 'Unknown biomarker'
           );
         }
       }
@@ -124,8 +124,8 @@ export function useExportData(): UseExportDataResult {
       setLabResultsData(resultsData);
 
       // Build biomarker options for filtering
-      const options = Array.from(biomarkerNames, ([id, name]) => ({
-        value: id.toString(),
+      const options = Array.from(biomarkerNames, ([key, name]) => ({
+        value: key,
         label: name,
       }));
 

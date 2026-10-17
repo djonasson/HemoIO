@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   getBiomarkerByKey,
-  getBiomarkerForKeyedTestValue,
+  getBiomarkerForTestValue,
   unknownBiomarkerKey,
   isUnknownBiomarkerKey,
-  getBiomarkerId,
-  getBiomarkerById,
-  getBiomarkerForTestValue,
   BIOMARKER_DEFINITIONS,
   CATEGORY_NAMES,
   findBiomarker,
@@ -203,32 +200,6 @@ describe('Biomarker Dictionary', () => {
     });
   });
 
-  describe('biomarker IDs', () => {
-    it('round-trips a definition through its ID', () => {
-      const hemoglobin = findBiomarker('Hemoglobin')!;
-      expect(getBiomarkerById(getBiomarkerId(hemoglobin))).toBe(hemoglobin);
-    });
-
-    it('returns undefined for IDs outside the dictionary (unknown biomarkers)', () => {
-      expect(getBiomarkerById(0)).toBeUndefined();
-      expect(getBiomarkerById(10042)).toBeUndefined();
-    });
-
-    it('identifies a stored test value by its ID before its extracted text', () => {
-      // A name the user mapped to Hemoglobin during review
-      const hemoglobinId = getBiomarkerId(findBiomarker('Hemoglobin')!);
-      expect(
-        getBiomarkerForTestValue({ biomarkerId: hemoglobinId, rawText: 'Hemo-globin' })?.name
-      ).toBe('Hemoglobin');
-    });
-
-    it('falls back to the extracted text for unknown IDs', () => {
-      expect(getBiomarkerForTestValue({ biomarkerId: 10042, rawText: 'Blood Sugar' })?.name).toBe(
-        'Glucose'
-      );
-      expect(getBiomarkerForTestValue({ biomarkerId: 10042, rawText: 'Zorblatin' })).toBeUndefined();
-    });
-  });
 
   describe('biomarker keys', () => {
     it('gives every biomarker a unique kebab-case key', () => {
@@ -269,13 +240,13 @@ describe('Biomarker Dictionary', () => {
 
     it('identifies a stored value by its key before its extracted text', () => {
       expect(
-        getBiomarkerForKeyedTestValue({ biomarkerKey: 'hemoglobin', rawText: 'Hemo-globin' })?.name
+        getBiomarkerForTestValue({ biomarkerKey: 'hemoglobin', rawText: 'Hemo-globin' })?.name
       ).toBe('Hemoglobin');
       expect(
-        getBiomarkerForKeyedTestValue({ biomarkerKey: 'unknown:bloodsugar', rawText: 'Blood Sugar' })?.name
+        getBiomarkerForTestValue({ biomarkerKey: 'unknown:bloodsugar', rawText: 'Blood Sugar' })?.name
       ).toBe('Glucose');
       expect(
-        getBiomarkerForKeyedTestValue({ biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin' })
+        getBiomarkerForTestValue({ biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin' })
       ).toBeUndefined();
     });
   });

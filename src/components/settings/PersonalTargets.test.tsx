@@ -15,14 +15,14 @@ function renderWithProviders(ui: React.ReactElement) {
 function createMockTargets(): PersonalTarget[] {
   return [
     {
-      biomarkerId: 1,
+      biomarkerKey: 'marker-1',
       biomarkerName: 'Glucose',
       unit: 'mg/dL',
       standardLow: 70,
       standardHigh: 100,
     },
     {
-      biomarkerId: 2,
+      biomarkerKey: 'marker-2',
       biomarkerName: 'Hemoglobin',
       unit: 'g/dL',
       standardLow: 12.0,
@@ -31,7 +31,7 @@ function createMockTargets(): PersonalTarget[] {
       personalHigh: 16.0,
     },
     {
-      biomarkerId: 3,
+      biomarkerKey: 'marker-3',
       biomarkerName: 'Cholesterol',
       unit: 'mg/dL',
       standardHigh: 200,
@@ -167,7 +167,7 @@ describe('PersonalTargets', () => {
       await user.type(screen.getByLabelText(/personal target high value/i), '95');
       await user.click(screen.getByRole('button', { name: /save target/i }));
 
-      expect(onSetTarget).toHaveBeenCalledWith(1, 75, 95);
+      expect(onSetTarget).toHaveBeenCalledWith('marker-1', 75, 95);
     });
 
     it('should close modal after saving', async () => {
@@ -201,7 +201,7 @@ describe('PersonalTargets', () => {
 
       await user.click(screen.getByLabelText(/clear personal target for hemoglobin/i));
 
-      expect(onClearTarget).toHaveBeenCalledWith(2);
+      expect(onClearTarget).toHaveBeenCalledWith('marker-2');
     });
   });
 

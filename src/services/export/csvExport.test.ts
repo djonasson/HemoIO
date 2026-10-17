@@ -26,7 +26,7 @@ function createMockLabResult(id: number, date: string, labName: string): LabResu
 function createMockTestValue(
   id: number,
   labResultId: number,
-  biomarkerId: number,
+  biomarkerKey: string,
   value: number,
   unit: string,
   refLow?: number,
@@ -35,7 +35,7 @@ function createMockTestValue(
   return {
     id,
     labResultId,
-    biomarkerId,
+    biomarkerKey,
     value,
     unit,
     referenceRangeLow: refLow,
@@ -49,26 +49,26 @@ function createMockExportData(): LabResultForExport[] {
   const labResult1 = createMockLabResult(1, '2024-01-15', 'Quest Diagnostics');
   const labResult2 = createMockLabResult(2, '2024-03-20', 'LabCorp');
 
-  const biomarkerNames = new Map<number, string>([
-    [1, 'Glucose'],
-    [2, 'Hemoglobin'],
-    [3, 'Cholesterol'],
+  const biomarkerNames = new Map<string, string>([
+    ['marker-1', 'Glucose'],
+    ['marker-2', 'Hemoglobin'],
+    ['marker-3', 'Cholesterol'],
   ]);
 
   return [
     {
       labResult: labResult1,
       testValues: [
-        createMockTestValue(1, 1, 1, 95, 'mg/dL', 70, 100),
-        createMockTestValue(2, 1, 2, 14.5, 'g/dL', 12.0, 17.5),
+        createMockTestValue(1, 1, 'marker-1', 95, 'mg/dL', 70, 100),
+        createMockTestValue(2, 1, 'marker-2', 14.5, 'g/dL', 12.0, 17.5),
       ],
       biomarkerNames,
     },
     {
       labResult: labResult2,
       testValues: [
-        createMockTestValue(3, 2, 1, 102, 'mg/dL', 70, 100),
-        createMockTestValue(4, 2, 3, 185, 'mg/dL', 0, 200),
+        createMockTestValue(3, 2, 'marker-1', 102, 'mg/dL', 70, 100),
+        createMockTestValue(4, 2, 'marker-3', 185, 'mg/dL', 0, 200),
       ],
       biomarkerNames,
     },
@@ -172,7 +172,7 @@ describe('csvExport', () => {
 
     it('should filter by biomarker IDs', () => {
       const data = createMockExportData();
-      const csv = exportToCsv(data, { biomarkerIds: [1] }); // Only Glucose
+      const csv = exportToCsv(data, { biomarkerKeys: ['marker-1'] }); // Only Glucose
 
       const lines = csv.split('\n');
       // Header + 2 Glucose values
@@ -218,7 +218,7 @@ describe('csvExport', () => {
 
     it('should handle unknown biomarker names', () => {
       const data = createMockExportData();
-      data[0].testValues[0].biomarkerId = 999; // Unknown
+      data[0].testValues[0].biomarkerKey = 'marker-999'; // Unknown
 
       const csv = exportToCsv(data);
 

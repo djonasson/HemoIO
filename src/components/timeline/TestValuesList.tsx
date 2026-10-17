@@ -16,7 +16,7 @@ import type { SpecimenType } from '@/types';
 import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import {
   findBiomarker,
-  getBiomarkerById,
+  getBiomarkerByKey,
   getBiomarkerForTestValue,
 } from '@data/biomarkers/dictionary';
 
@@ -93,7 +93,7 @@ function getBiomarkerName(testValue: EnrichedTestValue): string {
     return found.name;
   }
 
-  return testValue.rawText || `Biomarker #${testValue.biomarkerId}`;
+  return testValue.rawText || 'Unknown biomarker';
 }
 
 /**
@@ -171,7 +171,7 @@ function getBiomarkerMetadata(testValue: EnrichedTestValue): {
 
   // The stored ID wins; biomarkerName may carry a specimen suffix the raw text lacks
   const found =
-    getBiomarkerById(testValue.biomarkerId) ?? (searchTerm ? findBiomarker(searchTerm) : undefined);
+    getBiomarkerByKey(testValue.biomarkerKey) ?? (searchTerm ? findBiomarker(searchTerm) : undefined);
   if (found) {
     return {
       specimenType: found.specimenType,

@@ -44,7 +44,7 @@ function createMockDataSources(isEmpty = false): ExportDataSources {
       {
         id: 1,
         labResultId: 1,
-        biomarkerId: 1,
+        biomarkerKey: 'marker-1',
         value: 95,
         unit: 'mg/dL',
         createdAt: new Date(),

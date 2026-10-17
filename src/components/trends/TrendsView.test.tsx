@@ -65,7 +65,7 @@ vi.mock('@data/biomarkers/dictionary', () => {
   return {
     ...mock,
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerById: () => undefined,
+    getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
   };
 });
@@ -92,7 +92,7 @@ function renderWithProviders(ui: React.ReactElement) {
 function createMockTestValue(
   id: number,
   labResultId: number,
-  biomarkerId: number,
+  biomarkerKey: string,
   rawText: string,
   value: number,
   status: 'normal' | 'high' | 'low' | 'unknown' = 'normal',
@@ -103,7 +103,7 @@ function createMockTestValue(
   return {
     id,
     labResultId,
-    biomarkerId,
+    biomarkerKey,
     value,
     unit,
     status,
@@ -203,7 +203,7 @@ describe('TrendsView', () => {
   it('should render biomarker selection when data available', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
       ]),
     ];
 
@@ -226,7 +226,7 @@ describe('TrendsView', () => {
   it('should show empty prompt when no biomarker selected', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
       ]),
     ];
 
@@ -248,10 +248,10 @@ describe('TrendsView', () => {
   it('should show trend chart when biomarker is selected', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
       ]),
       createMockResult(2, '2024-02-15', [
-        createMockTestValue(2, 2, 1, 'Glucose', 100),
+        createMockTestValue(2, 2, 'marker-1', 'Glucose', 100),
       ]),
     ];
 
@@ -289,8 +289,8 @@ describe('TrendsView', () => {
   it('should show compare button when multiple biomarkers available', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
-        createMockTestValue(2, 1, 2, 'Hemoglobin', 14),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14),
       ]),
     ];
 
@@ -312,7 +312,7 @@ describe('TrendsView', () => {
   it('should have date filter inputs', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
       ]),
     ];
 
@@ -335,7 +335,7 @@ describe('TrendsView', () => {
   it('should have reset button', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
       ]),
     ];
 
@@ -357,7 +357,7 @@ describe('TrendsView', () => {
   it('should display alert count when alerts exist', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 150, 'high'),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 150, 'high'),
       ]),
     ];
 
@@ -377,7 +377,7 @@ describe('TrendsView', () => {
           id: '1',
           type: 'out_of_range',
           severity: 'warning',
-          biomarkerId: 1,
+          biomarkerKey: 'marker-1',
           biomarkerName: 'Glucose',
           value: 150,
           unit: 'mg/dL',
@@ -409,8 +409,8 @@ describe('TrendsView', () => {
   it('should open compare modal when compare button is clicked', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 1, 'Glucose', 95),
-        createMockTestValue(2, 1, 2, 'Hemoglobin', 14),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14),
       ]),
     ];
 
@@ -460,11 +460,11 @@ describe('TrendsView', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         // First value in mg/dL (canonical unit)
-        createMockTestValue(1, 1, 1, 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
       ]),
       createMockResult(2, '2024-02-15', [
         // Second value in mmol/L (should be converted to mg/dL)
-        createMockTestValue(2, 2, 1, 'Glucose', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
+        createMockTestValue(2, 2, 'marker-1', 'Glucose', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
       ]),
     ];
 
