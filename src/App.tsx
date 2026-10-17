@@ -3,7 +3,7 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
-import { AuthProvider, useAuth } from '@contexts';
+import { AuthProvider, AISettingsProvider, EncryptedApiKeyProvider, useAuth } from '@contexts';
 import { SetupWizard } from '@components/setup';
 import { LoginScreen } from '@components/auth';
 import { AppShell } from '@components/layout';
@@ -44,7 +44,11 @@ function App(): React.ReactNode {
     <MantineProvider>
       <Notifications position="top-right" />
       <AuthProvider>
-        <AppContent />
+        <EncryptedApiKeyProvider>
+          <AISettingsProvider>
+            <AppContent />
+          </AISettingsProvider>
+        </EncryptedApiKeyProvider>
       </AuthProvider>
       <PWAUpdatePrompt />
       <PWAInstallPrompt />

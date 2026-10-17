@@ -16,18 +16,27 @@ import { AIAnalysisError, AIConfigurationError } from './types';
 import {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
-  CONNECTION_TEST_PROMPT,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
 
 /**
- * Default Anthropic configuration
+ * Default Anthropic configuration.
+ *
+ * There is deliberately no default model: the model is always the one the
+ * user selected from their account's live model list, so the app never
+ * calls a model that has been retired or that the user did not choose.
  */
 const DEFAULT_CONFIG = {
-  model: 'claude-sonnet-4-20250514',
-  maxTokens: 4096,
-  temperature: 0.1, // Low temperature for consistent extraction
+  // Current models think before answering and thinking tokens count against
+  // max_tokens, so leave enough room for the extraction JSON itself.
+  maxTokens: 16000,
   baseUrl: 'https://api.anthropic.com/v1',
+};
+
+const API_HEADERS = {
+  'anthropic-version': '2023-06-01',
+  // Required for CORS: Anthropic rejects browser-origin requests without this opt-in
+  'anthropic-dangerous-direct-browser-access': 'true',
 };
 
 /**
@@ -39,13 +48,13 @@ interface AnthropicMessage {
 }
 
 interface AnthropicContentBlock {
-  type: 'text';
-  text: string;
+  type: string;
+  text?: string;
 }
 
 interface AnthropicResponse {
   content: AnthropicContentBlock[];
-  stop_reason: string;
+  stop_reason: string | null;
   usage?: {
     input_tokens: number;
     output_tokens: number;
@@ -66,18 +75,25 @@ export class AnthropicProvider implements AIProvider {
   readonly type: AIProviderType = 'anthropic';
   readonly name = 'Anthropic Claude';
 
-  private config: Required<AIProviderConfig>;
+  // Sampling parameters (temperature) are not sent: current Claude models
+  // reject non-default values with a 400.
+  private config: Required<Omit<AIProviderConfig, 'temperature'>>;
 
   constructor(config: AIProviderConfig) {
     if (!config.apiKey) {
       throw new AIConfigurationError('API key is required', 'anthropic');
     }
+    if (!config.model) {
+      throw new AIConfigurationError(
+        'No Anthropic model selected. Select a model in Settings → AI Configuration.',
+        'anthropic'
+      );
+    }
 
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || DEFAULT_CONFIG.model,
+      model: config.model,
       maxTokens: config.maxTokens || DEFAULT_CONFIG.maxTokens,
-      temperature: config.temperature ?? DEFAULT_CONFIG.temperature,
       baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl,
     };
   }
@@ -101,7 +117,24 @@ export class AnthropicProvider implements AIProvider {
 
     try {
       const response = await this.makeRequest(messages, ENHANCED_SYSTEM_PROMPT);
-      const content = response.content[0]?.text;
+
+      if (response.stop_reason === 'refusal') {
+        throw new AIAnalysisError(
+          'Anthropic declined to analyze this document',
+          'anthropic',
+          'refusal'
+        );
+      }
+      if (response.stop_reason === 'max_tokens') {
+        throw new AIAnalysisError(
+          'Anthropic response was cut off before the results were complete',
+          'anthropic',
+          'max_tokens'
+        );
+      }
+
+      // Responses may start with thinking blocks; the answer is in the text block
+      const content = response.content.find((block) => block.type === 'text')?.text;
 
       if (!content) {
         throw new AIAnalysisError('Empty response from Anthropic', 'anthropic');
@@ -149,22 +182,25 @@ export class AnthropicProvider implements AIProvider {
   }
 
   /**
-   * Test the connection to Anthropic
+   * Test the connection to Anthropic.
+   *
+   * Looks up the selected model rather than sending a message: this checks
+   * both the API key and that the model is available to it, without spending
+   * tokens (a tiny message would be consumed by thinking on current models).
    */
   async testConnection(): Promise<boolean> {
     try {
-      const messages: AnthropicMessage[] = [
-        { role: 'user', content: CONNECTION_TEST_PROMPT },
-      ];
-
-      const response = await this.makeRequest(
-        messages,
-        'You are a helpful assistant.',
-        { maxTokens: 10 }
+      const response = await fetch(
+        `${this.config.baseUrl}/models/${encodeURIComponent(this.config.model)}`,
+        {
+          method: 'GET',
+          headers: {
+            'x-api-key': this.config.apiKey,
+            ...API_HEADERS,
+          },
+        }
       );
-      const content = response.content[0]?.text?.trim();
-
-      return content === 'OK';
+      return response.ok;
     } catch {
       return false;
     }
@@ -175,8 +211,7 @@ export class AnthropicProvider implements AIProvider {
    */
   private async makeRequest(
     messages: AnthropicMessage[],
-    systemPrompt: string,
-    options: { maxTokens?: number } = {}
+    systemPrompt: string
   ): Promise<AnthropicResponse> {
     const url = `${this.config.baseUrl}/messages`;
 
@@ -185,16 +220,13 @@ export class AnthropicProvider implements AIProvider {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
-        'anthropic-version': '2023-06-01',
-        // Required for CORS: Anthropic rejects browser-origin requests without this opt-in
-        'anthropic-dangerous-direct-browser-access': 'true',
+        ...API_HEADERS,
       },
       body: JSON.stringify({
         model: this.config.model,
         system: systemPrompt,
         messages,
-        max_tokens: options.maxTokens || this.config.maxTokens,
-        temperature: this.config.temperature,
+        max_tokens: this.config.maxTokens,
       }),
     });
 

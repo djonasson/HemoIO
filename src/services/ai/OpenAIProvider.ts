@@ -17,15 +17,16 @@ import {
 import {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
-  CONNECTION_TEST_PROMPT,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
 
 /**
- * Default OpenAI configuration
+ * Default OpenAI configuration.
+ *
+ * There is deliberately no default model: the model is always the one the
+ * user selected from their account's live model list.
  */
 const DEFAULT_CONFIG = {
-  model: 'gpt-5-mini',
   maxTokens: 4096,
   temperature: 0.1, // Low temperature for consistent extraction
   baseUrl: 'https://api.openai.com/v1',
@@ -83,10 +84,16 @@ export class OpenAIProvider implements AIProvider {
     if (!config.apiKey) {
       throw new AIConfigurationError('API key is required', 'openai');
     }
+    if (!config.model) {
+      throw new AIConfigurationError(
+        'No OpenAI model selected. Select a model in Settings → AI Configuration.',
+        'openai'
+      );
+    }
 
     this.config = {
       apiKey: config.apiKey,
-      model: config.model || DEFAULT_CONFIG.model,
+      model: config.model,
       maxTokens: config.maxTokens || DEFAULT_CONFIG.maxTokens,
       temperature: config.temperature ?? DEFAULT_CONFIG.temperature,
       baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl,
@@ -161,18 +168,22 @@ export class OpenAIProvider implements AIProvider {
   }
 
   /**
-   * Test the connection to OpenAI
+   * Test the connection to OpenAI.
+   *
+   * Looks up the selected model rather than sending a message: this checks
+   * both the API key and that the model is available to it, without spending
+   * tokens (a tiny completion would be consumed by reasoning models).
    */
   async testConnection(): Promise<boolean> {
     try {
-      const messages: OpenAIMessage[] = [
-        { role: 'user', content: CONNECTION_TEST_PROMPT },
-      ];
-
-      const response = await this.makeRequest(messages, { maxTokens: 10 });
-      const content = response.choices[0]?.message?.content?.trim();
-
-      return content === 'OK';
+      const response = await fetch(
+        `${this.config.baseUrl}/models/${encodeURIComponent(this.config.model)}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${this.config.apiKey}` },
+        }
+      );
+      return response.ok;
     } catch {
       return false;
     }

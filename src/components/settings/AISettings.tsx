@@ -157,12 +157,8 @@ export function AISettings({
 
         const models = await getOpenAIModels(apiKey);
         if (!cancelled && models.length > 0) {
+          // Never auto-select: the user must explicitly choose a model.
           setOpenaiModels(models);
-          // If current model is not in the list, select the first one
-          if (!models.find(m => m.value === localOpenaiModel)) {
-            setLocalOpenaiModel(models[0].value);
-            onOpenaiModelChange?.(models[0].value);
-          }
         }
       } catch (error) {
         console.warn('Failed to fetch OpenAI models:', error);
@@ -178,7 +174,7 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, hasApiKey, localOpenaiModel, onOpenaiModelChange, getApiKey]);
+  }, [localProvider, hasApiKey, getApiKey]);
 
   // Fetch Anthropic models when provider is Anthropic and API key is available
   useEffect(() => {
@@ -197,12 +193,8 @@ export function AISettings({
 
         const models = await getAnthropicModels(apiKey);
         if (!cancelled && models.length > 0) {
+          // Never auto-select: the user must explicitly choose a model.
           setAnthropicModels(models);
-          // If current model is not in the list, select the first one
-          if (!models.find(m => m.value === localAnthropicModel)) {
-            setLocalAnthropicModel(models[0].value);
-            onAnthropicModelChange?.(models[0].value);
-          }
         }
       } catch (error) {
         console.warn('Failed to fetch Anthropic models:', error);
@@ -218,7 +210,7 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, hasApiKey, localAnthropicModel, onAnthropicModelChange, getApiKey]);
+  }, [localProvider, hasApiKey, getApiKey]);
 
   // Check Ollama status when provider is Ollama
   useEffect(() => {
@@ -438,6 +430,17 @@ export function AISettings({
     }
   };
 
+  // A saved model that the account no longer offers (e.g. a retired model)
+  // must not be used silently; surface it so the user picks a new one.
+  const activeModels = localProvider === 'openai' ? openaiModels : anthropicModels;
+  const activeSavedModel = localProvider === 'openai' ? localOpenaiModel : localAnthropicModel;
+  const unavailableSavedModel =
+    activeModels.length > 0 &&
+    activeSavedModel &&
+    !activeModels.some((m) => m.value === activeSavedModel)
+      ? activeSavedModel
+      : null;
+
   return (
     <Paper p="md" withBorder>
       <Stack gap="md">
@@ -589,6 +592,12 @@ export function AISettings({
                     ? `${localProvider === 'openai' ? openaiModels.length : anthropicModels.length} models available from your account`
                     : 'Loading models...'}
                 </Text>
+                {unavailableSavedModel && (
+                  <Alert color="orange" icon={<IconAlertTriangle size={16} />} variant="light">
+                    The previously selected model <code>{unavailableSavedModel}</code> is no longer
+                    available to your API key. Select a model to continue importing.
+                  </Alert>
+                )}
               </>
             ) : (
               !isLoadingOpenaiModels && !isLoadingAnthropicModels && (
@@ -688,7 +697,7 @@ export function AISettings({
             )}
             {testResult === 'error' && (
               <Alert color="red" icon={<IconAlertCircle size={16} />}>
-                Connection failed. Please check your API key and try again.
+                Connection failed. Please check your API key and selected model, and try again.
               </Alert>
             )}
           </Stack>

@@ -193,10 +193,6 @@ export const RESPONSE_SCHEMA = {
   required: ['biomarkers', 'warnings'],
 };
 
-/**
- * Prompt for validating API connection
- */
-export const CONNECTION_TEST_PROMPT = 'Respond with exactly: "OK"';
 
 /**
  * Common biomarker name variations for context

@@ -93,8 +93,6 @@ export interface ProviderInfo {
   type: AIProviderType;
   name: string;
   description: string;
-  defaultModel: string;
-  models: Array<{ id: string; name: string }>;
   requiresApiKey: boolean;
   isLocal: boolean;
 }
@@ -105,13 +103,6 @@ export function getAvailableProviders(): ProviderInfo[] {
       type: 'openai',
       name: 'OpenAI',
       description: 'GPT-5 and reasoning models for lab report analysis',
-      defaultModel: 'gpt-5-mini',
-      models: [
-        { id: 'gpt-5', name: 'GPT-5 (Best quality)' },
-        { id: 'gpt-5-mini', name: 'GPT-5 Mini (Recommended)' },
-        { id: 'o3-mini', name: 'o3 Mini (Fast reasoning)' },
-        { id: 'gpt-4o', name: 'GPT-4o' },
-      ],
       requiresApiKey: true,
       isLocal: false,
     },
@@ -119,12 +110,6 @@ export function getAvailableProviders(): ProviderInfo[] {
       type: 'anthropic',
       name: 'Anthropic Claude',
       description: 'Claude models for accurate medical data extraction',
-      defaultModel: 'claude-sonnet-4-20250514',
-      models: [
-        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Recommended)' },
-        { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-        { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku (Fast, budget)' },
-      ],
       requiresApiKey: true,
       isLocal: false,
     },
@@ -132,14 +117,6 @@ export function getAvailableProviders(): ProviderInfo[] {
       type: 'ollama',
       name: 'Ollama (Local)',
       description: 'Run AI models locally for complete privacy. No API key required.',
-      defaultModel: 'llama3.2:8b',
-      models: [
-        { id: 'llama3.2:8b', name: 'Llama 3.2 8B (Recommended)' },
-        { id: 'llama3.1:8b', name: 'Llama 3.1 8B' },
-        { id: 'qwen2.5:7b', name: 'Qwen 2.5 7B' },
-        { id: 'mistral:7b', name: 'Mistral 7B' },
-        { id: 'llava:13b', name: 'LLaVA 13B (Vision)' },
-      ],
       requiresApiKey: false,
       isLocal: true,
     },

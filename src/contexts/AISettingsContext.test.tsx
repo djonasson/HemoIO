@@ -1,24 +1,27 @@
 /**
- * Tests for useAISettings hook
+ * Tests for AISettingsProvider and useAISettings
  *
  * Tests settings persistence in IndexedDB and migration from localStorage
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAISettings } from './useAISettings';
+import { useAISettings } from '@hooks/useAISettings';
+import { AISettingsProvider } from './AISettingsContext';
 
 // Mock db functions
 const mockGetSettings = vi.fn();
 const mockSaveSettings = vi.fn();
 
-// Mock useEncryptedDb hook
-vi.mock('./useEncryptedDb', () => ({
+// Mock useEncryptedDb hook. The db object must be stable across renders, as
+// the real hook memoizes it; otherwise the load effect re-runs on every render.
+const mockDb = {
+  getSettings: (...args: unknown[]) => mockGetSettings(...args),
+  saveSettings: (...args: unknown[]) => mockSaveSettings(...args),
+};
+vi.mock('@hooks/useEncryptedDb', () => ({
   useEncryptedDb: () => ({
-    db: {
-      getSettings: mockGetSettings,
-      saveSettings: mockSaveSettings,
-    },
+    db: mockDb,
     isReady: true,
   }),
 }));
@@ -39,7 +42,7 @@ describe('useAISettings', () => {
     it('should return default values when no settings exist', async () => {
       mockGetSettings.mockResolvedValue(null);
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -61,7 +64,7 @@ describe('useAISettings', () => {
         language: 'en',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -80,7 +83,7 @@ describe('useAISettings', () => {
       localStorage.setItem('hemoio_ollama_model', 'llama3');
       mockGetSettings.mockResolvedValue(null);
 
-      renderHook(() => useAISettings());
+      renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       // Should eventually call saveSettings with the migrated values
       await waitFor(
@@ -106,7 +109,7 @@ describe('useAISettings', () => {
         language: 'en',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -124,7 +127,7 @@ describe('useAISettings', () => {
         language: 'en',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -143,7 +146,7 @@ describe('useAISettings', () => {
         language: 'en',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -166,7 +169,7 @@ describe('useAISettings', () => {
         language: 'es',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -197,7 +200,7 @@ describe('useAISettings', () => {
       mockGetSettings.mockRejectedValue(new Error('Database error'));
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -219,7 +222,7 @@ describe('useAISettings', () => {
         language: 'en',
       });
 
-      const { result } = renderHook(() => useAISettings());
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -237,6 +240,37 @@ describe('useAISettings', () => {
       expect(localStorage.getItem('hemoio_ollama_model')).toBeNull();
       expect(localStorage.getItem('hemoio_openai_model')).toBeNull();
       expect(localStorage.getItem('hemoio_anthropic_model')).toBeNull();
+    });
+  });
+
+  describe('shared state', () => {
+    it('should expose a model change made by one consumer to every other consumer', async () => {
+      // The import view stays mounted while the user changes the model in
+      // Settings, so both must read the same state without a reload.
+      const { result } = renderHook(
+        () => ({ settings: useAISettings(), importView: useAISettings() }),
+        { wrapper: AISettingsProvider }
+      );
+
+      await waitFor(() => {
+        expect(result.current.importView.isLoading).toBe(false);
+      });
+
+      await act(async () => {
+        await result.current.settings.setAiProvider('anthropic');
+        await result.current.settings.setAnthropicModel('claude-sonnet-5-5');
+      });
+
+      expect(result.current.importView.aiProvider).toBe('anthropic');
+      expect(result.current.importView.anthropicModel).toBe('claude-sonnet-5-5');
+    });
+
+    it('should throw a helpful error when used outside the provider', () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect(() => renderHook(() => useAISettings())).toThrow(
+        'useAISettings must be used within an AISettingsProvider'
+      );
+      consoleError.mockRestore();
     });
   });
 });

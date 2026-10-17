@@ -7,7 +7,7 @@ import { renderHook } from '@testing-library/react';
 import { useEncryptedDb } from './useEncryptedDb';
 
 // Mock the dependencies
-vi.mock('@contexts', () => ({
+vi.mock('@contexts/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 
@@ -16,7 +16,7 @@ vi.mock('@data/db', () => ({
   EncryptedDb: vi.fn(),
 }));
 
-import { useAuth } from '@contexts';
+import { useAuth } from '@contexts/useAuth';
 import { createEncryptedDb } from '@data/db';
 
 describe('useEncryptedDb', () => {

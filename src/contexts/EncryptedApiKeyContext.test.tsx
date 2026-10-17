@@ -1,14 +1,15 @@
 /**
- * Tests for useEncryptedApiKey hook
+ * Tests for EncryptedApiKeyProvider and useEncryptedApiKey
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useEncryptedApiKey } from './useEncryptedApiKey';
+import { useEncryptedApiKey } from '@hooks/useEncryptedApiKey';
+import { EncryptedApiKeyProvider } from './EncryptedApiKeyContext';
 
 // Mock the auth context
 const mockEncryptionKey = {} as CryptoKey;
-vi.mock('@contexts/useAuth', () => ({
+vi.mock('./useAuth', () => ({
   useAuth: vi.fn(() => ({
     encryptionKey: mockEncryptionKey,
     status: 'unlocked',
@@ -38,7 +39,7 @@ describe('useEncryptedApiKey', () => {
 
   describe('initial state', () => {
     it('should report no API key when storage is empty', async () => {
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -51,7 +52,7 @@ describe('useEncryptedApiKey', () => {
     it('should detect existing encrypted API key', async () => {
       localStorage.setItem(ENCRYPTED_KEY, 'encrypted:sk-test-api-key-1234');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -64,7 +65,7 @@ describe('useEncryptedApiKey', () => {
     it('should migrate legacy plaintext API key', async () => {
       localStorage.setItem(LEGACY_KEY, 'sk-legacy-api-key-5678');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -86,7 +87,7 @@ describe('useEncryptedApiKey', () => {
 
   describe('setApiKey', () => {
     it('should encrypt and store API key', async () => {
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -106,7 +107,7 @@ describe('useEncryptedApiKey', () => {
     it('should remove legacy key when setting new key', async () => {
       localStorage.setItem(LEGACY_KEY, 'old-plaintext-key');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -124,7 +125,7 @@ describe('useEncryptedApiKey', () => {
     it('should decrypt and return API key', async () => {
       localStorage.setItem(ENCRYPTED_KEY, 'encrypted:sk-secret-key-abcd');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -139,7 +140,7 @@ describe('useEncryptedApiKey', () => {
     });
 
     it('should return null when no key exists', async () => {
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -158,7 +159,7 @@ describe('useEncryptedApiKey', () => {
     it('should remove stored API key', async () => {
       localStorage.setItem(ENCRYPTED_KEY, 'encrypted:sk-to-remove');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -179,7 +180,7 @@ describe('useEncryptedApiKey', () => {
       localStorage.setItem(LEGACY_KEY, 'old-key');
       localStorage.setItem(ENCRYPTED_KEY, 'encrypted:new-key');
 
-      const { result } = renderHook(() => useEncryptedApiKey());
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false);
@@ -191,6 +192,27 @@ describe('useEncryptedApiKey', () => {
 
       expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
       expect(localStorage.getItem(ENCRYPTED_KEY)).toBeNull();
+    });
+  });
+
+  describe('shared state', () => {
+    it('should expose a key saved by one consumer to every other consumer', async () => {
+      const { result } = renderHook(
+        () => ({ settings: useEncryptedApiKey(), importView: useEncryptedApiKey() }),
+        { wrapper: EncryptedApiKeyProvider }
+      );
+
+      await waitFor(() => {
+        expect(result.current.importView.isLoading).toBe(false);
+      });
+      expect(result.current.importView.hasApiKey).toBe(false);
+
+      await act(async () => {
+        await result.current.settings.setApiKey('sk-ant-test-key-1234');
+      });
+
+      expect(result.current.importView.hasApiKey).toBe(true);
+      expect(result.current.importView.apiKeyLastFour).toBe('1234');
     });
   });
 });

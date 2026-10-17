@@ -23,7 +23,7 @@ describe('AIProviderFactory', () => {
 
   describe('getAIProvider', () => {
     it('creates OpenAI provider', () => {
-      const provider = getAIProvider('openai', { apiKey: 'sk-test-key' });
+      const provider = getAIProvider('openai', { apiKey: 'sk-test-key', model: 'test-model' });
 
       expect(provider).toBeInstanceOf(OpenAIProvider);
       expect(provider.type).toBe('openai');
@@ -31,7 +31,7 @@ describe('AIProviderFactory', () => {
     });
 
     it('creates Anthropic provider', () => {
-      const provider = getAIProvider('anthropic', { apiKey: 'sk-ant-test-key' });
+      const provider = getAIProvider('anthropic', { apiKey: 'sk-ant-test-key', model: 'test-model' });
 
       expect(provider).toBeInstanceOf(AnthropicProvider);
       expect(provider.type).toBe('anthropic');
@@ -47,15 +47,15 @@ describe('AIProviderFactory', () => {
     });
 
     it('caches provider instances', () => {
-      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key' });
-      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key' });
+      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key', model: 'test-model' });
+      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key', model: 'test-model' });
 
       expect(provider1).toBe(provider2);
     });
 
     it('creates separate instances for different API keys', () => {
-      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key-1' });
-      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key-2' });
+      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key-1', model: 'test-model' });
+      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key-2', model: 'test-model' });
 
       expect(provider1).not.toBe(provider2);
     });
@@ -82,9 +82,9 @@ describe('AIProviderFactory', () => {
 
   describe('clearProviderCache', () => {
     it('clears cached providers', () => {
-      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key' });
+      const provider1 = getAIProvider('openai', { apiKey: 'sk-test-key', model: 'test-model' });
       clearProviderCache();
-      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key' });
+      const provider2 = getAIProvider('openai', { apiKey: 'sk-test-key', model: 'test-model' });
 
       expect(provider1).not.toBe(provider2);
     });
@@ -98,15 +98,6 @@ describe('AIProviderFactory', () => {
       expect(providers.map((p) => p.type)).toContain('openai');
       expect(providers.map((p) => p.type)).toContain('anthropic');
       expect(providers.map((p) => p.type)).toContain('ollama');
-    });
-
-    it('includes models for each provider', () => {
-      const providers = getAvailableProviders();
-
-      providers.forEach((provider) => {
-        expect(provider.models.length).toBeGreaterThan(0);
-        expect(provider.defaultModel).toBeTruthy();
-      });
     });
 
     it('includes descriptions', () => {
@@ -227,6 +218,7 @@ describe('AIProviderFactory', () => {
 
       const result = await testProviderConnection('openai', {
         apiKey: 'sk-test-key',
+        model: 'test-model',
       });
 
       expect(result).toBe(true);
@@ -237,6 +229,7 @@ describe('AIProviderFactory', () => {
 
       const result = await testProviderConnection('openai', {
         apiKey: 'sk-test-key',
+        model: 'test-model',
       });
 
       expect(result).toBe(false);

@@ -6,7 +6,7 @@
  */
 
 import { useMemo } from 'react';
-import { useAuth } from '@contexts';
+import { useAuth } from '@contexts/useAuth';
 import { createEncryptedDb, EncryptedDb } from '@data/db';
 
 /**

@@ -65,6 +65,7 @@ describe('anthropicUtils', () => {
     });
 
     it('should return empty array when API call fails', async () => {
+      const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 401,
@@ -73,14 +74,17 @@ describe('anthropicUtils', () => {
       const result = await getAnthropicModels('invalid-key');
 
       expect(result).toEqual([]);
+      expect(consoleWarn).toHaveBeenCalledWith('Failed to fetch Anthropic models:', 401);
     });
 
     it('should return empty array on network error', async () => {
+      const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
 
       const result = await getAnthropicModels('test-api-key');
 
       expect(result).toEqual([]);
+      expect(consoleWarn).toHaveBeenCalledWith('Error fetching Anthropic models:', expect.any(Error));
     });
 
     it('should filter out non-claude models', async () => {

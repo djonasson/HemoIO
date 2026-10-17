@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AIAnalysisError, AIConfigurationError } from './types';
 
+// Model IDs come from the user's selection at runtime; tests use a placeholder
+const TEST_MODEL = 'gpt-test-model';
+
 describe('OpenAIProvider', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
@@ -13,16 +16,20 @@ describe('OpenAIProvider', () => {
 
   describe('constructor', () => {
     it('creates provider with valid config', () => {
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       expect(provider.type).toBe('openai');
       expect(provider.name).toBe('OpenAI');
     });
 
     it('throws error without API key', () => {
-      expect(() => new OpenAIProvider({ apiKey: '' })).toThrow(
+      expect(() => new OpenAIProvider({ apiKey: '', model: TEST_MODEL })).toThrow(
         AIConfigurationError
       );
+    });
+
+    it('throws error without a model, instead of guessing one', () => {
+      expect(() => new OpenAIProvider({ apiKey: 'sk-test-key' })).toThrow(/select a model/i);
     });
   });
 
@@ -66,7 +73,7 @@ describe('OpenAIProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport(
         'Patient Lab Report\nGlucose: 95 mg/dL (70-100)\nHemoglobin: 14.5 g/dL'
       );
@@ -84,7 +91,7 @@ describe('OpenAIProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       expect(result.labDate).toBe('2024-01-15');
@@ -97,7 +104,7 @@ describe('OpenAIProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       // Average of 0.95 and 0.92
@@ -125,14 +132,14 @@ describe('OpenAIProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       expect(result.processingTime).toBeGreaterThanOrEqual(0);
     });
 
     it('throws error for empty text', async () => {
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('')).rejects.toThrow(
         AIAnalysisError
@@ -149,7 +156,7 @@ describe('OpenAIProvider', () => {
           }),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-invalid-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-invalid-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         AIAnalysisError
@@ -162,7 +169,7 @@ describe('OpenAIProvider', () => {
         json: () => Promise.resolve({ choices: [] }),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         'Empty response'
@@ -178,7 +185,7 @@ describe('OpenAIProvider', () => {
           }),
       } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         'Failed to parse'
@@ -188,7 +195,7 @@ describe('OpenAIProvider', () => {
 
   describe('validateConfiguration', () => {
     it('returns true for valid sk- prefixed key', async () => {
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       const result = await provider.validateConfiguration();
 
@@ -196,7 +203,7 @@ describe('OpenAIProvider', () => {
     });
 
     it('returns false for invalid key format', async () => {
-      const provider = new OpenAIProvider({ apiKey: 'invalid-key' });
+      const provider = new OpenAIProvider({ apiKey: 'invalid-key', model: TEST_MODEL });
 
       const result = await provider.validateConfiguration();
 
@@ -205,46 +212,36 @@ describe('OpenAIProvider', () => {
   });
 
   describe('testConnection', () => {
-    it('returns true when API responds correctly', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'OK' } }],
-          }),
-      } as Response);
+    it('checks the selected model is available to the API key', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: true } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
-
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const result = await provider.testConnection();
 
       expect(result).toBe(true);
+      expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+        `https://api.openai.com/v1/models/${TEST_MODEL}`,
+        expect.objectContaining({
+          method: 'GET',
+          headers: { Authorization: 'Bearer sk-test-key' },
+        })
+      );
     });
 
-    it('returns false when API responds incorrectly', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            choices: [{ message: { content: 'Something else' } }],
-          }),
-      } as Response);
+    it('returns false when the model or key is rejected', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 404 } as Response);
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
-      const result = await provider.testConnection();
-
-      expect(result).toBe(false);
+      expect(await provider.testConnection()).toBe(false);
     });
 
     it('returns false on network error', async () => {
       vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
 
-      const provider = new OpenAIProvider({ apiKey: 'sk-test-key' });
+      const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
-      const result = await provider.testConnection();
-
-      expect(result).toBe(false);
+      expect(await provider.testConnection()).toBe(false);
     });
   });
 });

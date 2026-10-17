@@ -20,6 +20,7 @@ import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
 import { StorageSettings } from './StorageSettings';
 import { useExportData, useEncryptedDb, useEncryptedApiKey, useAISettings } from '@hooks';
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
+import { testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 
 /**
@@ -172,27 +173,22 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const handleTestConnection = useCallback(async (): Promise<boolean> => {
     setAiTestInProgress(true);
     try {
+      if (aiProvider === 'ollama') {
+        return await testProviderConnection('ollama', { model: ollamaModel });
+      }
+
       const apiKey = await getApiKey();
       if (!apiKey) {
         return false;
       }
-
-      // Simple validation - check if key format looks valid
-      if (aiProvider === 'openai' && !apiKey.startsWith('sk-')) {
-        return false;
-      }
-      if (aiProvider === 'anthropic' && !apiKey.startsWith('sk-ant-')) {
-        return false;
-      }
-
-      // For now, just validate format. Real API test would require network call.
-      return true;
+      const model = aiProvider === 'openai' ? openaiModel : anthropicModel;
+      return await testProviderConnection(aiProvider, { apiKey, model });
     } catch {
       return false;
     } finally {
       setAiTestInProgress(false);
     }
-  }, [aiProvider, getApiKey]);
+  }, [aiProvider, getApiKey, ollamaModel, openaiModel, anthropicModel]);
 
   // Handle theme change
   const handleThemeChange = useCallback(

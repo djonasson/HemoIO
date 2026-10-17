@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AnthropicProvider } from './AnthropicProvider';
 import { AIAnalysisError, AIConfigurationError } from './types';
 
+// Model IDs come from the user's selection at runtime; tests use a placeholder
+const TEST_MODEL = 'claude-test-model';
+
 describe('AnthropicProvider', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
@@ -13,15 +16,24 @@ describe('AnthropicProvider', () => {
 
   describe('constructor', () => {
     it('creates provider with valid config', () => {
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
       expect(provider.type).toBe('anthropic');
       expect(provider.name).toBe('Anthropic Claude');
     });
 
     it('throws error without API key', () => {
-      expect(() => new AnthropicProvider({ apiKey: '' })).toThrow(
+      expect(() => new AnthropicProvider({ apiKey: '', model: TEST_MODEL })).toThrow(
         AIConfigurationError
+      );
+    });
+
+    it('throws error without a model, instead of guessing one', () => {
+      expect(() => new AnthropicProvider({ apiKey: 'sk-ant-test-key' })).toThrow(
+        AIConfigurationError
+      );
+      expect(() => new AnthropicProvider({ apiKey: 'sk-ant-test-key' })).toThrow(
+        /select a model/i
       );
     });
   });
@@ -65,7 +77,7 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport(
         'Patient Lab Report\nGlucose: 95 mg/dL (70-100)\nHemoglobin: 14.5 g/dL'
       );
@@ -83,7 +95,7 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       expect(result.labDate).toBe('2024-01-15');
@@ -96,7 +108,7 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       // Average of 0.95 and 0.92
@@ -111,11 +123,11 @@ describe('AnthropicProvider', () => {
 
       const provider = new AnthropicProvider({
         apiKey: 'sk-ant-test-key',
-        model: 'claude-3-opus-20240229',
+        model: 'claude-chosen-by-user',
       });
       const result = await provider.analyzeLabReport('Lab report text');
 
-      expect(result.modelUsed).toBe('claude-3-opus-20240229');
+      expect(result.modelUsed).toBe('claude-chosen-by-user');
     });
 
     it('tracks processing time', async () => {
@@ -124,14 +136,14 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const result = await provider.analyzeLabReport('Lab report text');
 
       expect(result.processingTime).toBeGreaterThanOrEqual(0);
     });
 
     it('throws error for empty text', async () => {
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('')).rejects.toThrow(
         AIAnalysisError
@@ -148,7 +160,7 @@ describe('AnthropicProvider', () => {
           }),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-invalid-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-invalid-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         AIAnalysisError
@@ -161,7 +173,7 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve({ content: [] }),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         'Empty response'
@@ -177,10 +189,86 @@ describe('AnthropicProvider', () => {
           }),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
       await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
         'Failed to parse'
+      );
+    });
+
+    it('reads the text block when the response starts with a thinking block', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ...mockLabReportResponse,
+            content: [
+              { type: 'thinking', thinking: '', signature: 'sig' },
+              ...mockLabReportResponse.content,
+            ],
+          }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+      const result = await provider.analyzeLabReport('Lab report text');
+
+      expect(result.biomarkers).toHaveLength(2);
+      expect(result.biomarkers[0].name).toBe('Glucose');
+    });
+
+    it('sends the selected model and no sampling parameters', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockLabReportResponse),
+      } as Response);
+
+      const provider = new AnthropicProvider({
+        apiKey: 'sk-ant-test-key',
+        model: 'claude-chosen-by-user',
+        temperature: 0.1,
+      });
+      await provider.analyzeLabReport('Lab report text');
+
+      const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+      expect(body.model).toBe('claude-chosen-by-user');
+      // Current models reject non-default sampling parameters with a 400
+      expect(body).not.toHaveProperty('temperature');
+      // Thinking tokens count against max_tokens, so leave room for the answer
+      expect(body.max_tokens).toBeGreaterThanOrEqual(16000);
+    });
+
+    it('reports a refusal instead of failing to parse it', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [],
+            stop_reason: 'refusal',
+            stop_details: { type: 'refusal', category: null, explanation: null },
+          }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+
+      await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
+        /declined/i
+      );
+    });
+
+    it('reports a truncated response when max_tokens is reached', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            content: [{ type: 'text', text: '{"biomarkers": [' }],
+            stop_reason: 'max_tokens',
+          }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+
+      await expect(provider.analyzeLabReport('Lab report text')).rejects.toThrow(
+        /cut off/i
       );
     });
 
@@ -190,7 +278,7 @@ describe('AnthropicProvider', () => {
         json: () => Promise.resolve(mockLabReportResponse),
       } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       await provider.analyzeLabReport('Lab report text');
 
       expect(vi.mocked(fetch)).toHaveBeenCalledWith(
@@ -208,7 +296,7 @@ describe('AnthropicProvider', () => {
 
   describe('validateConfiguration', () => {
     it('returns true for valid sk-ant- prefixed key', async () => {
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
       const result = await provider.validateConfiguration();
 
@@ -216,7 +304,7 @@ describe('AnthropicProvider', () => {
     });
 
     it('returns false for invalid key format', async () => {
-      const provider = new AnthropicProvider({ apiKey: 'sk-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
 
       const result = await provider.validateConfiguration();
 
@@ -225,46 +313,39 @@ describe('AnthropicProvider', () => {
   });
 
   describe('testConnection', () => {
-    it('returns true when API responds correctly', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'OK' }],
-          }),
-      } as Response);
+    it('checks the selected model is available to the API key', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: true } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
-
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const result = await provider.testConnection();
 
       expect(result).toBe(true);
+      expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+        `https://api.anthropic.com/v1/models/${TEST_MODEL}`,
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            'x-api-key': 'sk-ant-test-key',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          }),
+        })
+      );
     });
 
-    it('returns false when API responds incorrectly', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            content: [{ type: 'text', text: 'Something else' }],
-          }),
-      } as Response);
+    it('returns false when the model or key is rejected', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 404 } as Response);
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
-      const result = await provider.testConnection();
-
-      expect(result).toBe(false);
+      expect(await provider.testConnection()).toBe(false);
     });
 
     it('returns false on network error', async () => {
       vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
 
-      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key' });
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
 
-      const result = await provider.testConnection();
-
-      expect(result).toBe(false);
+      expect(await provider.testConnection()).toBe(false);
     });
   });
 });
