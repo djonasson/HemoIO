@@ -53,8 +53,8 @@ Feature: Import Wizard
 
   Scenario: Analysis completes successfully
     Given all files have been analyzed
-    Then I should automatically proceed to the review step
-    And I should see a summary of extracted values
+    Then I should see a summary of extracted values
+    And I should be able to continue to the review step
 
   Scenario: Analysis fails for a file
     Given a file cannot be analyzed
@@ -97,7 +97,7 @@ Feature: Import Wizard
 
   Scenario: User adds a missing value
     Given the AI missed a value from the report
-    When I click "Add Value"
+    When I click "Add Biomarker"
     Then I should be able to select a biomarker
     And I should be able to enter the value and unit
 

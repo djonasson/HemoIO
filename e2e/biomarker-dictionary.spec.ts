@@ -58,9 +58,14 @@ function biomarkerItems(container: Locator): Locator {
  * the abbreviation shown next to it, e.g. "Blood Urea Nitrogen (BUN)".
  */
 async function expectBiomarkerListed(container: Locator, label: string): Promise<void> {
-  const item = biomarkerItems(container).filter({
-    has: container.page().getByText(label, { exact: true }).or(container.page().getByText(`(${label})`, { exact: true })),
+  // Name and abbreviation render as separate elements: match either the
+  // combined text ("White Blood Cell Count (WBC)") or the abbreviation alone
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+  const byFullName = biomarkerItems(container).filter({ hasText: new RegExp(`^\\s*${escaped}`) });
+  const byAbbreviation = biomarkerItems(container).filter({
+    has: container.page().getByText(`(${label})`, { exact: true }),
   });
+  const item = byFullName.or(byAbbreviation);
   await expect(item).toHaveCount(1);
   await expect(item).toBeVisible();
 }
@@ -109,7 +114,7 @@ test.describe('Biomarker Dictionary', () => {
         'Complete Blood Count',
         'Metabolic Panel',
         'Lipid Panel',
-        'Thyroid Panel',
+        'Thyroid Function',
         'Iron Studies',
         'Vitamins',
       ]) {
@@ -122,11 +127,11 @@ test.describe('Biomarker Dictionary', () => {
 
       await expect(biomarkerItems(panel).first()).toBeVisible();
       for (const name of [
-        'White Blood Cells (WBC)',
-        'Red Blood Cells (RBC)',
+        'White Blood Cell Count (WBC)',
+        'Red Blood Cell Count (RBC)',
         'Hemoglobin',
         'Hematocrit',
-        'Platelets',
+        'Platelet Count (PLT)',
       ]) {
         await expectBiomarkerListed(panel, name);
       }
@@ -172,7 +177,7 @@ test.describe('Biomarker Dictionary', () => {
     test('should search for biomarker by abbreviation', async ({ page }) => {
       await searchField(page).fill('WBC');
 
-      await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cells (WBC)');
+      await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cell Count (WBC)');
     });
 
     test('should show no results message for invalid search', async ({ page }) => {

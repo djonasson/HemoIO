@@ -13,18 +13,18 @@ Feature: Biomarker Dictionary
     And categories should include "Complete Blood Count"
     And categories should include "Metabolic Panel"
     And categories should include "Lipid Panel"
-    And categories should include "Thyroid Panel"
+    And categories should include "Thyroid Function"
     And categories should include "Iron Studies"
     And categories should include "Vitamins"
 
   Scenario: Browse biomarkers in a category
     When I click on the "Complete Blood Count" category
     Then I should see biomarkers in that category
-    And I should see "White Blood Cells (WBC)"
-    And I should see "Red Blood Cells (RBC)"
+    And I should see "White Blood Cell Count (WBC)"
+    And I should see "Red Blood Cell Count (RBC)"
     And I should see "Hemoglobin"
     And I should see "Hematocrit"
-    And I should see "Platelets"
+    And I should see "Platelet Count (PLT)"
 
   Scenario: Browse metabolic panel biomarkers
     When I click on the "Metabolic Panel" category
@@ -51,7 +51,7 @@ Feature: Biomarker Dictionary
 
   Scenario: Search for a biomarker by abbreviation
     When I type "WBC" in the search field
-    Then I should see "White Blood Cells (WBC)" in the results
+    Then I should see "White Blood Cell Count (WBC)" in the results
 
   Scenario: Search with no results
     When I type "xyz123" in the search field

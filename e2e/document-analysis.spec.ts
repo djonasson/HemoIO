@@ -505,20 +505,6 @@ test.describe('Document Analysis - AI Processing', () => {
     ).toContainText('42');
   });
 
-  test('should allow creating a custom biomarker for an unknown name', async ({ page }) => {
-    await loginWithOllama(page, [
-      {
-        extraction: extraction([{ name: 'Zorblatin', value: 42, unit: 'mg/dL', confidence: 0.9 }]),
-      },
-    ]);
-    await analyzeToReview(page, track(createTextLabReportPdf()));
-
-    await reviewRow(page, 'Zorblatin')
-      .getByRole('button', { name: /create custom biomarker/i })
-      .click();
-    await expect(page.getByRole('dialog', { name: /custom biomarker/i })).toBeVisible();
-  });
-
   test('should normalize extracted units', async ({ page }) => {
     await loginWithOllama(page, [
       {

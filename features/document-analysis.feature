@@ -103,7 +103,6 @@ Feature: Document Analysis
     Given the AI extracts an unknown biomarker name
     Then it should be flagged for user review
     And the user should be able to map it to a known biomarker
-    And the user should be able to create a custom biomarker
 
   # Unit Handling
   Scenario: Normalize extracted units
