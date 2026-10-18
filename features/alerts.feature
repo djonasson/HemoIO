@@ -9,7 +9,7 @@ Feature: Alerts
 
   Scenario: View out-of-range alerts summary
     Given I have biomarkers with values outside their reference ranges
-    When I navigate to a view with the alerts component
+    When I navigate to the Alerts view
     Then I should see an alerts summary panel
     And it should display the count of abnormal values
 
@@ -78,8 +78,8 @@ Feature: Alerts
   Scenario: Acknowledge alert persistently
     Given I have an alert for an abnormal value
     When I click "Acknowledge" on the alert
-    Then the alert should be marked as acknowledged
-    And it should remain hidden until the next abnormal value for that biomarker
+    Then the alert should be marked as acknowledged and hidden
+    And it should remain hidden until a newer abnormal value for that biomarker
 
   Scenario: Filter alerts by category
     Given I have alerts from different biomarker categories

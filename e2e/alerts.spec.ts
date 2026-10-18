@@ -232,6 +232,9 @@ test.describe('Alerts with Data', () => {
     await expect(
       page.getByRole('main').locator('[aria-label="Mar 10, 24: 150 mg/dL (high)"]')
     ).toBeVisible();
+    await expect(
+      page.getByRole('main').locator('[aria-label="Mar 10, 24: 150 mg/dL (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
   });
 
   // Scenario: Dismiss alert temporarily

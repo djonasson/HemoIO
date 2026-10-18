@@ -1,12 +1,12 @@
 /**
  * Step definitions for features/alerts.feature
  *
- * Alerts are shown on the Trends view ("a view with the alerts component").
+ * Alerts are shown on the Alerts view, opened from the navigation.
  */
 
 import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock } from './app.steps';
-import { goToTrends, seedVisits, type LabVisit } from './trends.steps';
+import { seedVisits, type LabVisit } from './trends.steps';
 
 /** Mantine red-6 / orange-6, used for the alert's left border indicator */
 export const RED_INDICATOR = 'rgb(250, 82, 82)';
@@ -25,7 +25,7 @@ export async function seedAlertData(page: Page, visits: LabVisit[]): Promise<voi
  * When I view the alerts
  */
 export async function viewAlerts(page: Page): Promise<void> {
-  await goToTrends(page);
+  await page.getByRole('navigation').getByRole('button', { name: /^Alerts/ }).click();
 }
 
 /**

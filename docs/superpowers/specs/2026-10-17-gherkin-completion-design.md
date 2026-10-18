@@ -120,7 +120,7 @@ The existing `useAlerts` / `OutOfRangeAlerts` are mounted and completed.
   - **Dismiss** hides an alert until the next page load (in-memory state, as
     today).
   - **Acknowledge** is stored in `userPreferences.acknowledgedAlerts` as
-    `{ [biomarkerKey]: testValueId }`, the latest value acknowledged. The alert
+    `{ [biomarkerKey]: ISO date of the acknowledged alert }`. The alert
     reappears when a newer abnormal value for that biomarker exists.
 - **Category filter:** the existing category select, with an accessible label.
 - **Click-through:** clicking an alert, or pressing Enter on it, opens Trends
