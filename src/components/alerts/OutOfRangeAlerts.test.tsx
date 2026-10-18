@@ -3,11 +3,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { OutOfRangeAlerts } from './OutOfRangeAlerts';
 import { useAlerts } from '@hooks/useAlerts';
 import type { BiomarkerAlert } from '@hooks/useAlerts';
+import type { OutOfRangeAlertsProps } from './OutOfRangeAlerts';
 
 // Mock useAlerts
 vi.mock('@hooks/useAlerts', () => ({
@@ -48,10 +50,31 @@ function createMockAlert(id: string, options: Partial<BiomarkerAlert> = {}): Bio
     labName: 'Test Lab',
     labResultId: 1,
     message: 'Glucose is elevated at 150 mg/dL',
-    acknowledged: false,
-    dismissed: false,
     ...options,
   };
+}
+
+function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
+  return createMockAlert(options.id ?? '1', options);
+}
+
+function mockAlerts(alerts: BiomarkerAlert[]): void {
+  vi.mocked(useAlerts).mockReturnValue({
+    alerts,
+    groupedAlerts: [],
+    unacknowledgedCount: alerts.length,
+    isLoading: false,
+    error: null,
+    dismissAlert: vi.fn(),
+    acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+    refresh: vi.fn(),
+    filterByCategory: vi.fn(() => alerts),
+    getAlertsForBiomarker: vi.fn(() => alerts),
+  });
+}
+
+function renderAlerts(props: OutOfRangeAlertsProps = {}) {
+  return renderWithProviders(<OutOfRangeAlerts {...props} />);
 }
 
 describe('OutOfRangeAlerts', () => {
@@ -67,8 +90,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: true,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
       getAlertsForBiomarker: vi.fn(() => []),
     });
@@ -86,8 +109,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: 'Failed to load alerts',
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
       getAlertsForBiomarker: vi.fn(() => []),
     });
@@ -105,8 +128,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
       getAlertsForBiomarker: vi.fn(() => []),
     });
@@ -126,8 +149,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -148,8 +171,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -175,8 +198,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -197,8 +220,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: mockDismiss,
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -223,7 +246,7 @@ describe('OutOfRangeAlerts', () => {
       error: null,
       dismissAlert: vi.fn(),
       acknowledgeAlert: mockAcknowledge,
-      clearDismissed: vi.fn(),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -247,8 +270,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -264,7 +287,7 @@ describe('OutOfRangeAlerts', () => {
   it('should display unacknowledged count badge', () => {
     const alerts = [
       createMockAlert('1'),
-      createMockAlert('2', { acknowledged: false }),
+      createMockAlert('2'),
     ];
 
     vi.mocked(useAlerts).mockReturnValue({
@@ -274,8 +297,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -302,8 +325,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -328,8 +351,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -351,8 +374,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -379,8 +402,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -394,27 +417,6 @@ describe('OutOfRangeAlerts', () => {
       const alertCards = screen.getAllByRole('article');
       expect(alertCards).toHaveLength(10);
     });
-  });
-
-  it('should hide acknowledge button for acknowledged alerts', () => {
-    const alerts = [createMockAlert('1', { acknowledged: true })];
-
-    vi.mocked(useAlerts).mockReturnValue({
-      alerts,
-      groupedAlerts: [],
-      unacknowledgedCount: 0,
-      isLoading: false,
-      error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
-      filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
-    });
-
-    renderWithProviders(<OutOfRangeAlerts />);
-
-    expect(screen.queryByRole('button', { name: /acknowledge/i })).not.toBeInTheDocument();
   });
 
   it('should display lab name and relative time', () => {
@@ -432,8 +434,8 @@ describe('OutOfRangeAlerts', () => {
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
       getAlertsForBiomarker: vi.fn(() => alerts),
     });
@@ -442,5 +444,71 @@ describe('OutOfRangeAlerts', () => {
 
     expect(screen.getByText('Today')).toBeInTheDocument();
     expect(screen.getByText(/quest diagnostics/i)).toBeInTheDocument();
+  });
+  it('colours the indicator by direction: high red, low orange', () => {
+    mockAlerts([
+      alert({ id: 'a', biomarkerName: 'Glucose', status: 'high', severity: 'critical' }),
+      alert({ id: 'b', biomarkerName: 'Hemoglobin', status: 'low', severity: 'critical' }),
+    ]);
+    renderAlerts();
+
+    expect(screen.getByRole('article', { name: /^Alert for Glucose:/ })).toHaveStyle({
+      borderLeftColor: 'var(--mantine-color-red-6)',
+    });
+    expect(screen.getByRole('article', { name: /^Alert for Hemoglobin:/ })).toHaveStyle({
+      borderLeftColor: 'var(--mantine-color-orange-6)',
+    });
+  });
+
+  it('announces severity and direction in the accessible name', () => {
+    mockAlerts([
+      alert({
+        biomarkerName: 'Glucose',
+        status: 'high',
+        severity: 'critical',
+        message: 'Glucose is high at 150 mg/dL',
+      }),
+    ]);
+    renderAlerts();
+
+    expect(screen.getByRole('article')).toHaveAccessibleName(
+      'Alert for Glucose: critical, high. Glucose is high at 150 mg/dL'
+    );
+  });
+
+  it('gives critical alerts stronger styling than warnings', () => {
+    mockAlerts([
+      alert({ id: 'a', biomarkerName: 'Glucose', severity: 'critical' }),
+      alert({
+        id: 'b',
+        biomarkerName: 'Hemoglobin',
+        severity: 'warning',
+        status: 'low',
+        message: 'Hemoglobin is low at 10 g/dL',
+      }),
+    ]);
+    renderAlerts();
+
+    expect(screen.getByRole('article', { name: /Glucose/ })).toHaveStyle({ borderLeftWidth: '6px' });
+    expect(screen.getByRole('article', { name: /Hemoglobin/ })).toHaveStyle({
+      borderLeftWidth: '4px',
+    });
+    expect(
+      within(screen.getByRole('article', { name: /Glucose/ })).getByText('Critical')
+    ).toBeInTheDocument();
+  });
+
+  it('opens the alert with Enter when it is focused', async () => {
+    const onAlertClick = vi.fn();
+    mockAlerts([alert({ biomarkerName: 'Glucose' })]);
+    renderAlerts({ onAlertClick });
+
+    const card = screen.getByRole('article');
+    card.focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(onAlertClick).toHaveBeenCalledWith(
+      expect.objectContaining({ biomarkerName: 'Glucose' })
+    );
   });
 });

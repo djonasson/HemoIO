@@ -18,6 +18,7 @@ import {
   Tooltip,
   Select,
   ThemeIcon,
+  Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -34,7 +35,9 @@ import {
 } from '@tabler/icons-react';
 import { useState, useMemo } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
+import { indicatorColor } from '@services/alerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
+import { formatRelativeTime } from '@/utils/relativeTime';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -47,48 +50,6 @@ export interface OutOfRangeAlertsProps {
   showFilters?: boolean;
   /** Maximum number of alerts to show before collapsing */
   maxVisible?: number;
-}
-
-/**
- * Format relative time
- */
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return 'Today';
-  } else if (diffDays === 1) {
-    return 'Yesterday';
-  } else if (diffDays < 7) {
-    return `${diffDays} days ago`;
-  } else if (diffDays < 30) {
-    const weeks = Math.floor(diffDays / 7);
-    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
-  } else if (diffDays < 365) {
-    const months = Math.floor(diffDays / 30);
-    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
-  } else {
-    const years = Math.floor(diffDays / 365);
-    return `${years} ${years === 1 ? 'year' : 'years'} ago`;
-  }
-}
-
-/**
- * Get severity color
- */
-function getSeverityColor(severity: string): string {
-  switch (severity) {
-    case 'critical':
-      return 'red';
-    case 'warning':
-      return 'orange';
-    case 'positive':
-      return 'green';
-    default:
-      return 'blue';
-  }
 }
 
 /**
@@ -121,21 +82,38 @@ function AlertCard({
   onAcknowledge: () => void;
   onClick?: () => void;
 }) {
-  const color = getSeverityColor(alert.severity);
+  const color = indicatorColor(alert);
+  const isCritical = alert.severity === 'critical';
+  const stateWord = alert.type === 'improvement' ? 'improved' : (alert.direction ?? alert.status);
+  const severityWord = alert.type === 'improvement' ? 'positive' : alert.severity;
 
   return (
     <Paper
       p="sm"
       withBorder
       style={{
-        borderLeftWidth: 4,
+        borderLeftWidth: isCritical ? 6 : 4,
         borderLeftColor: `var(--mantine-color-${color}-6)`,
         cursor: onClick ? 'pointer' : 'default',
-        opacity: alert.acknowledged ? 0.7 : 1,
       }}
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              // Only the card itself: Enter on its buttons must not also open it
+              if (
+                event.target === event.currentTarget &&
+                (event.key === 'Enter' || event.key === ' ')
+              ) {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      tabIndex={onClick ? 0 : undefined}
       role="article"
-      aria-label={`Alert for ${alert.biomarkerName}: ${alert.message}`}
+      aria-label={`Alert for ${alert.biomarkerName}: ${severityWord}, ${stateWord}. ${alert.message}`}
     >
       <Group justify="space-between" wrap="nowrap">
         <Group gap="sm" wrap="nowrap">
@@ -147,6 +125,11 @@ function AlertCard({
               <Text size="sm" fw={500}>
                 {alert.biomarkerName}
               </Text>
+              {alert.type !== 'improvement' && (
+                <Badge size="xs" color={color} variant={isCritical ? 'filled' : 'light'}>
+                  {isCritical ? 'Critical' : 'Warning'}
+                </Badge>
+              )}
               <Badge size="xs" color={color} variant="light">
                 {alert.status}
               </Badge>
@@ -178,22 +161,20 @@ function AlertCard({
         </Group>
 
         <Group gap="xs" wrap="nowrap">
-          {!alert.acknowledged && (
-            <Tooltip label="Acknowledge">
-              <ActionIcon
-                size="sm"
-                variant="subtle"
-                color="gray"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAcknowledge();
-                }}
-                aria-label="Acknowledge alert"
-              >
-                <IconEye size={14} />
-              </ActionIcon>
-            </Tooltip>
-          )}
+          <Tooltip label="Acknowledge">
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAcknowledge();
+              }}
+              aria-label="Acknowledge alert"
+            >
+              <IconEye size={14} />
+            </ActionIcon>
+          </Tooltip>
           <Tooltip label="Dismiss">
             <ActionIcon
               size="sm"
@@ -229,7 +210,7 @@ function GroupedAlertCard({
   onClick?: (alert: BiomarkerAlert) => void;
 }) {
   const [opened, { toggle }] = useDisclosure(false);
-  const color = getSeverityColor(group.severity);
+  const color = indicatorColor(group.latestAlert);
 
   return (
     <Paper withBorder>
@@ -394,7 +375,9 @@ export function OutOfRangeAlerts({
       <Group justify="space-between">
         <Group gap="xs">
           <IconAlertCircle size={20} />
-          <Text fw={500}>Alerts</Text>
+          <Title order={2} size="h4">
+            Alerts
+          </Title>
           {unacknowledgedCount > 0 && (
             <Badge color="red" variant="filled" size="sm">
               {unacknowledgedCount} new
@@ -423,7 +406,7 @@ export function OutOfRangeAlerts({
             key={alert.id}
             alert={alert}
             onDismiss={() => dismissAlert(alert.id)}
-            onAcknowledge={() => acknowledgeAlert(alert.id)}
+            onAcknowledge={() => void acknowledgeAlert(alert.id)}
             onClick={onAlertClick ? () => onAlertClick(alert) : undefined}
           />
         ))}
@@ -454,7 +437,7 @@ export function OutOfRangeAlerts({
               key={group.biomarkerKey}
               group={group}
               onDismiss={dismissAlert}
-              onAcknowledge={acknowledgeAlert}
+              onAcknowledge={(alertId) => void acknowledgeAlert(alertId)}
               onClick={onAlertClick}
             />
           ))}
