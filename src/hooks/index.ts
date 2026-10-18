@@ -17,3 +17,4 @@ export {
   useLegacyKeyReconciliation,
   type UseLegacyKeyReconciliationResult,
 } from './useLegacyKeyReconciliation';
+export { useAlertState, type AlertState } from './useAlertState';

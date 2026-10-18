@@ -110,6 +110,8 @@ export interface UserPreferences {
   id?: number;
   unitPreferences: Record<string, string>; // biomarkerKey -> preferred unit
   personalTargets: Record<string, { low?: number; high?: number }>; // biomarkerKey -> target range
+  /** Per biomarker: alerts dated on or before this ISO date are acknowledged */
+  acknowledgedAlerts?: Record<string, string>;
   theme: 'light' | 'dark' | 'system';
   dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 }
