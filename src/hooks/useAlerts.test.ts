@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAlerts } from './useAlerts';
 import { useLabResults } from './useLabResults';
 import type { LabResultWithDetails, EnrichedTestValue } from './useLabResults';
@@ -12,6 +12,14 @@ import type { LabResultWithDetails, EnrichedTestValue } from './useLabResults';
 vi.mock('./useLabResults', () => ({
   useLabResults: vi.fn(),
 }));
+
+const alertState = {
+  acknowledgedThrough: {} as Record<string, Date>,
+  dismissedIds: new Set<string>() as ReadonlySet<string>,
+  acknowledge: vi.fn(async () => {}),
+  dismiss: vi.fn(),
+};
+vi.mock('./useAlertState', () => ({ useAlertState: () => alertState }));
 
 // Mock biomarker dictionary
 vi.mock('@data/biomarkers/dictionary', () => {
@@ -74,7 +82,21 @@ function createMockResult(
 describe('useAlerts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    alertState.acknowledgedThrough = {};
+    alertState.dismissedIds = new Set();
   });
+
+  function mockResults(results: LabResultWithDetails[]): void {
+    vi.mocked(useLabResults).mockReturnValue({
+      results,
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+  }
 
   it('should return empty alerts when no results', () => {
     vi.mocked(useLabResults).mockReturnValue({
@@ -148,7 +170,9 @@ describe('useAlerts', () => {
     expect(result.current.alerts).toHaveLength(1);
     expect(result.current.alerts[0].status).toBe('high');
     expect(result.current.alerts[0].type).toBe('out_of_range');
-    expect(result.current.alerts[0].message).toContain('elevated');
+    expect(result.current.alerts[0].message).toBe(
+      'Glucose is high at 150 mg/dL (reference ≤ 100 mg/dL)'
+    );
   });
 
   it('should generate alert for low value', () => {
@@ -174,7 +198,10 @@ describe('useAlerts', () => {
 
     expect(result.current.alerts).toHaveLength(1);
     expect(result.current.alerts[0].status).toBe('low');
-    expect(result.current.alerts[0].message).toContain('low');
+    expect(result.current.alerts[0].message).toBe(
+      'Hemoglobin is low at 10 mg/dL (reference ≥ 12 mg/dL)'
+    );
+    expect(result.current.alerts[0].severity).toBe('warning');
   });
 
   it('should not generate alert for normal values', () => {
@@ -237,62 +264,35 @@ describe('useAlerts', () => {
     expect(result.current.alerts[0].severity).toBe('critical');
   });
 
-  it('should dismiss alert', () => {
-    const testValue = createMockTestValue(1, 1, {
-      value: 150,
-      status: 'high',
-      referenceRangeHigh: 100,
-    });
-
-    vi.mocked(useLabResults).mockReturnValue({
-      results: [createMockResult(1, '2024-01-15', [testValue])],
-      isLoading: false,
-      error: null,
-      filters: {},
-      setFilters: vi.fn(),
-      refresh: vi.fn(),
-      deleteResult: vi.fn(),
-    });
+  it('should dismiss alert through the shared state', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
 
     const { result } = renderHook(() => useAlerts());
-
-    expect(result.current.alerts).toHaveLength(1);
     const alertId = result.current.alerts[0].id;
 
     act(() => {
       result.current.dismissAlert(alertId);
     });
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(alertState.dismiss).toHaveBeenCalledWith(alertId);
   });
 
-  it('should acknowledge alert', () => {
-    const testValue = createMockTestValue(1, 1, {
-      value: 150,
-      status: 'high',
-      referenceRangeHigh: 100,
-    });
-
-    vi.mocked(useLabResults).mockReturnValue({
-      results: [createMockResult(1, '2024-01-15', [testValue])],
-      isLoading: false,
-      error: null,
-      filters: {},
-      setFilters: vi.fn(),
-      refresh: vi.fn(),
-      deleteResult: vi.fn(),
-    });
+  it('should not return dismissed alerts', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+    const { result: before } = renderHook(() => useAlerts());
+    alertState.dismissedIds = new Set([before.current.alerts[0].id]);
 
     const { result } = renderHook(() => useAlerts());
 
-    const alertId = result.current.alerts[0].id;
-    expect(result.current.alerts[0].acknowledged).toBe(false);
-
-    act(() => {
-      result.current.acknowledgeAlert(alertId);
-    });
-
-    expect(result.current.alerts[0].acknowledged).toBe(true);
+    expect(result.current.alerts).toHaveLength(0);
   });
 
   it('should group alerts by biomarker', () => {
@@ -423,40 +423,6 @@ describe('useAlerts', () => {
     expect(biomarker2Alerts).toHaveLength(1);
   });
 
-  it('should clear dismissed alerts', () => {
-    const testValue = createMockTestValue(1, 1, {
-      value: 150,
-      status: 'high',
-      referenceRangeHigh: 100,
-    });
-
-    vi.mocked(useLabResults).mockReturnValue({
-      results: [createMockResult(1, '2024-01-15', [testValue])],
-      isLoading: false,
-      error: null,
-      filters: {},
-      setFilters: vi.fn(),
-      refresh: vi.fn(),
-      deleteResult: vi.fn(),
-    });
-
-    const { result } = renderHook(() => useAlerts());
-
-    const alertId = result.current.alerts[0].id;
-
-    act(() => {
-      result.current.dismissAlert(alertId);
-    });
-
-    expect(result.current.alerts).toHaveLength(0);
-
-    act(() => {
-      result.current.clearDismissed();
-    });
-
-    expect(result.current.alerts).toHaveLength(1);
-  });
-
   it('should detect improvement when value returns to normal', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
@@ -495,7 +461,7 @@ describe('useAlerts', () => {
     const improvementAlert = result.current.alerts.find((a) => a.type === 'improvement');
     expect(improvementAlert).toBeDefined();
     expect(improvementAlert?.severity).toBe('positive');
-    expect(improvementAlert?.message).toContain('returned to normal');
+    expect(improvementAlert?.message).toBe('Improved: Glucose now within range');
   });
 
   it('should calculate critical severity for very high values', () => {
@@ -556,5 +522,142 @@ describe('useAlerts', () => {
     // Should only count the out_of_range alert, not the improvement
     const outOfRangeAlerts = result.current.alerts.filter((a) => a.type === 'out_of_range');
     expect(result.current.unacknowledgedCount).toBe(outOfRangeAlerts.length);
+  });
+  it('hides alerts of a biomarker acknowledged through their date, but not newer ones', async () => {
+    alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 140, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const dates = result.current.alerts.map((a) => a.date.toISOString().slice(0, 10));
+    expect(dates).toEqual(['2024-03-10']);
+  });
+
+  it('gives each abnormal value its own alert id, even within one lab result', async () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+        createMockTestValue(2, 1, { value: 160, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const ids = result.current.alerts.map((a) => a.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('acknowledging an alert records its biomarker and date in the shared state', async () => {
+    mockResults([
+      createMockResult(1, '2024-03-10', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.alerts).toHaveLength(1));
+
+    await result.current.acknowledgeAlert(result.current.alerts[0].id);
+
+    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', result.current.alerts[0].date);
+  });
+
+  it('raises a trend alert for four consecutive decreasing values', async () => {
+    mockResults(
+      [11.5, 11.0, 10.5, 10.0].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            value,
+            status: 'low',
+            referenceRangeLow: 12,
+            rawText: 'Hemoglobin',
+          }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    expect(trend).toMatchObject({ direction: 'decreasing', severity: 'warning' });
+    expect(trend?.message).toBe('Consistently decreasing over 3 months (Jan–Apr 2024)');
+  });
+
+  it('does not raise a trend alert for only three consecutive values', () => {
+    mockResults(
+      [11.0, 10.5, 10.0].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, { value, status: 'low', referenceRangeLow: 12 }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(false);
+  });
+
+  it('raises an improvement alert when the latest value is back in range', async () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 180, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-02-15', [
+        createMockTestValue(2, 2, {
+          value: 95,
+          status: 'normal',
+          referenceRangeLow: 70,
+          referenceRangeHigh: 100,
+          rawText: 'Glucose',
+        }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const improvement = result.current.alerts.find((a) => a.type === 'improvement');
+    expect(improvement?.message).toBe('Improved: Glucose now within range');
+    expect(improvement?.severity).toBe('positive');
+  });
+
+  it('rates values under 50% beyond the bound as warning', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 105, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.alerts[0].severity).toBe('warning');
+  });
+
+  it('returns refresh from the lab results', () => {
+    const refresh = vi.fn();
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh,
+      deleteResult: vi.fn(),
+    });
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.refresh).toBe(refresh);
   });
 });

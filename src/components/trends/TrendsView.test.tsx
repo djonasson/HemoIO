@@ -145,7 +145,7 @@ describe('TrendsView', () => {
       error: null,
       dismissAlert: vi.fn(),
       acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
       getAlertsForBiomarker: vi.fn(() => []),
     });
@@ -386,8 +386,6 @@ describe('TrendsView', () => {
           labName: 'Test Lab',
           labResultId: 1,
           message: 'Glucose is elevated',
-          acknowledged: false,
-          dismissed: false,
         },
       ],
       groupedAlerts: [],
@@ -396,7 +394,7 @@ describe('TrendsView', () => {
       error: null,
       dismissAlert: vi.fn(),
       acknowledgeAlert: vi.fn(),
-      clearDismissed: vi.fn(),
+      refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
       getAlertsForBiomarker: vi.fn(() => []),
     });

@@ -7,15 +7,20 @@
  * - Improvement alerts (values returning to normal)
  */
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useLabResults, type EnrichedTestValue } from './useLabResults';
+import { useAlertState } from './useAlertState';
 import {
-  analyzeTrend,
-  determineTrendAlertSeverity,
-  testValuesToDataPoints,
-  type TrendSeverity,
-} from '@services/statistics/trendAnalysis';
-import { detectConsecutiveAbnormal } from '@services/statistics/patterns';
+  SEVERITY_ORDER,
+  detectConsistentDirection,
+  improvementMessage,
+  outOfRangeMessage,
+  outOfRangeSeverity,
+  trendMessage,
+  type AlertSeverity,
+  type ReferenceRange,
+  type TrendDirection,
+} from '@services/alerts';
 import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 
 /**
@@ -32,7 +37,7 @@ export interface BiomarkerAlert {
   /** Type of alert */
   type: AlertType;
   /** Severity level */
-  severity: TrendSeverity;
+  severity: AlertSeverity;
   /** Biomarker ID */
   biomarkerKey: string;
   /** Biomarker name */
@@ -44,12 +49,11 @@ export interface BiomarkerAlert {
   /** Unit of measurement */
   unit: string;
   /** Reference range */
-  referenceRange?: {
-    low?: number;
-    high?: number;
-  };
-  /** Status (high, low, normal, mixed for trends) */
-  status: 'high' | 'low' | 'normal' | 'mixed';
+  referenceRange?: ReferenceRange;
+  /** Status of the value the alert is about */
+  status: 'high' | 'low' | 'normal';
+  /** Direction of a trend alert */
+  direction?: TrendDirection;
   /** Date of the lab result */
   date: Date;
   /** Lab name */
@@ -58,10 +62,6 @@ export interface BiomarkerAlert {
   labResultId: number;
   /** Alert message */
   message: string;
-  /** Whether alert has been acknowledged */
-  acknowledged: boolean;
-  /** Whether alert has been dismissed temporarily */
-  dismissed: boolean;
 }
 
 /**
@@ -78,10 +78,10 @@ export interface GroupedAlert {
   alerts: BiomarkerAlert[];
   /** Most recent alert */
   latestAlert: BiomarkerAlert;
-  /** Count of unacknowledged alerts */
+  /** Count of the group's non-improvement alerts */
   unacknowledgedCount: number;
   /** Overall severity (highest among alerts) */
-  severity: TrendSeverity;
+  severity: AlertSeverity;
 }
 
 /**
@@ -92,7 +92,7 @@ export interface UseAlertsResult {
   alerts: BiomarkerAlert[];
   /** Alerts grouped by biomarker */
   groupedAlerts: GroupedAlert[];
-  /** Count of unacknowledged alerts */
+  /** Count of returned non-improvement alerts */
   unacknowledgedCount: number;
   /** Whether data is loading */
   isLoading: boolean;
@@ -100,10 +100,10 @@ export interface UseAlertsResult {
   error: string | null;
   /** Dismiss an alert temporarily (until page reload) */
   dismissAlert: (alertId: string) => void;
-  /** Acknowledge an alert persistently */
-  acknowledgeAlert: (alertId: string) => void;
-  /** Clear all dismissed alerts */
-  clearDismissed: () => void;
+  /** Acknowledge an alert's biomarker through the alert's date, persistently */
+  acknowledgeAlert: (alertId: string) => Promise<void>;
+  /** Reload the lab results alerts are derived from */
+  refresh: () => Promise<void>;
   /** Filter alerts by category */
   filterByCategory: (category: string | null) => BiomarkerAlert[];
   /** Get alerts for a specific biomarker */
@@ -111,78 +111,11 @@ export interface UseAlertsResult {
 }
 
 /**
- * Generate a unique alert ID
+ * Generate a unique alert ID. Keyed by test value so duplicate values within
+ * one lab result get their own alerts.
  */
-function generateAlertId(biomarkerKey: string, labResultId: number, type: AlertType): string {
-  return `${type}_${biomarkerKey}_${labResultId}`;
-}
-
-/**
- * Format alert message based on type and status
- */
-function formatAlertMessage(
-  biomarkerName: string,
-  status: 'high' | 'low' | 'normal' | 'mixed',
-  type: AlertType,
-  value: number,
-  unit: string,
-  referenceRange?: { low?: number; high?: number }
-): string {
-  if (type === 'improvement') {
-    return `${biomarkerName} has returned to normal range (${value} ${unit})`;
-  }
-
-  if (type === 'trend') {
-    if (status === 'high') {
-      return `${biomarkerName} has been consistently elevated`;
-    } else if (status === 'low') {
-      return `${biomarkerName} has been consistently low`;
-    } else {
-      return `${biomarkerName} has been consistently out of range`;
-    }
-  }
-
-  // Out of range
-  if (status === 'high') {
-    const highRef = referenceRange?.high;
-    return highRef !== undefined
-      ? `${biomarkerName} is elevated at ${value} ${unit} (reference: ≤${highRef})`
-      : `${biomarkerName} is elevated at ${value} ${unit}`;
-  } else {
-    const lowRef = referenceRange?.low;
-    return lowRef !== undefined
-      ? `${biomarkerName} is low at ${value} ${unit} (reference: ≥${lowRef})`
-      : `${biomarkerName} is low at ${value} ${unit}`;
-  }
-}
-
-/**
- * Determine severity based on how far out of range a value is
- */
-function calculateOutOfRangeSeverity(
-  value: number,
-  status: 'high' | 'low',
-  referenceRange?: { low?: number; high?: number }
-): TrendSeverity {
-  if (!referenceRange) {
-    return 'info';
-  }
-
-  if (status === 'high' && referenceRange.high !== undefined) {
-    const percentOver = ((value - referenceRange.high) / referenceRange.high) * 100;
-    if (percentOver > 50) return 'critical';
-    if (percentOver > 20) return 'warning';
-    return 'info';
-  }
-
-  if (status === 'low' && referenceRange.low !== undefined) {
-    const percentUnder = ((referenceRange.low - value) / referenceRange.low) * 100;
-    if (percentUnder > 50) return 'critical';
-    if (percentUnder > 20) return 'warning';
-    return 'info';
-  }
-
-  return 'info';
+function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType): string {
+  return `${type}_${biomarkerKey}_${valueId}`;
 }
 
 /**
@@ -211,9 +144,8 @@ function calculateOutOfRangeSeverity(
  * ```
  */
 export function useAlerts(): UseAlertsResult {
-  const { results, isLoading, error } = useLabResults();
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
+  const { results, isLoading, error, refresh } = useLabResults();
+  const { acknowledgedThrough, dismissedIds, acknowledge, dismiss } = useAlertState();
 
   /**
    * Generate alerts from lab results
@@ -260,7 +192,11 @@ export function useAlerts(): UseAlertsResult {
       for (const testValue of sortedValues) {
         if (testValue.status === 'high' || testValue.status === 'low') {
           const info = labInfo.get(testValue.labResultId)!;
-          const alertId = generateAlertId(biomarkerKey, testValue.labResultId, 'out_of_range');
+          const alertId = generateAlertId(
+            biomarkerKey,
+            testValue.id ?? testValue.labResultId,
+            'out_of_range'
+          );
 
           const referenceRange = {
             low: testValue.referenceRangeLow,
@@ -270,11 +206,7 @@ export function useAlerts(): UseAlertsResult {
           alertList.push({
             id: alertId,
             type: 'out_of_range',
-            severity: calculateOutOfRangeSeverity(
-              testValue.value as number,
-              testValue.status,
-              referenceRange
-            ),
+            severity: outOfRangeSeverity(testValue.value as number, testValue.status, referenceRange),
             biomarkerKey,
             biomarkerName,
             category: biomarkerDef?.category,
@@ -285,66 +217,45 @@ export function useAlerts(): UseAlertsResult {
             date: info.date,
             labName: info.labName,
             labResultId: testValue.labResultId,
-            message: formatAlertMessage(
+            message: outOfRangeMessage(
               biomarkerName,
               testValue.status,
-              'out_of_range',
               testValue.value as number,
               testValue.unit,
               referenceRange
             ),
-            acknowledged: acknowledgedIds.has(alertId),
-            dismissed: dismissedIds.has(alertId),
           });
         }
       }
 
-      // Check for trend alerts if we have enough data
-      if (sortedValues.length >= 3) {
-        const dataPoints = testValuesToDataPoints(sortedValues, labInfo);
-
-        if (dataPoints.length >= 3) {
-          const { count: consecutiveCount, direction } = detectConsecutiveAbnormal(dataPoints);
-
-          if (consecutiveCount >= 3 && direction) {
-            const trendAnalysis = analyzeTrend(dataPoints);
-            const severity = determineTrendAlertSeverity(trendAnalysis, consecutiveCount);
-
-            if (severity && severity !== 'positive') {
-              const latestValue = sortedValues[0];
-              const info = labInfo.get(latestValue.labResultId)!;
-              const alertId = generateAlertId(biomarkerKey, latestValue.labResultId, 'trend');
-
-              alertList.push({
-                id: alertId,
-                type: 'trend',
-                severity,
-                biomarkerKey,
-                biomarkerName,
-                category: biomarkerDef?.category,
-                value: latestValue.value as number,
-                unit: latestValue.unit,
-                referenceRange: {
-                  low: latestValue.referenceRangeLow,
-                  high: latestValue.referenceRangeHigh,
-                },
-                status: direction,
-                date: info.date,
-                labName: info.labName,
-                labResultId: latestValue.labResultId,
-                message: formatAlertMessage(
-                  biomarkerName,
-                  direction,
-                  'trend',
-                  latestValue.value as number,
-                  latestValue.unit
-                ),
-                acknowledged: acknowledgedIds.has(alertId),
-                dismissed: dismissedIds.has(alertId),
-              });
-            }
-          }
-        }
+      const points = sortedValues.map((tv) => ({
+        date: labInfo.get(tv.labResultId)!.date,
+        value: tv.value as number,
+      }));
+      const trend = detectConsistentDirection(points);
+      if (trend) {
+        const latestValue = sortedValues[0];
+        const info = labInfo.get(latestValue.labResultId)!;
+        alertList.push({
+          id: generateAlertId(biomarkerKey, latestValue.id ?? latestValue.labResultId, 'trend'),
+          type: 'trend',
+          severity: 'warning',
+          biomarkerKey,
+          biomarkerName,
+          category: biomarkerDef?.category,
+          value: latestValue.value as number,
+          unit: latestValue.unit,
+          referenceRange: { low: latestValue.referenceRangeLow, high: latestValue.referenceRangeHigh },
+          status:
+            latestValue.status === 'high' || latestValue.status === 'low'
+              ? latestValue.status
+              : 'normal',
+          direction: trend.direction,
+          date: info.date,
+          labName: info.labName,
+          labResultId: latestValue.labResultId,
+          message: trendMessage(trend.direction, trend.start, trend.end),
+        });
       }
 
       // Check for improvement (was abnormal, now normal) - only needs 2 values
@@ -355,7 +266,11 @@ export function useAlerts(): UseAlertsResult {
       ) {
         const latestValue = sortedValues[0];
         const info = labInfo.get(latestValue.labResultId)!;
-        const alertId = generateAlertId(biomarkerKey, latestValue.labResultId, 'improvement');
+        const alertId = generateAlertId(
+          biomarkerKey,
+          latestValue.id ?? latestValue.labResultId,
+          'improvement'
+        );
 
         alertList.push({
           id: alertId,
@@ -374,35 +289,22 @@ export function useAlerts(): UseAlertsResult {
           date: info.date,
           labName: info.labName,
           labResultId: latestValue.labResultId,
-          message: formatAlertMessage(
-            biomarkerName,
-            'normal',
-            'improvement',
-            latestValue.value as number,
-            latestValue.unit
-          ),
-          acknowledged: acknowledgedIds.has(alertId),
-          dismissed: dismissedIds.has(alertId),
+          message: improvementMessage(biomarkerName),
         });
       }
     }
 
-    // Sort by severity (critical first) then by date (most recent first)
-    const severityOrder: Record<TrendSeverity, number> = {
-      critical: 0,
-      warning: 1,
-      info: 2,
-      positive: 3,
-    };
-
     return alertList
-      .filter((alert) => !alert.dismissed)
+      .filter((alert) => {
+        const through = acknowledgedThrough[alert.biomarkerKey];
+        const acknowledged = through !== undefined && alert.date.getTime() <= through.getTime();
+        return !acknowledged && !dismissedIds.has(alert.id);
+      })
       .sort((a, b) => {
-        const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
-        if (severityDiff !== 0) return severityDiff;
-        return b.date.getTime() - a.date.getTime();
+        const bySeverity = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+        return bySeverity !== 0 ? bySeverity : b.date.getTime() - a.date.getTime();
       });
-  }, [results, dismissedIds, acknowledgedIds]);
+  }, [results, acknowledgedThrough, dismissedIds]);
 
   /**
    * Group alerts by biomarker
@@ -421,19 +323,13 @@ export function useAlerts(): UseAlertsResult {
 
     for (const [biomarkerKey, biomarkerAlerts] of groups.entries()) {
       const latestAlert = biomarkerAlerts[0]; // Already sorted by date
-      const unacknowledgedCount = biomarkerAlerts.filter((a) => !a.acknowledged).length;
+      const unacknowledgedCount = biomarkerAlerts.filter((a) => a.type !== 'improvement').length;
 
       // Get highest severity
-      const severityOrder: Record<TrendSeverity, number> = {
-        critical: 0,
-        warning: 1,
-        info: 2,
-        positive: 3,
-      };
-      const severity = biomarkerAlerts.reduce(
+      const severity = biomarkerAlerts.reduce<AlertSeverity>(
         (highest, alert) =>
-          severityOrder[alert.severity] < severityOrder[highest] ? alert.severity : highest,
-        'positive' as TrendSeverity
+          SEVERITY_ORDER[alert.severity] < SEVERITY_ORDER[highest] ? alert.severity : highest,
+        'positive'
       );
 
       result.push({
@@ -449,13 +345,7 @@ export function useAlerts(): UseAlertsResult {
 
     // Sort groups by severity then by unacknowledged count
     return result.sort((a, b) => {
-      const severityOrder: Record<TrendSeverity, number> = {
-        critical: 0,
-        warning: 1,
-        info: 2,
-        positive: 3,
-      };
-      const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+      const severityDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
       if (severityDiff !== 0) return severityDiff;
       return b.unacknowledgedCount - a.unacknowledgedCount;
     });
@@ -465,30 +355,20 @@ export function useAlerts(): UseAlertsResult {
    * Count of unacknowledged alerts
    */
   const unacknowledgedCount = useMemo(
-    () => alerts.filter((alert) => !alert.acknowledged && alert.type !== 'improvement').length,
+    () => alerts.filter((alert) => alert.type !== 'improvement').length,
     [alerts]
   );
 
   /**
-   * Dismiss an alert temporarily
+   * Acknowledge an alert persistently: hides its biomarker's alerts up to its date
    */
-  const dismissAlert = useCallback((alertId: string) => {
-    setDismissedIds((prev) => new Set([...prev, alertId]));
-  }, []);
-
-  /**
-   * Acknowledge an alert persistently
-   */
-  const acknowledgeAlert = useCallback((alertId: string) => {
-    setAcknowledgedIds((prev) => new Set([...prev, alertId]));
-  }, []);
-
-  /**
-   * Clear all dismissed alerts
-   */
-  const clearDismissed = useCallback(() => {
-    setDismissedIds(new Set());
-  }, []);
+  const acknowledgeAlert = useCallback(
+    async (alertId: string) => {
+      const alert = alerts.find((a) => a.id === alertId);
+      if (alert) await acknowledge(alert.biomarkerKey, alert.date);
+    },
+    [alerts, acknowledge]
+  );
 
   /**
    * Filter alerts by category
@@ -517,9 +397,9 @@ export function useAlerts(): UseAlertsResult {
     unacknowledgedCount,
     isLoading,
     error,
-    dismissAlert,
+    dismissAlert: dismiss,
     acknowledgeAlert,
-    clearDismissed,
+    refresh,
     filterByCategory,
     getAlertsForBiomarker,
   };
