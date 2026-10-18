@@ -42,14 +42,25 @@ const CHART_COLORS = [
 export interface TrendsViewProps {
   /** Callback when user wants to navigate to import */
   onNavigateToImport?: () => void;
+  /** Callback when user wants to see the Alerts view */
+  onNavigateToAlerts?: () => void;
+  /** Biomarker to show when the view opens */
+  initialBiomarkerKey?: string;
+  /** Date of the data point to highlight */
+  highlightDate?: Date;
 }
 
 /**
  * TrendsView component
  */
-export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
+export function TrendsView({
+  onNavigateToImport,
+  onNavigateToAlerts,
+  initialBiomarkerKey,
+  highlightDate,
+}: TrendsViewProps = {}) {
   const { results, isLoading, error } = useLabResults();
-  const { alerts } = useAlerts();
+  const { unacknowledgedCount: alertCount } = useAlerts();
   const {
     createNote,
     updateNote,
@@ -58,7 +69,9 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
   } = useNotes();
 
   // State
-  const [selectedBiomarkerId, setSelectedBiomarkerId] = useState<string | null>(null);
+  const [selectedBiomarkerId, setSelectedBiomarkerId] = useState<string | null>(
+    initialBiomarkerKey ?? null
+  );
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
@@ -311,10 +324,15 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
           <IconChartLine size={24} />
           <Title order={2}>Trends</Title>
         </Group>
-        {alerts.length > 0 && (
-          <Text size="sm" c="dimmed">
-            {alerts.filter((a) => a.type !== 'improvement').length} alerts
-          </Text>
+        {alertCount > 0 && (
+          <Button
+            variant="subtle"
+            size="xs"
+            onClick={onNavigateToAlerts}
+            disabled={!onNavigateToAlerts}
+          >
+            View {alertCount} {alertCount === 1 ? 'alert' : 'alerts'}
+          </Button>
         )}
       </Group>
 
@@ -361,6 +379,7 @@ export function TrendsView({ onNavigateToImport }: TrendsViewProps = {}) {
               referenceRange={referenceRange}
               trendDirection={trendAnalysis?.direction}
               height={350}
+              highlightDate={highlightDate}
             />
           </Paper>
 

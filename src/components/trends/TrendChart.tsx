@@ -45,6 +45,8 @@ export interface TrendChartProps {
   height?: number;
   /** Whether to show the legend */
   showLegend?: boolean;
+  /** Date of the data point to highlight (e.g. opened from an alert) */
+  highlightDate?: Date;
 }
 
 /**
@@ -174,6 +176,7 @@ export function TrendChart({
   isLoading = false,
   height = 300,
   showLegend = false,
+  highlightDate,
 }: TrendChartProps) {
   // Transform data for Recharts
   const chartData = useMemo(() => {
@@ -366,14 +369,19 @@ export function TrendChart({
                       ? '#40c057'
                       : '#868e96';
 
+              const highlighted =
+                highlightDate !== undefined &&
+                payload.date instanceof Date &&
+                payload.date.toDateString() === highlightDate.toDateString();
               return (
                 <circle
                   cx={cx}
                   cy={cy}
-                  r={6}
+                  r={highlighted ? 9 : 6}
                   fill={fill}
-                  stroke="#fff"
-                  strokeWidth={2}
+                  stroke={highlighted ? '#1c7ed6' : '#fff'}
+                  strokeWidth={highlighted ? 3 : 2}
+                  aria-current={highlighted ? 'true' : undefined}
                   aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})`}
                 />
               );

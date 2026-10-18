@@ -5,3 +5,4 @@
  */
 
 export { OutOfRangeAlerts, type OutOfRangeAlertsProps } from './OutOfRangeAlerts';
+export { AlertsView, type AlertsViewProps } from './AlertsView';

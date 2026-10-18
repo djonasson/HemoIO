@@ -12,6 +12,8 @@ import {
   Stack,
   Center,
   Loader,
+  Badge,
+  VisuallyHidden,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -19,6 +21,7 @@ import {
   IconTimeline,
   IconUpload,
   IconChartLine,
+  IconBell,
   IconSettings,
   IconLock,
   IconBook,
@@ -34,10 +37,12 @@ import {
   useFilesystemSync,
   useAISettings,
   useLegacyKeyReconciliation,
+  useAlerts,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
+import { AlertsView } from '@components/alerts';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
@@ -47,7 +52,12 @@ import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
-type View = 'timeline' | 'import' | 'trends' | 'dictionary' | 'settings';
+type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'dictionary' | 'settings';
+
+interface TrendFocus {
+  biomarkerKey: string;
+  date: Date;
+}
 
 interface AppShellProps {
   children?: React.ReactNode;
@@ -78,6 +88,12 @@ const NAV_ITEMS: Array<{
     description: 'Analyze trends over time',
   },
   {
+    view: 'alerts',
+    label: 'Alerts',
+    icon: <IconBell size={20} />,
+    description: 'Abnormal values and trends',
+  },
+  {
     view: 'dictionary',
     label: 'Biomarkers',
     icon: <IconBook size={20} />,
@@ -102,6 +118,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { isReconciling } = useLegacyKeyReconciliation();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
+  const { unacknowledgedCount: alertCount, refresh: refreshAlerts } = useAlerts();
+  const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
+
+  // The badge's data must follow imports, restores and deletions made in other views
+  useEffect(() => {
+    void refreshAlerts();
+  }, [activeView, refreshAlerts]);
 
   // Export data loads on mount; reload it once stored keys are reconciled
   useEffect(() => {
@@ -114,10 +137,16 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const handleNavClick = useCallback(
     (view: View) => {
       setActiveView(view);
+      setTrendFocus(null);
       close();
     },
     [close]
   );
+
+  const handleOpenTrend = useCallback((biomarkerKey: string, date: Date) => {
+    setTrendFocus({ biomarkerKey, date });
+    setActiveView('trends');
+  }, []);
 
   const handleLock = useCallback(() => {
     lock();
@@ -298,13 +327,29 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
         <MantineAppShell.Navbar p="md">
           <Stack gap="xs">
-            {NAV_ITEMS.slice(0, 4).map((item) => (
+            {NAV_ITEMS.filter((item) => item.view !== 'settings').map((item) => (
               <NavLink
                 key={item.view}
                 // Without an href NavLink renders a bare <a>, which has no role
                 // and cannot be reached with Tab
                 component="button"
-                label={item.label}
+                rightSection={
+                  item.view === 'alerts' && alertCount > 0 ? (
+                    <Badge color="red" variant="filled" size="sm">
+                      {alertCount}
+                    </Badge>
+                  ) : undefined
+                }
+                label={
+                  item.view === 'alerts' && alertCount > 0 ? (
+                    <>
+                      {item.label}
+                      <VisuallyHidden>, {alertCount} abnormal values</VisuallyHidden>
+                    </>
+                  ) : (
+                    item.label
+                  )
+                }
                 description={item.description}
                 leftSection={item.icon}
                 active={activeView === item.view}
@@ -337,6 +382,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               view={activeView}
               onImportComplete={handleImportComplete}
               onNavigateToImport={handleNavigateToImport}
+              onNavigate={handleNavClick}
+              trendFocus={trendFocus}
+              onOpenTrend={handleOpenTrend}
               onRestore={handleRestore}
               isRestoring={isRestoring}
             />
@@ -359,6 +407,9 @@ interface MainContentProps {
   view: View;
   onImportComplete: (results: ReviewedResult[]) => void;
   onNavigateToImport: () => void;
+  onNavigate: (view: View) => void;
+  trendFocus: TrendFocus | null;
+  onOpenTrend: (biomarkerKey: string, date: Date) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }
@@ -367,6 +418,9 @@ function MainContent({
   view,
   onImportComplete,
   onNavigateToImport,
+  onNavigate,
+  trendFocus,
+  onOpenTrend,
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
@@ -453,7 +507,20 @@ function MainContent({
 
   // Render TrendsView for the trends view
   if (view === 'trends') {
-    return <TrendsView onNavigateToImport={onNavigateToImport} />;
+    return (
+      <TrendsView
+        // A new focus remounts the view so it opens on the focused biomarker
+        key={trendFocus ? `${trendFocus.biomarkerKey}-${trendFocus.date.getTime()}` : 'trends'}
+        onNavigateToImport={onNavigateToImport}
+        onNavigateToAlerts={() => onNavigate('alerts')}
+        initialBiomarkerKey={trendFocus?.biomarkerKey}
+        highlightDate={trendFocus?.date}
+      />
+    );
+  }
+
+  if (view === 'alerts') {
+    return <AlertsView onOpenTrend={onOpenTrend} />;
   }
 
   // Render SettingsPage for the settings view

@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { TrendsView } from './TrendsView';
@@ -354,7 +355,7 @@ describe('TrendsView', () => {
     expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
   });
 
-  it('should display alert count when alerts exist', () => {
+  it('links its alert count to the Alerts view', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, 'marker-1', 'Glucose', 150, 'high'),
@@ -399,9 +400,36 @@ describe('TrendsView', () => {
       getAlertsForBiomarker: vi.fn(() => []),
     });
 
-    renderWithProviders(<TrendsView />);
+    const onNavigateToAlerts = vi.fn();
+    renderWithProviders(<TrendsView onNavigateToAlerts={onNavigateToAlerts} />);
 
-    expect(screen.getByText(/1 alerts/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /View \d+ alerts?/ }));
+    expect(onNavigateToAlerts).toHaveBeenCalled();
+  });
+
+  it('opens with the requested biomarker selected', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', [
+          createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+          createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
+        ]),
+        createMockResult(2, '2024-02-15', [
+          createMockTestValue(3, 2, 'marker-1', 'Glucose', 100),
+          createMockTestValue(4, 2, 'marker-2', 'Hemoglobin', 13, 'normal', 'g/dL', 12, 16),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+
+    expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
   });
 
   it('should open compare modal when compare button is clicked', async () => {
