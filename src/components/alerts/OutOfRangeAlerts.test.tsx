@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { OutOfRangeAlerts } from './OutOfRangeAlerts';
@@ -235,7 +235,7 @@ describe('OutOfRangeAlerts', () => {
   });
 
   it('should call acknowledgeAlert when acknowledge button clicked', () => {
-    const mockAcknowledge = vi.fn();
+    const mockAcknowledge = vi.fn().mockResolvedValue(undefined);
     const alerts = [createMockAlert('1')];
 
     vi.mocked(useAlerts).mockReturnValue({
@@ -510,5 +510,64 @@ describe('OutOfRangeAlerts', () => {
     expect(onAlertClick).toHaveBeenCalledWith(
       expect.objectContaining({ biomarkerName: 'Glucose' })
     );
+  });
+  it('lets keyboard users expand a biomarker group', async () => {
+    const glucose = [alert({ id: 'a' }), alert({ id: 'b', date: new Date('2024-02-15') })];
+    const hemoglobin = [alert({ id: 'c', biomarkerKey: 'marker-2', biomarkerName: 'Hemoglobin', status: 'low' })];
+    mockAlerts([...glucose, ...hemoglobin]);
+    vi.mocked(useAlerts).mockReturnValue({
+      ...vi.mocked(useAlerts)(),
+      groupedAlerts: [
+        { biomarkerKey: 'marker-1', biomarkerName: 'Glucose', alerts: glucose, latestAlert: glucose[0], unacknowledgedCount: 2, severity: 'warning' },
+        { biomarkerKey: 'marker-2', biomarkerName: 'Hemoglobin', alerts: hemoglobin, latestAlert: hemoglobin[0], unacknowledgedCount: 1, severity: 'warning' },
+      ],
+    });
+    renderAlerts();
+
+    const toggle = screen.getByRole('button', { name: 'Glucose: 2 alerts' });
+    toggle.focus();
+    expect(toggle).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toHaveAccessibleName();
+    }
+  });
+
+  it('lets keyboard users read the full date', async () => {
+    mockAlerts([alert({ date: new Date('2024-01-15T12:00:00Z') })]);
+    renderAlerts();
+
+    const time = screen.getByText(/ago$/);
+    expect(time.tagName).toBe('TIME');
+    act(() => time.focus());
+    expect(time).toHaveFocus();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      new Date('2024-01-15T12:00:00Z').toLocaleDateString()
+    );
+  });
+
+  it('points the icon of a trend alert in the direction of the trend', () => {
+    mockAlerts([
+      alert({ type: 'trend', status: 'high', direction: 'decreasing', message: 'Consistently decreasing' }),
+    ]);
+    const { container } = renderAlerts();
+
+    expect(container.querySelector('.tabler-icon-trending-down')).not.toBeNull();
+    expect(container.querySelector('.tabler-icon-trending-up')).toBeNull();
+  });
+
+  it('shows an error when an acknowledgement cannot be saved', async () => {
+    mockAlerts([alert()]);
+    vi.mocked(useAlerts).mockReturnValue({
+      ...vi.mocked(useAlerts)(),
+      acknowledgeAlert: vi.fn().mockRejectedValue(new Error('quota')),
+    });
+    renderAlerts();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge alert' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
   });
 });

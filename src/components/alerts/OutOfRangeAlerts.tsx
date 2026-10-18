@@ -19,6 +19,7 @@ import {
   Select,
   ThemeIcon,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
@@ -33,7 +34,7 @@ import {
   IconEyeOff,
   IconFilter,
 } from '@tabler/icons-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
 import { indicatorColor } from '@services/alerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
@@ -55,10 +56,19 @@ export interface OutOfRangeAlertsProps {
 /**
  * Get status icon
  */
-function getStatusIcon(status: string, severity: string) {
-  if (severity === 'positive') {
+function getStatusIcon(alert: BiomarkerAlert) {
+  if (alert.type === 'improvement') {
     return <IconCheck size={16} />;
   }
+  // A trend points the way it moves, which may be back toward the range
+  if (alert.direction) {
+    return alert.direction === 'increasing' ? (
+      <IconTrendingUp size={16} />
+    ) : (
+      <IconTrendingDown size={16} />
+    );
+  }
+  const status = alert.status;
   if (status === 'high') {
     return <IconTrendingUp size={16} />;
   }
@@ -118,7 +128,7 @@ function AlertCard({
       <Group justify="space-between" wrap="nowrap">
         <Group gap="sm" wrap="nowrap">
           <ThemeIcon color={color} variant="light" size="md">
-            {getStatusIcon(alert.status, alert.severity)}
+            {getStatusIcon(alert)}
           </ThemeIcon>
           <Stack gap={2}>
             <Group gap="xs">
@@ -148,8 +158,19 @@ function AlertCard({
               {alert.message}
             </Text>
             <Group gap="xs">
-              <Tooltip label={alert.date.toLocaleDateString()}>
-                <Text size="xs" c="dimmed">
+              <Tooltip
+                label={alert.date.toLocaleDateString()}
+                events={{ hover: true, focus: true, touch: true }}
+              >
+                {/* Focusable so keyboard users can reveal the full date too */}
+                <Text
+                  component="time"
+                  dateTime={alert.date.toISOString()}
+                  tabIndex={0}
+                  size="xs"
+                  c="dimmed"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {formatRelativeTime(alert.date)}
                 </Text>
               </Tooltip>
@@ -214,47 +235,47 @@ function GroupedAlertCard({
 
   return (
     <Paper withBorder>
-      <Group
-        justify="space-between"
+      <UnstyledButton
+        w="100%"
         p="sm"
-        style={{
-          borderLeft: `4px solid var(--mantine-color-${color}-6)`,
-          cursor: 'pointer',
-        }}
+        style={{ borderLeft: `4px solid var(--mantine-color-${color}-6)` }}
         onClick={toggle}
-        role="button"
         aria-expanded={opened}
         aria-label={`${group.biomarkerName}: ${group.alerts.length} alerts`}
       >
-        <Group gap="sm">
-          <ThemeIcon color={color} variant="light" size="md">
-            {getStatusIcon(group.latestAlert.status, group.severity)}
-          </ThemeIcon>
-          <Stack gap={2}>
-            <Group gap="xs">
-              <Text size="sm" fw={500}>
-                {group.biomarkerName}
-              </Text>
-              <Badge size="xs" color={color}>
-                {group.alerts.length} {group.alerts.length === 1 ? 'alert' : 'alerts'}
-              </Badge>
-              {group.unacknowledgedCount > 0 && (
-                <Badge size="xs" color="red" variant="filled">
-                  {group.unacknowledgedCount} new
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="sm">
+            <ThemeIcon color={color} variant="light" size="md">
+              {getStatusIcon(group.latestAlert)}
+            </ThemeIcon>
+            <Stack gap={2}>
+              <Group gap="xs">
+                <Text size="sm" fw={500}>
+                  {group.biomarkerName}
+                </Text>
+                <Badge size="xs" color={color}>
+                  {group.alerts.length} {group.alerts.length === 1 ? 'alert' : 'alerts'}
                 </Badge>
+                {group.unacknowledgedCount > 0 && (
+                  <Badge size="xs" color="red" variant="filled">
+                    {group.unacknowledgedCount} new
+                  </Badge>
+                )}
+              </Group>
+              {group.category && (
+                <Text size="xs" c="dimmed">
+                  {CATEGORY_NAMES[group.category as BiomarkerCategory] || group.category}
+                </Text>
               )}
-            </Group>
-            {group.category && (
-              <Text size="xs" c="dimmed">
-                {CATEGORY_NAMES[group.category as BiomarkerCategory] || group.category}
-              </Text>
-            )}
-          </Stack>
+            </Stack>
+          </Group>
+          {opened ? (
+            <IconChevronUp size={16} aria-hidden="true" />
+          ) : (
+            <IconChevronDown size={16} aria-hidden="true" />
+          )}
         </Group>
-        <ActionIcon variant="subtle" size="sm">
-          {opened ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
-        </ActionIcon>
-      </Group>
+      </UnstyledButton>
 
       <Collapse in={opened}>
         <Stack gap="xs" p="sm" pt={0}>
@@ -294,6 +315,17 @@ export function OutOfRangeAlerts({
 
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleAcknowledge = useCallback(
+    (alertId: string) => {
+      setSaveError(null);
+      acknowledgeAlert(alertId).catch(() => {
+        setSaveError('Could not save the acknowledgement. Please try again.');
+      });
+    },
+    [acknowledgeAlert]
+  );
 
   // Get unique categories for filter
   const categories = useMemo(() => {
@@ -399,6 +431,12 @@ export function OutOfRangeAlerts({
         )}
       </Group>
 
+      {saveError && (
+        <Text role="alert" c="red" size="sm">
+          {saveError}
+        </Text>
+      )}
+
       {/* Alert list */}
       <Stack gap="sm">
         {visibleAlerts.map((alert) => (
@@ -406,7 +444,7 @@ export function OutOfRangeAlerts({
             key={alert.id}
             alert={alert}
             onDismiss={() => dismissAlert(alert.id)}
-            onAcknowledge={() => void acknowledgeAlert(alert.id)}
+            onAcknowledge={() => handleAcknowledge(alert.id)}
             onClick={onAlertClick ? () => onAlertClick(alert) : undefined}
           />
         ))}
@@ -420,9 +458,7 @@ export function OutOfRangeAlerts({
           leftSection={showAll ? <IconEyeOff size={14} /> : <IconEye size={14} />}
           onClick={() => setShowAll(!showAll)}
         >
-          {showAll
-            ? 'Show less'
-            : `Show ${filteredAlerts.length - maxVisible} more alerts`}
+          {showAll ? 'Show less' : `Show ${filteredAlerts.length - maxVisible} more alerts`}
         </Button>
       )}
 
@@ -437,7 +473,7 @@ export function OutOfRangeAlerts({
               key={group.biomarkerKey}
               group={group}
               onDismiss={dismissAlert}
-              onAcknowledge={(alertId) => void acknowledgeAlert(alertId)}
+              onAcknowledge={handleAcknowledge}
               onClick={onAlertClick}
             />
           ))}

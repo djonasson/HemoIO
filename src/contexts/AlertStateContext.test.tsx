@@ -56,4 +56,44 @@ describe('AlertStateProvider', () => {
     expect(result.current.dismissedIds.has('out_of_range_glucose_1')).toBe(true);
     expect(mockSavePreferences).not.toHaveBeenCalled();
   });
+  it('keeps both of two acknowledgements made in quick succession', async () => {
+    let stored: Record<string, string> = {};
+    mockGetPreferences.mockImplementation(async () => ({ ...basePrefs, acknowledgedAlerts: { ...stored } }));
+    mockSavePreferences.mockImplementation(async (prefs: { acknowledgedAlerts: Record<string, string> }) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      stored = prefs.acknowledgedAlerts;
+      return 1;
+    });
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(mockGetPreferences).toHaveBeenCalled());
+
+    await act(async () => {
+      await Promise.all([
+        result.current.acknowledge('glucose', new Date('2024-03-10T10:00:00.000Z')),
+        result.current.acknowledge('hemoglobin', new Date('2024-04-10T10:00:00.000Z')),
+      ]);
+    });
+
+    expect(stored).toEqual({
+      glucose: '2024-03-10T10:00:00.000Z',
+      hemoglobin: '2024-04-10T10:00:00.000Z',
+    });
+  });
+
+  it('undoes an acknowledgement that could not be saved and reports the failure', async () => {
+    mockSavePreferences.mockRejectedValue(new Error('quota'));
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+
+    let error: unknown;
+    await act(async () => {
+      await result.current.acknowledge('hemoglobin', new Date('2024-05-01T10:00:00.000Z')).catch((e) => {
+        error = e;
+      });
+    });
+
+    expect(error).toBeInstanceOf(Error);
+    expect(result.current.acknowledgedThrough.hemoglobin).toBeUndefined();
+    expect(result.current.acknowledgedThrough.glucose).toBeDefined();
+  });
 });

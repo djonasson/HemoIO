@@ -660,4 +660,57 @@ describe('useAlerts', () => {
 
     expect(result.current.refresh).toBe(refresh);
   });
+  it('does not raise a trend alert when the latest value is within range', () => {
+    mockResults(
+      [80, 85, 90, 95].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            value,
+            status: 'normal',
+            referenceRangeLow: 70,
+            referenceRangeHigh: 100,
+          }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.alerts).toHaveLength(0);
+    expect(result.current.unacknowledgedCount).toBe(0);
+  });
+
+  it('counts only out-of-range values, not the trend they form', () => {
+    mockResults(
+      [110, 120, 130, 140].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, { value, status: 'high', referenceRangeHigh: 100 }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(true);
+    expect(result.current.unacknowledgedCount).toBe(4);
+    expect(result.current.groupedAlerts[0].unacknowledgedCount).toBe(4);
+  });
+
+  it('compares trend values in one unit', () => {
+    // 7.5 mmol/L is about 135 mg/dL: converted, the values fall then rise
+    mockResults([
+      createMockResult(1, '2024-01-10', [
+        createMockTestValue(1, 1, { value: 7.5, unit: 'mmol/L', status: 'high', referenceRangeHigh: 5.6 }),
+      ]),
+      ...[120, 121, 122].map((value, i) =>
+        createMockResult(i + 2, `2024-0${i + 2}-10`, [
+          createMockTestValue(i + 2, i + 2, { value, status: 'high', referenceRangeHigh: 100 }),
+        ])
+      ),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(false);
+  });
 });

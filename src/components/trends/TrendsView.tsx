@@ -379,7 +379,10 @@ export function TrendsView({
               referenceRange={referenceRange}
               trendDirection={trendAnalysis?.direction}
               height={350}
-              highlightDate={highlightDate}
+              // The highlight marks the opened alert's value, so only on its biomarker
+              highlightDate={
+                selectedBiomarkerId === initialBiomarkerKey ? highlightDate : undefined
+              }
             />
           </Paper>
 

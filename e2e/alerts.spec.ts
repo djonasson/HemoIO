@@ -25,6 +25,7 @@ import {
   HEMOGLOBIN,
   biomarkerSelect,
   goToTrends,
+  selectBiomarker,
   type LabVisit,
 } from './steps/trends.steps';
 
@@ -235,6 +236,13 @@ test.describe('Alerts with Data', () => {
     await expect(
       page.getByRole('main').locator('[aria-label="Mar 10, 24: 150 mg/dL (high)"]')
     ).toHaveAttribute('aria-current', 'true');
+
+    // The highlight belongs to the alert's biomarker, not to other biomarkers on that day
+    await selectBiomarker(page, 'Hemoglobin');
+    await expect(
+      page.getByRole('main').locator('[aria-label="Mar 10, 24: 10 g/dL (low)"]')
+    ).toBeVisible();
+    await expect(page.getByRole('main').locator('[aria-current="true"]')).toHaveCount(0);
   });
 
   // Scenario: Dismiss alert temporarily
