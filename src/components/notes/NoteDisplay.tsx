@@ -14,11 +14,13 @@ import {
   Stack,
   Modal,
   Button,
+  Spoiler,
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconNote } from '@tabler/icons-react';
 import { RelativeTime } from '@components/common/RelativeTime';
 import type { UserNote } from '@/types';
 import { NoteEditor } from './NoteEditor';
+import { NoteContent } from './NoteContent';
 
 /**
  * Props for NoteDisplay component
@@ -138,9 +140,14 @@ export function NoteDisplay({
             </Group>
           </Group>
 
-          <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-            {note.content}
-          </Text>
+          <Spoiler
+            maxHeight={120}
+            showLabel="Show full note"
+            hideLabel="Show less"
+            styles={{ control: { fontSize: 'var(--mantine-font-size-xs)' } }}
+          >
+            <NoteContent content={note.content} />
+          </Spoiler>
 
           {note.tags.length > 0 && (
             <Group gap="xs">

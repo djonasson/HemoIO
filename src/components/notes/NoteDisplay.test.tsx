@@ -265,8 +265,9 @@ describe('NoteDisplay', () => {
       const note = createMockNote({ content: 'Line 1\nLine 2\nLine 3' });
       renderWithProviders(<NoteDisplay {...defaultProps} note={note} />);
 
-      const contentElement = screen.getByText(/Line 1/);
-      expect(contentElement).toHaveStyle({ whiteSpace: 'pre-wrap' });
+      const paragraph = screen.getByText(/Line 1/);
+      expect(paragraph).toHaveTextContent('Line 1Line 2Line 3');
+      expect(paragraph.querySelectorAll('br')).toHaveLength(2);
     });
   });
 });
