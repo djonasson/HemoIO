@@ -49,7 +49,7 @@ function toLocalDay(value: DateValue): Date | null {
 
 export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): React.ReactNode {
   const { notes, isLoading, allTags } = useNotes();
-  const { results } = useLabResults();
+  const { results, isLoading: isLoadingResults } = useLabResults();
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -107,7 +107,8 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
     else if (attachment.kind === 'biomarker') onOpenTrend(attachment.biomarkerKey);
   };
 
-  if (isLoading) {
+  // Labels need the lab results: without them every note would look detached
+  if (isLoading || isLoadingResults) {
     return (
       <Center h="50vh">
         <Loader aria-label="Loading notes" />

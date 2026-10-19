@@ -131,4 +131,17 @@ describe('NotesView', () => {
     renderView();
     expect(screen.getByText(/No notes yet/)).toBeInTheDocument();
   });
+
+  it('waits for lab results before labelling notes', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [],
+      isLoading: true,
+      error: null,
+    } as unknown as ReturnType<typeof useLabResults>);
+    renderView();
+
+    expect(screen.queryByText('Deleted lab result')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('article')).toHaveLength(0);
+    expect(screen.getByLabelText('Loading notes')).toBeInTheDocument();
+  });
 });
