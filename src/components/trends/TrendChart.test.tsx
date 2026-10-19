@@ -5,7 +5,8 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { TrendChart, CustomTooltip } from './TrendChart';
+import { TrendChart } from './TrendChart';
+import { CustomTooltip } from './TrendChartTooltip';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 function renderWithProviders(ui: React.ReactElement) {

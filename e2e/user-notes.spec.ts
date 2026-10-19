@@ -398,6 +398,14 @@ test.describe('Notes with Data', () => {
     await expect(
       main.locator('.recharts-tooltip-wrapper').getByText('Big dinner the night before')
     ).toBeVisible();
+
+    // Focusing it from the keyboard shows the preview and a focus ring
+    await page.mouse.move(0, 0);
+    await noted.focus();
+    await expect(main.locator('[data-focus-preview="true"]')).toContainText(
+      'Big dinner the night before'
+    );
+    await expect(main.locator('[data-focus-ring="true"]')).toBeVisible();
   });
 
   test('should allow adding notes from trends view', async ({ page }) => {

@@ -5,7 +5,7 @@
  * Includes reference range visualization and status-based point coloring.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import {
   LineChart,
   Line,
@@ -18,9 +18,14 @@ import {
   ReferenceArea,
   Legend,
 } from 'recharts';
-import { Paper, Text, Stack, Group, Badge, Center, Loader } from '@mantine/core';
+import { Paper, Text, Stack, Group, Badge, Center, Loader, Box } from '@mantine/core';
 import { IconTrendingUp, IconTrendingDown, IconMinus, IconAlertCircle } from '@tabler/icons-react';
 import type { TrendDataPoint, TrendDirectionResult } from '@services/statistics/trendAnalysis';
+import { CustomTooltip } from './TrendChartTooltip';
+import {
+  TrendChartFocusOverlay,
+  type TrendChartFocusOverlayHandle,
+} from './TrendChartFocusOverlay';
 
 /**
  * Props for TrendChart component
@@ -62,82 +67,6 @@ function formatDate(date: Date): string {
     day: 'numeric',
     year: '2-digit',
   });
-}
-
-/**
- * Custom tooltip component
- */
-export function CustomTooltip({
-  active,
-  payload,
-  label,
-  notePreviews,
-}: {
-  active?: boolean;
-  payload?: Array<{ payload: TrendDataPoint & { formattedDate: string } }>;
-  label?: string;
-  notePreviews?: Record<number, string>;
-}) {
-  if (!active || !payload || payload.length === 0) {
-    return null;
-  }
-
-  const data = payload[0].payload;
-
-  return (
-    <Paper shadow="md" p="sm" withBorder>
-      <Stack gap="xs">
-        <Text size="sm" fw={500}>
-          {label}
-        </Text>
-        <Group gap="xs">
-          <Text size="sm">Value:</Text>
-          <Text size="sm" fw={500}>
-            {data.value} {data.unit}
-          </Text>
-        </Group>
-        {data.referenceRange && (
-          <Group gap="xs">
-            <Text size="sm" c="dimmed">
-              Reference:
-            </Text>
-            <Text size="sm" c="dimmed">
-              {data.referenceRange.low} - {data.referenceRange.high}
-            </Text>
-          </Group>
-        )}
-        {data.labName && (
-          <Text size="xs" c="dimmed">
-            {data.labName}
-          </Text>
-        )}
-        {data.testValueId !== undefined && notePreviews?.[data.testValueId] && (
-          <Stack gap={0}>
-            <Text size="xs" fw={500}>
-              Note
-            </Text>
-            <Text size="xs" maw={240}>
-              {notePreviews[data.testValueId]}
-            </Text>
-          </Stack>
-        )}
-        <Badge
-          size="xs"
-          color={
-            data.status === 'high'
-              ? 'red'
-              : data.status === 'low'
-                ? 'orange'
-                : data.status === 'normal'
-                  ? 'green'
-                  : 'gray'
-          }
-        >
-          {data.status || 'unknown'}
-        </Badge>
-      </Stack>
-    </Paper>
-  );
 }
 
 /**
@@ -196,6 +125,9 @@ export function TrendChart({
   notePreviews,
   onPointSelect,
 }: TrendChartProps) {
+  // Keyboard focus is drawn by the overlay, which owns that state
+  const focusOverlay = useRef<TrendChartFocusOverlayHandle>(null);
+
   // Transform data for Recharts
   const chartData = useMemo(() => {
     return dataPoints
@@ -299,170 +231,177 @@ export function TrendChart({
         {trendDirection && <TrendIndicator direction={trendDirection} />}
       </Group>
 
-      <ResponsiveContainer width="100%" height={height}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+      <Box pos="relative">
+        <ResponsiveContainer width="100%" height={height}>
+          <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
 
-          <XAxis
-            dataKey="formattedDate"
-            tick={{ fontSize: 12 }}
-            tickMargin={8}
-          />
+            <XAxis dataKey="formattedDate" tick={{ fontSize: 12 }} tickMargin={8} />
 
-          <YAxis
-            domain={yDomain}
-            tick={{ fontSize: 12 }}
-            tickMargin={8}
-            label={{
-              value: unit,
-              angle: -90,
-              position: 'insideLeft',
-              style: { textAnchor: 'middle', fontSize: 12 },
-            }}
-          />
-
-          {/* Reference range area */}
-          {referenceRange?.low !== undefined && referenceRange?.high !== undefined && (
-            <ReferenceArea
-              y1={referenceRange.low}
-              y2={referenceRange.high}
-              fill="green"
-              fillOpacity={0.1}
-              stroke="green"
-              strokeOpacity={0.3}
-              strokeDasharray="3 3"
-            />
-          )}
-
-          {/* Reference lines for bounds */}
-          {referenceRange?.low !== undefined && (
-            <ReferenceLine
-              y={referenceRange.low}
-              stroke="orange"
-              strokeDasharray="3 3"
+            <YAxis
+              domain={yDomain}
+              tick={{ fontSize: 12 }}
+              tickMargin={8}
               label={{
-                value: `Low: ${referenceRange.low}`,
-                position: 'right',
-                fontSize: 10,
-                fill: 'orange',
+                value: unit,
+                angle: -90,
+                position: 'insideLeft',
+                style: { textAnchor: 'middle', fontSize: 12 },
               }}
             />
-          )}
 
-          {referenceRange?.high !== undefined && (
-            <ReferenceLine
-              y={referenceRange.high}
-              stroke="red"
-              strokeDasharray="3 3"
-              label={{
-                value: `High: ${referenceRange.high}`,
-                position: 'right',
-                fontSize: 10,
-                fill: 'red',
-              }}
-            />
-          )}
+            {/* Reference range area */}
+            {referenceRange?.low !== undefined && referenceRange?.high !== undefined && (
+              <ReferenceArea
+                y1={referenceRange.low}
+                y2={referenceRange.high}
+                fill="green"
+                fillOpacity={0.1}
+                stroke="green"
+                strokeOpacity={0.3}
+                strokeDasharray="3 3"
+              />
+            )}
 
-          <Tooltip content={<CustomTooltip notePreviews={notePreviews} />} />
+            {/* Reference lines for bounds */}
+            {referenceRange?.low !== undefined && (
+              <ReferenceLine
+                y={referenceRange.low}
+                stroke="orange"
+                strokeDasharray="3 3"
+                label={{
+                  value: `Low: ${referenceRange.low}`,
+                  position: 'right',
+                  fontSize: 10,
+                  fill: 'orange',
+                }}
+              />
+            )}
 
-          {showLegend && <Legend />}
+            {referenceRange?.high !== undefined && (
+              <ReferenceLine
+                y={referenceRange.high}
+                stroke="red"
+                strokeDasharray="3 3"
+                label={{
+                  value: `High: ${referenceRange.high}`,
+                  position: 'right',
+                  fontSize: 10,
+                  fill: 'red',
+                }}
+              />
+            )}
 
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="#228be6"
-            strokeWidth={2}
-            dot={(props) => {
-              const { cx, cy, payload } = props;
-              const status = payload.status;
-              const fill =
-                status === 'high'
-                  ? '#fa5252'
-                  : status === 'low'
-                    ? '#fd7e14'
-                    : status === 'normal'
-                      ? '#40c057'
-                      : '#868e96';
+            <Tooltip content={<CustomTooltip notePreviews={notePreviews} />} />
 
-              const highlighted =
-                highlightDate !== undefined &&
-                payload.date instanceof Date &&
-                payload.date.toDateString() === highlightDate.toDateString();
-              const preview =
-                payload.testValueId !== undefined ? notePreviews?.[payload.testValueId] : undefined;
-              const r = highlighted ? 9 : 6;
-              const select = onPointSelect ? () => onPointSelect(payload) : undefined;
-              return (
-                <g key={`point-${payload.timestamp}`}>
-                  {preview && (
+            {showLegend && <Legend />}
+
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#228be6"
+              strokeWidth={2}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                const status = payload.status;
+                const fill =
+                  status === 'high'
+                    ? '#fa5252'
+                    : status === 'low'
+                      ? '#fd7e14'
+                      : status === 'normal'
+                        ? '#40c057'
+                        : '#868e96';
+
+                const highlighted =
+                  highlightDate !== undefined &&
+                  payload.date instanceof Date &&
+                  payload.date.toDateString() === highlightDate.toDateString();
+                const preview =
+                  payload.testValueId !== undefined
+                    ? notePreviews?.[payload.testValueId]
+                    : undefined;
+                const r = highlighted ? 9 : 6;
+                const select = onPointSelect ? () => onPointSelect(payload) : undefined;
+                return (
+                  <g key={`point-${payload.timestamp}`}>
+                    {preview && (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={r + 4}
+                        fill="none"
+                        stroke="#7048e8"
+                        strokeWidth={2}
+                        pointerEvents="none"
+                        aria-hidden="true"
+                      />
+                    )}
                     <circle
                       cx={cx}
                       cy={cy}
-                      r={r + 4}
-                      fill="none"
-                      stroke="#7048e8"
-                      strokeWidth={2}
-                      pointerEvents="none"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={r}
-                    fill={fill}
-                    stroke={highlighted ? '#1c7ed6' : '#fff'}
-                    strokeWidth={highlighted ? 3 : 2}
-                    aria-current={highlighted ? 'true' : undefined}
-                    aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
-                    role={select ? 'button' : undefined}
-                    tabIndex={select ? 0 : undefined}
-                    style={select ? { cursor: 'pointer' } : undefined}
-                    onClick={select}
-                    onKeyDown={
-                      select
-                        ? (event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              select();
+                      r={r}
+                      fill={fill}
+                      stroke={highlighted ? '#1c7ed6' : '#fff'}
+                      strokeWidth={highlighted ? 3 : 2}
+                      aria-current={highlighted ? 'true' : undefined}
+                      aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
+                      role={select ? 'button' : undefined}
+                      tabIndex={select ? 0 : undefined}
+                      style={select ? { cursor: 'pointer' } : undefined}
+                      onClick={select}
+                      onFocus={() =>
+                        focusOverlay.current?.show({
+                          x: cx ?? 0,
+                          y: cy ?? 0,
+                          radius: r,
+                          point: payload,
+                        })
+                      }
+                      onBlur={() => focusOverlay.current?.hide()}
+                      onKeyDown={
+                        select
+                          ? (event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                select();
+                              }
                             }
-                          }
-                        : undefined
-                    }
-                  >
-                    {/* Read as the point's description by screen readers */}
-                    {preview && <title>{preview}</title>}
-                  </circle>
-                  {preview && (
-                    <text
-                      x={(cx ?? 0) + r + 3}
-                      y={(cy ?? 0) - r - 3}
-                      fontSize={11}
-                      fill="#7048e8"
-                      pointerEvents="none"
-                      aria-hidden="true"
+                          : undefined
+                      }
                     >
-                      ✎
-                    </text>
-                  )}
-                </g>
-              );
-            }}
-            activeDot={{
-              // Drawn over the hovered point: it must not take the point's clicks
-              pointerEvents: 'none',
-              r: 8,
-              stroke: '#228be6',
-              strokeWidth: 2,
-              fill: '#fff',
-            }}
-            name={biomarkerName}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+                      {/* Read as the point's description by screen readers */}
+                      {preview && <title>{preview}</title>}
+                    </circle>
+                    {preview && (
+                      <text
+                        x={(cx ?? 0) + r + 3}
+                        y={(cy ?? 0) - r - 3}
+                        fontSize={11}
+                        fill="#7048e8"
+                        pointerEvents="none"
+                        aria-hidden="true"
+                      >
+                        ✎
+                      </text>
+                    )}
+                  </g>
+                );
+              }}
+              activeDot={{
+                // Drawn over the hovered point: it must not take the point's clicks
+                pointerEvents: 'none',
+                r: 8,
+                stroke: '#228be6',
+                strokeWidth: 2,
+                fill: '#fff',
+              }}
+              name={biomarkerName}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        <TrendChartFocusOverlay ref={focusOverlay} notePreviews={notePreviews} />
+      </Box>
     </Stack>
   );
 }
