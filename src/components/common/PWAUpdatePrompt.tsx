@@ -48,9 +48,9 @@ export function PWAUpdatePrompt(): React.ReactNode {
   const showPrompt = needRefresh && !dismissed;
 
   const handleUpdate = async () => {
+    // Activates the waiting worker; the plugin reloads the page once the new
+    // version controls it. Reloading here would race that and could load the old one.
     await updateServiceWorker(true);
-    // Reload the page to use the new version
-    window.location.reload();
   };
 
   const handleDismiss = () => {

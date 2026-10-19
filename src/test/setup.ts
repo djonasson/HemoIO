@@ -39,6 +39,16 @@ const originalConsole = Object.fromEntries(
 ) as Record<ConsoleMethod, (...args: unknown[]) => void>;
 let unexpectedOutput: string[] = [];
 
+// jsdom reports what it cannot do (e.g. "Not implemented: navigation") on its
+// own virtual console, which bypasses the console methods patched below
+interface VirtualConsole {
+  on(event: 'jsdomError', listener: (error: Error) => void): void;
+}
+const { jsdom } = globalThis as unknown as { jsdom?: { virtualConsole?: VirtualConsole } };
+jsdom?.virtualConsole?.on('jsdomError', (error) => {
+  unexpectedOutput.push(`jsdom: ${error.message}`);
+});
+
 beforeEach(() => {
   unexpectedOutput = [];
   for (const method of CONSOLE_METHODS) {
