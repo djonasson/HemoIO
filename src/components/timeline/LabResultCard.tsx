@@ -4,7 +4,7 @@
  * Expandable card displaying a lab result summary with test values.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Paper,
   Group,
@@ -40,6 +40,8 @@ export interface LabResultCardProps {
   onDelete: (id: number) => void;
   /** Whether the card is initially expanded */
   defaultExpanded?: boolean;
+  /** Scroll the card into view when it mounts (opened from elsewhere) */
+  scrollIntoViewOnMount?: boolean;
   /** Notes attached to this lab result */
   notes?: UserNote[];
   /** Callback when creating a note */
@@ -79,12 +81,19 @@ export function LabResultCard({
   result,
   onDelete,
   defaultExpanded = false,
+  scrollIntoViewOnMount = false,
   notes = [],
   onCreateNote,
   onUpdateNote,
   onDeleteNote,
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Opened from elsewhere (e.g. a note): bring the card into view
+    if (scrollIntoViewOnMount) cardRef.current?.scrollIntoView?.({ block: 'center' });
+  }, [scrollIntoViewOnMount]);
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
     useDisclosure(false);
 
@@ -141,6 +150,7 @@ export function LabResultCard({
   return (
     <>
       <Paper
+        ref={cardRef}
         p="md"
         withBorder
         radius="md"

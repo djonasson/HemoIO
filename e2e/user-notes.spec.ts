@@ -640,8 +640,11 @@ test.describe('Note formatting and display', () => {
     const card = await openLabResultNotes(page, JAN_DAY);
     await addNote(card, 'Timestamp check');
 
+    // Reached from the keyboard: the tooltip follows keyboard focus
     const time = card.getByText('just now', { exact: true });
-    await time.focus();
+    await card.getByRole('button', { name: 'Edit note' }).focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(time).toBeFocused();
     await expect(page.getByRole('tooltip')).toContainText(todayShort());
   });
 

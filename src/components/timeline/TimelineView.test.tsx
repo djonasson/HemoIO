@@ -345,4 +345,26 @@ describe('TimelineView', () => {
       expect(consoleError).toHaveBeenCalledWith('Failed to delete result:', expect.any(Error));
     });
   });
+
+  it('opens the requested lab result', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', 'Quest Diagnostics'),
+        createMockResult(2, '2024-03-20', 'LabCorp'),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TimelineView onNavigateToImport={() => {}} focusLabResultId={2} />);
+
+    const regions = screen.getAllByRole('region', { name: /^Lab result from / });
+    const expanded = regions.filter((r) => r.getAttribute('aria-expanded') === 'true');
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]).toHaveTextContent('LabCorp');
+  });
 });

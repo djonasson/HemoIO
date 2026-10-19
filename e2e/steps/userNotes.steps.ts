@@ -167,4 +167,4 @@ export function noteTimestamp(container: Locator, iso: string): Locator {
 }
 
 /** A long note, to exercise collapsing */
-export const LONG_NOTE = `${'Felt tired most afternoons and slept badly. '.repeat(12)}End of the long note.`;
+export const LONG_NOTE = `${'Felt tired most afternoons and slept badly.\n'.repeat(12)}End of the long note.`;

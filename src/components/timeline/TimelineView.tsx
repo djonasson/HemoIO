@@ -17,6 +17,8 @@ import { EmptyTimeline } from './EmptyTimeline';
 export interface TimelineViewProps {
   /** Callback when user wants to navigate to import view */
   onNavigateToImport: () => void;
+  /** Lab result to open and scroll to, e.g. when coming from a note */
+  focusLabResultId?: number;
 }
 
 /**
@@ -24,6 +26,7 @@ export interface TimelineViewProps {
  */
 export function TimelineView({
   onNavigateToImport,
+  focusLabResultId,
 }: TimelineViewProps): React.ReactNode {
   const { results, isLoading, error, filters, setFilters, deleteResult, refresh } =
     useLabResults();
@@ -161,6 +164,8 @@ export function TimelineView({
             <LabResultCard
               key={result.id}
               result={result}
+              defaultExpanded={result.id === focusLabResultId}
+              scrollIntoViewOnMount={result.id === focusLabResultId}
               onDelete={handleDelete}
               notes={result.id !== undefined ? getNotesForLabResult(result.id) : []}
               onCreateNote={handleCreateNote}

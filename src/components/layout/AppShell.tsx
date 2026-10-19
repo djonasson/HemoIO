@@ -22,6 +22,7 @@ import {
   IconUpload,
   IconChartLine,
   IconBell,
+  IconNotes,
   IconSettings,
   IconLock,
   IconBook,
@@ -43,6 +44,7 @@ import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
 import { AlertsView } from '@components/alerts';
+import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
@@ -52,11 +54,12 @@ import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 import type { BiomarkerDefinition } from '@data/biomarkers';
 
-type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'dictionary' | 'settings';
+type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'notes' | 'dictionary' | 'settings';
 
 interface TrendFocus {
   biomarkerKey: string;
-  date: Date;
+  /** Date of the data point to highlight, if any */
+  date?: Date;
 }
 
 interface AppShellProps {
@@ -94,6 +97,12 @@ const NAV_ITEMS: Array<{
     description: 'Abnormal values and trends',
   },
   {
+    view: 'notes',
+    label: 'Notes',
+    icon: <IconNotes size={20} />,
+    description: 'All your notes',
+  },
+  {
     view: 'dictionary',
     label: 'Biomarkers',
     icon: <IconBook size={20} />,
@@ -120,6 +129,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount, refresh: refreshAlerts } = useAlerts();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
+  const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
   // The badge's data must follow imports, restores and deletions made in other views
   useEffect(() => {
@@ -138,14 +148,20 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     (view: View) => {
       setActiveView(view);
       setTrendFocus(null);
+      setTimelineFocus(null);
       close();
     },
     [close]
   );
 
-  const handleOpenTrend = useCallback((biomarkerKey: string, date: Date) => {
+  const handleOpenTrend = useCallback((biomarkerKey: string, date?: Date) => {
     setTrendFocus({ biomarkerKey, date });
     setActiveView('trends');
+  }, []);
+
+  const handleOpenLabResult = useCallback((labResultId: number) => {
+    setTimelineFocus(labResultId);
+    setActiveView('timeline');
   }, []);
 
   const handleLock = useCallback(() => {
@@ -385,6 +401,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onNavigate={handleNavClick}
               trendFocus={trendFocus}
               onOpenTrend={handleOpenTrend}
+              timelineFocus={timelineFocus}
+              onOpenLabResult={handleOpenLabResult}
               onRestore={handleRestore}
               isRestoring={isRestoring}
             />
@@ -409,7 +427,9 @@ interface MainContentProps {
   onNavigateToImport: () => void;
   onNavigate: (view: View) => void;
   trendFocus: TrendFocus | null;
-  onOpenTrend: (biomarkerKey: string, date: Date) => void;
+  onOpenTrend: (biomarkerKey: string, date?: Date) => void;
+  timelineFocus: number | null;
+  onOpenLabResult: (labResultId: number) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }
@@ -421,6 +441,8 @@ function MainContent({
   onNavigate,
   trendFocus,
   onOpenTrend,
+  timelineFocus,
+  onOpenLabResult,
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
@@ -436,7 +458,14 @@ function MainContent({
 
   // Render TimelineView for the timeline view
   if (view === 'timeline') {
-    return <TimelineView onNavigateToImport={onNavigateToImport} />;
+    return (
+      <TimelineView
+        // A new focus remounts the view so the focused result opens expanded
+        key={timelineFocus ?? 'timeline'}
+        onNavigateToImport={onNavigateToImport}
+        focusLabResultId={timelineFocus ?? undefined}
+      />
+    );
   }
 
   // Render ImportWizard for the import view
@@ -510,7 +539,11 @@ function MainContent({
     return (
       <TrendsView
         // A new focus remounts the view so it opens on the focused biomarker
-        key={trendFocus ? `${trendFocus.biomarkerKey}-${trendFocus.date.getTime()}` : 'trends'}
+        key={
+          trendFocus
+            ? `${trendFocus.biomarkerKey}-${trendFocus.date?.getTime() ?? 'all'}`
+            : 'trends'
+        }
         onNavigateToImport={onNavigateToImport}
         onNavigateToAlerts={() => onNavigate('alerts')}
         initialBiomarkerKey={trendFocus?.biomarkerKey}
@@ -521,6 +554,10 @@ function MainContent({
 
   if (view === 'alerts') {
     return <AlertsView onOpenTrend={onOpenTrend} />;
+  }
+
+  if (view === 'notes') {
+    return <NotesView onOpenLabResult={onOpenLabResult} onOpenTrend={onOpenTrend} />;
   }
 
   // Render SettingsPage for the settings view
