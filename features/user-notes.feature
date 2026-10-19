@@ -21,8 +21,10 @@ Feature: User Notes
     Given I am viewing the trends for "Glucose"
     When I click on a data point on the chart
     And I click "Add Note"
-    Then I should see a note editor
-    And the note should be linked to that specific measurement
+    Then I should see a note editor headed "Note for 125 mg/dL on Jan 15, 2024"
+    When I save the note
+    Then the note should be linked to that specific measurement
+    And the data point should be marked as having notes
 
   Scenario: Note editor supports basic formatting
     Given I am creating a new note
@@ -38,6 +40,7 @@ Feature: User Notes
     When I save the note
     Then the note should display the creation timestamp
     And the timestamp should show relative time (e.g., "just now")
+    And the full date and time should be shown on hover or focus
 
   # Note Display
 
@@ -51,7 +54,7 @@ Feature: User Notes
     Given I have notes attached to biomarker values
     When I view the trend chart for that biomarker
     Then data points with notes should have a distinct marker
-    And hovering over the marker should show the note preview
+    And hovering over or focusing the marker should show the note preview
 
   Scenario: Expand note to see full content
     Given I have a long note on a lab result
@@ -62,9 +65,11 @@ Feature: User Notes
 
   Scenario: Notes list view
     Given I have multiple notes across different results
-    When I navigate to the notes section
-    Then I should see all my notes in chronological order
+    When I navigate to the Notes view
+    Then I should see all my notes, newest first
     And each note should show which result or biomarker it's attached to
+    When I click what a note is attached to
+    Then I should be taken to that lab result or biomarker trend
 
   # Note Editing
 

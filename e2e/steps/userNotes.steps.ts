@@ -143,3 +143,28 @@ export function todayShort(): string {
     year: 'numeric',
   }).format(new Date());
 }
+
+export { isoDate } from './timeline.steps';
+
+/**
+ * When I navigate to the Notes view
+ */
+export async function goToNotes(page: Page): Promise<Locator> {
+  const nav = page.getByRole('navigation').getByRole('button', { name: /^Notes/ });
+  await nav.click();
+  await expect(nav).toHaveAttribute('aria-current', 'page');
+  return page.getByRole('main');
+}
+
+/** The note cards of the Notes view */
+export function noteCards(main: Locator): Locator {
+  return main.getByRole('article', { name: /^Note attached to / });
+}
+
+/** A note's timestamp element, by the ISO date it represents */
+export function noteTimestamp(container: Locator, iso: string): Locator {
+  return container.locator(`time[datetime="${iso}"]`);
+}
+
+/** A long note, to exercise collapsing */
+export const LONG_NOTE = `${'Felt tired most afternoons and slept badly. '.repeat(12)}End of the long note.`;

@@ -30,7 +30,13 @@ import {
   seedNotesData,
   todayShort,
   viewTrendsFor,
+  isoDate,
+  goToNotes,
+  noteCards,
+  noteTimestamp,
+  LONG_NOTE,
 } from './steps/userNotes.steps';
+import { pickDate } from './steps/trends.steps';
 
 /**
  * Helper to navigate to timeline view
@@ -140,7 +146,7 @@ test.describe('Notes with Data', () => {
     await expect(noteEditor(card)).toBeHidden();
     await expect(card.getByText('Fasted for 12 hours before the draw', { exact: true })).toBeVisible();
     // Creation timestamp is captured automatically
-    await expect(card.getByText(todayShort())).toBeVisible();
+    await expect(card.getByText('just now', { exact: true })).toBeVisible();
     await expect(card.getByText('No notes yet', { exact: true })).toBeHidden();
   });
 
@@ -185,7 +191,7 @@ test.describe('Notes with Data', () => {
     await expect(card.getByText('Retest in three months', { exact: true })).toBeVisible();
     await expect(card.getByText('symptom', { exact: true })).toBeVisible();
     await expect(card.getByText('followup', { exact: true })).toBeVisible();
-    await expect(card.getByText(shortDate('2024-01-16'))).toBeVisible();
+    await expect(noteTimestamp(card, isoDate('2024-01-16'))).toBeVisible();
     await expect(card.getByRole('button', { name: 'Edit note' })).toHaveCount(2);
     // Notes of other results are not shown here
     await expect(card.getByText('Note on the other result')).toHaveCount(0);
@@ -331,7 +337,7 @@ test.describe('Notes with Data', () => {
   test('should show an "edited" indicator on edited notes', async ({ page }) => {
     await seedNotesData(page, [noteSeed(1, { labResultId: 1 }, 'Original note')]);
     const card = await openLabResultNotes(page, JAN_DAY);
-    await expect(card.getByText(shortDate('2024-01-16'))).toBeVisible();
+    await expect(noteTimestamp(card, isoDate('2024-01-16'))).toBeVisible();
     await expect(card.getByText(/\(edited\b/)).toHaveCount(0);
 
     await card.getByRole('button', { name: 'Edit note' }).click();
@@ -352,7 +358,7 @@ test.describe('Notes with Data', () => {
     await card.getByRole('button', { name: 'Save Changes' }).click();
 
     await expect(card.getByText(/\(edited\b/)).toBeVisible();
-    await expect(card.getByText(new RegExp(todayShort()))).toBeVisible();
+    await expect(card.getByText('(edited just now)', { exact: true })).toBeVisible();
   });
 
   test('should show notes in trends view for selected biomarker', async ({ page }) => {
@@ -384,6 +390,8 @@ test.describe('Notes with Data', () => {
     // The data point with a note has its own, accessible marker
     const noted = main.locator('circle[aria-label*="note" i]');
     await expect(noted).toHaveCount(1);
+
+    await expect(noted).toHaveAttribute('aria-label', /, has notes$/);
 
     // Hovering it previews the note in the chart tooltip
     await noted.hover();
@@ -429,6 +437,27 @@ test.describe('Notes with Data', () => {
     await expect(measurement).toBeVisible();
     await measurement.getByRole('button', { name: 'Add Note' }).click();
     await expect(noteEditor(measurement)).toBeVisible();
+    await expect(
+      measurement.getByRole('heading', { name: 'Note for 125 mg/dL on Jan 15, 2024' })
+    ).toBeVisible();
+    await noteEditor(measurement).fill('Big dinner the night before');
+    await measurement.getByRole('button', { name: 'Save Note' }).click();
+
+    // The note is linked to that measurement
+    await expect(measurement.getByText('Big dinner the night before', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(measurement).toBeHidden();
+    await expect(
+      main.locator('circle[aria-label*=": 125 mg/dL"][aria-label$=", has notes"]')
+    ).toHaveCount(1);
+    await expect(
+      main.locator('circle[aria-label*=": 98 mg/dL"][aria-label$=", has notes"]')
+    ).toHaveCount(0);
+
+    // Opened from the keyboard as well
+    await main.locator('circle[aria-label*=": 98 mg/dL"]').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog').filter({ hasText: '98 mg/dL' })).toBeVisible();
   });
 
   test('should persist notes after page reload', async ({ page }) => {
@@ -456,5 +485,207 @@ test.describe('Notes with Data', () => {
     const unlocked = await openLabResultNotes(page, JAN_DAY);
     await expect(unlocked.getByText('Ferritin 30 ng/mL — taking iron & vitamin C (50%)', { exact: true })).toBeVisible();
     await expect(unlocked.getByLabel('1 note', { exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Notes view', () => {
+  const NOTES = [
+    noteSeed(1, { labResultId: 1 }, 'Felt a headache after the fast', ['symptoms'], '2024-01-16'),
+    noteSeed(2, { biomarkerId: BIOMARKERS.GLUCOSE.id }, 'Cutting back on sugar', ['diet'], '2024-03-01'),
+    noteSeed(
+      3,
+      { biomarkerId: BIOMARKERS.GLUCOSE.id, testValueId: 2, labResultId: 1 },
+      'Big dinner the night before',
+      ['diet', 'symptoms'],
+      '2024-07-05'
+    ),
+    noteSeed(4, { labResultId: 2 }, 'Retest planned (50%)', [], '2024-08-10'),
+  ];
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedNotesData(page, NOTES);
+  });
+
+  test('lists all notes, newest first, with what they are attached to', async ({ page }) => {
+    const main = await goToNotes(page);
+    const cards = noteCards(main);
+
+    await expect(cards).toHaveCount(4);
+    await expect(cards.nth(0)).toHaveAccessibleName(`Note attached to LabCorp · ${shortDate(FEB_DAY)}`);
+    await expect(cards.nth(1)).toHaveAccessibleName(
+      `Note attached to Glucose · 125 mg/dL · ${shortDate(JAN_DAY)}`
+    );
+    await expect(cards.nth(2)).toHaveAccessibleName('Note attached to Glucose');
+    await expect(cards.nth(3)).toHaveAccessibleName(
+      `Note attached to Quest Diagnostics · ${shortDate(JAN_DAY)}`
+    );
+    await expect(cards.nth(0)).toContainText('Retest planned (50%)');
+  });
+
+  test('opens the lab result a note is attached to', async ({ page }) => {
+    const main = await goToNotes(page);
+    await noteCards(main)
+      .nth(3)
+      .getByRole('button', { name: `Quest Diagnostics · ${shortDate(JAN_DAY)}` })
+      .click();
+
+    const card = labResultCard(page, JAN_DAY);
+    await expect(card).toHaveAttribute('aria-expanded', 'true');
+    await expect(card.getByText('Felt a headache after the fast', { exact: true })).toBeVisible();
+  });
+
+  test('opens the measurement a note is attached to on its trend', async ({ page }) => {
+    const main = await goToNotes(page);
+    await noteCards(main)
+      .nth(1)
+      .getByRole('button', { name: `Glucose · 125 mg/dL · ${shortDate(JAN_DAY)}` })
+      .click();
+
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Trends/ })
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(main.locator('circle[aria-label*=": 125 mg/dL"]')).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+  });
+
+  test('searches note content and highlights the match', async ({ page }) => {
+    const main = await goToNotes(page);
+    await main.getByRole('textbox', { name: 'Search notes' }).fill('HEADACHE');
+
+    await expect(noteCards(main)).toHaveCount(1);
+    await expect(noteCards(main).first().locator('mark')).toHaveText('headache');
+  });
+
+  test('searches text with special characters', async ({ page }) => {
+    const main = await goToNotes(page);
+    await main.getByRole('textbox', { name: 'Search notes' }).fill('(50%)');
+
+    await expect(noteCards(main)).toHaveCount(1);
+    await expect(noteCards(main).first().locator('mark')).toHaveText('(50%)');
+  });
+
+  test('filters notes by date range', async ({ page }) => {
+    const main = await goToNotes(page);
+    await pickDate(page, 'Notes from date', '2024-01-01');
+    await pickDate(page, 'Notes to date', '2024-06-30');
+
+    await expect(noteCards(main)).toHaveCount(2);
+    await expect(main.getByText('Cutting back on sugar', { exact: true })).toBeVisible();
+    await expect(main.getByText('Felt a headache after the fast', { exact: true })).toBeVisible();
+  });
+
+  test('filters notes by biomarker', async ({ page }) => {
+    const main = await goToNotes(page);
+    await main.getByRole('textbox', { name: 'Filter notes by biomarker' }).click();
+    await page.getByRole('option', { name: 'Glucose', exact: true }).click();
+
+    await expect(noteCards(main)).toHaveCount(2);
+    await expect(main.getByText('Felt a headache after the fast')).toHaveCount(0);
+  });
+
+  test('filters notes by tag', async ({ page }) => {
+    const main = await goToNotes(page);
+    await main.getByRole('textbox', { name: 'Filter notes by tag' }).click();
+    await page.getByRole('option', { name: 'symptoms', exact: true }).click();
+
+    await expect(noteCards(main)).toHaveCount(2);
+    await expect(main.getByText('Felt a headache after the fast', { exact: true })).toBeVisible();
+    await expect(main.getByText('Big dinner the night before', { exact: true })).toBeVisible();
+  });
+});
+
+test.describe('Note formatting and display', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+  });
+
+  test('formats a note with the toolbar and renders it', async ({ page }) => {
+    await seedNotesData(page);
+    const card = await openLabResultNotes(page, JAN_DAY);
+    await card.getByRole('button', { name: 'Add Note' }).click();
+
+    const editor = noteEditor(card);
+    const toolbar = card.getByRole('toolbar', { name: 'Formatting' });
+    await editor.fill('Take iron daily');
+    await editor.selectText();
+    await toolbar.getByRole('button', { name: 'Bold' }).click();
+    await expect(editor).toHaveValue('**Take iron daily**');
+
+    await editor.press('End');
+    await editor.press('Enter');
+    await editor.pressSequentially('with vitamin C');
+    await toolbar.getByRole('button', { name: 'Bullet list' }).click();
+    await expect(editor).toHaveValue('**Take iron daily**\n- with vitamin C');
+
+    await editor.press('End');
+    await editor.press('Enter');
+    await editor.pressSequentially('avoid tea');
+    await editor.press('Shift+Home');
+    await editor.press('Control+i');
+    await expect(editor).toHaveValue('**Take iron daily**\n- with vitamin C\n*avoid tea*');
+
+    await card.getByRole('button', { name: 'Save Note' }).click();
+    await expect(card.locator('strong', { hasText: 'Take iron daily' })).toBeVisible();
+    await expect(card.locator('li', { hasText: 'with vitamin C' })).toBeVisible();
+    await expect(card.locator('em', { hasText: 'avoid tea' })).toBeVisible();
+  });
+
+  test('shows the full creation date on focus', async ({ page }) => {
+    await seedNotesData(page);
+    const card = await openLabResultNotes(page, JAN_DAY);
+    await addNote(card, 'Timestamp check');
+
+    const time = card.getByText('just now', { exact: true });
+    await time.focus();
+    await expect(page.getByRole('tooltip')).toContainText(todayShort());
+  });
+
+  test('expands a long note to its full content', async ({ page }) => {
+    await seedNotesData(page, [noteSeed(1, { labResultId: 1 }, LONG_NOTE)]);
+    const card = await openLabResultNotes(page, JAN_DAY);
+
+    const toggle = card.getByRole('button', { name: 'Show full note' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+
+    await expect(card.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    await expect(noteTimestamp(card, isoDate('2024-01-16'))).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Edit note' })).toBeVisible();
+  });
+
+  test('stores note content encrypted', async ({ page }) => {
+    await seedNotesData(page);
+    const card = await openLabResultNotes(page, JAN_DAY);
+    await addNote(card, 'Secret symptom note');
+
+    const rows = await page.evaluate(
+      () =>
+        new Promise<string[]>((resolve, reject) => {
+          const open = indexedDB.open('HemoIO');
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const request = open.result
+              .transaction('userNotes', 'readonly')
+              .objectStore('userNotes')
+              .getAll();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              resolve(request.result.map((row: unknown) => JSON.stringify(row)));
+              open.result.close();
+            };
+          };
+        })
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toContain('Secret symptom');
   });
 });
