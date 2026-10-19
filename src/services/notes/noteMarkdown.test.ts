@@ -13,16 +13,26 @@ describe('parseInline', () => {
 
   it.each([
     '2*3*4 is 24? no: 2 * 3 * 4',
+    'a*b*c',
+    '5*x and y*2',
+    'x ** y ** z',
+    '****',
+    '***',
     'a lone ** here',
     'Ferritin 30 ng/mL — taking iron & vitamin C (50%)',
     '* not italic *',
-  ])('keeps text that is not formatting as typed: %s', (text) => {
-    expect(
-      parseInline(text)
-        .map((n) => n.text)
-        .join('')
-    ).toBe(text.replace(/\*(\S(?:.*?\S)?)\*/g, '$1'));
-    expect(parseInline(text).every((n) => n.text.length > 0)).toBe(true);
+  ])('keeps text that is not formatting exactly as typed: %s', (text) => {
+    expect(parseInline(text)).toEqual([{ type: 'text', text }]);
+  });
+
+  it('reads formatting next to text that is not', () => {
+    expect(parseInline('dose 2*500mg *daily* (**always**)')).toEqual([
+      { type: 'text', text: 'dose 2*500mg ' },
+      { type: 'italic', text: 'daily' },
+      { type: 'text', text: ' (' },
+      { type: 'bold', text: 'always' },
+      { type: 'text', text: ')' },
+    ]);
   });
 
   it('leaves unbalanced markers as text', () => {

@@ -13,6 +13,39 @@ export interface TextEdit {
 const WRAP: Record<'bold' | 'italic', string> = { bold: '**', italic: '*' };
 
 /**
+ * Wrap the selection in a marker. Markers go around the text itself, not the
+ * spaces next to it, and around each line: "**iron **" or "**a\nb**" would
+ * not render as bold.
+ */
+function wrapSelection(text: string, start: number, end: number, marker: string): TextEdit {
+  const selected = text.slice(start, end);
+  if (selected.trim() === '') {
+    const cursor = start + marker.length;
+    return {
+      text: text.slice(0, start) + marker + marker + text.slice(start),
+      selectionStart: cursor,
+      selectionEnd: cursor,
+    };
+  }
+
+  const lines = selected.split('\n');
+  const wrapped = lines
+    .map((line) => {
+      const [, lead, core, trail] = /^(\s*)(.*?)(\s*)$/.exec(line) ?? ['', '', line, ''];
+      return core ? `${lead}${marker}${core}${marker}${trail}` : line;
+    })
+    .join('\n');
+  const result = text.slice(0, start) + wrapped + text.slice(end);
+
+  if (lines.length === 1) {
+    // Keep the text itself selected, inside the markers
+    const from = start + (selected.length - selected.trimStart().length) + marker.length;
+    return { text: result, selectionStart: from, selectionEnd: from + selected.trim().length };
+  }
+  return { text: result, selectionStart: start, selectionEnd: start + wrapped.length };
+}
+
+/**
  * Apply a format to the selection: bold and italic wrap it, lists prefix
  * every line it touches. The returned selection covers the formatted text.
  */
@@ -23,12 +56,7 @@ export function applyNoteFormat(
   format: NoteFormat
 ): TextEdit {
   if (format === 'bold' || format === 'italic') {
-    const marker = WRAP[format];
-    return {
-      text: text.slice(0, start) + marker + text.slice(start, end) + marker + text.slice(end),
-      selectionStart: start + marker.length,
-      selectionEnd: end + marker.length,
-    };
+    return wrapSelection(text, start, end, WRAP[format]);
   }
 
   // Whole lines the selection touches

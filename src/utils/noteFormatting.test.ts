@@ -34,4 +34,29 @@ describe('applyNoteFormat', () => {
       selectionEnd: 6,
     });
   });
+
+  it('keeps surrounding spaces outside the markers', () => {
+    expect(applyNoteFormat('iron daily', 0, 5, 'bold')).toEqual({
+      text: '**iron** daily',
+      selectionStart: 2,
+      selectionEnd: 6,
+    });
+    expect(applyNoteFormat('take  iron ', 4, 11, 'italic').text).toBe('take  *iron* ');
+  });
+
+  it('wraps each line of a multi-line selection on its own', () => {
+    expect(applyNoteFormat('a\n\nb', 0, 4, 'bold')).toEqual({
+      text: '**a**\n\n**b**',
+      selectionStart: 0,
+      selectionEnd: 12,
+    });
+  });
+
+  it('treats a selection of only spaces like an empty one', () => {
+    expect(applyNoteFormat('a  b', 1, 3, 'bold')).toEqual({
+      text: 'a****  b',
+      selectionStart: 3,
+      selectionEnd: 3,
+    });
+  });
 });

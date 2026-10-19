@@ -13,8 +13,16 @@ export type NoteBlock =
   | { type: 'bullet-list'; items: InlineNode[][] }
   | { type: 'ordered-list'; start: number; items: InlineNode[][] };
 
-// Markers must hug their text, so "2 * 3 * 4" and a lone "**" stay text
-const INLINE = /\*\*(\S(?:.*?\S)?)\*\*|\*(\S(?:.*?\S)?)\*/g;
+// A marker opens only after a non-word character and before text, and closes
+// only after text and before a non-word character. So "2*3*4", "a*b*c",
+// "x ** y" and a bare "****" stay text, as typed.
+const OPEN = String.raw`(?<![\p{L}\p{N}*])`;
+const CLOSE = String.raw`(?![\p{L}\p{N}*])`;
+const CONTENT = String.raw`(?![\s*])(.+?)(?<![\s*])`;
+const INLINE = new RegExp(
+  `${OPEN}\\*\\*${CONTENT}\\*\\*${CLOSE}|${OPEN}\\*${CONTENT}\\*${CLOSE}`,
+  'gu'
+);
 const BULLET = /^- (.*)$/;
 const ORDERED = /^(\d+)\. (.*)$/;
 
