@@ -1,7 +1,7 @@
 # Gherkin Completion — Design
 
 **Date:** 2026-10-17
-**Status:** Decisions approved in conversation; written spec pending review
+**Status:** Approved. Sub-projects 1–3 built; 4–6 to do. See [Progress](#progress) at the end.
 **Branch:** `feature/gherkin-completion` (stacked on `fix/ai-model-selection`)
 
 ## Purpose
@@ -230,3 +230,72 @@ The existing `useAlerts` / `OutOfRangeAlerts` are mounted and completed.
   clean output) and the full E2E suite in both browsers all pass.
 - Before the branch is offered for merge, run the simplify, code-review and
   security-review skills and address their findings.
+
+---
+
+## Progress
+
+Last updated 2026-10-19. This section is the place to resume from.
+
+### Sub-projects
+
+| # | Sub-project | State | Plan |
+|---|---|---|---|
+| 1 | Stable biomarker keys | Done and reviewed | [plan](../plans/2026-10-17-stable-biomarker-keys.md) |
+| 2 | Alerts | Done and reviewed | [plan](../plans/2026-10-18-alerts.md) |
+| 3 | Notes | Done and reviewed | [plan](../plans/2026-10-18-notes.md) |
+| 4 | Import and OCR | Next. No plan yet | — |
+| 5 | Preferred units and biomarker detail | To do. No plan yet | — |
+| 6 | Change password | To do. Spec written, no plan yet | [spec](2026-10-16-change-password-design.md) |
+
+Each finished plan ends with an **Outcome** section: the gates it passed, and the minor issues deferred for later.
+
+### How each sub-project is done
+
+1. Write the plan with the `superpowers:writing-plans` skill. Save it to `docs/superpowers/plans/`, and get the plan approved.
+2. Execute it natively with `superpowers:executing-plans`:
+   - Gherkin first, then E2E, then unit tests, then code.
+   - Each test is watched failing before the code is written.
+3. Have a fresh reviewer on the most capable model review the whole sub-project. Fix every Critical and Important finding test-first, and record the minors in the plan's Outcome.
+4. Pass the gates before the sub-project counts as done:
+   - `npm run build`
+   - `npm run lint`
+   - `npx vitest run --maxWorkers=4`, with no output besides test results
+   - `npx playwright test --workers=2` in both browsers
+
+   Keep the worker counts low so the machine stays usable.
+
+### E2E failures still expected
+
+These failures belong to the sub-projects that are not built yet. Each is counted twice, once per browser.
+
+| Sub-project | Tests |
+|---|---|
+| 4 | `document-analysis.spec.ts`: empty document, manual entry after AI failure, rate limiting (3)<br>`import-wizard.spec.ts`: editing values, adding values, lab date picker (3) |
+| 5 | `unit-conversion.spec.ts`: preferred-unit conversion, saving the preference, unsupported unit, keyboard access (4) |
+
+Any failure outside this list is a regression.
+
+Two tests can fail intermittently:
+- `document-analysis.spec.ts` "progress indicator during OCR" loads Tesseract from a CDN and can time out under load. Sub-project 4 bundles OCR, which removes this.
+- `unit-conversion.spec.ts:578` opens a Mantine Select and presses arrow keys at once. Mantine resets the highlighted option in a 0 ms timer after opening, so the test must let pending timers run first. `ollama-integration.spec.ts` shows how. Fix it in sub-project 5.
+
+### Before the branch can be merged
+
+- Fix the build warning "Some chunks are larger than 500 kB" by code-splitting. The warning predates this branch.
+- Address `npm audit`: 32 vulnerabilities, 2 of them critical.
+- Run the `simplify`, `code-review` and `security-review` skills over the whole branch and address their findings.
+- Pass every gate above, with the full E2E suite green.
+- Merge `fix/ai-model-selection` first: this branch is built on it.
+
+### Branches
+
+| Branch | Contents |
+|---|---|
+| `main` | The CORS fix for Anthropic requests, merged locally only. |
+| `fix/ai-model-selection` | The AI model is chosen in the app, never hardcoded. Complete; not merged. |
+| `feature/gherkin-completion` | This work, built on `fix/ai-model-selection`. |
+| `feature/change-password` | Only the change-password spec, which is also copied here. Sub-project 6 is built on `feature/gherkin-completion`. |
+
+None of these branches has been pushed to `origin`.
+

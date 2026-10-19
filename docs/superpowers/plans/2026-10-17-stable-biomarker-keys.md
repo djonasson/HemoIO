@@ -1040,3 +1040,29 @@ git commit -m "fix: address regressions from biomarker key migration"
 ```
 
 (Skip this step if there were no fixes.)
+
+---
+
+## Outcome (2026-10-18)
+
+Executed inline. A fresh reviewer reviewed the whole branch, followed by one fix pass.
+
+The fix pass addressed:
+- Keys for "Reticulocytes %" and "Reticulocytes #" collided; `%` and `#` are now kept in unknown keys.
+- Legacy unknown keys split a biomarker's history; they are now reconciled after unlock (`reconcileLegacyUnknownKeys`).
+- The sync file version was raised to 2.
+- Pin tests were missing and have been added.
+- Backups did not include preferences, AI settings or the API key, and a restore wiped settings:
+  - Backups now carry all of them.
+  - A restore keeps settings.
+  - AI settings from a backup are applied only when the user opts in (security review finding).
+
+Checked by hand in Chrome: upgrading a v2.0 database to v3.0 kept every value under the right biomarker.
+
+E2E after this sub-project: the only failures were those of the later sub-projects (alerts, notes, import, units).
+
+Deferred minors (not fixed):
+- A label fallback for unknown biomarkers whose raw text is missing ("Unknown biomarker").
+- The `selectedBiomarkerId` state name in TrendsView is stale; it now holds a key.
+- A stored numeric ID that is not a number becomes `unknown:legacy-NaN`.
+- The backup restore preview shows the migrated schema version (2), not the file's own version.
