@@ -22,6 +22,8 @@ import {
 } from '@services/statistics/trendAnalysis';
 import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 import { convertMeasurement } from '@services/units';
+import { notePreview } from '@services/notes';
+import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -66,6 +68,7 @@ export function TrendsView({
     updateNote,
     deleteNote,
     getNotesForBiomarker,
+    getNotesForTestValue,
   } = useNotes();
 
   // State
@@ -110,6 +113,33 @@ export function TrendsView({
       await deleteNote(id);
     },
     [deleteNote]
+  );
+
+  const [selectedPoint, setSelectedPoint] = useState<TrendDataPoint | null>(null);
+
+  // Newest note per measurement, for the chart markers and tooltip
+  const notePreviews = useMemo(() => {
+    const previews: Record<number, string> = {};
+    for (const note of selectedBiomarkerNotes) {
+      if (note.testValueId !== undefined && previews[note.testValueId] === undefined) {
+        previews[note.testValueId] = notePreview(note.content);
+      }
+    }
+    return previews;
+  }, [selectedBiomarkerNotes]);
+
+  const handleCreateMeasurementNote = useCallback(
+    async (content: string, tags: string[]) => {
+      if (!selectedBiomarkerId || selectedPoint?.testValueId === undefined) return;
+      await createNote({
+        biomarkerKey: selectedBiomarkerId,
+        testValueId: selectedPoint.testValueId,
+        labResultId: selectedPoint.labResultId,
+        content,
+        tags,
+      });
+    },
+    [selectedBiomarkerId, selectedPoint, createNote]
   );
 
   // Build map of biomarker data with unit conversion to canonical units
@@ -168,6 +198,8 @@ export function TrendsView({
           status: testValue.status,
           referenceRange: converted.referenceRange,
           labName: result.labName,
+          testValueId: testValue.id,
+          labResultId: testValue.labResultId,
         });
       }
     }
@@ -383,6 +415,8 @@ export function TrendsView({
               highlightDate={
                 selectedBiomarkerId === initialBiomarkerKey ? highlightDate : undefined
               }
+              notePreviews={notePreviews}
+              onPointSelect={setSelectedPoint}
             />
           </Paper>
 
@@ -443,6 +477,31 @@ export function TrendsView({
           </Group>
         </Stack>
       </Modal>
+
+      <MeasurementNotesDialog
+        measurement={
+          selectedPoint?.testValueId !== undefined
+            ? {
+                testValueId: selectedPoint.testValueId,
+                labResultId: selectedPoint.labResultId,
+                value: selectedPoint.value,
+                unit: selectedPoint.unit,
+                date: selectedPoint.date,
+                status: selectedPoint.status,
+                labName: selectedPoint.labName,
+              }
+            : null
+        }
+        notes={
+          selectedPoint?.testValueId !== undefined
+            ? getNotesForTestValue(selectedPoint.testValueId)
+            : []
+        }
+        onClose={() => setSelectedPoint(null)}
+        onCreateNote={handleCreateMeasurementNote}
+        onUpdateNote={handleUpdateNote}
+        onDeleteNote={handleDeleteNote}
+      />
     </Stack>
   );
 }

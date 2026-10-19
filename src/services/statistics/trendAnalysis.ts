@@ -38,6 +38,10 @@ export interface TrendDataPoint {
   labName?: string;
   /** Status relative to reference range */
   status?: 'normal' | 'low' | 'high' | 'unknown';
+  /** Test value this point was measured as, for notes */
+  testValueId?: number;
+  /** Lab result the measurement belongs to */
+  labResultId?: number;
 }
 
 /**

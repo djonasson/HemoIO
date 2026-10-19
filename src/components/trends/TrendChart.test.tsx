@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { TrendChart } from './TrendChart';
+import { TrendChart, CustomTooltip } from './TrendChart';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -231,5 +231,51 @@ describe('TrendChart', () => {
     // Check that the container has the expected height
     const chart = container.querySelector('.recharts-responsive-container');
     expect(chart).toBeInTheDocument();
+  });
+});
+
+describe('CustomTooltip', () => {
+  it('previews the note of a point that has one', () => {
+    renderWithProviders(
+      <CustomTooltip
+        active
+        label="Jan 15, 24"
+        payload={[
+          {
+            payload: {
+              date: new Date('2024-01-15'),
+              value: 125,
+              unit: 'mg/dL',
+              testValueId: 2,
+              formattedDate: 'Jan 15, 24',
+            },
+          },
+        ]}
+        notePreviews={{ 2: 'Big dinner the night before' }}
+      />
+    );
+    expect(screen.getByText('Big dinner the night before')).toBeInTheDocument();
+  });
+
+  it('shows no note section for a point without notes', () => {
+    renderWithProviders(
+      <CustomTooltip
+        active
+        label="Jan 15, 24"
+        payload={[
+          {
+            payload: {
+              date: new Date('2024-01-15'),
+              value: 125,
+              unit: 'mg/dL',
+              testValueId: 3,
+              formattedDate: 'Jan 15, 24',
+            },
+          },
+        ]}
+        notePreviews={{ 2: 'Big dinner the night before' }}
+      />
+    );
+    expect(screen.queryByText('Note')).not.toBeInTheDocument();
   });
 });

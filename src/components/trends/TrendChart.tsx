@@ -47,6 +47,10 @@ export interface TrendChartProps {
   showLegend?: boolean;
   /** Date of the data point to highlight (e.g. opened from an alert) */
   highlightDate?: Date;
+  /** Preview of the newest note per test value, for points that have notes */
+  notePreviews?: Record<number, string>;
+  /** Called when a data point is clicked or activated from the keyboard */
+  onPointSelect?: (point: TrendDataPoint) => void;
 }
 
 /**
@@ -63,14 +67,16 @@ function formatDate(date: Date): string {
 /**
  * Custom tooltip component
  */
-function CustomTooltip({
+export function CustomTooltip({
   active,
   payload,
   label,
+  notePreviews,
 }: {
   active?: boolean;
   payload?: Array<{ payload: TrendDataPoint & { formattedDate: string } }>;
   label?: string;
+  notePreviews?: Record<number, string>;
 }) {
   if (!active || !payload || payload.length === 0) {
     return null;
@@ -104,6 +110,16 @@ function CustomTooltip({
           <Text size="xs" c="dimmed">
             {data.labName}
           </Text>
+        )}
+        {data.testValueId !== undefined && notePreviews?.[data.testValueId] && (
+          <Stack gap={0}>
+            <Text size="xs" fw={500}>
+              Note
+            </Text>
+            <Text size="xs" maw={240}>
+              {notePreviews[data.testValueId]}
+            </Text>
+          </Stack>
         )}
         <Badge
           size="xs"
@@ -177,6 +193,8 @@ export function TrendChart({
   height = 300,
   showLegend = false,
   highlightDate,
+  notePreviews,
+  onPointSelect,
 }: TrendChartProps) {
   // Transform data for Recharts
   const chartData = useMemo(() => {
@@ -348,7 +366,7 @@ export function TrendChart({
             />
           )}
 
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip notePreviews={notePreviews} />} />
 
           {showLegend && <Legend />}
 
@@ -373,20 +391,69 @@ export function TrendChart({
                 highlightDate !== undefined &&
                 payload.date instanceof Date &&
                 payload.date.toDateString() === highlightDate.toDateString();
+              const preview =
+                payload.testValueId !== undefined ? notePreviews?.[payload.testValueId] : undefined;
+              const r = highlighted ? 9 : 6;
+              const select = onPointSelect ? () => onPointSelect(payload) : undefined;
               return (
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={highlighted ? 9 : 6}
-                  fill={fill}
-                  stroke={highlighted ? '#1c7ed6' : '#fff'}
-                  strokeWidth={highlighted ? 3 : 2}
-                  aria-current={highlighted ? 'true' : undefined}
-                  aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})`}
-                />
+                <g key={`point-${payload.timestamp}`}>
+                  {preview && (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={r + 4}
+                      fill="none"
+                      stroke="#7048e8"
+                      strokeWidth={2}
+                      pointerEvents="none"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={r}
+                    fill={fill}
+                    stroke={highlighted ? '#1c7ed6' : '#fff'}
+                    strokeWidth={highlighted ? 3 : 2}
+                    aria-current={highlighted ? 'true' : undefined}
+                    aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
+                    role={select ? 'button' : undefined}
+                    tabIndex={select ? 0 : undefined}
+                    style={select ? { cursor: 'pointer' } : undefined}
+                    onClick={select}
+                    onKeyDown={
+                      select
+                        ? (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              select();
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    {/* Read as the point's description by screen readers */}
+                    {preview && <title>{preview}</title>}
+                  </circle>
+                  {preview && (
+                    <text
+                      x={(cx ?? 0) + r + 3}
+                      y={(cy ?? 0) - r - 3}
+                      fontSize={11}
+                      fill="#7048e8"
+                      pointerEvents="none"
+                      aria-hidden="true"
+                    >
+                      ✎
+                    </text>
+                  )}
+                </g>
               );
             }}
             activeDot={{
+              // Drawn over the hovered point: it must not take the point's clicks
+              pointerEvents: 'none',
               r: 8,
               stroke: '#228be6',
               strokeWidth: 2,
