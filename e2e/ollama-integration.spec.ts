@@ -421,12 +421,21 @@ test.describe('Ollama Integration - Accessibility', () => {
     // Open dropdown with keyboard; nothing is highlighted until the first
     // ArrowDown, and Ollama is the third option
     await page.keyboard.press('Enter');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    // Mantine resets the highlighted option in a 0 ms timer after opening;
+    // arrow keys handled before that timer are undone. Let pending timers run.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('option', { name: /Ollama/ })).toHaveAttribute(
+      'data-combobox-selected',
+      'true'
+    );
     await page.keyboard.press('Enter');
 
     // Should have selected Ollama
+    await expect(providerSelect).toHaveValue(/Ollama/);
     await expect(page.getByText('Ollama connected')).toBeVisible({ timeout: 5000 });
   });
 
