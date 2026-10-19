@@ -5,7 +5,7 @@
  * Displays biomarker trends, statistics, and comparisons.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
 import { IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
@@ -116,6 +116,17 @@ export function TrendsView({
   );
 
   const [selectedPoint, setSelectedPoint] = useState<TrendDataPoint | null>(null);
+
+  // Opened from elsewhere (an alert or a note): move keyboard focus here
+  // once, when the heading first appears (it is not rendered while loading)
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const focusPending = useRef(initialBiomarkerKey !== undefined);
+  useEffect(() => {
+    if (focusPending.current && headingRef.current) {
+      headingRef.current.focus();
+      focusPending.current = false;
+    }
+  }, [isLoading]);
 
   // Newest note per measurement, for the chart markers and tooltip
   const notePreviews = useMemo(() => {
@@ -354,7 +365,9 @@ export function TrendsView({
       <Group justify="space-between">
         <Group gap="xs">
           <IconChartLine size={24} />
-          <Title order={2}>Trends</Title>
+          <Title order={2} ref={headingRef} tabIndex={-1}>
+            Trends
+          </Title>
         </Group>
         {alertCount > 0 && (
           <Button

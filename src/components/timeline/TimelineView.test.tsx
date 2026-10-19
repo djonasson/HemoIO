@@ -366,5 +366,6 @@ describe('TimelineView', () => {
     const expanded = regions.filter((r) => r.getAttribute('aria-expanded') === 'true');
     expect(expanded).toHaveLength(1);
     expect(expanded[0]).toHaveTextContent('LabCorp');
+    expect(expanded[0]).toHaveFocus();
   });
 });

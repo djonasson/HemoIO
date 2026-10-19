@@ -430,6 +430,8 @@ describe('TrendsView', () => {
     renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
 
     expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
+    // Opened from elsewhere: keyboard focus starts at the top of the view
+    expect(screen.getByRole('heading', { name: 'Trends' })).toHaveFocus();
   });
 
   it('should open compare modal when compare button is clicked', async () => {

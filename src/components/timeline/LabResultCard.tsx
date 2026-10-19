@@ -91,8 +91,12 @@ export function LabResultCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Opened from elsewhere (e.g. a note): bring the card into view
-    if (scrollIntoViewOnMount) cardRef.current?.scrollIntoView?.({ block: 'center' });
+    // Opened from elsewhere (e.g. a note): bring the card into view and move
+    // keyboard focus to it, so keyboard and screen-reader users land there too
+    if (scrollIntoViewOnMount) {
+      cardRef.current?.scrollIntoView?.({ block: 'center' });
+      cardRef.current?.focus({ preventScroll: true });
+    }
   }, [scrollIntoViewOnMount]);
   const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
     useDisclosure(false);
@@ -151,6 +155,7 @@ export function LabResultCard({
     <>
       <Paper
         ref={cardRef}
+        tabIndex={scrollIntoViewOnMount ? -1 : undefined}
         p="md"
         withBorder
         radius="md"
