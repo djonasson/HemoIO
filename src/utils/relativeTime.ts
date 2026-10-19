@@ -18,3 +18,16 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
   const years = Math.floor(diffDays / 365);
   return `${years} ${years === 1 ? 'year' : 'years'} ago`;
 }
+
+/**
+ * Like formatRelativeTime, but precise to the minute for the last day:
+ * "just now", "5 minutes ago", "3 hours ago", then "Yesterday", "3 days ago"
+ */
+export function formatRelativeDateTime(date: Date, now: Date = new Date()): string {
+  const minutes = Math.floor(Math.max(0, now.getTime() - date.getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  return formatRelativeTime(date, now);
+}

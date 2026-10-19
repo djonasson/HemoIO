@@ -16,6 +16,7 @@ import {
   Button,
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconNote } from '@tabler/icons-react';
+import { RelativeTime } from '@components/common/RelativeTime';
 import type { UserNote } from '@/types';
 import { NoteEditor } from './NoteEditor';
 
@@ -31,19 +32,6 @@ export interface NoteDisplayProps {
   onDelete: (id: number) => Promise<void>;
   /** Whether actions are currently processing */
   isProcessing?: boolean;
-}
-
-/**
- * Formats a date for display
- */
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
 }
 
 /**
@@ -121,10 +109,10 @@ export function NoteDisplay({
           <Group justify="space-between" align="flex-start">
             <Group gap="xs">
               <IconNote size={14} color="gray" />
-              <Text size="xs" c="dimmed">
-                {formatDate(note.createdAt)}
-                {wasEdited && ` (edited ${formatDate(note.updatedAt)})`}
-              </Text>
+              <RelativeTime date={note.createdAt} />
+              {wasEdited && (
+                <RelativeTime date={note.updatedAt} template={(r) => `(edited ${r})`} />
+              )}
             </Group>
             <Group gap="xs">
               <ActionIcon

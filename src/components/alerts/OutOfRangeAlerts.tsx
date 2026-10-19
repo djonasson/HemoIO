@@ -38,7 +38,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
 import { indicatorColor } from '@services/alerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
-import { formatRelativeTime } from '@/utils/relativeTime';
+import { RelativeTime } from '@components/common/RelativeTime';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -158,22 +158,7 @@ function AlertCard({
               {alert.message}
             </Text>
             <Group gap="xs">
-              <Tooltip
-                label={alert.date.toLocaleDateString()}
-                events={{ hover: true, focus: true, touch: true }}
-              >
-                {/* Focusable so keyboard users can reveal the full date too */}
-                <Text
-                  component="time"
-                  dateTime={alert.date.toISOString()}
-                  tabIndex={0}
-                  size="xs"
-                  c="dimmed"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {formatRelativeTime(alert.date)}
-                </Text>
-              </Tooltip>
+              <RelativeTime date={alert.date} precision="day" />
               <Text size="xs" c="dimmed">
                 · {alert.labName}
               </Text>

@@ -46,7 +46,10 @@ describe('NoteDisplay', () => {
     it('should render note date', () => {
       renderWithProviders(<NoteDisplay {...defaultProps} />);
 
-      expect(screen.getByText(/Jan 15, 2024/)).toBeInTheDocument();
+      expect(screen.getByText(/ago$/).closest('time')).toHaveAttribute(
+        'datetime',
+        defaultProps.note.createdAt.toISOString()
+      );
     });
 
     it('should render tags', () => {
@@ -72,7 +75,10 @@ describe('NoteDisplay', () => {
       });
       renderWithProviders(<NoteDisplay {...defaultProps} note={note} />);
 
-      expect(screen.getByText(/\(edited Feb 3, 2024, 11:30\sAM\)/)).toBeInTheDocument();
+      expect(screen.getByText(/^\(edited .+ ago\)$/)).toHaveAttribute(
+        'datetime',
+        new Date('2024-02-03T11:30:00').toISOString()
+      );
     });
 
     it('should not show an edited indicator when note was not updated', () => {
