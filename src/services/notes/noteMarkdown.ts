@@ -11,7 +11,8 @@ export interface InlineNode {
 export type NoteBlock =
   | { type: 'paragraph'; lines: InlineNode[][] }
   | { type: 'bullet-list'; items: InlineNode[][] }
-  | { type: 'ordered-list'; start: number; items: InlineNode[][] };
+  /** numbers: each item's number as written, so "3." then "5." stays 3, 5 */
+  | { type: 'ordered-list'; numbers: number[]; items: InlineNode[][] };
 
 // A marker opens only after a non-word character and before text, and closes
 // only after text and before a non-word character. So "2*3*4", "a*b*c",
@@ -42,6 +43,7 @@ export function parseInline(text: string): InlineNode[] {
 
 export function parseNoteMarkdown(content: string): NoteBlock[] {
   const blocks: NoteBlock[] = [];
+  if (content === '') return blocks;
   for (const line of content.split('\n')) {
     const current = blocks[blocks.length - 1];
     const bullet = BULLET.exec(line);
@@ -51,25 +53,25 @@ export function parseNoteMarkdown(content: string): NoteBlock[] {
       if (current?.type === 'bullet-list') current.items.push(parseInline(bullet[1]));
       else blocks.push({ type: 'bullet-list', items: [parseInline(bullet[1])] });
     } else if (ordered) {
-      if (current?.type === 'ordered-list') current.items.push(parseInline(ordered[2]));
-      else
+      if (current?.type === 'ordered-list') {
+        current.numbers.push(Number(ordered[1]));
+        current.items.push(parseInline(ordered[2]));
+      } else {
         blocks.push({
           type: 'ordered-list',
-          start: Number(ordered[1]),
+          numbers: [Number(ordered[1])],
           items: [parseInline(ordered[2])],
         });
-    } else if (line.trim() === '') {
-      // A blank line ends the paragraph; an empty placeholder keeps the next one separate
-      if (current?.type === 'paragraph' && current.lines.length > 0) {
-        blocks.push({ type: 'paragraph', lines: [] });
       }
-    } else if (current?.type === 'paragraph') {
-      current.lines.push(parseInline(line));
     } else {
-      blocks.push({ type: 'paragraph', lines: [parseInline(line)] });
+      // Other lines, blank ones included, stay lines of text: plain notes
+      // keep the spacing they were typed with
+      const nodes = line.trim() === '' ? [] : parseInline(line);
+      if (current?.type === 'paragraph') current.lines.push(nodes);
+      else blocks.push({ type: 'paragraph', lines: [nodes] });
     }
   }
-  return blocks.filter((block) => block.type !== 'paragraph' || block.lines.length > 0);
+  return blocks;
 }
 
 function blockLines(block: NoteBlock): InlineNode[][] {

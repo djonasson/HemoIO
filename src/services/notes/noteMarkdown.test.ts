@@ -41,13 +41,18 @@ describe('parseInline', () => {
 });
 
 describe('parseNoteMarkdown', () => {
-  it('keeps plain-text lines and paragraphs', () => {
-    expect(parseNoteMarkdown('line one\nline two\n\nnext')).toEqual([
+  it('keeps plain-text lines, including blank ones', () => {
+    expect(parseNoteMarkdown('line one\nline two\n\n\nnext')).toEqual([
       {
         type: 'paragraph',
-        lines: [[{ type: 'text', text: 'line one' }], [{ type: 'text', text: 'line two' }]],
+        lines: [
+          [{ type: 'text', text: 'line one' }],
+          [{ type: 'text', text: 'line two' }],
+          [],
+          [],
+          [{ type: 'text', text: 'next' }],
+        ],
       },
-      { type: 'paragraph', lines: [[{ type: 'text', text: 'next' }]] },
     ]);
   });
 
@@ -56,7 +61,17 @@ describe('parseNoteMarkdown', () => {
       { type: 'bullet-list', items: [[{ type: 'text', text: 'a' }], [{ type: 'bold', text: 'b' }]] },
       {
         type: 'ordered-list',
-        start: 3,
+        numbers: [3, 4],
+        items: [[{ type: 'text', text: 'c' }], [{ type: 'text', text: 'd' }]],
+      },
+    ]);
+  });
+
+  it('keeps the numbers as written', () => {
+    expect(parseNoteMarkdown('3. c\n5. d')).toEqual([
+      {
+        type: 'ordered-list',
+        numbers: [3, 5],
         items: [[{ type: 'text', text: 'c' }], [{ type: 'text', text: 'd' }]],
       },
     ]);

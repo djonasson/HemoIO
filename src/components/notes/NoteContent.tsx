@@ -34,22 +34,26 @@ export function NoteContent({ content, highlight }: NoteContentProps): React.Rea
           return (
             <ul key={i} style={{ margin: 0, paddingLeft: 20 }}>
               {block.items.map((item, j) => (
-                <li key={j}>{renderInline(item, highlight)}</li>
+                <li key={j} style={{ whiteSpace: 'pre-wrap' }}>
+                  {renderInline(item, highlight)}
+                </li>
               ))}
             </ul>
           );
         }
         if (block.type === 'ordered-list') {
           return (
-            <ol key={i} start={block.start} style={{ margin: 0, paddingLeft: 20 }}>
+            <ol key={i} style={{ margin: 0, paddingLeft: 20 }}>
               {block.items.map((item, j) => (
-                <li key={j}>{renderInline(item, highlight)}</li>
+                <li key={j} value={block.numbers[j]} style={{ whiteSpace: 'pre-wrap' }}>
+                  {renderInline(item, highlight)}
+                </li>
               ))}
             </ol>
           );
         }
         return (
-          <p key={i} style={{ margin: '0 0 4px' }}>
+          <p key={i} style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
             {block.lines.map((line, j) => (
               <Fragment key={j}>
                 {j > 0 && <br />}

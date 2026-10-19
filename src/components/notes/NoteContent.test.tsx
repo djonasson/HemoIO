@@ -38,4 +38,15 @@ describe('NoteContent', () => {
     expect(marks).toEqual(['headache', 'Headache']);
     expect(container.querySelector('strong mark')).not.toBeNull();
   });
+
+  it('renders plain notes as typed: blank lines, spacing and numbers', () => {
+    const { container } = renderContent('a\n\n\n  indented   text\n3. c\n5. d');
+    const paragraph = container.querySelector('p');
+    expect(paragraph?.querySelectorAll('br')).toHaveLength(3);
+    expect(paragraph).toHaveStyle({ whiteSpace: 'pre-wrap' });
+    expect([...container.querySelectorAll('ol li')].map((li) => li.getAttribute('value'))).toEqual([
+      '3',
+      '5',
+    ]);
+  });
 });
