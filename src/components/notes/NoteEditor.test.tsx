@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { NoteEditor } from './NoteEditor';
@@ -274,6 +274,61 @@ describe('NoteEditor', () => {
       // Both textareas should be in the document
       const textareas = screen.getAllByRole('textbox');
       expect(textareas.length).toBeGreaterThanOrEqual(2); // Note content + tags input
+    });
+  });
+
+  describe('formatting', () => {
+    it('offers an accessible formatting toolbar', () => {
+      renderWithProviders(<NoteEditor {...defaultProps} />);
+
+      const toolbar = screen.getByRole('toolbar', { name: 'Formatting' });
+      for (const name of ['Bold', 'Italic', 'Bullet list', 'Numbered list']) {
+        expect(within(toolbar).getByRole('button', { name })).toBeInTheDocument();
+      }
+    });
+
+    it('formats the selected text from the toolbar', async () => {
+      renderWithProviders(<NoteEditor {...defaultProps} />);
+      const textarea = screen.getByRole('textbox', { name: 'Note content' }) as HTMLTextAreaElement;
+
+      await userEvent.type(textarea, 'iron');
+      textarea.setSelectionRange(0, 4);
+      await userEvent.click(screen.getByRole('button', { name: 'Bold' }));
+
+      expect(textarea).toHaveValue('**iron**');
+    });
+
+    it('formats with Ctrl+I', async () => {
+      renderWithProviders(<NoteEditor {...defaultProps} />);
+      const textarea = screen.getByRole('textbox', { name: 'Note content' }) as HTMLTextAreaElement;
+
+      await userEvent.type(textarea, 'rest');
+      textarea.setSelectionRange(0, 4);
+      await userEvent.keyboard('{Control>}i{/Control}');
+
+      expect(textarea).toHaveValue('*rest*');
+    });
+
+    it('ignores a format that would exceed the length limit', async () => {
+      renderWithProviders(<NoteEditor {...defaultProps} maxLength={5} />);
+      const textarea = screen.getByRole('textbox', { name: 'Note content' }) as HTMLTextAreaElement;
+
+      await userEvent.type(textarea, 'iron');
+      textarea.setSelectionRange(0, 4);
+      await userEvent.click(screen.getByRole('button', { name: 'Bold' }));
+
+      expect(textarea).toHaveValue('iron');
+    });
+
+    it('moves between toolbar buttons with the arrow keys', async () => {
+      renderWithProviders(<NoteEditor {...defaultProps} />);
+      const bold = screen.getByRole('button', { name: 'Bold' });
+
+      act(() => bold.focus());
+      await userEvent.keyboard('{ArrowRight}');
+
+      expect(screen.getByRole('button', { name: 'Italic' })).toHaveFocus();
+      expect(bold).toHaveAttribute('tabindex', '-1');
     });
   });
 });

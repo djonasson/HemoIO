@@ -5,7 +5,7 @@
  * Supports basic text input with tag management.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef, useId } from 'react';
 import {
   Stack,
   Textarea,
@@ -14,8 +14,19 @@ import {
   TagsInput,
   Text,
   Paper,
+  ActionIcon,
+  Tooltip,
 } from '@mantine/core';
-import { IconNote, IconX, IconCheck } from '@tabler/icons-react';
+import {
+  IconNote,
+  IconX,
+  IconCheck,
+  IconBold,
+  IconItalic,
+  IconList,
+  IconListNumbers,
+} from '@tabler/icons-react';
+import { applyNoteFormat, type NoteFormat } from '@/utils/noteFormatting';
 
 /**
  * Props for NoteEditor component
@@ -55,6 +66,18 @@ const COMMON_TAGS = [
   'followup',
 ];
 
+const FORMATS: Array<{
+  format: NoteFormat;
+  label: string;
+  shortcut?: string;
+  icon: React.ReactNode;
+}> = [
+  { format: 'bold', label: 'Bold', shortcut: 'Ctrl+B', icon: <IconBold size={16} /> },
+  { format: 'italic', label: 'Italic', shortcut: 'Ctrl+I', icon: <IconItalic size={16} /> },
+  { format: 'bullet-list', label: 'Bullet list', icon: <IconList size={16} /> },
+  { format: 'numbered-list', label: 'Numbered list', icon: <IconListNumbers size={16} /> },
+];
+
 /**
  * NoteEditor component for creating and editing notes
  */
@@ -71,6 +94,43 @@ export function NoteEditor({
 }: NoteEditorProps): React.ReactNode {
   const [content, setContent] = useState(initialContent);
   const [tags, setTags] = useState<string[]>(initialTags);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaId = useId();
+  const pendingSelection = useRef<[number, number] | null>(null);
+  const [activeFormat, setActiveFormat] = useState(0);
+  const toolbarButtons = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Restore the selection after React has written the formatted text
+  useLayoutEffect(() => {
+    const selection = pendingSelection.current;
+    if (selection && textareaRef.current) {
+      textareaRef.current.setSelectionRange(selection[0], selection[1]);
+      pendingSelection.current = null;
+    }
+  }, [content]);
+
+  const applyFormat = useCallback(
+    (format: NoteFormat) => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const edit = applyNoteFormat(content, textarea.selectionStart, textarea.selectionEnd, format);
+      if (edit.text.length > maxLength) return;
+      pendingSelection.current = [edit.selectionStart, edit.selectionEnd];
+      setContent(edit.text);
+      textarea.focus();
+    },
+    [content, maxLength]
+  );
+
+  // One Tab stop for the toolbar; arrow keys move between its buttons
+  const handleToolbarKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    event.preventDefault();
+    const step = event.key === 'ArrowRight' ? 1 : FORMATS.length - 1;
+    const next = (activeFormat + step) % FORMATS.length;
+    setActiveFormat(next);
+    toolbarButtons.current[next]?.focus();
+  };
 
   const handleContentChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -97,13 +157,18 @@ export function NoteEditor({
         event.preventDefault();
         handleSave();
       }
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'b' || event.key === 'i')) {
+        event.preventDefault();
+        applyFormat(event.key === 'b' ? 'bold' : 'italic');
+        return;
+      }
       // Escape to cancel
       if (event.key === 'Escape') {
         event.preventDefault();
         onCancel();
       }
     },
-    [handleSave, onCancel]
+    [handleSave, onCancel, applyFormat]
   );
 
   const canSave = content.trim().length > 0 && !isSaving;
@@ -120,7 +185,39 @@ export function NoteEditor({
           </Text>
         </Group>
 
+        <Group
+          gap={4}
+          role="toolbar"
+          aria-label="Formatting"
+          aria-controls={textareaId}
+          onKeyDown={handleToolbarKeyDown}
+        >
+          {FORMATS.map(({ format, label, shortcut, icon }, i) => (
+            <Tooltip key={format} label={shortcut ? `${label} (${shortcut})` : label}>
+              <ActionIcon
+                ref={(el) => {
+                  toolbarButtons.current[i] = el;
+                }}
+                variant="subtle"
+                color="gray"
+                aria-label={label}
+                tabIndex={i === activeFormat ? 0 : -1}
+                // Keep the textarea's selection: a click must not move focus first
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setActiveFormat(i);
+                  applyFormat(format);
+                }}
+              >
+                {icon}
+              </ActionIcon>
+            </Tooltip>
+          ))}
+        </Group>
+
         <Textarea
+          ref={textareaRef}
+          id={textareaId}
           value={content}
           onChange={handleContentChange}
           onKeyDown={handleKeyDown}
