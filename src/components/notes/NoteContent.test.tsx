@@ -31,4 +31,11 @@ describe('NoteContent', () => {
     const { container } = renderContent('first\nsecond');
     expect(container.querySelectorAll('br')).toHaveLength(1);
   });
+
+  it('marks search matches, also inside formatting', () => {
+    const { container } = renderContent('A **headache** and a Headache', 'headache');
+    const marks = [...container.querySelectorAll('mark')].map((m) => m.textContent);
+    expect(marks).toEqual(['headache', 'Headache']);
+    expect(container.querySelector('strong mark')).not.toBeNull();
+  });
 });

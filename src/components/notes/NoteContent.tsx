@@ -4,7 +4,7 @@
  */
 import { Fragment } from 'react';
 import { Box } from '@mantine/core';
-import { parseNoteMarkdown, type InlineNode } from '@services/notes';
+import { parseNoteMarkdown, splitForHighlight, type InlineNode } from '@services/notes';
 
 export interface NoteContentProps {
   content: string;
@@ -12,15 +12,21 @@ export interface NoteContentProps {
   highlight?: string;
 }
 
-function renderInline(nodes: InlineNode[]): React.ReactNode {
+function marked(text: string, highlight: string | undefined): React.ReactNode {
+  return splitForHighlight(text, highlight).map((part, i) =>
+    part.match ? <mark key={i}>{part.text}</mark> : <Fragment key={i}>{part.text}</Fragment>
+  );
+}
+
+function renderInline(nodes: InlineNode[], highlight?: string): React.ReactNode {
   return nodes.map((node, i) => {
-    if (node.type === 'bold') return <strong key={i}>{node.text}</strong>;
-    if (node.type === 'italic') return <em key={i}>{node.text}</em>;
-    return <Fragment key={i}>{node.text}</Fragment>;
+    if (node.type === 'bold') return <strong key={i}>{marked(node.text, highlight)}</strong>;
+    if (node.type === 'italic') return <em key={i}>{marked(node.text, highlight)}</em>;
+    return <Fragment key={i}>{marked(node.text, highlight)}</Fragment>;
   });
 }
 
-export function NoteContent({ content }: NoteContentProps): React.ReactNode {
+export function NoteContent({ content, highlight }: NoteContentProps): React.ReactNode {
   return (
     <Box fz="sm" style={{ overflowWrap: 'anywhere' }}>
       {parseNoteMarkdown(content).map((block, i) => {
@@ -28,7 +34,7 @@ export function NoteContent({ content }: NoteContentProps): React.ReactNode {
           return (
             <ul key={i} style={{ margin: 0, paddingLeft: 20 }}>
               {block.items.map((item, j) => (
-                <li key={j}>{renderInline(item)}</li>
+                <li key={j}>{renderInline(item, highlight)}</li>
               ))}
             </ul>
           );
@@ -37,7 +43,7 @@ export function NoteContent({ content }: NoteContentProps): React.ReactNode {
           return (
             <ol key={i} start={block.start} style={{ margin: 0, paddingLeft: 20 }}>
               {block.items.map((item, j) => (
-                <li key={j}>{renderInline(item)}</li>
+                <li key={j}>{renderInline(item, highlight)}</li>
               ))}
             </ol>
           );
@@ -47,7 +53,7 @@ export function NoteContent({ content }: NoteContentProps): React.ReactNode {
             {block.lines.map((line, j) => (
               <Fragment key={j}>
                 {j > 0 && <br />}
-                {renderInline(line)}
+                {renderInline(line, highlight)}
               </Fragment>
             ))}
           </p>
