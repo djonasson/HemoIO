@@ -69,4 +69,16 @@ describe('MeasurementNotesDialog', () => {
     renderDialog({ measurement: null });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('cancels the editor on Escape without closing the dialog', async () => {
+    const { onClose } = renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'draft');
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox', { name: 'Note content' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Note' })).toBeInTheDocument();
+  });
 });

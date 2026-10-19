@@ -218,6 +218,8 @@ export function NoteEditor({
         <Textarea
           ref={textareaRef}
           id={textareaId}
+          // Escape cancels the editor; inside a modal it must not also close the modal
+          data-mantine-stop-propagation="true"
           value={content}
           onChange={handleContentChange}
           onKeyDown={handleKeyDown}
