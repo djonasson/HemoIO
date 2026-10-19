@@ -23,6 +23,7 @@ import {
 import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 import { convertMeasurement } from '@services/units';
 import { notePreview } from '@services/notes';
+import { isWithinDays } from '@/utils/localDate';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import type { BiomarkerCategory } from '@/types';
 
@@ -251,12 +252,7 @@ export function TrendsView({
 
     let points = [...selectedBiomarkerData.dataPoints];
 
-    if (startDate) {
-      points = points.filter((p) => p.date >= startDate);
-    }
-    if (endDate) {
-      points = points.filter((p) => p.date <= endDate);
-    }
+    points = points.filter((p) => isWithinDays(p.date, startDate, endDate));
 
     return points;
   }, [selectedBiomarkerData, startDate, endDate]);
@@ -300,12 +296,7 @@ export function TrendsView({
         if (!biomarkerData) return null;
 
         let points = [...biomarkerData.dataPoints];
-        if (startDate) {
-          points = points.filter((p) => p.date >= startDate);
-        }
-        if (endDate) {
-          points = points.filter((p) => p.date <= endDate);
-        }
+        points = points.filter((p) => isWithinDays(p.date, startDate, endDate));
 
         return {
           name: biomarkerData.name,

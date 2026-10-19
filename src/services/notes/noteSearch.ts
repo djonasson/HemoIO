@@ -2,6 +2,7 @@
  * Client-side note filtering: notes are only searchable after decryption
  */
 import type { UserNote } from '@/types';
+import { isWithinDays } from '@/utils/localDate';
 import { toPlainText } from './noteMarkdown';
 
 export interface NoteListFilters {
@@ -12,20 +13,14 @@ export interface NoteListFilters {
   tag?: string | null;
 }
 
-function endOfDay(date: Date): number {
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return end.getTime();
-}
-
 /** Notes matching every set filter, newest first */
 export function filterNotes(notes: UserNote[], filters: NoteListFilters): UserNote[] {
   const term = filters.searchTerm?.trim().toLowerCase();
   return notes
     .filter((note) => {
-      const created = note.createdAt.getTime();
-      if (filters.startDate && created < filters.startDate.getTime()) return false;
-      if (filters.endDate && created > endOfDay(filters.endDate)) return false;
+      if (!isWithinDays(note.createdAt, filters.startDate ?? null, filters.endDate ?? null)) {
+        return false;
+      }
       if (filters.biomarkerKey && note.biomarkerKey !== filters.biomarkerKey) return false;
       if (filters.tag && !note.tags.includes(filters.tag)) return false;
       if (term && !toPlainText(note.content).toLowerCase().includes(term)) return false;

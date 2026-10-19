@@ -6,7 +6,8 @@
  */
 
 import { Select, Group, Stack, Button, Text } from '@mantine/core';
-import { DatePickerInput, type DateValue } from '@mantine/dates';
+import { DatePickerInput } from '@mantine/dates';
+import { toLocalDay } from '@/utils/localDate';
 import { IconRefresh, IconChartLine } from '@tabler/icons-react';
 import type { BiomarkerCategory } from '@/types';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
@@ -51,16 +52,6 @@ export interface TrendChartControlsProps {
   showCompareButton?: boolean;
   /** Whether controls are disabled */
   disabled?: boolean;
-}
-
-/**
- * Convert DateValue to Date or null
- */
-function toDate(value: DateValue | null): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  const parsed = new Date(value);
-  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**
@@ -152,7 +143,7 @@ export function TrendChartControls({
           label="From Date"
           placeholder="Start date"
           value={startDate}
-          onChange={(value) => onStartDateChange(toDate(value))}
+          onChange={(value) => onStartDateChange(toLocalDay(value))}
           maxDate={endDate || new Date()}
           clearable
           disabled={disabled}
@@ -162,7 +153,7 @@ export function TrendChartControls({
           label="To Date"
           placeholder="End date"
           value={endDate}
-          onChange={(value) => onEndDateChange(toDate(value))}
+          onChange={(value) => onEndDateChange(toLocalDay(value))}
           minDate={startDate || undefined}
           maxDate={new Date()}
           clearable

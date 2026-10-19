@@ -17,7 +17,8 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { DatePickerInput, type DateValue } from '@mantine/dates';
+import { DatePickerInput } from '@mantine/dates';
+import { toLocalDay } from '@/utils/localDate';
 import { IconNotes, IconSearch } from '@tabler/icons-react';
 import { useNotes } from '@hooks/useNotes';
 import { useLabResults } from '@hooks/useLabResults';
@@ -34,17 +35,6 @@ import { NoteContent } from './NoteContent';
 export interface NotesViewProps {
   onOpenLabResult: (labResultId: number) => void;
   onOpenTrend: (biomarkerKey: string, date?: Date) => void;
-}
-
-/**
- * The picker's day as local midnight. Its "YYYY-MM-DD" strings would parse
- * as UTC, which is the previous evening west of UTC.
- */
-function toLocalDay(value: DateValue): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-  const [year, month, day] = value.split('-').map(Number);
-  return year && month && day ? new Date(year, month - 1, day) : null;
 }
 
 export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): React.ReactNode {
