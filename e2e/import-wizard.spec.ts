@@ -314,7 +314,7 @@ test.describe('Import Wizard', () => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
-      await main(page).getByLabel('Lab Date').click();
+      await main(page).getByLabel('Lab Date', { exact: true }).click();
       const calendar = page.getByRole('dialog');
       await expect(calendar).toBeVisible();
       // Opens on the detected date's month
