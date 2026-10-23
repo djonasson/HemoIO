@@ -4,6 +4,8 @@
  * Type definitions for AI provider integrations used in lab report analysis.
  */
 
+import type { RateLimitOptions } from './rateLimitedFetch';
+
 /**
  * Supported AI providers
  */
@@ -112,6 +114,8 @@ export interface AnalysisOptions {
   language?: string;
   /** Whether to extract patient info */
   extractPatientInfo?: boolean;
+  /** Retry hooks for rate-limited requests (HTTP 429) */
+  rateLimit?: RateLimitOptions;
 }
 
 /**

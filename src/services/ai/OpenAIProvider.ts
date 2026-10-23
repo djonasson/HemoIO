@@ -19,6 +19,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
+import { fetchWithRateLimitRetry, RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
  * Default OpenAI configuration.
@@ -119,7 +120,7 @@ export class OpenAIProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(messages);
+      const response = await this.makeRequest(messages, { rateLimit: options.rateLimit });
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -237,7 +238,7 @@ export class OpenAIProvider implements AIProvider {
    */
   private async makeRequest(
     messages: OpenAIMessage[],
-    options: { maxTokens?: number } = {}
+    options: { maxTokens?: number; rateLimit?: RateLimitOptions } = {}
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
 
@@ -266,14 +267,22 @@ export class OpenAIProvider implements AIProvider {
       requestBody.max_tokens = tokenLimit;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.apiKey}`,
+    const response = await fetchWithRateLimitRetry(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    });
+      options.rateLimit
+    );
+
+    if (response.status === 429) {
+      throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'openai', 'rate_limited');
+    }
 
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as OpenAIErrorResponse;

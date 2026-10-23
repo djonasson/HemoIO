@@ -18,6 +18,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
+import { fetchWithRateLimitRetry, RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
  * Default Anthropic configuration.
@@ -116,7 +117,11 @@ export class AnthropicProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(messages, ENHANCED_SYSTEM_PROMPT);
+      const response = await this.makeRequest(
+        messages,
+        ENHANCED_SYSTEM_PROMPT,
+        options.rateLimit
+      );
 
       if (response.stop_reason === 'refusal') {
         throw new AIAnalysisError(
@@ -211,11 +216,12 @@ export class AnthropicProvider implements AIProvider {
    */
   private async makeRequest(
     messages: AnthropicMessage[],
-    systemPrompt: string
+    systemPrompt: string,
+    rateLimit?: RateLimitOptions
   ): Promise<AnthropicResponse> {
     const url = `${this.config.baseUrl}/messages`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimitRetry(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,7 +234,11 @@ export class AnthropicProvider implements AIProvider {
         messages,
         max_tokens: this.config.maxTokens,
       }),
-    });
+    }, rateLimit);
+
+    if (response.status === 429) {
+      throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'anthropic', 'rate_limited');
+    }
 
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as AnthropicErrorResponse;

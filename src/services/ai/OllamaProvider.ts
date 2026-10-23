@@ -29,6 +29,7 @@ import {
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
+import { fetchWithRateLimitRetry, RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
  * OpenAI-compatible chat message type
@@ -113,7 +114,7 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse);
+      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit);
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -189,7 +190,7 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse);
+      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit);
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -384,7 +385,8 @@ export class OllamaProvider implements AIProvider {
    */
   private async makeChatRequest(
     messages: ChatMessage[],
-    model: string
+    model: string,
+    rateLimit?: RateLimitOptions
   ): Promise<ChatCompletionResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -392,7 +394,8 @@ export class OllamaProvider implements AIProvider {
     try {
       const url = `${this.baseUrl}/v1/chat/completions`;
 
-      const response = await fetch(url, {
+      // The timeout covers the whole call, rate-limit waits included
+      const response = await fetchWithRateLimitRetry(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -405,9 +408,13 @@ export class OllamaProvider implements AIProvider {
           stream: false,
         }),
         signal: controller.signal,
-      });
+      }, rateLimit);
 
       clearTimeout(timeoutId);
+
+      if (response.status === 429) {
+        throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'ollama', 'rate_limited');
+      }
 
       if (!response.ok) {
         const errorMessage = await parseOllamaError(response);

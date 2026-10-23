@@ -109,6 +109,9 @@ export interface AnalysisStage {
   error?: string;
 }
 
+/** Progress stage shown while waiting out an AI provider's rate limit */
+export const RATE_LIMIT_STAGE = 'Waiting for the AI provider (rate limited)';
+
 /**
  * Options for lab report analysis
  */
@@ -309,6 +312,10 @@ export async function analyzeLabReport(
     aiAnalysis = await provider.analyzeLabReport(extractedText, {
       language: options.language,
       extractPatientInfo: options.extractPatientInfo,
+      rateLimit: {
+        onWait: () => options.onProgress?.(RATE_LIMIT_STAGE, 0.6),
+        onResume: () => options.onProgress?.('Analyzing with AI', 0.6),
+      },
     });
 
     if (aiAnalysis.warnings.length > 0) {

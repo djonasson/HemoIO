@@ -145,6 +145,7 @@ vi.mock('../units', () => ({
 // Import mocked modules for control
 import * as ocrModule from '../ocr';
 import * as aiModule from '../ai';
+import type { AnalysisOptions } from '../ai/types';
 
 // Helper to create mock files
 function createMockFile(name: string, type: string, size: number = 1024): File {
@@ -287,6 +288,32 @@ describe('LabReportAnalyzer', () => {
       await expect(analyzeLabReport(file, defaultOptions)).rejects.toThrow(
         AnalysisError
       );
+    });
+
+    it('shows the rate-limit wait as a progress stage', async () => {
+      const realProvider = vi.mocked(aiModule.getAIProvider)(
+        'openai',
+        defaultOptions.aiConfig
+      );
+      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
+        type: 'openai',
+        name: 'OpenAI',
+        analyzeLabReport: vi.fn(async (text: string, options?: AnalysisOptions) => {
+          options?.rateLimit?.onWait?.(2000, 1);
+          options?.rateLimit?.onResume?.();
+          return realProvider.analyzeLabReport(text);
+        }),
+        validateConfiguration: vi.fn(),
+        testConnection: vi.fn(),
+      });
+      const stages: string[] = [];
+      const file = createMockFile('report.pdf', 'application/pdf');
+
+      await analyzeLabReport(file, { ...defaultOptions, onProgress: (stage) => stages.push(stage) });
+
+      const waiting = stages.indexOf('Waiting for the AI provider (rate limited)');
+      expect(waiting).toBeGreaterThan(stages.indexOf('Analyzing with AI'));
+      expect(stages.lastIndexOf('Analyzing with AI')).toBeGreaterThan(waiting);
     });
 
     it('handles AI analysis failure', async () => {

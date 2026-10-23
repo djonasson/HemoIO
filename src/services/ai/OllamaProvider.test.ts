@@ -501,3 +501,63 @@ describe('OllamaProvider', () => {
     });
   });
 });
+describe('OllamaProvider rate limiting', () => {
+  const successBody = {
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 }],
+            warnings: [],
+          }),
+        },
+        finish_reason: 'stop',
+      },
+    ],
+    model: 'llama3.2:8b',
+  };
+  const rateLimited = () =>
+    new Response(JSON.stringify({ error: { message: 'rate limited' } }), {
+      status: 429,
+      headers: { 'retry-after': '0' },
+    });
+  const provider = () => new OllamaProvider();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('retries a rate-limited request and reports the wait', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(rateLimited())
+      .mockResolvedValueOnce(new Response(JSON.stringify(successBody), { status: 200 }));
+    const onWait = vi.fn();
+
+    const result = await provider().analyzeLabReport('Glucose 95 mg/dL', { rateLimit: { onWait } });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(onWait).toHaveBeenCalledWith(0, 1);
+    expect(result.biomarkers.length).toBeGreaterThan(0);
+  });
+
+  it('fails with a clear message when the rate limit does not lift', async () => {
+    vi.mocked(fetch).mockImplementation(async () => rateLimited());
+
+    await expect(provider().analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow(
+      'The AI provider is rate limiting requests. Wait a minute, then try again.'
+    );
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not retry other errors', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: 'down' } }), { status: 503 })
+    );
+    await expect(provider().analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
