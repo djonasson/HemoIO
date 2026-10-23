@@ -257,6 +257,16 @@ test.describe('Document Analysis - AI Processing', () => {
   test('should show progress indicator during OCR', async ({ page }) => {
     test.setTimeout(120000);
     const ai = await loginWithOllama(page);
+    // OCR must not depend on any CDN: block every external host
+    const external: string[] = [];
+    await page.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => {
+      external.push(route.request().url());
+      return route.abort();
+    });
+    const ocrAssets: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/tesseract/')) ocrAssets.push(new URL(request.url()).pathname);
+    });
     await goToImport(page);
     await uploadFiles(page, track(await createTextImage(page, 'scan.png')));
     await recordRenderedTexts(page);
@@ -270,6 +280,13 @@ test.describe('Document Analysis - AI Processing', () => {
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible({ timeout: 90000 });
     // The text the AI received was read from the image
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
+    expect(external).toEqual([]);
+    expect(ocrAssets).toEqual(
+      expect.arrayContaining([
+        '/tesseract/lang/eng.traineddata.gz',
+        '/tesseract/lang/ita.traineddata.gz',
+      ])
+    );
   });
 
   test('should extract text from text-based PDF', async ({ page }) => {
@@ -621,6 +638,7 @@ test.describe('Document Analysis - Error Handling', () => {
 
     // Progress was shown and requests were queued, never sent concurrently
     await expectStageShown(page, 'Analyzing with AI');
+    await expectStageShown(page, 'Waiting for the AI provider (rate limited)');
     expect(ai.maxInFlight).toBe(1);
 
     // The rate-limited document is not lost
@@ -628,6 +646,56 @@ test.describe('Document Analysis - Error Handling', () => {
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 4 biomarker values from 2 file(s).'
     );
+  });
+
+  test('should fail with a clear message when rate limiting does not stop', async ({ page }) => {
+    // retry-after: 0 keeps the test fast; the backoff itself is unit tested
+    const ai = await loginWithOllama(page, [
+      { status: 429, error: 'rate limit exceeded', headers: { 'retry-after': '0' } },
+    ]);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextLabReportPdf()));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
+      'The AI provider is rate limiting requests. Wait a minute, then try again.'
+    );
+    // The first request and 3 retries
+    expect(ai.prompts).toHaveLength(4);
+    await expect(main(page).getByRole('button', { name: 'Enter values manually' })).toBeVisible();
+  });
+
+  test('should open an empty review for manual entry', async ({ page }) => {
+    await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextPdf('blank.pdf', [[]])));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await main(page).getByRole('button', { name: 'Enter values manually' }).click();
+
+    await expect(main(page).getByText('blank.pdf')).toBeVisible();
+    await expect(main(page).getByText('Entered manually')).toBeVisible();
+    await expect(main(page).getByText('0 biomarker(s) from 1 file(s)')).toBeVisible();
+
+    await main(page).getByRole('button', { name: 'Add Biomarker' }).click();
+    const editing = main(page)
+      .getByRole('row')
+      .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+    await editing.getByPlaceholder('Biomarker name').fill('Gluc');
+    await page.getByRole('option', { name: 'Glucose', exact: true }).click();
+    await editing.getByPlaceholder('Value', { exact: true }).fill('95');
+    await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
+    await editing.getByRole('button', { name: 'Save changes' }).click();
+
+    // A lab date is required before continuing
+    await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(main(page).getByText('Enter the lab date for "blank.pdf"')).toBeVisible();
+
+    await main(page).getByRole('textbox', { name: 'Lab Date' }).fill('2024-03-01');
+    await continueToConfirm(page);
+    await expect(main(page).getByText('2024-03-01').first()).toBeVisible();
   });
 });
 

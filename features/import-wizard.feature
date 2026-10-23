@@ -101,6 +101,17 @@ Feature: Import Wizard
     Then I should be able to select a biomarker
     And I should be able to enter the value and unit
 
+  Scenario: User enters a biomarker that is not in the dictionary
+    Given I am editing a value on the review step
+    When I type a biomarker name that matches no dictionary entry
+    Then the name should be kept as I typed it
+    And the value should be saved as an unknown biomarker
+
+  Scenario: User must set a missing lab date
+    Given a reviewed file has no lab date
+    When I try to continue
+    Then I should be asked to enter the lab date
+
   Scenario: User removes an extracted value
     Given I see an incorrectly extracted value
     When I click the remove button

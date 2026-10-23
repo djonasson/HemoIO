@@ -141,7 +141,29 @@ Feature: Document Analysis
     Given the AI service rate limits requests
     When multiple documents are analyzed
     Then requests should be queued appropriately
+    And the rate-limited file should show "Waiting for the AI provider (rate limited)"
+    And the request should be retried after waiting
     And progress should be shown to the user
+
+  Scenario: Rate limiting does not stop
+    Given the AI service keeps rate limiting requests
+    When a document is analyzed
+    Then the request should be retried 3 times
+    And the file should fail with a message to wait and try again
+    And manual entry should be offered as alternative
+
+  Scenario: Enter values manually after a failed analysis
+    Given a document could not be analyzed
+    When I choose "Enter values manually"
+    Then I should see the review step with the file's name and no values
+    And I should be able to add values and a lab date myself
+
+  Scenario: OCR works without internet access
+    Given the app's own files have loaded
+    And no external servers can be reached
+    When I upload a scanned lab report
+    Then OCR should extract its text
+    And English and Italian text should be recognized
 
   # Performance
   Scenario: Large document handling

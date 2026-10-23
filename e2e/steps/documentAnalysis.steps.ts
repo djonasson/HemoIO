@@ -18,7 +18,7 @@ const OLLAMA_CHAT_URL = '**/localhost:11434/v1/chat/completions';
  */
 export type ChatReply =
   | { extraction: object }
-  | { status: number; error: string }
+  | { status: number; error: string; headers?: Record<string, string> }
   | { abort: true };
 
 export interface OllamaChatScript {
@@ -75,6 +75,7 @@ export async function scriptOllamaChat(
       } else if ('status' in reply) {
         await route.fulfill({
           status: reply.status,
+          headers: reply.headers,
           contentType: 'application/json',
           body: JSON.stringify({ error: reply.error }),
         });
