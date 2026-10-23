@@ -368,7 +368,9 @@ export function ReviewStep({
     });
 
     // Without a date a result would be saved as today: ask for it instead
-    const missingDates = reviewedResults
+    // Files left without values are not saved, so they need no date
+    const toSave = reviewedResults.filter((r) => r.editedBiomarkers.length > 0);
+    const missingDates = toSave
       .filter((r) => !normalizeLabDate(r.editedLabDate ?? r.labDate))
       .map((r) => `Enter the lab date for "${r.fileName}"`);
     const problems = [...missingDates, ...invalidBiomarkers];
@@ -379,7 +381,7 @@ export function ReviewStep({
     }
 
     setValidationError(null);
-    onComplete(reviewedResults);
+    onComplete(toSave);
   }, [reviewedResults, onComplete]);
 
   return (

@@ -256,4 +256,28 @@ describe('AnalysisStep', () => {
 
     expect(signal?.aborted).toBe(true);
   });
+
+  it('enters every file without values manually, in one step', async () => {
+    vi.mocked(analyzeLabReport)
+      .mockRejectedValueOnce(new Error('AI analysis failed: down'))
+      .mockRejectedValueOnce(new Error('No readable text found in document'));
+    const onComplete = vi.fn();
+    renderAnalysisStep({
+      files: [
+        { file: new File(['x'], 'a.pdf'), id: 'a', formattedSize: '1 KB' },
+        { file: new File(['x'], 'b.pdf'), id: 'b', formattedSize: '1 KB' },
+      ],
+      onComplete,
+    });
+
+    const buttons = await screen.findAllByRole('button', { name: 'Enter values manually' });
+    expect(buttons).toHaveLength(1);
+    await userEvent.click(buttons[0]);
+
+    const passed = onComplete.mock.calls[0][0] as Array<{ fileName: string; manualEntry?: boolean }>;
+    expect(passed.map((r) => [r.fileName, r.manualEntry])).toEqual([
+      ['a.pdf', true],
+      ['b.pdf', true],
+    ]);
+  });
 });

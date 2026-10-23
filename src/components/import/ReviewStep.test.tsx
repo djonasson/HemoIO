@@ -904,4 +904,24 @@ describe('ReviewStep', () => {
     renderReviewStep();
     expect(screen.getByRole('button', { name: 'Clear lab date' })).toBeInTheDocument();
   });
+
+  it('does not save, or ask a date for, a manual entry left empty', () => {
+    const onComplete = vi.fn();
+    const empty: ReviewedResult = {
+      ...mockReviewedResult,
+      fileId: 'empty',
+      fileName: 'empty.pdf',
+      manualEntry: true,
+      biomarkers: [],
+      editedBiomarkers: [],
+      labDate: undefined,
+      editedLabDate: undefined,
+    };
+    renderReviewStep({ reviewedResults: [mockReviewedResult, empty], onComplete });
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
+    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
+  });
 });

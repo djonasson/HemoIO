@@ -292,16 +292,14 @@ export function AnalysisStep({
     }
   }, [results, onComplete]);
 
-  // Values the analysis could not provide are typed in on the review step
-  const enterManually = useCallback(
-    (fileId: string) => {
-      const next = results
-        .map((r) => (r.fileId === fileId ? manualEntryResult(r) : r))
-        .filter((r) => r.success);
-      onComplete(next);
-    },
-    [results, onComplete]
-  );
+  // Files without values: the user types those values in on the review step
+  const hasNoValues = (r: AnalysisResult) => !r.success || r.biomarkers.length === 0;
+  const filesWithoutValues = results.filter((r) => r && hasNoValues(r));
+  const enterManually = useCallback(() => {
+    onComplete(
+      results.filter(Boolean).map((r) => (hasNoValues(r) ? manualEntryResult(r) : r))
+    );
+  }, [results, onComplete]);
 
   // Get status icon
   const getStatusIcon = (status: FileStatus['status']) => {
@@ -369,19 +367,7 @@ export function AnalysisStep({
                     {file.error}
                   </Text>
                 )}
-                {!isProcessing &&
-                  results.some(
-                    (r) => r?.fileId === file.id && (!r.success || r.biomarkers.length === 0)
-                  ) && (
-                    <Button
-                      size="compact-xs"
-                      variant="light"
-                      mt={4}
-                      onClick={() => enterManually(file.id)}
-                    >
-                      Enter values manually
-                    </Button>
-                  )}
+
               </div>
               {file.status === 'processing' && (
                 <Progress
@@ -432,6 +418,20 @@ export function AnalysisStep({
             </Alert>
           )}
         </>
+      )}
+
+      {/* One choice for all files without values: none is left behind */}
+      {!isProcessing && filesWithoutValues.length > 0 && (
+        <Group justify="center">
+          <Button variant="light" onClick={enterManually}>
+            Enter values manually
+          </Button>
+          <Text size="xs" c="dimmed">
+            {filesWithoutValues.length === 1
+              ? `${filesWithoutValues[0].fileName} has no values yet`
+              : `${filesWithoutValues.length} files have no values yet`}
+          </Text>
+        </Group>
       )}
 
       {/* Action buttons */}
