@@ -272,12 +272,10 @@ test.describe('Document Analysis - AI Processing', () => {
     await recordRenderedTexts(page);
     await startAnalysis(page);
 
-    // OCR runs for a while: the stage and the file's progress are visible
-    const item = analysisItem(page, 'scan.png');
-    await expect(item.getByText(/^OCR: /)).toBeVisible({ timeout: 60000 });
-    await expect(item.getByRole('progressbar')).toBeVisible();
-
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible({ timeout: 90000 });
+    // With OCR served locally a small scan can finish within one check of the
+    // page, so the stage is read from everything the page rendered
+    await expectStageShown(page, /^OCR: /);
     // The text the AI received was read from the image
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
     expect(external).toEqual([]);

@@ -7,6 +7,10 @@
 
 import Tesseract, { createWorker } from 'tesseract.js';
 import type { Worker, RecognizeResult } from 'tesseract.js';
+import { OCR_LANGUAGES, ocrAssetUrls } from './ocrAssets';
+
+/** The bundled languages, recognized together */
+const DEFAULT_LANGUAGE = OCR_LANGUAGES.join('+');
 
 /**
  * Result of OCR processing for a single image
@@ -111,12 +115,34 @@ let workerInstance: Worker | null = null;
 let workerLanguage: string = '';
 
 /**
+ * Create a Tesseract worker whose script, core and language data all come
+ * from the app itself, never a CDN
+ */
+function createOcrWorker(
+  language: string,
+  logger: (message: Tesseract.LoggerMessage) => void
+): Promise<Worker> {
+  return createWorker(
+    language,
+    1 /* OEM.LSTM_ONLY */,
+    {
+      ...ocrAssetUrls(window.location.origin, import.meta.env.BASE_URL),
+      logger,
+    },
+    // The Italian data names a word list ("special-words") that is not part
+    // of it; without this Tesseract logs an error looking for it. The option
+    // is a Tesseract init parameter that tesseract.js's types do not list.
+    { user_words_suffix: '' } as unknown as Partial<Tesseract.InitOptions>
+  );
+}
+
+/**
  * Get or create a Tesseract worker
  *
  * @param language - Language(s) to use
  * @returns Tesseract worker instance
  */
-async function getWorker(language: string = 'eng'): Promise<Worker> {
+async function getWorker(language: string = DEFAULT_LANGUAGE): Promise<Worker> {
   if (workerInstance && workerLanguage === language) {
     return workerInstance;
   }
@@ -126,9 +152,7 @@ async function getWorker(language: string = 'eng'): Promise<Worker> {
     await workerInstance.terminate();
   }
 
-  workerInstance = await createWorker(language, undefined, {
-    logger: () => {},
-  });
+  workerInstance = await createOcrWorker(language, () => {});
   workerLanguage = language;
 
   return workerInstance;
@@ -147,7 +171,7 @@ export async function recognizeImage(
 ): Promise<OCRResult> {
   const startTime = performance.now();
   const {
-    language = 'eng',
+    language = DEFAULT_LANGUAGE,
     onProgress,
     autoRotate = true,
     pageSegmentationMode = PageSegmentationMode.AUTO,
@@ -178,9 +202,7 @@ export async function recognizeImage(
   // If progress handler provided, we need to use a fresh worker with logger
   let result: RecognizeResult;
   if (progressHandler) {
-    const tempWorker = await createWorker(langString, undefined, {
-      logger: progressHandler,
-    });
+    const tempWorker = await createOcrWorker(langString, progressHandler);
     await tempWorker.setParameters({
       tessedit_pageseg_mode: pageSegmentationMode as unknown as Tesseract.PSM,
     });

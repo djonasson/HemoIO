@@ -2,6 +2,16 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import { existsSync } from 'fs';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { ocrCopyTargets } from './src/services/ocr/ocrAssets';
+
+// OCR runs from these files offline: a missing one must fail the build, not OCR
+const ocrTargets = ocrCopyTargets();
+const missingOcrFiles = ocrTargets.filter((target) => !existsSync(target.src));
+if (missingOcrFiles.length > 0) {
+  throw new Error(`Missing OCR files: ${missingOcrFiles.map((t) => t.src).join(', ')}`);
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
@@ -11,6 +21,10 @@ export default defineConfig(({ command }) => {
     base,
     plugins: [
       react(),
+      viteStaticCopy({
+        // Flat into tesseract/…, without the node_modules path
+        targets: ocrTargets.map((target) => ({ ...target, rename: { stripBase: true as const } })),
+      }),
       VitePWA({
         registerType: 'prompt',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
@@ -67,18 +81,6 @@ export default defineConfig(({ command }) => {
             },
           },
           {
-            // Cache Tesseract.js worker and language files
-            urlPattern: /tesseract.*worker|tesseract.*lang-data/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'tesseract-assets',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-              },
-            },
-          },
-          {
             // Cache fonts
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
             handler: 'CacheFirst',
@@ -95,7 +97,10 @@ export default defineConfig(({ command }) => {
         skipWaiting: true,
         clientsClaim: true,
         // Pre-cache app shell
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // The OCR worker, cores and language data are precached for offline OCR
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}', 'tesseract/**/*'],
+        // OCR cores and language data are a few MB each
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues

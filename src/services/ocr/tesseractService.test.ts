@@ -105,12 +105,41 @@ describe('Tesseract OCR Service', () => {
       expect(result.processingTime).toBeGreaterThanOrEqual(0);
     });
 
+    it('loads the worker, core and languages from the app itself', async () => {
+      await recognizeImage(new File(['test'], 'test.png', { type: 'image/png' }));
+
+      expect(Tesseract.createWorker).toHaveBeenCalledWith(
+        'eng+ita',
+        1,
+        expect.objectContaining({
+          workerPath: expect.stringMatching(/\/tesseract\/worker\.min\.js$/),
+          corePath: expect.stringMatching(/\/tesseract\/core$/),
+          langPath: expect.stringMatching(/\/tesseract\/lang$/),
+        }),
+        // The Italian data's missing word list must not be looked up
+        expect.objectContaining({ user_words_suffix: '' })
+      );
+    });
+
+    it('loads every worker from the app itself, also when reporting progress', async () => {
+      await recognizeImage(new File(['test'], 'test.png', { type: 'image/png' }), {
+        onProgress: vi.fn(),
+      });
+
+      for (const call of vi.mocked(Tesseract.createWorker).mock.calls) {
+        expect(call[1]).toBe(1);
+        expect(call[2]).toEqual(
+          expect.objectContaining({ langPath: expect.stringMatching(/\/tesseract\/lang$/) })
+        );
+      }
+    });
+
     it('accepts custom language option', async () => {
       const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
 
       await recognizeImage(mockFile, { language: 'deu' });
 
-      expect(Tesseract.createWorker).toHaveBeenCalledWith('deu', undefined, expect.any(Object));
+      expect(Tesseract.createWorker).toHaveBeenCalledWith('deu', 1, expect.any(Object), expect.any(Object));
     });
 
     it('accepts multiple languages', async () => {
@@ -118,7 +147,7 @@ describe('Tesseract OCR Service', () => {
 
       await recognizeImage(mockFile, { language: ['eng', 'deu'] });
 
-      expect(Tesseract.createWorker).toHaveBeenCalledWith('eng+deu', undefined, expect.any(Object));
+      expect(Tesseract.createWorker).toHaveBeenCalledWith('eng+deu', 1, expect.any(Object), expect.any(Object));
     });
 
     it('uses specified page segmentation mode', async () => {

@@ -28,6 +28,8 @@
     "@mantine/notifications": "^8.3.14",
     "@tabler/icons-react": "^3.36.1",
     "@tanstack/react-table": "^8.21.3",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/ita": "^1.0.0",
     "dayjs": "^1.11.19",
     "dexie": "^4.3.0",
     "pdfjs-dist": "^5.4.530",
@@ -58,6 +60,7 @@
     "typescript-eslint": "^8.46.4",
     "vite": "^7.2.4",
     "vite-plugin-pwa": "^1.2.0",
+    "vite-plugin-static-copy": "^4.1.1",
     "vitest": "^4.0.18"
   }
 }
