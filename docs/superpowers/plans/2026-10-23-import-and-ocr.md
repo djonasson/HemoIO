@@ -1419,3 +1419,42 @@ git commit -m "docs(spec): mark import and OCR done"
 ```
 
 Do this commit after the final review and its fix pass, once the Outcome section of this plan is written.
+
+
+---
+
+## Outcome (2026-10-23)
+
+Executed inline. A fresh reviewer reviewed the whole branch, followed by one fix pass (commits f62b087..d1fef37).
+
+The fix pass covered:
+- **OpenAI quota:** an exhausted OpenAI quota is reported at once instead of being retried as a rate limit.
+- **Leaving the step:** AI requests and rate-limit waits stop when the analysis step is left.
+- **OCR workers:** one shared OCR worker, with progress reported through it; this removes the worker leak.
+- **Manual entry:** one action covers every file without values, and empty manual results are skipped.
+- **Dates:**
+  - Unclear report dates are shown so they can be typed.
+  - Year-first slashed dates are read.
+  - Confirm shows the saved date.
+- **Units:** a unit the renamed biomarker cannot have is replaced.
+- **Accessibility:** the lab date clear button is named and file stages are announced.
+- **Offline PDFs:** the PDF.js worker is precached, so PDFs open offline.
+
+Found during verification:
+- Persistence saved `15/01/2024` in March 2025. One date parser now serves review and saving.
+- A second OCR worker still used the CDN.
+- The Italian data logged a missing word list.
+
+Gates:
+- build, lint, and 1590 unit tests with clean output
+- import and analysis E2E 128/128 in both browsers
+- full E2E: only the 8 preferred-unit tests of sub-project 5 fail
+
+Precache: 24 entries, about 19 MB (OCR worker, 3 cores, English and Italian data, PDF.js worker).
+
+Deferred minors (not fixed; candidates for later work):
+- the 3 parallel cloud slots retry on the same fixed 2/4/8 s schedule (no shared backoff or jitter); OpenAI's retry-after-ms is ignored
+- every visitor precaches ~19 MB, including 3 SIMD core variants of which a browser uses one (runtime-caching cores would save ~8 MB)
+- the OCR file check in vite.config.ts resolves paths from the shell's directory, not the project root
+- src/utils/biomarkerSuggestions.ts depends on the data layer and ReviewStep imports BIOMARKER_DEFINITIONS directly; belongs in a services/biomarkers module
+- offline OCR from the service-worker cache is not tested end to end (the E2E blocks external hosts on the dev server, which has no service worker)
