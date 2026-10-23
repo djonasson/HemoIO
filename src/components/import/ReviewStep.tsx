@@ -38,6 +38,7 @@ import {
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { BIOMARKER_DEFINITIONS, findBiomarker } from '../../data/biomarkers/dictionary';
+import { DateInput } from '@mantine/dates';
 import { normalizeLabDate } from '@/utils/labDate';
 import {
   applyBiomarkerName,
@@ -476,14 +477,19 @@ export function ReviewStep({
               <Stack gap="md">
                 {/* Lab info */}
                 <Group grow>
-                  <TextInput
+                  <DateInput
                     label="Lab Date"
                     leftSection={<IconCalendar size={16} />}
                     placeholder="YYYY-MM-DD"
-                    value={result.editedLabDate || result.labDate || ''}
-                    onChange={(e) =>
-                      updateLabDate(resultIndex, e.target.value || undefined)
-                    }
+                    valueFormat="YYYY-MM-DD"
+                    // Typed dates use the same YYYY-MM-DD form
+                    dateParser={(input) => normalizeLabDate(input)}
+                    value={normalizeLabDate(result.editedLabDate ?? result.labDate)}
+                    // A cleared date stays empty ('') instead of reverting to the detected one
+                    onChange={(value) => updateLabDate(resultIndex, normalizeLabDate(value) ?? '')}
+                    clearable
+                    // Exposes the calendar as a dialog, as date pickers elsewhere are
+                    popoverProps={{ withRoles: true }}
                   />
                   <TextInput
                     label="Lab Name"

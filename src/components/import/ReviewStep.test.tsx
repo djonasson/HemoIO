@@ -823,4 +823,80 @@ describe('ReviewStep', () => {
       expect(last[0].editedBiomarkers[0].dictionaryMatch?.name).toBe('GlucoseX');
     });
   });
+
+  describe('Lab date picker', () => {
+    function DatedReview({ labDate }: { labDate: string }) {
+      const [reviewed, setReviewed] = useState<ReviewedResult[]>([
+        { ...mockReviewedResult, labDate, editedLabDate: undefined },
+      ]);
+      return (
+        <MantineProvider env="test">
+          <ReviewStep
+            results={[mockAnalysisResult]}
+            reviewedResults={reviewed}
+            onReviewChange={setReviewed}
+            onComplete={vi.fn()}
+            onBack={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    }
+
+    it('picks the lab date from a calendar that opens on the detected month', async () => {
+      render(<DatedReview labDate="2024-01-15" />);
+      const labDate = screen.getByRole('textbox', { name: 'Lab Date' });
+      expect(labDate).toHaveValue('2024-01-15');
+
+      await userEvent.click(labDate);
+      await userEvent.click(await screen.findByRole('button', { name: '20 January 2024' }));
+
+      expect(labDate).toHaveValue('2024-01-20');
+    });
+
+    it('accepts a typed lab date', async () => {
+      render(<DatedReview labDate="2024-01-15" />);
+      const labDate = screen.getByRole('textbox', { name: 'Lab Date' });
+
+      await userEvent.clear(labDate);
+      await userEvent.type(labDate, '2024-01-16');
+      await userEvent.tab();
+
+      expect(labDate).toHaveValue('2024-01-16');
+    });
+
+    it('leaves the field empty for a lab date it cannot read', () => {
+      render(<DatedReview labDate="15/01/2024" />);
+      expect(screen.getByRole('textbox', { name: 'Lab Date' })).toHaveValue('');
+    });
+  });
+
+  it('keeps a cleared lab date empty and asks for one', async () => {
+    const onComplete = vi.fn();
+    function Cleared() {
+      const [reviewed, setReviewed] = useState<ReviewedResult[]>([
+        { ...mockReviewedResult, editedLabDate: undefined },
+      ]);
+      return (
+        <MantineProvider env="test">
+          <ReviewStep
+            results={[mockAnalysisResult]}
+            reviewedResults={reviewed}
+            onReviewChange={setReviewed}
+            onComplete={onComplete}
+            onBack={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    }
+    render(<Cleared />);
+    const labDate = screen.getByRole('textbox', { name: 'Lab Date' });
+
+    await userEvent.clear(labDate);
+    await userEvent.tab();
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    expect(labDate).toHaveValue('');
+    expect(screen.getByText('Enter the lab date for "lab-report.pdf"')).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });
