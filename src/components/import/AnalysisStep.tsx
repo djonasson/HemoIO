@@ -30,6 +30,7 @@ import { analyzeLabReport, AnalysisError } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { processWithConcurrency } from '../../utils/concurrency';
+import { manualEntryResult } from './manualEntry';
 
 /**
  * Analysis result for a single file
@@ -55,6 +56,8 @@ export interface AnalysisResult {
   warnings: string[];
   /** Duplicate biomarker conflicts */
   duplicateConflicts?: DuplicateConflict[];
+  /** Values are typed in by the user, not extracted */
+  manualEntry?: boolean;
 }
 
 /**
@@ -285,6 +288,17 @@ export function AnalysisStep({
     }
   }, [results, onComplete]);
 
+  // Values the analysis could not provide are typed in on the review step
+  const enterManually = useCallback(
+    (fileId: string) => {
+      const next = results
+        .map((r) => (r.fileId === fileId ? manualEntryResult(r) : r))
+        .filter((r) => r.success);
+      onComplete(next);
+    },
+    [results, onComplete]
+  );
+
   // Get status icon
   const getStatusIcon = (status: FileStatus['status']) => {
     switch (status) {
@@ -350,6 +364,19 @@ export function AnalysisStep({
                     {file.error}
                   </Text>
                 )}
+                {!isProcessing &&
+                  results.some(
+                    (r) => r?.fileId === file.id && (!r.success || r.biomarkers.length === 0)
+                  ) && (
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      mt={4}
+                      onClick={() => enterManually(file.id)}
+                    >
+                      Enter values manually
+                    </Button>
+                  )}
               </div>
               {file.status === 'processing' && (
                 <Progress
@@ -395,7 +422,8 @@ export function AnalysisStep({
               title="Analysis Failed"
               color="red"
             >
-              No files could be processed. Please check your files and try again.
+              No files could be processed. Check your files and try again, or type the
+              values in yourself.
             </Alert>
           )}
         </>

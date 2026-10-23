@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { AnalysisStep } from './AnalysisStep';
+import { analyzeLabReport } from '../../services/analysis';
+import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
 import type { UploadedFile } from './UploadStep';
 
 // Mock the analysis service
@@ -17,10 +20,9 @@ vi.mock('../../services/analysis', () => ({
 
 // Mock concurrency utility
 vi.mock('../../utils/concurrency', () => ({
-  processWithConcurrency: vi.fn(async (items, processor, _options, onComplete) => {
-    for (const item of items) {
-      await processor(item);
-      onComplete?.();
+  processWithConcurrency: vi.fn(async (items, processor) => {
+    for (let index = 0; index < items.length; index++) {
+      await processor(items[index], index);
     }
   }),
 }));
@@ -160,6 +162,73 @@ describe('AnalysisStep', () => {
       expect(screen.getByText(/Processing 3 file/)).toBeInTheDocument();
 
       await waitForAnalysisToFinish();
+    });
+  });
+
+  describe('Manual entry', () => {
+    function uploaded(name: string): UploadedFile {
+      return {
+        file: new File(['x'], name, { type: 'application/pdf' }),
+        id: name,
+        formattedSize: '1 KB',
+      };
+    }
+
+    function successfulAnalysis(): ServiceAnalysisResult {
+      return {
+        matchedBiomarkers: [
+          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9, isExactMatch: true, normalizedUnit: 'mg/dL' },
+        ],
+        labDate: '2024-01-15',
+        labName: 'Lab',
+        overallConfidence: 0.9,
+        warnings: [],
+        duplicateConflicts: [],
+      } as unknown as ServiceAnalysisResult;
+    }
+
+    it('offers manual entry for a file that could not be analyzed', async () => {
+      vi.mocked(analyzeLabReport).mockRejectedValueOnce(
+        new Error('No readable text found in document')
+      );
+      const onComplete = vi.fn();
+      renderAnalysisStep({ files: [uploaded('blank.pdf')], onComplete });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Enter values manually' }));
+
+      expect(onComplete).toHaveBeenCalledWith([
+        expect.objectContaining({
+          fileName: 'blank.pdf',
+          success: true,
+          manualEntry: true,
+          biomarkers: [],
+        }),
+      ]);
+    });
+
+    it('keeps the files that succeeded when entering another one manually', async () => {
+      vi.mocked(analyzeLabReport)
+        .mockResolvedValueOnce(successfulAnalysis())
+        .mockRejectedValueOnce(new Error('AI analysis failed: down'));
+      const onComplete = vi.fn();
+      renderAnalysisStep({ files: [uploaded('good.pdf'), uploaded('bad.pdf')], onComplete });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Enter values manually' }));
+
+      const passed = onComplete.mock.calls[0][0] as Array<{ fileName: string; manualEntry?: boolean }>;
+      expect(passed.map((r) => [r.fileName, r.manualEntry ?? false])).toEqual([
+        ['good.pdf', false],
+        ['bad.pdf', true],
+      ]);
+    });
+
+    it('offers manual entry when the analysis found no values', async () => {
+      vi.mocked(analyzeLabReport).mockResolvedValueOnce({
+        ...successfulAnalysis(),
+        matchedBiomarkers: [],
+      });
+      renderAnalysisStep({ files: [uploaded('empty.pdf')] });
+      expect(await screen.findByRole('button', { name: 'Enter values manually' })).toBeInTheDocument();
     });
   });
 });

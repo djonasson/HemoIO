@@ -744,4 +744,29 @@ describe('ReviewStep', () => {
       expect(screen.getByText('Low confidence')).toBeInTheDocument();
     });
   });
+
+  describe('Lab date and manual entry', () => {
+    it('asks for a lab date before continuing when a file has none', () => {
+      const onComplete = vi.fn();
+      renderReviewStep({
+        reviewedResults: [
+          { ...mockReviewedResult, fileName: 'scan.pdf', labDate: undefined, editedLabDate: undefined },
+        ],
+        onComplete,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+      expect(screen.getByText('Enter the lab date for "scan.pdf"')).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('labels a manual entry instead of showing a confidence', () => {
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, manualEntry: true }],
+      });
+      expect(screen.getByText('Entered manually')).toBeInTheDocument();
+      expect(screen.queryByText(/ confidence$/)).not.toBeInTheDocument();
+    });
+  });
 });

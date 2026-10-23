@@ -37,6 +37,7 @@ import {
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { findBiomarker } from '../../data/biomarkers/dictionary';
+import { normalizeLabDate } from '@/utils/labDate';
 import type { SpecimenType } from '../../types';
 
 /**
@@ -341,8 +342,14 @@ export function ReviewStep({
       });
     });
 
-    if (invalidBiomarkers.length > 0) {
-      setValidationError(`Please fix the following issues:\n${invalidBiomarkers.slice(0, 5).join('\n')}${invalidBiomarkers.length > 5 ? `\n...and ${invalidBiomarkers.length - 5} more` : ''}`);
+    // Without a date a result would be saved as today: ask for it instead
+    const missingDates = reviewedResults
+      .filter((r) => !normalizeLabDate(r.editedLabDate ?? r.labDate))
+      .map((r) => `Enter the lab date for "${r.fileName}"`);
+    const problems = [...missingDates, ...invalidBiomarkers];
+
+    if (problems.length > 0) {
+      setValidationError(`Please fix the following issues:\n${problems.slice(0, 5).join('\n')}${problems.length > 5 ? `\n...and ${problems.length - 5} more` : ''}`);
       return;
     }
 
@@ -430,9 +437,15 @@ export function ReviewStep({
                     {result.editedBiomarkers.length} biomarker(s)
                   </Text>
                 </div>
-                <Badge color={getConfidenceColor(result.confidence)}>
-                  {getConfidenceLabel(result.confidence)} confidence
-                </Badge>
+                {result.manualEntry ? (
+                  <Badge color="gray" variant="light">
+                    Entered manually
+                  </Badge>
+                ) : (
+                  <Badge color={getConfidenceColor(result.confidence)}>
+                    {getConfidenceLabel(result.confidence)} confidence
+                  </Badge>
+                )}
               </Group>
             </Accordion.Control>
             <Accordion.Panel>
@@ -795,9 +808,11 @@ export function ReviewStep({
           withCloseButton
           onClose={() => setValidationError(null)}
         >
-          <Text size="sm" style={{ whiteSpace: 'pre-line' }}>
-            {validationError}
-          </Text>
+          {validationError.split('\n').map((line, i) => (
+            <Text key={i} size="sm">
+              {line}
+            </Text>
+          ))}
         </Alert>
       )}
 
