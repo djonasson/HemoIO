@@ -15,6 +15,7 @@ import {
   Badge,
   ActionIcon,
   TextInput,
+  Autocomplete,
   NumberInput,
   Tooltip,
   Alert,
@@ -36,9 +37,17 @@ import {
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
-import { findBiomarker } from '../../data/biomarkers/dictionary';
+import { BIOMARKER_DEFINITIONS, findBiomarker } from '../../data/biomarkers/dictionary';
 import { normalizeLabDate } from '@/utils/labDate';
+import {
+  applyBiomarkerName,
+  suggestBiomarkerNames,
+  unitOptionsFor,
+} from '@/utils/biomarkerSuggestions';
 import type { SpecimenType } from '../../types';
+
+/** Every dictionary name, the options of the name autocomplete */
+const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
 
 /**
  * Human-readable labels for specimen types
@@ -215,6 +224,21 @@ export function ReviewStep({
         ...newResults[resultIndex],
         editedBiomarkers: newResults[resultIndex].editedBiomarkers.map(
           (b, i) => (i === biomarkerIndex ? { ...b, ...updates } : b)
+        ),
+      };
+      onReviewChange(newResults);
+    },
+    [reviewedResults, onReviewChange]
+  );
+
+  // Rename a biomarker: its dictionary match follows the new name
+  const renameBiomarker = useCallback(
+    (resultIndex: number, biomarkerIndex: number, name: string) => {
+      const newResults = [...reviewedResults];
+      newResults[resultIndex] = {
+        ...newResults[resultIndex],
+        editedBiomarkers: newResults[resultIndex].editedBiomarkers.map((b, i) =>
+          i === biomarkerIndex ? applyBiomarkerName(b, name) : b
         ),
       };
       onReviewChange(newResults);
@@ -522,15 +546,20 @@ export function ReviewStep({
                         <Table.Tr key={bioIndex} bg={rowBg}>
                           <Table.Td>
                             {isEditing ? (
-                              <TextInput
+                              <Autocomplete
                                 size="xs"
                                 value={biomarker.name}
-                                onChange={(e) =>
-                                  updateBiomarker(resultIndex, bioIndex, {
-                                    name: e.target.value,
-                                  })
+                                onChange={(name) => renameBiomarker(resultIndex, bioIndex, name)}
+                                data={BIOMARKER_NAMES}
+                                // Searches names and aliases; options are dictionary names
+                                filter={({ search }) =>
+                                  suggestBiomarkerNames(search).map((value) => ({
+                                    value,
+                                    label: value,
+                                  }))
                                 }
                                 placeholder="Biomarker name"
+                                aria-label="Biomarker name"
                               />
                             ) : (
                               <Group gap="xs">
@@ -642,14 +671,11 @@ export function ReviewStep({
                           </Table.Td>
                           <Table.Td>
                             {isEditing ? (
-                              <TextInput
+                              <Autocomplete
                                 size="xs"
                                 value={biomarker.unit}
-                                onChange={(e) =>
-                                  updateBiomarker(resultIndex, bioIndex, {
-                                    unit: e.target.value,
-                                  })
-                                }
+                                onChange={(unit) => updateBiomarker(resultIndex, bioIndex, { unit })}
+                                data={unitOptionsFor(biomarker.name)}
                                 placeholder="Unit"
                                 w={80}
                               />

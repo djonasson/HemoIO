@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { ReviewStep } from './ReviewStep';
-import type { ReviewedResult } from './ReviewStep';
+import type { ReviewedResult, ReviewStepProps } from './ReviewStep';
 import type { AnalysisResult } from './AnalysisStep';
 
 // Mock the biomarker dictionary
@@ -31,6 +33,12 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
     }
     return undefined;
   }),
+  BIOMARKER_DEFINITIONS: [],
+  searchBiomarkers: vi.fn((query: string) =>
+    ['Hematocrit', 'Hemoglobin', 'Glucose']
+      .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
+      .map((name) => ({ name, aliases: [] }))
+  ),
 }));
 
 const mockAnalysisResult: AnalysisResult = {
@@ -767,6 +775,52 @@ describe('ReviewStep', () => {
       });
       expect(screen.getByText('Entered manually')).toBeInTheDocument();
       expect(screen.queryByText(/ confidence$/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Biomarker name suggestions', () => {
+    function StatefulReview(props: Partial<ReviewStepProps>) {
+      const [reviewed, setReviewed] = useState(props.reviewedResults ?? [mockReviewedResult]);
+      return (
+        <ReviewStep
+          results={[mockAnalysisResult]}
+          onComplete={vi.fn()}
+          onBack={vi.fn()}
+          {...props}
+          reviewedResults={reviewed}
+          onReviewChange={setReviewed}
+        />
+      );
+    }
+
+    it('suggests dictionary biomarkers while editing a name', async () => {
+      render(
+        <MantineProvider env="test">
+          <StatefulReview />
+        </MantineProvider>
+      );
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit biomarker' })[0]);
+      const name = screen.getByPlaceholderText('Biomarker name');
+
+      await userEvent.clear(name);
+      await userEvent.type(name, 'Hemato');
+
+      expect(await screen.findByRole('option', { name: 'Hematocrit' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'Glucose' })).not.toBeInTheDocument();
+    });
+
+    it('re-matches the biomarker when its name is edited', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit biomarker' })[0]);
+
+      await userEvent.type(screen.getByPlaceholderText('Biomarker name'), 'X');
+
+      const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
+      // This file's dictionary mock knows every name: the match follows the
+      // new name instead of keeping Glucose (unknown names: biomarkerSuggestions.test)
+      expect(last[0].editedBiomarkers[0].name).toBe('GlucoseX');
+      expect(last[0].editedBiomarkers[0].dictionaryMatch?.name).toBe('GlucoseX');
     });
   });
 });
