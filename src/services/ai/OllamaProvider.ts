@@ -114,7 +114,7 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit);
+      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -190,7 +190,7 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit);
+      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -386,10 +386,14 @@ export class OllamaProvider implements AIProvider {
   private async makeChatRequest(
     messages: ChatMessage[],
     model: string,
-    rateLimit?: RateLimitOptions
+    rateLimit?: RateLimitOptions,
+    signal?: AbortSignal
   ): Promise<ChatCompletionResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    // The caller can cancel too, e.g. when the user leaves the analysis
+    if (signal?.aborted) controller.abort();
+    signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {
       const url = `${this.baseUrl}/v1/chat/completions`;

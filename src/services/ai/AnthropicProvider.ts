@@ -120,7 +120,8 @@ export class AnthropicProvider implements AIProvider {
       const response = await this.makeRequest(
         messages,
         ENHANCED_SYSTEM_PROMPT,
-        options.rateLimit
+        options.rateLimit,
+        options.signal
       );
 
       if (response.stop_reason === 'refusal') {
@@ -217,7 +218,8 @@ export class AnthropicProvider implements AIProvider {
   private async makeRequest(
     messages: AnthropicMessage[],
     systemPrompt: string,
-    rateLimit?: RateLimitOptions
+    rateLimit?: RateLimitOptions,
+    signal?: AbortSignal
   ): Promise<AnthropicResponse> {
     const url = `${this.config.baseUrl}/messages`;
 
@@ -234,6 +236,7 @@ export class AnthropicProvider implements AIProvider {
         messages,
         max_tokens: this.config.maxTokens,
       }),
+      signal,
     }, rateLimit);
 
     if (response.status === 429) {

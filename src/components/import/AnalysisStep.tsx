@@ -133,6 +133,8 @@ export function AnalysisStep({
     if (fileStatuses.length === 0) return;
 
     let cancelled = false;
+    // Leaving the step stops AI requests and rate-limit waits still in progress
+    const controller = new AbortController();
 
     async function processFiles() {
       // Pre-allocate array to maintain order despite parallel completion
@@ -192,6 +194,7 @@ export function AnalysisStep({
                   apiKey: apiKey || '',
                   model: aiModel,
                 },
+                signal: controller.signal,
                 onProgress: (stage, progress) => {
                   if (!cancelled) {
                     updateFileStatus(uploadedFile.id, {
@@ -269,6 +272,7 @@ export function AnalysisStep({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [files, aiProvider, getApiKey, aiModel, fileStatuses.length, updateFileStatus]);
 

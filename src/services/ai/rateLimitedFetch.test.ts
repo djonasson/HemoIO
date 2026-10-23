@@ -101,4 +101,16 @@ describe('fetchWithRateLimitRetry', () => {
     // The provider can still read the body to report the reason
     await expect(response.json()).resolves.toEqual({ status: 429 });
   });
+
+  it('stops waiting and gives up when the request is aborted', async () => {
+    fetchMock.mockResolvedValue(reply(429, { 'retry-after': '30' }));
+    const controller = new AbortController();
+    const realSleep = fetchWithRateLimitRetry('https://ai.test', { signal: controller.signal });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(realSleep).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

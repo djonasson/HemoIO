@@ -27,7 +27,24 @@ export interface RateLimitOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** A timer that ends early, with an AbortError, when the request is aborted */
+function wait(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('The request was aborted', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('The request was aborted', 'AbortError'));
+      },
+      { once: true }
+    );
+  });
+}
 
 /** A retry-after header (seconds or an HTTP date) in milliseconds, capped */
 export function retryAfterMs(header: string | null, now: number = Date.now()): number | null {
@@ -47,7 +64,7 @@ export async function fetchWithRateLimitRetry(
   init: RequestInit,
   options: RateLimitOptions = {}
 ): Promise<Response> {
-  const sleep = options.sleep ?? wait;
+  const sleep = options.sleep ?? ((ms: number) => wait(ms, init.signal));
   for (let retry = 0; ; retry++) {
     const response = await fetch(url, init);
     if (response.status !== 429 || retry >= RATE_LIMIT_DELAYS_MS.length) return response;

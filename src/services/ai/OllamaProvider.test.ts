@@ -553,6 +553,19 @@ describe('OllamaProvider rate limiting', () => {
     expect(fetch).toHaveBeenCalledTimes(4);
   });
 
+  it('passes the caller abort signal to the request', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(successBody), { status: 200 })
+    );
+    const controller = new AbortController();
+
+    await provider().analyzeLabReport('Glucose 95 mg/dL', { signal: controller.signal });
+    controller.abort();
+
+    const init = vi.mocked(fetch).mock.calls[0][1] as RequestInit;
+    expect(init.signal?.aborted).toBe(true);
+  });
+
   it('does not retry other errors', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ error: { message: 'down' } }), { status: 503 })

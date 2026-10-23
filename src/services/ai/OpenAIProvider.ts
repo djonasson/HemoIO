@@ -126,7 +126,10 @@ export class OpenAIProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(messages, { rateLimit: options.rateLimit });
+      const response = await this.makeRequest(messages, {
+        rateLimit: options.rateLimit,
+        signal: options.signal,
+      });
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
@@ -244,7 +247,7 @@ export class OpenAIProvider implements AIProvider {
    */
   private async makeRequest(
     messages: OpenAIMessage[],
-    options: { maxTokens?: number; rateLimit?: RateLimitOptions } = {}
+    options: { maxTokens?: number; rateLimit?: RateLimitOptions; signal?: AbortSignal } = {}
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
 
@@ -282,6 +285,7 @@ export class OpenAIProvider implements AIProvider {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(requestBody),
+        signal: options.signal,
       },
       { ...options.rateLimit, shouldRetry: async (r) => !(await isQuotaExhausted(r)) }
     );

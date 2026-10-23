@@ -126,6 +126,8 @@ export interface AnalyzerOptions {
   extractPatientInfo?: boolean;
   /** Progress callback */
   onProgress?: (stage: string, progress: number) => void;
+  /** Cancels the AI request, e.g. when the user leaves the analysis */
+  signal?: AbortSignal;
 }
 
 /**
@@ -312,6 +314,7 @@ export async function analyzeLabReport(
     aiAnalysis = await provider.analyzeLabReport(extractedText, {
       language: options.language,
       extractPatientInfo: options.extractPatientInfo,
+      signal: options.signal,
       rateLimit: {
         onWait: () => options.onProgress?.(RATE_LIMIT_STAGE, 0.6),
         onResume: () => options.onProgress?.('Analyzing with AI', 0.6),

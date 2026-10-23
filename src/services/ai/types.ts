@@ -116,6 +116,8 @@ export interface AnalysisOptions {
   extractPatientInfo?: boolean;
   /** Retry hooks for rate-limited requests (HTTP 429) */
   rateLimit?: RateLimitOptions;
+  /** Cancels the request, including any rate-limit wait */
+  signal?: AbortSignal;
 }
 
 /**

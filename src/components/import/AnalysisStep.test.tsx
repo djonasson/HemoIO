@@ -242,4 +242,18 @@ describe('AnalysisStep', () => {
     const stage = await screen.findByText('Waiting for the AI provider (rate limited)');
     expect(stage).toHaveAttribute('aria-live', 'polite');
   });
+
+  it('aborts the analysis when the step is left', async () => {
+    let signal: AbortSignal | undefined;
+    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, options) => {
+      signal = options.signal;
+      return new Promise(() => {});
+    });
+    const { unmount } = renderAnalysisStep({ files: [mockUploadedFile] });
+    await waitFor(() => expect(signal).toBeDefined());
+
+    unmount();
+
+    expect(signal?.aborted).toBe(true);
+  });
 });
