@@ -109,10 +109,16 @@ export const PageSegmentationMode = {
 export type PageSegmentationMode = (typeof PageSegmentationMode)[keyof typeof PageSegmentationMode];
 
 /**
- * Singleton worker instance for reuse
+ * One worker, shared: a Tesseract worker holds a core and the language data
+ * (several MB), so concurrent recognitions must not each start one. The
+ * promise is kept, not the worker, so calls arriving together share it.
  */
-let workerInstance: Worker | null = null;
+let workerPromise: Promise<Worker> | null = null;
 let workerLanguage: string = '';
+/** Progress handler of the recognition the worker is running now */
+let currentLogger: ((message: Tesseract.LoggerMessage) => void) | null = null;
+/** Recognitions run one after another, so progress reaches the right caller */
+let queue: Promise<unknown> = Promise.resolve();
 
 /**
  * Create a Tesseract worker whose script, core and language data all come
@@ -137,25 +143,39 @@ function createOcrWorker(
 }
 
 /**
- * Get or create a Tesseract worker
+ * Get or create the shared Tesseract worker
  *
  * @param language - Language(s) to use
  * @returns Tesseract worker instance
  */
-async function getWorker(language: string = DEFAULT_LANGUAGE): Promise<Worker> {
-  if (workerInstance && workerLanguage === language) {
-    return workerInstance;
+function getWorker(language: string = DEFAULT_LANGUAGE): Promise<Worker> {
+  if (workerPromise && workerLanguage === language) {
+    return workerPromise;
   }
 
-  // Terminate existing worker if language changed
-  if (workerInstance) {
-    await workerInstance.terminate();
-  }
-
-  workerInstance = await createOcrWorker(language, () => {});
+  // A worker for another language is replaced
+  const previous = workerPromise;
   workerLanguage = language;
+  const next = (async () => {
+    if (previous) await (await previous.catch(() => null))?.terminate();
+    return createOcrWorker(language, (message) => currentLogger?.(message));
+  })();
+  workerPromise = next;
+  // A worker that failed to start is not kept, so the next call tries again
+  next.catch(() => {
+    if (workerPromise === next) {
+      workerPromise = null;
+      workerLanguage = '';
+    }
+  });
+  return next;
+}
 
-  return workerInstance;
+/** Run recognitions one at a time on the shared worker */
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task, task);
+  queue = run.catch(() => undefined);
+  return run;
 }
 
 /**
@@ -180,14 +200,7 @@ export async function recognizeImage(
   // Convert language array to string if needed
   const langString = Array.isArray(language) ? language.join('+') : language;
 
-  const worker = await getWorker(langString);
-
-  // Set parameters
-  await worker.setParameters({
-    tessedit_pageseg_mode: pageSegmentationMode as unknown as Tesseract.PSM,
-  });
-
-  // Create a custom progress handler
+  // Progress of this recognition, forwarded from the shared worker's logger
   const progressHandler = onProgress
     ? (progress: Tesseract.LoggerMessage) => {
         if (progress.status) {
@@ -199,18 +212,18 @@ export async function recognizeImage(
       }
     : undefined;
 
-  // If progress handler provided, we need to use a fresh worker with logger
-  let result: RecognizeResult;
-  if (progressHandler) {
-    const tempWorker = await createOcrWorker(langString, progressHandler);
-    await tempWorker.setParameters({
+  const result: RecognizeResult = await enqueue(async () => {
+    const worker = await getWorker(langString);
+    await worker.setParameters({
       tessedit_pageseg_mode: pageSegmentationMode as unknown as Tesseract.PSM,
     });
-    result = await tempWorker.recognize(image);
-    await tempWorker.terminate();
-  } else {
-    result = await worker.recognize(image);
-  }
+    currentLogger = progressHandler ?? null;
+    try {
+      return await worker.recognize(image);
+    } finally {
+      currentLogger = null;
+    }
+  });
 
   const processingTime = performance.now() - startTime;
 
@@ -290,18 +303,17 @@ export async function recognizeDataUrl(
  * @returns true if worker is initialized
  */
 export function isWorkerReady(): boolean {
-  return workerInstance !== null;
+  return workerPromise !== null;
 }
 
 /**
  * Terminate the OCR worker and release resources
  */
 export async function terminateWorker(): Promise<void> {
-  if (workerInstance) {
-    await workerInstance.terminate();
-    workerInstance = null;
-    workerLanguage = '';
-  }
+  const current = workerPromise;
+  workerPromise = null;
+  workerLanguage = '';
+  if (current) await (await current.catch(() => null))?.terminate();
 }
 
 /**

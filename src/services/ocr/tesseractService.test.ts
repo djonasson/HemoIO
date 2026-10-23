@@ -67,6 +67,58 @@ describe('Tesseract OCR Service', () => {
     await terminateWorker();
   });
 
+  describe('worker lifecycle', () => {
+    const image = () => new File(['test'], 'test.png', { type: 'image/png' });
+
+    function fakeWorker(recognize: () => Promise<unknown>) {
+      return {
+        recognize: vi.fn(recognize),
+        setParameters: vi.fn().mockResolvedValue(undefined),
+        terminate: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('shares one worker between recognitions running at the same time', async () => {
+      await Promise.all([recognizeImage(image()), recognizeImage(image()), recognizeImage(image())]);
+      expect(Tesseract.createWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports progress through the same worker instead of starting another', async () => {
+      vi.mocked(Tesseract.createWorker).mockImplementationOnce(async (_lang, _oem, options) => {
+        const logger = (options as { logger: (m: { status: string; progress: number }) => void })
+          .logger;
+        return fakeWorker(async () => {
+          logger({ status: 'recognizing text', progress: 0.5 });
+          return { data: { text: 'Glucose 95', confidence: 90, words: [] } };
+        }) as unknown as Tesseract.Worker;
+      });
+      const onProgress = vi.fn();
+
+      await recognizeImage(image(), { onProgress });
+
+      expect(Tesseract.createWorker).toHaveBeenCalledTimes(1);
+      expect(onProgress).toHaveBeenCalledWith({ status: 'recognizing text', progress: 0.5 });
+    });
+
+    it('keeps working after a failed recognition, without another worker', async () => {
+      let calls = 0;
+      vi.mocked(Tesseract.createWorker).mockImplementationOnce(
+        async () =>
+          fakeWorker(async () => {
+            calls++;
+            if (calls === 1) throw new Error('bad image');
+            return { data: { text: 'ok', confidence: 90, words: [] } };
+          }) as unknown as Tesseract.Worker
+      );
+
+      await expect(recognizeImage(image(), { onProgress: vi.fn() })).rejects.toThrow('bad image');
+      await expect(recognizeImage(image(), { onProgress: vi.fn() })).resolves.toMatchObject({
+        text: 'ok',
+      });
+      expect(Tesseract.createWorker).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('recognizeImage', () => {
     it('extracts text from an image file', async () => {
       const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
