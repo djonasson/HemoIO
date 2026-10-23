@@ -231,4 +231,15 @@ describe('AnalysisStep', () => {
       expect(await screen.findByRole('button', { name: 'Enter values manually' })).toBeInTheDocument();
     });
   });
+
+  it('announces the stage of a file being processed', async () => {
+    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, options) => {
+      options.onProgress?.('Waiting for the AI provider (rate limited)', 0.6);
+      return new Promise(() => {});
+    });
+    renderAnalysisStep({ files: [mockUploadedFile] });
+
+    const stage = await screen.findByText('Waiting for the AI provider (rate limited)');
+    expect(stage).toHaveAttribute('aria-live', 'polite');
+  });
 });

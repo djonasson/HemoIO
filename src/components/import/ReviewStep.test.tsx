@@ -899,4 +899,9 @@ describe('ReviewStep', () => {
     expect(screen.getByText('Enter the lab date for "lab-report.pdf"')).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  it('names the lab date clear button', () => {
+    renderReviewStep();
+    expect(screen.getByRole('button', { name: 'Clear lab date' })).toBeInTheDocument();
+  });
 });

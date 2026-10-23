@@ -490,6 +490,7 @@ export function ReviewStep({
                     clearable
                     // Exposes the calendar as a dialog, as date pickers elsewhere are
                     popoverProps={{ withRoles: true }}
+                    clearButtonProps={{ 'aria-label': 'Clear lab date' }}
                   />
                   <TextInput
                     label="Lab Name"

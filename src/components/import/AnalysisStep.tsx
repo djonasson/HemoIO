@@ -355,7 +355,8 @@ export function AnalysisStep({
                   {file.name}
                 </Text>
                 {file.stage && file.status === 'processing' && (
-                  <Text size="xs" c="dimmed">
+                  // Announced, so screen-reader users hear when a file waits
+                  <Text size="xs" c="dimmed" aria-live="polite">
                     {file.stage}
                   </Text>
                 )}
