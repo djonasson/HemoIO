@@ -493,6 +493,14 @@ export function ReviewStep({
                     // Exposes the calendar as a dialog, as date pickers elsewhere are
                     popoverProps={{ withRoles: true }}
                     clearButtonProps={{ 'aria-label': 'Clear lab date' }}
+                    // A date the report wrote unclearly is shown so it can be typed in
+                    description={
+                      result.editedLabDate === undefined &&
+                      result.labDate &&
+                      !normalizeLabDate(result.labDate)
+                        ? `The report says "${result.labDate}"`
+                        : undefined
+                    }
                   />
                   <TextInput
                     label="Lab Name"

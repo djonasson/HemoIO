@@ -15,6 +15,7 @@ describe('normalizeLabDate', () => {
   it('reads slashed dates only when the order is clear', () => {
     expect(normalizeLabDate('15/01/2024')).toBe('2024-01-15');
     expect(normalizeLabDate('01/15/2024')).toBe('2024-01-15');
+    expect(normalizeLabDate('2024/01/15')).toBe('2024-01-15');
     // Day and month could be either way round: ask the user
     expect(normalizeLabDate('03/04/2024')).toBeNull();
   });

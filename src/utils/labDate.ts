@@ -18,6 +18,10 @@ export function normalizeLabDate(value: string | null | undefined): string | nul
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
   if (iso) return isoDay(Number(iso[1]), Number(iso[2]), Number(iso[3]));
 
+  // Year first is unambiguous with slashes too
+  const yearFirst = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(text);
+  if (yearFirst) return isoDay(Number(yearFirst[1]), Number(yearFirst[2]), Number(yearFirst[3]));
+
   // Dots are written day first (European)
   const dotted = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
   if (dotted) return isoDay(Number(dotted[3]), Number(dotted[2]), Number(dotted[1]));

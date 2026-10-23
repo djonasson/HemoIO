@@ -221,4 +221,10 @@ describe('ConfirmStep', () => {
     // Should show 3 total biomarkers (1 + 2)
     expect(screen.getByText('3')).toBeInTheDocument();
   });
+
+  it('shows the lab date as it will be saved', () => {
+    renderConfirmStep({ results: [{ ...mockResult, labDate: '15.01.2024', editedLabDate: undefined }] });
+    expect(screen.getAllByText('2024-01-15').length).toBeGreaterThan(0);
+    expect(screen.queryByText('15.01.2024')).not.toBeInTheDocument();
+  });
 });

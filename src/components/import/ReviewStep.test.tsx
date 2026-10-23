@@ -924,4 +924,11 @@ describe('ReviewStep', () => {
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
     expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
   });
+
+  it('shows what the report said when its date could not be read', () => {
+    renderReviewStep({
+      reviewedResults: [{ ...mockReviewedResult, labDate: '03/04/2024', editedLabDate: undefined }],
+    });
+    expect(screen.getByText('The report says "03/04/2024"')).toBeInTheDocument();
+  });
 });
