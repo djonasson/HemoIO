@@ -59,6 +59,16 @@ describe('applyBiomarkerName', () => {
     expect(applyBiomarkerName({ ...base, unit: 'mmol/L' }, 'Glucose').unit).toBe('mmol/L');
   });
 
+  it('replaces a unit the new biomarker cannot have', () => {
+    const next = applyBiomarkerName(base, 'Hemoglobin');
+    expect(unitOptionsFor('Hemoglobin')).not.toContain('mg/dL');
+    expect(next.unit).toBe(findBiomarker('Hemoglobin')!.canonicalUnit);
+  });
+
+  it('keeps the unit when the name is changed to free text', () => {
+    expect(applyBiomarkerName(base, 'My own test').unit).toBe('mg/dL');
+  });
+
   it('clears the match when the name no longer matches the dictionary', () => {
     const next = applyBiomarkerName(base, 'Glucose fasting');
     expect(next.name).toBe('Glucose fasting');

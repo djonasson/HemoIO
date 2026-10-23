@@ -32,6 +32,18 @@ export function applyBiomarkerName<T extends MatchedBiomarker>(biomarker: T, nam
     name,
     dictionaryMatch: match,
     isExactMatch: match !== undefined,
-    unit: biomarker.unit || match?.canonicalUnit || '',
+    unit: unitAfterRename(biomarker.unit, match?.canonicalUnit, unitOptionsFor(name)),
   };
+}
+
+/**
+ * The unit after a rename: kept when the biomarker can have it (or is not in
+ * the dictionary), else the biomarker's own unit, so e.g. renaming Glucose
+ * (mg/dL) to Hemoglobin does not save Hemoglobin in mg/dL
+ */
+function unitAfterRename(unit: string, canonicalUnit: string | undefined, options: string[]): string {
+  if (canonicalUnit === undefined) return unit;
+  if (!unit) return canonicalUnit;
+  const known = options.some((option) => option.toLowerCase() === unit.toLowerCase());
+  return known ? unit : canonicalUnit;
 }
