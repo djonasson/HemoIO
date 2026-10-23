@@ -289,3 +289,21 @@ describe('LabResultPersistence', () => {
     });
   });
 });
+
+describe('lab dates', () => {
+  it.each([
+    ['15.01.2024', '2024-01-15'],
+    ['15/01/2024', '2024-01-15'],
+    ['01/15/2024', '2024-01-15'],
+  ])('saves %s under %s', async (labDate, day) => {
+    const mockDb = createMockDb();
+    const reviewed = createMockReviewedResult('test.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')], {
+      editedLabDate: labDate,
+    });
+
+    await saveReviewedResult(reviewed, mockDb as unknown as Parameters<typeof saveReviewedResult>[1]);
+
+    const saved = mockDb.getLastLabResultCall()?.date as Date;
+    expect(saved.toISOString().slice(0, 10)).toBe(day);
+  });
+});

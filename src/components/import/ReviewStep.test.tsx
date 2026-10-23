@@ -865,7 +865,7 @@ describe('ReviewStep', () => {
     });
 
     it('leaves the field empty for a lab date it cannot read', () => {
-      render(<DatedReview labDate="15/01/2024" />);
+      render(<DatedReview labDate="03/04/2024" />);
       expect(screen.getByRole('textbox', { name: 'Lab Date' })).toHaveValue('');
     });
   });

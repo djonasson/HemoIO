@@ -9,6 +9,7 @@ import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb } from '@data/db';
 import type { LabResult, TestValue } from '@/types';
 import { findBiomarker, unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { normalizeLabDate } from '@/utils/labDate';
 
 /**
  * Output from saving a lab result
@@ -37,52 +38,15 @@ export interface SaveImportResultsOutput {
 }
 
 /**
- * Parse a date string into a Date object
- * Supports formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY
- * Uses UTC to avoid timezone issues when storing dates
+ * The stored date of a lab result: its calendar day at noon UTC, so it shows
+ * as the same day in every timezone. Review requires a readable date; today
+ * is only a last resort for results saved without one.
  */
 function parseLabDate(dateStr: string | undefined): Date {
-  if (!dateStr) {
-    return new Date();
-  }
-
-  // Try ISO format first (YYYY-MM-DD)
-  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    // Use UTC to store the date consistently
-    return new Date(Date.UTC(
-      parseInt(isoMatch[1]),
-      parseInt(isoMatch[2]) - 1,
-      parseInt(isoMatch[3]),
-      12, 0, 0 // Noon UTC to avoid date shift issues
-    ));
-  }
-
-  // Try US format (MM/DD/YYYY)
-  const usMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (usMatch) {
-    return new Date(Date.UTC(
-      parseInt(usMatch[3]),
-      parseInt(usMatch[1]) - 1,
-      parseInt(usMatch[2]),
-      12, 0, 0
-    ));
-  }
-
-  // Try European format (DD/MM/YYYY)
-  const euMatch = dateStr.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-  if (euMatch) {
-    return new Date(Date.UTC(
-      parseInt(euMatch[3]),
-      parseInt(euMatch[2]) - 1,
-      parseInt(euMatch[1]),
-      12, 0, 0
-    ));
-  }
-
-  // Fallback to Date constructor
-  const parsed = new Date(dateStr);
-  return isNaN(parsed.getTime()) ? new Date() : parsed;
+  const day = normalizeLabDate(dateStr);
+  if (!day) return new Date();
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, date, 12, 0, 0));
 }
 
 /**

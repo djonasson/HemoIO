@@ -414,7 +414,8 @@ test.describe('Document Analysis - AI Processing', () => {
     await analyzeToReview(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
     expect(squash(ai.prompts[0])).toContain('Collection date: 15.01.2024');
 
-    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('15.01.2024');
+    // The date picker shows it as a calendar date
+    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('2024-01-15');
 
     // Saved under the normalized calendar date
     await continueToConfirm(page);
@@ -548,7 +549,7 @@ test.describe('Document Analysis - Error Handling', () => {
 
     await expect(analysisItem(page, 'corrupt.pdf')).toContainText(/Failed to parse PDF/);
     await expect(page.getByRole('alert', { name: 'Analysis Failed' })).toContainText(
-      'Please check your files and try again.'
+      'Check your files and try again'
     );
     await expect(main(page).getByRole('button', { name: /^Review Results/ })).toBeDisabled();
 
