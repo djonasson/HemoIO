@@ -305,3 +305,32 @@ describe('OpenAIProvider rate limiting', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OpenAIProvider quota', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports an exhausted quota at once instead of retrying it as a rate limit', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: 'You exceeded your current quota, please check your plan and billing details.',
+            code: 'insufficient_quota',
+          },
+        }),
+        { status: 429 }
+      )
+    );
+    const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
+
+    await expect(provider.analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow(/exceeded your current quota/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+

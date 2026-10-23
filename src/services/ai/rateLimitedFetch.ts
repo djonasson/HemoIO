@@ -18,6 +18,11 @@ export interface RateLimitOptions {
   onWait?: (delayMs: number, retry: number) => void;
   /** Called when the wait is over and the request is sent again */
   onResume?: () => void;
+  /**
+   * Whether a 429 is worth retrying. Some providers also answer 429 when the
+   * account is out of credit, which no wait fixes. Gets a copy of the response.
+   */
+  shouldRetry?: (response: Response) => Promise<boolean>;
   /** Replaces the timer, for tests */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -46,6 +51,7 @@ export async function fetchWithRateLimitRetry(
   for (let retry = 0; ; retry++) {
     const response = await fetch(url, init);
     if (response.status !== 429 || retry >= RATE_LIMIT_DELAYS_MS.length) return response;
+    if (options.shouldRetry && !(await options.shouldRetry(response.clone()))) return response;
 
     const delay = retryAfterMs(response.headers.get('retry-after')) ?? RATE_LIMIT_DELAYS_MS[retry];
     // Release the connection: the body of a 429 is not needed

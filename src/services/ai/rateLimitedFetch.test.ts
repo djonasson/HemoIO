@@ -88,4 +88,17 @@ describe('fetchWithRateLimitRetry', () => {
     await fetchWithRateLimitRetry('https://ai.test/x', init, { sleep });
     expect(fetchMock).toHaveBeenCalledWith('https://ai.test/x', init);
   });
+
+  it('does not retry a 429 the provider marks as not worth retrying', async () => {
+    fetchMock.mockResolvedValueOnce(reply(429));
+    const shouldRetry = vi.fn(async () => false);
+
+    const response = await fetchWithRateLimitRetry('https://ai.test', {}, { sleep, shouldRetry });
+
+    expect(response.status).toBe(429);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+    // The provider can still read the body to report the reason
+    await expect(response.json()).resolves.toEqual({ status: 429 });
+  });
 });

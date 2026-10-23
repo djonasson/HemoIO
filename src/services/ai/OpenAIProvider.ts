@@ -72,6 +72,12 @@ interface OpenAIErrorResponse {
   };
 }
 
+/** OpenAI answers 429 with code insufficient_quota when the account is out of credit */
+async function isQuotaExhausted(response: Response): Promise<boolean> {
+  const body = (await response.json().catch(() => ({}))) as OpenAIErrorResponse;
+  return body.error?.code === 'insufficient_quota';
+}
+
 /**
  * OpenAI Provider for lab report analysis
  */
@@ -277,10 +283,11 @@ export class OpenAIProvider implements AIProvider {
         },
         body: JSON.stringify(requestBody),
       },
-      options.rateLimit
+      { ...options.rateLimit, shouldRetry: async (r) => !(await isQuotaExhausted(r)) }
     );
 
-    if (response.status === 429) {
+    // An exhausted quota is a billing problem: report OpenAI's own message
+    if (response.status === 429 && !(await isQuotaExhausted(response.clone()))) {
       throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'openai', 'rate_limited');
     }
 
