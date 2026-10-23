@@ -69,18 +69,6 @@ export default defineConfig(({ command }) => {
         // Cache strategies for different resources
         runtimeCaching: [
           {
-            // Cache PDF.js worker
-            urlPattern: /pdfjs-dist.*worker/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'pdfjs-worker',
-              expiration: {
-                maxEntries: 5,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-              },
-            },
-          },
-          {
             // Cache fonts
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
             handler: 'CacheFirst',
@@ -98,7 +86,8 @@ export default defineConfig(({ command }) => {
         clientsClaim: true,
         // Pre-cache app shell
         // The OCR worker, cores and language data are precached for offline OCR
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}', 'tesseract/**/*'],
+        // .mjs: the PDF.js worker, without which no PDF opens offline
+        globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,woff,woff2}', 'tesseract/**/*'],
         // OCR cores and language data are a few MB each
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
