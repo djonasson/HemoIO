@@ -271,9 +271,10 @@ None. Any E2E failure is a regression.
 
 ### Before the branch can be merged
 
-- Fix the build warning "Some chunks are larger than 500 kB" by code-splitting. The warning predates this branch.
-- Address `npm audit`: 32 vulnerabilities, 2 of them critical.
-- Run the `simplify`, `code-review` and `security-review` skills over the whole branch and address their findings.
+- Done: the chunk-size warning (PDF.js loads on demand; vendor chunks).
+- Done: `npm audit` reports 0 vulnerabilities (lockfile-only update).
+- Done: `simplify`, `security-review` (no findings) and `code-review`. Its findings and their fixes are in the git-ignored ledger `.superpowers/sdd/pre-merge/progress.md`; the commits say what each fixed.
+- Open, for the user to decide: unknown biomarkers' keys (`unknown:<name>`) are stored as plain text, and the service worker precaches all three Tesseract cores (about 16 MB).
 - Pass every gate above, with the full E2E suite green.
 - Merge `fix/ai-model-selection` first: this branch is built on it.
 

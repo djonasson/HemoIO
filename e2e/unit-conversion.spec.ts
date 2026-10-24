@@ -15,7 +15,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
-import { dataPoints } from './steps/trends.steps';
 import {
   ALT,
   CREATININE,
@@ -550,9 +549,9 @@ test.describe('Unit Conversion - Error Handling', () => {
   });
 
   test('should handle missing conversion factor gracefully', async ({ page }) => {
-    // A value whose unit cannot be converted to the standard unit (field
-    // counts vs. counts per µL) keeps its original unit rather than being
-    // labelled with a unit it was not measured in.
+    // A value whose unit cannot be converted to the chart's unit (field
+    // counts vs. counts per µL) is neither relabelled nor plotted on the
+    // wrong scale: it is left off the chart, and the chart says so
     await openApp(page);
     await seedMeasurements(page, [
       { day: DAY_1, biomarker: URINE_EPITHELIAL_CELLS, value: 2, unit: '/HPF' },
@@ -560,11 +559,15 @@ test.describe('Unit Conversion - Error Handling', () => {
     ]);
 
     await openTrend(page, 'Urine Epithelial Cells');
-    await expect(dataPoints(page)).toHaveCount(2);
-    await expectTrendValues(page, [
-      { value: '2', unit: '/HPF' },
-      { value: '15', unit: '/µL' },
-    ]);
+    // One value left: shown on its own, without a chart
+    const main = page.getByRole('main');
+    await expect(main.getByText('Showing 1 data point')).toBeVisible();
+    await expect(main.getByText('/HPF', { exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('main')
+        .getByText('1 value recorded in /µL is not shown: it cannot be converted to /HPF.')
+    ).toBeVisible();
   });
 });
 
