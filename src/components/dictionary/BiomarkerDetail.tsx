@@ -1,9 +1,11 @@
 /**
  * BiomarkerDetail Component
  *
- * Displays detailed information about a selected biomarker.
+ * Displays detailed information about a selected biomarker: reference
+ * information, your results, your personal target and related biomarkers.
  */
 
+import { useEffect, useRef } from 'react';
 import {
   Stack,
   Paper,
@@ -14,8 +16,8 @@ import {
   Divider,
   Box,
   Alert,
-  CloseButton,
   Anchor,
+  Button,
 } from '@mantine/core';
 import {
   IconArrowUp,
@@ -24,8 +26,14 @@ import {
   IconFlask,
   IconTestPipe,
   IconExternalLink,
+  IconArrowLeft,
+  IconChartLine,
+  IconTarget,
 } from '@tabler/icons-react';
+import { formatRange } from '@/utils/formatRange';
 import type { SpecimenType } from '@/types';
+import type { BiomarkerResultSummary } from '@services/statistics';
+import type { PersonalTargetRange } from '@hooks/usePreferences';
 
 /**
  * Human-readable labels for specimen types
@@ -50,7 +58,30 @@ const SPECIMEN_LABELS: Record<SpecimenType, string> = {
 function getSpecimenLabel(specimenType: SpecimenType): string {
   return SPECIMEN_LABELS[specimenType] || specimenType;
 }
-import { CATEGORY_NAMES, type BiomarkerDefinition } from '@data/biomarkers';
+import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
+
+const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+/** Status words, so status never relies on colour alone */
+const STATUS: Record<BiomarkerResultSummary['latest']['status'], { label: string; color: string }> =
+  {
+    high: { label: 'High', color: 'red' },
+    low: { label: 'Low', color: 'orange' },
+    normal: { label: 'Normal', color: 'green' },
+    unknown: { label: 'No reference range', color: 'gray' },
+  };
+
+function formatSummaryValue(value: number | string | boolean): string {
+  if (typeof value === 'boolean') return value ? 'Positive' : 'Negative';
+  return String(value);
+}
+
+/** The name as the list shows it, with its best-known alias */
+function listLabel(biomarker: BiomarkerDefinition): string {
+  return biomarker.aliases.length > 0
+    ? `${biomarker.name} (${biomarker.aliases[0]})`
+    : biomarker.name;
+}
 
 /**
  * Props for BiomarkerDetail component
@@ -58,8 +89,15 @@ import { CATEGORY_NAMES, type BiomarkerDefinition } from '@data/biomarkers';
 export interface BiomarkerDetailProps {
   /** The biomarker to display */
   biomarker: BiomarkerDefinition;
-  /** Called when close button is clicked */
-  onClose?: () => void;
+  /** null: no recorded values */
+  summary: BiomarkerResultSummary | null;
+  /** The user's target, in the biomarker's standard unit */
+  personalTarget?: PersonalTargetRange;
+  /** Return to the biomarker list */
+  onBack: () => void;
+  onViewTrend: (biomarkerKey: string) => void;
+  onEditTarget: () => void;
+  onSelectRelated: (biomarker: BiomarkerDefinition) => void;
 }
 
 /**
@@ -67,25 +105,46 @@ export interface BiomarkerDetailProps {
  */
 export function BiomarkerDetail({
   biomarker,
-  onClose,
+  summary,
+  personalTarget,
+  onBack,
+  onViewTrend,
+  onEditTarget,
+  onSelectRelated,
 }: BiomarkerDetailProps): React.ReactNode {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Opening a detail (or a related one) moves focus to its name, so screen
+  // readers announce the new page
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [biomarker.key]);
+
+  const hasTarget =
+    personalTarget !== undefined &&
+    (personalTarget.low !== undefined || personalTarget.high !== undefined);
+  const related = biomarker.related
+    .map((key) => getBiomarkerByKey(key))
+    .filter((entry): entry is BiomarkerDefinition => entry !== undefined);
+
   return (
     <Paper p="md" withBorder>
       <Stack gap="md">
         {/* Header */}
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <Box style={{ flex: 1 }}>
-            <Title order={3}>{biomarker.name}</Title>
-            {biomarker.aliases.length > 0 && (
-              <Text size="sm" c="dimmed">
-                Also known as: {biomarker.aliases.join(', ')}
-              </Text>
-            )}
-          </Box>
-          {onClose && (
-            <CloseButton onClick={onClose} aria-label="Close biomarker detail" />
-          )}
+        <Group>
+          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={onBack}>
+            Back to biomarker list
+          </Button>
         </Group>
+        <Box>
+          <Title order={3} ref={headingRef} tabIndex={-1}>
+            {biomarker.name}
+          </Title>
+          {biomarker.aliases.length > 0 && (
+            <Text size="sm" c="dimmed">
+              Also known as: {biomarker.aliases.join(', ')}
+            </Text>
+          )}
+        </Box>
 
         {/* Category Badge */}
         <Group gap="xs">
@@ -153,6 +212,70 @@ export function BiomarkerDetail({
           </Box>
         )}
 
+        <Box component="section" aria-labelledby={`${biomarker.key}-results`}>
+          <Title order={4} size="sm" id={`${biomarker.key}-results`} mb="xs">
+            Your results
+          </Title>
+          {summary ? (
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Text size="sm" fw={500}>
+                  {`${formatSummaryValue(summary.latest.value)} ${summary.latest.unit}`.trim()}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {DATE.format(summary.latest.date)}
+                </Text>
+                <Badge variant="light" color={STATUS[summary.latest.status].color}>
+                  {STATUS[summary.latest.status].label}
+                </Badge>
+              </Group>
+              <Text size="sm" c="dimmed">
+                {summary.count} {summary.count === 1 ? 'result' : 'results'}
+              </Text>
+              <Group>
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<IconChartLine size={14} />}
+                  onClick={() => onViewTrend(biomarker.key)}
+                >
+                  View trend
+                </Button>
+              </Group>
+            </Stack>
+          ) : (
+            <Text size="sm" c="dimmed">
+              You have no recorded values for {biomarker.name}
+            </Text>
+          )}
+        </Box>
+
+        <Box component="section" aria-labelledby={`${biomarker.key}-target`}>
+          <Title order={4} size="sm" id={`${biomarker.key}-target`} mb="xs">
+            Personal target
+          </Title>
+          <Group justify="space-between" align="center">
+            {hasTarget ? (
+              <Paper p="xs" withBorder bg="var(--mantine-color-blue-light)">
+                <Group gap="xs">
+                  <IconTarget size={16} aria-hidden />
+                  <Badge color="blue">Your target</Badge>
+                  <Text size="sm" fw={500}>
+                    {formatRange(personalTarget.low, personalTarget.high)} {biomarker.canonicalUnit}
+                  </Text>
+                </Group>
+              </Paper>
+            ) : (
+              <Text size="sm" c="dimmed">
+                Using standard range
+              </Text>
+            )}
+            <Button variant="subtle" size="xs" onClick={onEditTarget}>
+              Edit personal target
+            </Button>
+          </Group>
+        </Box>
+
         {/* Units */}
         <Box>
           <Text size="sm" fw={500} mb="xs">
@@ -202,6 +325,26 @@ export function BiomarkerDetail({
               </Stack>
             </Box>
           </>
+        )}
+
+        {related.length > 0 && (
+          <Box component="section" aria-labelledby={`${biomarker.key}-related`}>
+            <Title order={4} size="sm" id={`${biomarker.key}-related`} mb="xs">
+              Related biomarkers
+            </Title>
+            <Group gap="xs">
+              {related.map((entry) => (
+                <Button
+                  key={entry.key}
+                  variant="light"
+                  size="xs"
+                  onClick={() => onSelectRelated(entry)}
+                >
+                  {listLabel(entry)}
+                </Button>
+              ))}
+            </Group>
+          </Box>
         )}
 
         {/* Disclaimer */}

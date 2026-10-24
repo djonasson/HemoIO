@@ -3,14 +3,32 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { BiomarkerDetail } from './BiomarkerDetail';
-import type { BiomarkerDefinition } from '@data/biomarkers';
+import { BiomarkerDetail, type BiomarkerDetailProps } from './BiomarkerDetail';
+import { getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
 
-function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider env="test">{ui}</MantineProvider>);
+/** Renders the detail of `biomarker` with no results, no target and spy callbacks */
+function renderDetailOf(
+  biomarker: BiomarkerDefinition,
+  overrides: Partial<BiomarkerDetailProps> = {}
+): { props: BiomarkerDetailProps } {
+  const props: BiomarkerDetailProps = {
+    biomarker,
+    summary: null,
+    onBack: vi.fn(),
+    onViewTrend: vi.fn(),
+    onEditTarget: vi.fn(),
+    onSelectRelated: vi.fn(),
+    ...overrides,
+  };
+  render(
+    <MantineProvider env="test">
+      <BiomarkerDetail {...props} />
+    </MantineProvider>
+  );
+  return { props };
 }
 
 function createMockBiomarker(): BiomarkerDefinition {
@@ -35,28 +53,28 @@ describe('BiomarkerDetail', () => {
   describe('rendering', () => {
     it('should render the biomarker name', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('White Blood Cell Count')).toBeInTheDocument();
     });
 
     it('should render aliases', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText(/Also known as.*WBC.*Leukocytes/)).toBeInTheDocument();
     });
 
     it('should render category badge', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('Complete Blood Count')).toBeInTheDocument();
     });
 
     it('should render description', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(
         screen.getByText(/Measures the total number of white blood cells/)
@@ -65,21 +83,21 @@ describe('BiomarkerDetail', () => {
 
     it('should render reference range', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText(/4\.5 - 11/)).toBeInTheDocument();
     });
 
     it('should render canonical unit', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('10^9/L')).toBeInTheDocument();
     });
 
     it('should render alternative units', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('K/uL')).toBeInTheDocument();
       expect(screen.getByText('cells/µL')).toBeInTheDocument();
@@ -87,7 +105,7 @@ describe('BiomarkerDetail', () => {
 
     it('should render high indication', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('High Values')).toBeInTheDocument();
       expect(
@@ -97,7 +115,7 @@ describe('BiomarkerDetail', () => {
 
     it('should render low indication', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('Low Values')).toBeInTheDocument();
       expect(screen.getByText(/May indicate bone marrow problems/)).toBeInTheDocument();
@@ -105,7 +123,7 @@ describe('BiomarkerDetail', () => {
 
     it('should render educational disclaimer', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(
         screen.getByText(/for educational purposes only/)
@@ -119,7 +137,7 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         defaultReferenceRange: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText('Reference Range')).not.toBeInTheDocument();
     });
@@ -129,7 +147,7 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         highIndication: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText('High Values')).not.toBeInTheDocument();
     });
@@ -139,7 +157,7 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         lowIndication: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText('Low Values')).not.toBeInTheDocument();
     });
@@ -149,52 +167,16 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         aliases: [],
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText(/Also known as/)).not.toBeInTheDocument();
-    });
-  });
-
-  describe('close button', () => {
-    it('should render close button when onClose is provided', () => {
-      const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} onClose={() => {}} />);
-
-      expect(screen.getByLabelText('Close biomarker detail')).toBeInTheDocument();
-    });
-
-    it('should not render close button when onClose is not provided', () => {
-      const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
-
-      expect(screen.queryByLabelText('Close biomarker detail')).not.toBeInTheDocument();
-    });
-
-    it('should call onClose when close button is clicked', async () => {
-      const onClose = vi.fn();
-      const user = userEvent.setup();
-      const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} onClose={onClose} />);
-
-      await user.click(screen.getByLabelText('Close biomarker detail'));
-
-      expect(onClose).toHaveBeenCalled();
-    });
-  });
-
-  describe('accessibility', () => {
-    it('should have accessible close button', () => {
-      const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} onClose={() => {}} />);
-
-      expect(screen.getByLabelText('Close biomarker detail')).toBeInTheDocument();
     });
   });
 
   describe('specimen type display', () => {
     it('should display specimen type when available', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText(/Specimen: Whole Blood/)).toBeInTheDocument();
     });
@@ -204,7 +186,7 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         specimenType: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText(/Specimen:/)).not.toBeInTheDocument();
     });
@@ -213,14 +195,14 @@ describe('BiomarkerDetail', () => {
   describe('LOINC code display', () => {
     it('should display LOINC code when available', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.getByText('6690-2')).toBeInTheDocument();
     });
 
     it('should link LOINC code to correct URL', () => {
       const biomarker = createMockBiomarker();
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       const link = screen.getByRole('link', { name: /6690-2/i });
       expect(link).toHaveAttribute('href', 'https://loinc.org/6690-2');
@@ -232,7 +214,7 @@ describe('BiomarkerDetail', () => {
         ...createMockBiomarker(),
         loincCode: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       expect(screen.queryByText('LOINC:')).not.toBeInTheDocument();
     });
@@ -243,10 +225,103 @@ describe('BiomarkerDetail', () => {
         loincCode: undefined,
         specimenType: undefined,
       };
-      renderWithProviders(<BiomarkerDetail biomarker={biomarker} />);
+      renderDetailOf(biomarker);
 
       // Should still render the component without errors
       expect(screen.getByText('White Blood Cell Count')).toBeInTheDocument();
+    });
+  });
+
+  describe('sections', () => {
+    // The real Glucose entry, so its related biomarkers resolve
+    const GLUCOSE = getBiomarkerByKey('glucose')!;
+    const renderDetail = (overrides: Partial<BiomarkerDetailProps> = {}) =>
+      renderDetailOf(GLUCOSE, overrides);
+    const summary = {
+      count: 2,
+      latest: {
+        value: 120,
+        unit: 'mg/dL',
+        date: new Date('2024-02-20T12:00:00Z'),
+        status: 'high' as const,
+        labName: 'Lab',
+      },
+    };
+
+    it('goes back to the list', async () => {
+      const { props } = renderDetail();
+      await userEvent.click(screen.getByRole('button', { name: 'Back to biomarker list' }));
+      expect(props.onBack).toHaveBeenCalled();
+    });
+
+    it('moves focus to the biomarker name when opened', () => {
+      renderDetail();
+      expect(screen.getByRole('heading', { level: 3, name: 'Glucose' })).toHaveFocus();
+    });
+
+    it('summarises your results with a link to the trend', async () => {
+      const { props } = renderDetail({ summary });
+      const yours = screen.getByRole('region', { name: 'Your results' });
+      expect(within(yours).getByText('120 mg/dL')).toBeInTheDocument();
+      expect(within(yours).getByText('Feb 20, 2024')).toBeInTheDocument();
+      expect(within(yours).getByText('High')).toBeInTheDocument();
+      expect(within(yours).getByText('2 results')).toBeInTheDocument();
+
+      await userEvent.click(within(yours).getByRole('button', { name: 'View trend' }));
+      expect(props.onViewTrend).toHaveBeenCalledWith('glucose');
+    });
+
+    it('says one result in the singular', () => {
+      renderDetail({ summary: { ...summary, count: 1 } });
+      expect(screen.getByText('1 result')).toBeInTheDocument();
+    });
+
+    it('shows a value that is not a number in words', () => {
+      renderDetail({
+        summary: { ...summary, latest: { ...summary.latest, value: true, unit: '' } },
+      });
+      expect(screen.getByText('Positive')).toBeInTheDocument();
+    });
+
+    it('says when there are no recorded values', () => {
+      renderDetail({ summary: null });
+      const yours = screen.getByRole('region', { name: 'Your results' });
+      expect(
+        within(yours).getByText('You have no recorded values for Glucose')
+      ).toBeInTheDocument();
+      expect(within(yours).queryByRole('button', { name: 'View trend' })).not.toBeInTheDocument();
+    });
+
+    it('shows a personal target, highlighted, next to the standard range', () => {
+      renderDetail({ personalTarget: { low: 70, high: 90 } });
+      const target = screen.getByRole('region', { name: 'Personal target' });
+      expect(within(target).getByText('Your target')).toBeInTheDocument();
+      expect(within(target).getByText('70 - 90 mg/dL')).toBeInTheDocument();
+      expect(screen.getByText('70 - 100 mg/dL')).toBeInTheDocument();
+    });
+
+    it('says the standard range is used without a target, and offers Edit', async () => {
+      const { props } = renderDetail();
+      const target = screen.getByRole('region', { name: 'Personal target' });
+      expect(within(target).getByText('Using standard range')).toBeInTheDocument();
+      await userEvent.click(within(target).getByRole('button', { name: 'Edit personal target' }));
+      expect(props.onEditTarget).toHaveBeenCalled();
+    });
+
+    it('links related biomarkers to their details', async () => {
+      const { props } = renderDetail();
+      const related = screen.getByRole('region', { name: 'Related biomarkers' });
+      await userEvent.click(
+        within(related).getByRole('button', { name: 'Hemoglobin A1c (HbA1c)' })
+      );
+      expect(props.onSelectRelated).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'hemoglobin-a1c' })
+      );
+    });
+
+    it('has no related section for a biomarker outside the groups', () => {
+      renderDetailOf(createMockBiomarker());
+      expect(screen.queryByRole('region', { name: 'Related biomarkers' })).not.toBeInTheDocument();
     });
   });
 });

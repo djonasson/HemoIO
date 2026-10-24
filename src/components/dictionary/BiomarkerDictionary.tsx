@@ -15,7 +15,6 @@ import {
   Paper,
   Title,
   Box,
-  ScrollArea,
 } from '@mantine/core';
 import { IconSearch, IconChevronRight } from '@tabler/icons-react';
 import {
@@ -126,18 +125,18 @@ export function BiomarkerDictionary({
               </Text>
             </Paper>
           ) : (
-            <ScrollArea h={500}>
-              <Stack gap="xs">
-                {filteredBiomarkers.map((biomarker) => (
-                  <BiomarkerListItem
-                    key={biomarker.name}
-                    biomarker={biomarker}
-                    isSelected={selectedBiomarker === biomarker.name}
-                    onClick={() => handleBiomarkerClick(biomarker)}
-                  />
-                ))}
-              </Stack>
-            </ScrollArea>
+            // No inner scroll box: the page is the only scroll position Back
+            // has to restore
+            <Stack gap="xs">
+              {filteredBiomarkers.map((biomarker) => (
+                <BiomarkerListItem
+                  key={biomarker.name}
+                  biomarker={biomarker}
+                  isSelected={selectedBiomarker === biomarker.name}
+                  onClick={() => handleBiomarkerClick(biomarker)}
+                />
+              ))}
+            </Stack>
           )}
         </Stack>
       ) : (
@@ -194,6 +193,8 @@ function BiomarkerListItem({
     <Paper
       p="sm"
       withBorder
+      // Mantine's keyboard focus ring; a Paper has none of its own
+      className="mantine-focus-auto"
       style={{
         cursor: 'pointer',
         backgroundColor: isSelected ? 'var(--mantine-color-blue-light)' : undefined,
@@ -201,6 +202,7 @@ function BiomarkerListItem({
       onClick={onClick}
       role="button"
       tabIndex={0}
+      data-biomarker-key={biomarker.key}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();

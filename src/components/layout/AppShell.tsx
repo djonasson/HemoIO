@@ -48,12 +48,11 @@ import { AlertsView } from '@components/alerts';
 import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
-import { BiomarkerDictionary, BiomarkerDetail } from '@components/dictionary';
+import { DictionaryView } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
 import { restoreAISettings, restoreBackup } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { BiomarkerDefinition } from '@data/biomarkers';
 
 type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'notes' | 'dictionary' | 'settings';
 
@@ -572,7 +571,7 @@ function MainContent({
 
   // Render BiomarkerDictionary for the dictionary view
   if (view === 'dictionary') {
-    return <DictionaryView />;
+    return <DictionaryView onOpenTrend={(biomarkerKey) => onOpenTrend(biomarkerKey)} />;
   }
 
   // Placeholder for other views
@@ -586,39 +585,5 @@ function MainContent({
         This view will be implemented in a future phase.
       </Text>
     </Stack>
-  );
-}
-
-/**
- * Dictionary view with biomarker browser and detail panel
- */
-function DictionaryView(): React.ReactNode {
-  const [selectedBiomarker, setSelectedBiomarker] = useState<BiomarkerDefinition | null>(null);
-
-  const handleSelectBiomarker = useCallback((biomarker: BiomarkerDefinition) => {
-    setSelectedBiomarker(biomarker);
-  }, []);
-
-  const handleCloseDetail = useCallback(() => {
-    setSelectedBiomarker(null);
-  }, []);
-
-  return (
-    <Group align="flex-start" gap="md" wrap="nowrap" style={{ height: '100%' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <BiomarkerDictionary
-          onSelectBiomarker={handleSelectBiomarker}
-          selectedBiomarker={selectedBiomarker?.name}
-        />
-      </div>
-      {selectedBiomarker && (
-        <div style={{ width: 400, flexShrink: 0 }}>
-          <BiomarkerDetail
-            biomarker={selectedBiomarker}
-            onClose={handleCloseDetail}
-          />
-        </div>
-      )}
-    </Group>
   );
 }
