@@ -10,3 +10,4 @@ export { DisplaySettings, type DisplaySettingsProps } from './DisplaySettings';
 export { AISettings, type AISettingsProps } from './AISettings';
 export { PersonalTargets, type PersonalTargetsProps, type PersonalTarget } from './PersonalTargets';
 export { PersonalTargetModal, type PersonalTargetModalProps } from './PersonalTargetModal';
+export { ChangePassword } from './ChangePassword';
