@@ -11,11 +11,8 @@ import {
   Title,
   Text,
   Table,
-  NumberInput,
-  Button,
   Group,
   Alert,
-  Modal,
   TextInput,
   Badge,
   ActionIcon,
@@ -29,6 +26,8 @@ import {
   IconPlus,
   IconSearch,
 } from '@tabler/icons-react';
+import { formatRange } from '@/utils/formatRange';
+import { PersonalTargetModal } from './PersonalTargetModal';
 
 /**
  * Personal target range for a biomarker
@@ -68,8 +67,6 @@ export function PersonalTargets({
 }: PersonalTargetsProps): React.ReactNode {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingTarget, setEditingTarget] = useState<PersonalTarget | null>(null);
-  const [editLow, setEditLow] = useState<number | ''>('');
-  const [editHigh, setEditHigh] = useState<number | ''>('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Filter targets by search term
@@ -85,24 +82,20 @@ export function PersonalTargets({
   // Handle open edit modal
   const handleOpenEdit = useCallback((target: PersonalTarget) => {
     setEditingTarget(target);
-    setEditLow(target.personalLow ?? '');
-    setEditHigh(target.personalHigh ?? '');
   }, []);
 
   // Handle save target
-  const handleSaveTarget = useCallback(() => {
-    if (!editingTarget) return;
+  const handleSaveTarget = useCallback(
+    (biomarkerKey: string, low: number | undefined, high: number | undefined) => {
+      onSetTarget(biomarkerKey, low, high);
+      setEditingTarget(null);
 
-    const low = editLow === '' ? undefined : editLow;
-    const high = editHigh === '' ? undefined : editHigh;
-
-    onSetTarget(editingTarget.biomarkerKey, low, high);
-    setEditingTarget(null);
-
-    // Show success briefly
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, [editingTarget, editLow, editHigh, onSetTarget]);
+      // Show success briefly
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    },
+    [onSetTarget]
+  );
 
   // Handle clear target
   const handleClearTarget = useCallback(
@@ -119,8 +112,6 @@ export function PersonalTargets({
   // Handle close modal
   const handleCloseModal = useCallback(() => {
     setEditingTarget(null);
-    setEditLow('');
-    setEditHigh('');
   }, []);
 
   // Check if target has personal values
@@ -250,75 +241,11 @@ export function PersonalTargets({
         </Stack>
       </Paper>
 
-      {/* Edit Modal */}
-      <Modal
-        opened={editingTarget !== null}
+      <PersonalTargetModal
+        target={editingTarget}
+        onSave={handleSaveTarget}
         onClose={handleCloseModal}
-        title={`Set Personal Target for ${editingTarget?.biomarkerName}`}
-        centered
-      >
-        {editingTarget && (
-          <Stack gap="md">
-            <Text size="sm" c="dimmed">
-              Standard reference range: {formatRange(editingTarget.standardLow, editingTarget.standardHigh)} {editingTarget.unit}
-            </Text>
-
-            <Group grow>
-              <NumberInput
-                label="Low Value"
-                placeholder="Min"
-                value={editLow}
-                onChange={(value) => setEditLow(value === '' ? '' : Number(value))}
-                min={0}
-                decimalScale={2}
-                aria-label="Personal target low value"
-              />
-              <NumberInput
-                label="High Value"
-                placeholder="Max"
-                value={editHigh}
-                onChange={(value) => setEditHigh(value === '' ? '' : Number(value))}
-                min={0}
-                decimalScale={2}
-                aria-label="Personal target high value"
-              />
-            </Group>
-
-            <Text size="xs" c="dimmed">
-              Leave a field empty to use only one bound (e.g., only set high value
-              for values that should stay below a certain level).
-            </Text>
-
-            <Group justify="flex-end" gap="sm">
-              <Button variant="subtle" onClick={handleCloseModal}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveTarget}
-                disabled={editLow === '' && editHigh === ''}
-              >
-                Save Target
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+      />
     </>
   );
-}
-
-/**
- * Format a range for display
- */
-function formatRange(low: number | undefined, high: number | undefined): string {
-  if (low === undefined && high === undefined) {
-    return 'N/A';
-  }
-  if (low === undefined) {
-    return `< ${high}`;
-  }
-  if (high === undefined) {
-    return `> ${low}`;
-  }
-  return `${low} - ${high}`;
 }

@@ -14,6 +14,20 @@ import { SettingsPage } from './SettingsPage';
 const mockDb = vi.hoisted(() => ({
   getPreferences: vi.fn(),
   savePreferences: vi.fn(),
+  updatePreferences: vi.fn(),
+}));
+
+// Personal targets come from the shared preferences
+const mockPreferences = vi.hoisted(() => ({
+  unitPreferences: {},
+  personalTargets: { glucose: { low: 70, high: 90 } } as Record<
+    string,
+    { low?: number; high?: number }
+  >,
+  isLoaded: true,
+  setPreferredUnit: vi.fn(),
+  setPersonalTarget: vi.fn(),
+  reload: vi.fn(),
 }));
 
 // Per-test overrides for the AI hooks
@@ -33,6 +47,7 @@ vi.mock('@/services/ai', async (importOriginal) => ({
 
 // Mock hooks
 vi.mock('@hooks', () => ({
+  usePreferences: () => mockPreferences,
   useExportData: () => ({
     dataSources: {
       labResults: [],
@@ -92,12 +107,12 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 /**
- * SettingsPage loads display preferences and personal targets on mount;
- * wait for both loads so their state updates happen inside the test.
+ * SettingsPage loads the display preferences on mount; wait for the load so
+ * its state updates happen inside the test.
  */
 async function waitForSettingsToLoad(): Promise<void> {
   await waitFor(() => {
-    expect(mockDb.getPreferences).toHaveBeenCalledTimes(2);
+    expect(mockDb.getPreferences).toHaveBeenCalledTimes(1);
   });
   await act(async () => {
     await Promise.all(mockDb.getPreferences.mock.results.map((r) => r.value));
@@ -115,6 +130,8 @@ describe('SettingsPage', () => {
     localStorage.clear();
     mockDb.getPreferences.mockResolvedValue(null);
     mockDb.savePreferences.mockResolvedValue(1);
+    mockDb.updatePreferences.mockResolvedValue(undefined);
+    mockPreferences.setPersonalTarget.mockResolvedValue(undefined);
     Object.assign(mockAI, {
       hasApiKey: false,
       apiKey: null,
@@ -254,6 +271,69 @@ describe('SettingsPage', () => {
 
       // Create Backup button should be disabled when restoring
       expect(screen.getByRole('button', { name: /create backup/i })).toBeDisabled();
+    });
+  });
+
+  describe('preferences', () => {
+    /** The changes an updatePreferences call would write */
+    function lastUpdate(): unknown {
+      const update = mockDb.updatePreferences.mock.calls.at(-1)?.[0] as (c: unknown) => unknown;
+      return update(undefined);
+    }
+
+    it('shows personal targets from the shared preferences and saves through them', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /personal targets/i }));
+      expect(await screen.findByText('70 - 90')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Set personal target for Glucose' }));
+      await user.clear(screen.getByLabelText('Personal target high value'));
+      await user.type(screen.getByLabelText('Personal target high value'), '95');
+      await user.click(screen.getByRole('button', { name: 'Save Target' }));
+
+      await waitFor(() =>
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('glucose', {
+          low: 70,
+          high: 95,
+        })
+      );
+    });
+
+    it('clears a personal target through the shared preferences', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /personal targets/i }));
+      await user.click(screen.getByRole('button', { name: 'Clear personal target for Glucose' }));
+
+      await waitFor(() =>
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('glucose', null)
+      );
+    });
+
+    it('saves only the theme when it changes', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /display/i }));
+      await user.click(screen.getByText('Dark'));
+
+      await waitFor(() => expect(mockDb.updatePreferences).toHaveBeenCalled());
+      expect(lastUpdate()).toEqual({ theme: 'dark' });
+      expect(mockDb.savePreferences).not.toHaveBeenCalled();
+    });
+
+    it('moves display settings left in local storage into the database', async () => {
+      localStorage.setItem('hemoio_theme', 'dark');
+      localStorage.setItem('hemoio_date_format', 'YYYY-MM-DD');
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+
+      await waitFor(() => expect(mockDb.updatePreferences).toHaveBeenCalled());
+      expect(lastUpdate()).toEqual({ theme: 'dark', dateFormat: 'YYYY-MM-DD' });
+      expect(mockDb.savePreferences).not.toHaveBeenCalled();
     });
   });
 });

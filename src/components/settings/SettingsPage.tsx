@@ -4,7 +4,7 @@
  * Main settings page containing all application settings sections.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Stack, Title, Tabs } from '@mantine/core';
 import { useMantineColorScheme } from '@mantine/core';
 import {
@@ -18,7 +18,13 @@ import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
 import { StorageSettings } from './StorageSettings';
-import { useExportData, useEncryptedDb, useEncryptedApiKey, useAISettings } from '@hooks';
+import {
+  useExportData,
+  useEncryptedDb,
+  useEncryptedApiKey,
+  useAISettings,
+  usePreferences,
+} from '@hooks';
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import { testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
@@ -78,7 +84,20 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const [dateFormat, setDateFormat] = useState<DateFormatOption>('MM/DD/YYYY');
 
   // Personal Targets state
-  const [personalTargets, setPersonalTargets] = useState<PersonalTarget[]>([]);
+  const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
+  const personalTargets = useMemo<PersonalTarget[]>(
+    () =>
+      BIOMARKER_DEFINITIONS.map((biomarker) => ({
+        biomarkerKey: biomarker.key,
+        biomarkerName: biomarker.name,
+        unit: biomarker.canonicalUnit,
+        standardLow: biomarker.defaultReferenceRange?.low,
+        standardHigh: biomarker.defaultReferenceRange?.high,
+        personalLow: targetMap[biomarker.key]?.low,
+        personalHigh: targetMap[biomarker.key]?.high,
+      })),
+    [targetMap]
+  );
   const [isSavingTargets, setIsSavingTargets] = useState(false);
 
   // Load display settings from IndexedDB (with localStorage migration)
@@ -102,12 +121,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
         // Migrate localStorage to IndexedDB if needed
         if (lsDateFormat || lsTheme) {
-          await db.savePreferences({
-            unitPreferences: prefs?.unitPreferences ?? {},
-            personalTargets: prefs?.personalTargets ?? {},
-            theme: savedTheme,
-            dateFormat: savedDateFormat,
-          });
+          await db.updatePreferences(() => ({ theme: savedTheme, dateFormat: savedDateFormat }));
           // Clean up localStorage after migration
           localStorage.removeItem('hemoio_date_format');
           localStorage.removeItem('hemoio_theme');
@@ -125,38 +139,6 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
     loadDisplaySettings();
   }, [db, isReady, colorScheme]);
-
-  // Load personal targets from database
-  useEffect(() => {
-    async function loadTargets() {
-      if (!db || !isReady) return;
-
-      try {
-        const prefs = await db.getPreferences();
-        const targetsMap = prefs?.personalTargets ?? {};
-
-        // Build targets list from biomarker definitions
-        const targets: PersonalTarget[] = BIOMARKER_DEFINITIONS.map((biomarker) => {
-          const target = targetsMap[biomarker.key];
-          return {
-            biomarkerKey: biomarker.key,
-            biomarkerName: biomarker.name,
-            unit: biomarker.canonicalUnit,
-            standardLow: biomarker.defaultReferenceRange?.low,
-            standardHigh: biomarker.defaultReferenceRange?.high,
-            personalLow: target?.low,
-            personalHigh: target?.high,
-          };
-        });
-
-        setPersonalTargets(targets);
-      } catch (err) {
-        console.error('Failed to load personal targets:', err);
-      }
-    }
-
-    loadTargets();
-  }, [db, isReady]);
 
   // Handle API key change (async because of encryption)
   const handleApiKeyChange = useCallback(
@@ -197,13 +179,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       setTheme(newTheme);
       if (db && isReady) {
         try {
-          const prefs = await db.getPreferences();
-          await db.savePreferences({
-            unitPreferences: prefs?.unitPreferences ?? {},
-            personalTargets: prefs?.personalTargets ?? {},
-            theme: newTheme,
-            dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
-          });
+          await db.updatePreferences(() => ({ theme: newTheme }));
         } catch (err) {
           console.error('Failed to save theme:', err);
         }
@@ -218,13 +194,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       setDateFormat(newFormat);
       if (db && isReady) {
         try {
-          const prefs = await db.getPreferences();
-          await db.savePreferences({
-            unitPreferences: prefs?.unitPreferences ?? {},
-            personalTargets: prefs?.personalTargets ?? {},
-            theme: prefs?.theme ?? 'system',
-            dateFormat: newFormat,
-          });
+          await db.updatePreferences(() => ({ dateFormat: newFormat }));
         } catch (err) {
           console.error('Failed to save date format:', err);
         }
@@ -233,79 +203,29 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     [db, isReady]
   );
 
-  // Handle set personal target
-  const handleSetTarget = useCallback(
-    async (biomarkerKey: string, low: number | undefined, high: number | undefined) => {
-      if (!db || !isReady) return;
-
+  const saveTarget = useCallback(
+    async (biomarkerKey: string, target: { low?: number; high?: number } | null) => {
       setIsSavingTargets(true);
       try {
-        const prefs = await db.getPreferences();
-        const currentTargets = prefs?.personalTargets ?? {};
-
-        const updatedTargets = {
-          ...currentTargets,
-          [biomarkerKey]: { low, high },
-        };
-
-        await db.savePreferences({
-          unitPreferences: prefs?.unitPreferences ?? {},
-          personalTargets: updatedTargets,
-          theme: prefs?.theme ?? 'system',
-          dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
-        });
-
-        // Update local state
-        setPersonalTargets((prev) =>
-          prev.map((t) =>
-            t.biomarkerKey === biomarkerKey
-              ? { ...t, personalLow: low, personalHigh: high }
-              : t
-          )
-        );
-      } catch (err) {
-        console.error('Failed to save personal target:', err);
+        await setPersonalTarget(biomarkerKey, target);
+      } catch {
+        console.error('Failed to save personal target');
       } finally {
         setIsSavingTargets(false);
       }
     },
-    [db, isReady]
+    [setPersonalTarget]
   );
 
-  // Handle clear personal target
+  const handleSetTarget = useCallback(
+    (biomarkerKey: string, low: number | undefined, high: number | undefined) =>
+      void saveTarget(biomarkerKey, { low, high }),
+    [saveTarget]
+  );
+
   const handleClearTarget = useCallback(
-    async (biomarkerKey: string) => {
-      if (!db || !isReady) return;
-
-      setIsSavingTargets(true);
-      try {
-        const prefs = await db.getPreferences();
-        const currentTargets = { ...(prefs?.personalTargets ?? {}) };
-
-        delete currentTargets[biomarkerKey];
-
-        await db.savePreferences({
-          unitPreferences: prefs?.unitPreferences ?? {},
-          personalTargets: currentTargets,
-          theme: prefs?.theme ?? 'system',
-          dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
-        });
-
-        // Update local state
-        setPersonalTargets((prev) =>
-          prev.map((t) =>
-            t.biomarkerKey === biomarkerKey
-              ? { ...t, personalLow: undefined, personalHigh: undefined }
-              : t
-          )
-        );
-      } catch (err) {
-        console.error('Failed to clear personal target:', err);
-      } finally {
-        setIsSavingTargets(false);
-      }
-    },
-    [db, isReady]
+    (biomarkerKey: string) => void saveTarget(biomarkerKey, null),
+    [saveTarget]
   );
 
   return (
