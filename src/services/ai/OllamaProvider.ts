@@ -29,7 +29,7 @@ import {
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
-import { fetchWithRateLimitRetry, RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
+import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
  * OpenAI-compatible chat message type
@@ -399,7 +399,7 @@ export class OllamaProvider implements AIProvider {
       const url = `${this.baseUrl}/v1/chat/completions`;
 
       // The timeout covers the whole call, rate-limit waits included
-      const response = await fetchWithRateLimitRetry(url, {
+      const response = await fetchWithRateLimitRetry('ollama', url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -415,10 +415,6 @@ export class OllamaProvider implements AIProvider {
       }, rateLimit);
 
       clearTimeout(timeoutId);
-
-      if (response.status === 429) {
-        throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'ollama', 'rate_limited');
-      }
 
       if (!response.ok) {
         const errorMessage = await parseOllamaError(response);

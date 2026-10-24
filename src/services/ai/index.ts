@@ -83,10 +83,4 @@ export {
 export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
 export type { ParsedValue } from './parseIntervalValue';
 
-export {
-  fetchWithRateLimitRetry,
-  retryAfterMs,
-  RATE_LIMIT_MESSAGE,
-  RATE_LIMIT_DELAYS_MS,
-  type RateLimitOptions,
-} from './rateLimitedFetch';
+export { RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';

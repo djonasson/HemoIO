@@ -19,7 +19,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
-import { fetchWithRateLimitRetry, RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
+import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
  * Default OpenAI configuration.
@@ -247,15 +247,12 @@ export class OpenAIProvider implements AIProvider {
    */
   private async makeRequest(
     messages: OpenAIMessage[],
-    options: { maxTokens?: number; rateLimit?: RateLimitOptions; signal?: AbortSignal } = {}
+    options: { rateLimit?: RateLimitOptions; signal?: AbortSignal } = {}
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
 
-    // Use higher token limit for reasoning models unless explicitly overridden
-    let tokenLimit = options.maxTokens || this.config.maxTokens;
-    if (!options.maxTokens && this.isReasoningModel()) {
-      tokenLimit = REASONING_MODEL_MAX_TOKENS;
-    }
+    // Reasoning models spend tokens thinking, so they get a higher limit
+    const tokenLimit = this.isReasoningModel() ? REASONING_MODEL_MAX_TOKENS : this.config.maxTokens;
 
     // Build request body with correct parameters for model
     const requestBody: Record<string, unknown> = {
@@ -277,6 +274,7 @@ export class OpenAIProvider implements AIProvider {
     }
 
     const response = await fetchWithRateLimitRetry(
+      'openai',
       url,
       {
         method: 'POST',
@@ -287,13 +285,10 @@ export class OpenAIProvider implements AIProvider {
         body: JSON.stringify(requestBody),
         signal: options.signal,
       },
+      // An exhausted quota is a billing problem no wait fixes: it is reported
+      // below with OpenAI's own message
       { ...options.rateLimit, shouldRetry: async (r) => !(await isQuotaExhausted(r)) }
     );
-
-    // An exhausted quota is a billing problem: report OpenAI's own message
-    if (response.status === 429 && !(await isQuotaExhausted(response.clone()))) {
-      throw new AIAnalysisError(RATE_LIMIT_MESSAGE, 'openai', 'rate_limited');
-    }
 
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as OpenAIErrorResponse;

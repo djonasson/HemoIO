@@ -4,6 +4,9 @@
  * import instead of failing it.
  */
 
+import { AIAnalysisError } from './types';
+import type { AIProviderType } from '@/types';
+
 /** Waits before the 1st, 2nd and 3rd retry */
 export const RATE_LIMIT_DELAYS_MS: readonly number[] = [2000, 4000, 8000];
 
@@ -56,10 +59,12 @@ export function retryAfterMs(header: string | null, now: number = Date.now()): n
 }
 
 /**
- * fetch, retrying HTTP 429 up to RATE_LIMIT_DELAYS_MS.length times. Returns
- * the last response either way; callers report a final 429 themselves.
+ * fetch, retrying HTTP 429 up to RATE_LIMIT_DELAYS_MS.length times, then
+ * failing with a rate-limit AIAnalysisError. A 429 that shouldRetry turns
+ * down is returned for the caller to report.
  */
 export async function fetchWithRateLimitRetry(
+  provider: AIProviderType,
   url: string,
   init: RequestInit,
   options: RateLimitOptions = {}
@@ -67,12 +72,16 @@ export async function fetchWithRateLimitRetry(
   const sleep = options.sleep ?? ((ms: number) => wait(ms, init.signal));
   for (let retry = 0; ; retry++) {
     const response = await fetch(url, init);
-    if (response.status !== 429 || retry >= RATE_LIMIT_DELAYS_MS.length) return response;
+    if (response.status !== 429) return response;
     if (options.shouldRetry && !(await options.shouldRetry(response.clone()))) return response;
 
-    const delay = retryAfterMs(response.headers.get('retry-after')) ?? RATE_LIMIT_DELAYS_MS[retry];
     // Release the connection: the body of a 429 is not needed
     await response.body?.cancel().catch(() => undefined);
+    if (retry >= RATE_LIMIT_DELAYS_MS.length) {
+      throw new AIAnalysisError(RATE_LIMIT_MESSAGE, provider, 'rate_limited');
+    }
+
+    const delay = retryAfterMs(response.headers.get('retry-after')) ?? RATE_LIMIT_DELAYS_MS[retry];
     options.onWait?.(delay, retry + 1);
     await sleep(delay);
     options.onResume?.();
