@@ -270,6 +270,8 @@ export function BackupRestore({
     }
   }, [pendingFileContent, importPassword, hasApiKey]);
 
+  const aiSummary = parsedData ? describeBackupAISettings(parsedData) : null;
+
   // Handle restore confirmation
   const handleConfirmRestore = useCallback(async () => {
     if (!parsedData) return;
@@ -291,7 +293,7 @@ export function BackupRestore({
     } finally {
       setIsRestoring(false);
     }
-  }, [parsedData, onRestore, restoreAIConfig]);
+  }, [parsedData, onRestore, restoreAIConfig, aiSummary]);
 
   // Handle cancel restore
   const handleCancelRestore = useCallback(() => {
@@ -317,7 +319,6 @@ export function BackupRestore({
   }, []);
 
   // Get import preview - handle both standard and encrypted backups
-  const aiSummary = parsedData ? describeBackupAISettings(parsedData) : null;
 
   const importPreview: {
     labResultCount: number;

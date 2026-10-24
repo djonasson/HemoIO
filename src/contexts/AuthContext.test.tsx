@@ -9,6 +9,12 @@ import {
   rewrapCredentials,
 } from '@data/encryption/keyWrapping';
 
+// Stored-data migrations run on unlock; the database itself is not under test
+const reconcile = vi.hoisted(() => vi.fn<() => Promise<void>>());
+vi.mock('@data/db', () => ({
+  createEncryptedDb: () => ({ reconcileLegacyUnknownKeys: reconcile }),
+}));
+
 const CREDENTIALS_KEY = 'hemoio_credentials';
 const OLD = 'Old-Passw0rd!';
 const NEW = 'New-Passw0rd!';
@@ -68,6 +74,8 @@ function lock() {
 describe('AuthContext', () => {
   beforeEach(() => {
     localStorage.clear();
+    reconcile.mockReset();
+    reconcile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -126,6 +134,38 @@ describe('AuthContext', () => {
       expect(await unlock(OLD)).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       expect(auth.encryptionKey).not.toBeNull();
+    });
+
+    it('reconciles stored biomarker keys before reporting unlocked', async () => {
+      await setUp();
+      lock();
+      let finishReconciling!: () => void;
+      reconcile.mockReturnValue(new Promise<void>((resolve) => (finishReconciling = resolve)));
+
+      let unlocking!: Promise<boolean>;
+      act(() => {
+        unlocking = auth.unlock(OLD);
+      });
+      await vi.waitFor(() => expect(reconcile).toHaveBeenCalled());
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+
+      await act(async () => {
+        finishReconciling();
+        await unlocking;
+      });
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+
+    it('unlocks even when reconciling stored keys fails', async () => {
+      await setUp();
+      lock();
+      reconcile.mockRejectedValue(new Error('IndexedDB unavailable'));
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(await unlock(OLD)).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      // Logged without the error, which could name stored data
+      expect(consoleError).toHaveBeenCalledWith('Failed to reconcile legacy biomarker keys');
     });
 
     it('stays locked with a wrong password', async () => {

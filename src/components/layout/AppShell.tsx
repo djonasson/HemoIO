@@ -10,8 +10,6 @@ import {
   Text,
   Divider,
   Stack,
-  Center,
-  Loader,
   Badge,
   VisuallyHidden,
 } from '@mantine/core';
@@ -37,7 +35,6 @@ import {
   useEncryptedApiKey,
   useFilesystemSync,
   useAISettings,
-  useLegacyKeyReconciliation,
   useAlerts,
   usePreferences,
 } from '@hooks';
@@ -130,7 +127,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     biomarkerOptions,
     refresh: refreshExportData,
   } = useExportData();
-  const { isReconciling } = useLegacyKeyReconciliation();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount, refresh: refreshAlerts } = useAlerts();
@@ -143,12 +139,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     void refreshAlerts();
   }, [activeView, refreshAlerts]);
 
-  // Export data loads on mount; reload it once stored keys are reconciled
-  useEffect(() => {
-    if (!isReconciling) {
-      void refreshExportData();
-    }
-  }, [isReconciling, refreshExportData]);
   const { syncNow } = useFilesystemSync();
 
   const handleNavClick = useCallback(
@@ -402,25 +392,19 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
-          {isReconciling ? (
-            <Center h="50vh">
-              <Loader aria-label="Preparing your data" />
-            </Center>
-          ) : (
-            (children ?? (
-              <MainContent
-                view={activeView}
-                onImportComplete={handleImportComplete}
-                onNavigateToImport={handleNavigateToImport}
-                onNavigate={handleNavClick}
-                trendFocus={trendFocus}
-                onOpenTrend={handleOpenTrend}
-                timelineFocus={timelineFocus}
-                onOpenLabResult={handleOpenLabResult}
-                onRestore={handleRestore}
-                isRestoring={isRestoring}
-              />
-            ))
+          {children ?? (
+            <MainContent
+              view={activeView}
+              onImportComplete={handleImportComplete}
+              onNavigateToImport={handleNavigateToImport}
+              onNavigate={handleNavClick}
+              trendFocus={trendFocus}
+              onOpenTrend={handleOpenTrend}
+              timelineFocus={timelineFocus}
+              onOpenLabResult={handleOpenLabResult}
+              onRestore={handleRestore}
+              isRestoring={isRestoring}
+            />
           )}
         </MantineAppShell.Main>
       </MantineAppShell>

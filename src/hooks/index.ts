@@ -13,9 +13,5 @@ export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncrypte
 export { useFormKeyboardSubmit, type UseFormKeyboardSubmitOptions, type UseFormKeyboardSubmitResult } from './useFormKeyboardSubmit';
 export { useFilesystemSync, triggerGlobalSync, setGlobalSyncCallback } from './useFilesystemSync';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
-export {
-  useLegacyKeyReconciliation,
-  type UseLegacyKeyReconciliationResult,
-} from './useLegacyKeyReconciliation';
 export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';

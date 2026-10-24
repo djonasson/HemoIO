@@ -6,6 +6,7 @@
  */
 
 import { createContext, useState, useCallback, type ReactNode } from 'react';
+import { createEncryptedDb } from '@data/db';
 import { verifyPassword, getEncryptionKey } from '@data/encryption';
 import {
   createCredentialsV2,
@@ -77,6 +78,20 @@ async function unlockCredentials(password: string, credentials: object): Promise
   return null;
 }
 
+/**
+ * Migrations that need the decrypted data, run before the app is unlocked so
+ * nothing reads data that is half migrated. Reconciling gives unknown
+ * biomarkers stored before keys existed the key new imports of the same name
+ * get. A failure is not fatal: those values keep their old key.
+ */
+async function migrateStoredData(key: CryptoKey): Promise<void> {
+  try {
+    await createEncryptedDb(key).reconcileLegacyUnknownKeys();
+  } catch {
+    console.error('Failed to reconcile legacy biomarker keys');
+  }
+}
+
 export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   const storedCreds = loadStoredCredentials();
 
@@ -118,6 +133,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         return false;
       }
 
+      await migrateStoredData(key);
       setEncryptionKey(key);
       setCredentials(storedCreds);
       setStatus('unlocked');
