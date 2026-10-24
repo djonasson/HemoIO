@@ -76,6 +76,8 @@ export interface SeedData {
   labResults?: unknown[];
   testValues?: unknown[];
   userNotes?: unknown[];
+  /** Backup preferences; schema version 1, so maps are keyed by legacy biomarker IDs */
+  userPreferences?: unknown;
 }
 
 export function createBackupData(data: SeedData = {}): object {
@@ -86,7 +88,7 @@ export function createBackupData(data: SeedData = {}): object {
     labResults: data.labResults ?? SEED_LAB_RESULTS,
     testValues: data.testValues ?? SEED_TEST_VALUES,
     userNotes: data.userNotes ?? [],
-    userPreferences: null,
+    userPreferences: data.userPreferences ?? null,
     settings: null,
   };
 }

@@ -275,6 +275,28 @@ test.describe('Unit Conversion - With Data', () => {
     ]);
   });
 
+  test('should show the preferred unit on the timeline and in alerts', async ({ page }) => {
+    // Scenario: User sets preferred unit — "the timeline and the alerts
+    // should show glucose in mmol/L"
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: GLUCOSE, value: 100, unit: 'mg/dL', low: 70, high: 100 },
+      { day: DAY_2, biomarker: GLUCOSE, value: 120, unit: 'mg/dL', low: 70, high: 100 },
+    ]);
+
+    await openTrend(page, 'Glucose');
+    await setPreferredUnit(page, 'mmol/L');
+
+    await page.getByRole('navigation').getByRole('button', { name: /^Timeline/ }).click();
+    const card = await expandLabResult(page, DAY_2);
+    await expect(card.getByRole('row', { name: /^Glucose: 6\.66 mmol\/L,/ })).toBeVisible();
+
+    await page.getByRole('navigation').getByRole('button', { name: /^Alerts/ }).click();
+    await expect(
+      page.getByRole('main').getByText(/Glucose is high at 6\.66 mmol\/L/).first()
+    ).toBeVisible();
+  });
+
   test('should handle precision appropriately', async ({ page }) => {
     // Scenario: Handle precision appropriately — converted values are shown
     // with sensible decimals, never raw floating-point results
@@ -513,13 +535,18 @@ test.describe('Unit Conversion - Error Handling', () => {
 
     await openTrend(page, 'Glucose');
     await preferredUnitControl(page).fill('stones');
-    await expect(page.getByText(/not supported|unsupported/i)).toBeVisible();
+    await expect(
+      page.getByRole('main').getByText('Unit not supported for Glucose', { exact: true })
+    ).toBeVisible();
 
-    // Values stay in a unit they can be shown in
+    // Values stay in the current unit, and so does the control
     await expectTrendValues(page, [
       { value: '100', unit: 'mg/dL' },
       { value: '110', unit: 'mg/dL' },
     ]);
+    await page.keyboard.press('Escape');
+    await preferredUnitControl(page).blur();
+    await expect(preferredUnitControl(page)).toHaveValue('mg/dL');
   });
 
   test('should handle missing conversion factor gracefully', async ({ page }) => {
@@ -575,6 +602,9 @@ test.describe('Unit Conversion - Accessibility', () => {
     await control.focus();
     await expect(control).toBeFocused();
     await page.keyboard.type('mmol');
+    // Mantine resets the highlighted option in a 0 ms timer after the
+    // dropdown opens; let it run so ArrowDown is not undone
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
 

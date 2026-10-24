@@ -104,11 +104,20 @@ Feature: Biomarker Dictionary
     Then I should see both the standard range and my personal target
     And my personal target should be highlighted
 
+  Scenario: Set a personal target from the detail
+    Given I have no personal target for "Glucose"
+    When I view the detail for "Glucose"
+    Then I should see that the standard range is used
+    When I edit the personal target to 70 - 90
+    Then I should see my personal target 70 - 90 mg/dL
+    And it should still be set after I sign in again
+
   # Navigation
   Scenario: Return to category list from detail
     Given I am viewing the detail for a biomarker
     When I click the back button
     Then I should return to the category or search results
+    And my search and scroll position should be kept
 
   Scenario: Navigate between biomarker details
     Given I am viewing the detail for "Glucose"
@@ -120,6 +129,8 @@ Feature: Biomarker Dictionary
     Given I have lab results containing "Glucose" values
     When I view the detail for "Glucose"
     Then I should see a summary of my historical values
+    And I should see my latest value with its date and status
+    And I should see how many results I have
     And I should have a link to view the trend chart
 
   Scenario: Biomarker with no personal data

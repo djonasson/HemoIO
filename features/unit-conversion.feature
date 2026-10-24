@@ -56,7 +56,14 @@ Feature: Unit Conversion
     Given I am viewing my glucose results in mg/dL
     When I set my preferred unit to mmol/L
     Then all glucose values should display in mmol/L
+    And the timeline and the alerts should show glucose in mmol/L
     And the preference should be saved
+
+  Scenario: User types a unit the biomarker cannot be shown in
+    Given I am viewing my glucose results in mg/dL
+    When I type "stones" as my preferred unit
+    Then I should see "Unit not supported for Glucose"
+    And glucose values should still display in mg/dL
 
   Scenario: Unsupported unit conversion returns error
     Given a glucose value of 100 mg/dL

@@ -9,8 +9,10 @@
  */
 
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { waitForAnimations } from './steps/timeline.steps';
+import { biomarkerSelect } from './steps/trends.steps';
+import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
 
 /**
  * Given I am logged into the application / And I navigate to the Biomarkers page
@@ -86,6 +88,15 @@ async function viewDetail(page: Page, name: string): Promise<Locator> {
   const detail = biomarkerDetail(page, name);
   await expect(detail).toBeVisible();
   return detail;
+}
+
+async function goToDictionary(page: Page): Promise<void> {
+  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
+  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
+}
+
+function backButton(detail: Locator): Locator {
+  return detail.getByRole('button', { name: 'Back to biomarker list' });
 }
 
 test.describe('Biomarker Dictionary', () => {
@@ -272,14 +283,14 @@ test.describe('Biomarker Dictionary', () => {
       const wbc = page.getByRole('button', { name: 'View details for White Blood Cell Count', exact: true });
       await expect(wbc).toBeFocused();
 
-      // Enter opens the detail; its close button is reachable too
+      // Enter opens the detail; its Back button returns focus to the item
       await page.keyboard.press('Enter');
       const detail = biomarkerDetail(page, 'White Blood Cell Count');
       await expect(detail).toBeVisible();
-      const close = detail.getByRole('button', { name: 'Close biomarker detail' });
-      await close.focus();
+      await backButton(detail).focus();
       await page.keyboard.press('Enter');
       await expect(detail).toHaveCount(0);
+      await expect(wbc).toBeFocused();
     });
 
     test('search input should have accessible label', async ({ page }) => {
@@ -299,6 +310,167 @@ test.describe('Biomarker Dictionary', () => {
       await expect(
         page.getByRole('button', { name: 'View details for Hemoglobin', exact: true })
       ).toBeVisible();
+    });
+  });
+
+  test.describe('Related Biomarkers', () => {
+    test('should list related biomarkers and open their details', async ({ page }) => {
+      const detail = await viewDetail(page, 'Glucose');
+      const related = detail.getByRole('region', { name: 'Related biomarkers' });
+      const a1c = related.getByRole('button', { name: 'Hemoglobin A1c (HbA1c)' });
+      await expect(a1c).toBeVisible();
+
+      await a1c.click();
+      const a1cDetail = biomarkerDetail(page, 'Hemoglobin A1c');
+      await expect(a1cDetail).toBeVisible();
+      // Relations go both ways
+      await expect(
+        a1cDetail
+          .getByRole('region', { name: 'Related biomarkers' })
+          .getByRole('button', { name: /^Glucose/ })
+      ).toBeVisible();
+    });
+  });
+
+  test.describe('Personal Target', () => {
+    test('should show a personal target next to the standard range', async ({ page }) => {
+      // Glucose is legacy ID 22 in a schema-version-1 backup
+      await seedMeasurements(
+        page,
+        [{ day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL' }],
+        {
+          userPreferences: {
+            unitPreferences: {},
+            personalTargets: { 22: { low: 70, high: 90 } },
+            theme: 'system',
+            dateFormat: 'MM/DD/YYYY',
+          },
+        }
+      );
+      await goToDictionary(page);
+
+      const detail = await viewDetail(page, 'Glucose');
+      await expect(detail.getByText('70 - 100 mg/dL', { exact: true })).toBeVisible();
+      const target = detail.getByRole('region', { name: 'Personal target' });
+      await expect(target.getByText('Your target', { exact: true })).toBeVisible();
+      await expect(target.getByText('70 - 90 mg/dL', { exact: true })).toBeVisible();
+    });
+
+    test('should set a personal target from the detail', async ({ page }) => {
+      const detail = await viewDetail(page, 'Glucose');
+      const target = detail.getByRole('region', { name: 'Personal target' });
+      await expect(target.getByText('Using standard range', { exact: true })).toBeVisible();
+
+      await target.getByRole('button', { name: 'Edit personal target' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Set Personal Target for Glucose' });
+      await dialog.getByLabel('Personal target low value').fill('70');
+      await dialog.getByLabel('Personal target high value').fill('90');
+      await dialog.getByRole('button', { name: 'Save Target' }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(target.getByText('70 - 90 mg/dL', { exact: true })).toBeVisible();
+
+      // Saved: still there in a new session
+      await page.reload();
+      await unlockApp(page);
+      await goToDictionary(page);
+      const again = await viewDetail(page, 'Glucose');
+      await expect(
+        again
+          .getByRole('region', { name: 'Personal target' })
+          .getByText('70 - 90 mg/dL', { exact: true })
+      ).toBeVisible();
+    });
+  });
+
+  test.describe('Back to the List', () => {
+    test('should return to the search results with the search kept', async ({ page }) => {
+      await searchField(page).fill('chol');
+      const ldl = page.getByRole('button', { name: 'View details for LDL Cholesterol', exact: true });
+      await ldl.click();
+      const detail = biomarkerDetail(page, 'LDL Cholesterol');
+      await expect(detail).toBeVisible();
+      // The detail replaces the list
+      await expect(searchField(page)).toBeHidden();
+
+      await backButton(detail).click();
+
+      await expect(detail).toHaveCount(0);
+      await expect(searchField(page)).toHaveValue('chol');
+      await expect(ldl).toBeFocused();
+    });
+
+    test('should return to the open category at the same scroll position', async ({ page }) => {
+      const panel = await openCategory(page, 'Complete Blood Count');
+      const item = panel.getByRole('button', {
+        name: 'View details for Basophils Percentage',
+        exact: true,
+      });
+      await item.scrollIntoViewIfNeeded();
+      const scrollY = await page.evaluate(() => window.scrollY);
+      expect(scrollY).toBeGreaterThan(0);
+
+      await item.click();
+      const detail = biomarkerDetail(page, 'Basophils Percentage');
+      await expect(detail).toBeVisible();
+      await backButton(detail).click();
+
+      await expect(categoryControl(page, 'Complete Blood Count')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+      await expect(item).toBeFocused();
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY);
+    });
+
+    test('should return to the list, not the previous detail, after related biomarkers', async ({
+      page,
+    }) => {
+      const detail = await viewDetail(page, 'Glucose');
+      await detail
+        .getByRole('region', { name: 'Related biomarkers' })
+        .getByRole('button', { name: 'Hemoglobin A1c (HbA1c)' })
+        .click();
+      const a1c = biomarkerDetail(page, 'Hemoglobin A1c');
+      await backButton(a1c).click();
+
+      await expect(searchField(page)).toHaveValue('Glucose');
+      await expect(
+        page.getByRole('button', { name: 'View details for Glucose', exact: true })
+      ).toBeFocused();
+    });
+  });
+
+  test.describe('Your Results', () => {
+    test('should summarise my results and link to the trend', async ({ page }) => {
+      await seedMeasurements(page, [
+        { day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL', low: 70, high: 100 },
+        { day: '2024-02-20', biomarker: GLUCOSE, value: 120, unit: 'mg/dL', low: 70, high: 100 },
+      ]);
+      await goToDictionary(page);
+
+      const detail = await viewDetail(page, 'Glucose');
+      const yours = detail.getByRole('region', { name: 'Your results' });
+      await expect(yours.getByText('120 mg/dL', { exact: true })).toBeVisible();
+      await expect(yours.getByText('Feb 20, 2024', { exact: true })).toBeVisible();
+      await expect(yours.getByText('High', { exact: true })).toBeVisible();
+      await expect(yours.getByText('2 results', { exact: true })).toBeVisible();
+
+      await yours.getByRole('button', { name: 'View trend' }).click();
+      await expect(
+        page.getByRole('main').getByRole('heading', { name: 'Trends', level: 2 })
+      ).toBeVisible();
+      await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
+    });
+
+    test('should say when I have no recorded values', async ({ page }) => {
+      const detail = await viewDetail(page, 'Ferritin');
+      const yours = detail.getByRole('region', { name: 'Your results' });
+      await expect(
+        yours.getByText('You have no recorded values for Ferritin', { exact: true })
+      ).toBeVisible();
+      await expect(yours.getByRole('button', { name: 'View trend' })).toHaveCount(0);
+      // Reference information is still shown
+      await expect(detail.getByText('Reference Range', { exact: true })).toBeVisible();
     });
   });
 });

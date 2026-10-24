@@ -54,7 +54,11 @@ export interface Measurement {
  * Given I have these measurements — seed them through a backup restore.
  * Ends on the timeline.
  */
-export async function seedMeasurements(page: Page, measurements: Measurement[]): Promise<void> {
+export async function seedMeasurements(
+  page: Page,
+  measurements: Measurement[],
+  options: { userPreferences?: unknown } = {}
+): Promise<void> {
   const days = [...new Set(measurements.map((m) => m.day))].sort();
   const labResults = days.map((day, index) => {
     // Midday UTC keeps the calendar day stable in any time zone
@@ -79,7 +83,12 @@ export async function seedMeasurements(page: Page, measurements: Measurement[]):
     };
   });
 
-  await seedLabData(page, { labResults, testValues, userNotes: [] });
+  await seedLabData(page, {
+    labResults,
+    testValues,
+    userNotes: [],
+    userPreferences: options.userPreferences,
+  });
 }
 
 /**
@@ -117,11 +126,8 @@ export function trendTitle(page: Page, biomarkerName: string, unit: string): Loc
 }
 
 /**
- * The control for choosing which unit a biomarker is displayed in.
- *
- * The unit-conversion feature describes a per-biomarker preferred unit; the
- * app does not have this control yet, so this locator names the control the
- * feature requires.
+ * The searchable select, on the Trends view, for the unit a biomarker is
+ * shown in
  */
 export function preferredUnitControl(page: Page): Locator {
   return page.getByRole('main').getByRole('textbox', { name: 'Preferred unit' });
