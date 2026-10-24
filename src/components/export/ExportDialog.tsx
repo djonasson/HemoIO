@@ -56,6 +56,8 @@ export interface ExportDialogProps {
   fullDataSources: ExportDataSources;
   /** Available biomarkers for filtering */
   biomarkerOptions: { value: string; label: string }[];
+  /** While the data as it is now loads, the previous data must not be exported */
+  isLoading?: boolean;
 }
 
 /**
@@ -92,6 +94,7 @@ export function ExportDialog({
   labResultsData,
   fullDataSources,
   biomarkerOptions,
+  isLoading = false,
 }: ExportDialogProps): React.ReactNode {
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [dateRangePreset, setDateRangePreset] = useState('all');
@@ -336,7 +339,7 @@ export function ExportDialog({
             leftSection={<IconDownload size={16} />}
             onClick={handleExport}
             loading={isExporting}
-            disabled={!hasData}
+            disabled={!hasData || isLoading}
           >
             Export
           </Button>

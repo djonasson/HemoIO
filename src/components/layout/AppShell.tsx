@@ -124,7 +124,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   // Loaded when the export dialog opens, so an export has what is stored now
-  const { dataSources, labResultsData, biomarkerOptions } = useExportData({
+  const {
+    dataSources,
+    labResultsData,
+    biomarkerOptions,
+    isLoading: isLoadingExportData,
+  } = useExportData({
     enabled: exportDialogOpen,
   });
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
@@ -431,6 +436,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         onClose={handleCloseExport}
         labResultsData={labResultsData}
         fullDataSources={dataSources}
+        isLoading={isLoadingExportData}
         biomarkerOptions={biomarkerOptions}
       />
     </>

@@ -91,6 +91,11 @@ describe('ExportDialog', () => {
   });
 
   describe('rendering', () => {
+    it('waits for the current data before allowing an export', () => {
+      renderWithProviders(<ExportDialog {...defaultProps} isLoading />);
+      expect(screen.getByRole('button', { name: /^Export$/ })).toBeDisabled();
+    });
+
     it('should render dialog when opened', () => {
       renderWithProviders(<ExportDialog {...defaultProps} />);
 
