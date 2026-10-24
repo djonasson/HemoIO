@@ -13,9 +13,23 @@ function toDates(stored: Record<string, string> | undefined): Record<string, Dat
   return Object.fromEntries(Object.entries(stored ?? {}).map(([key, iso]) => [key, new Date(iso)]));
 }
 
+/** The later of two acknowledgement dates: an acknowledgement never moves back */
+function later(current: Date | undefined, next: Date): Date {
+  return current && current.getTime() > next.getTime() ? current : next;
+}
+
+const NONE: Record<string, Date> = {};
+
 export function AlertStateProvider({ children }: { children: ReactNode }): ReactNode {
   const { db, isReady } = useEncryptedDb();
-  const [acknowledgedThrough, setAcknowledgedThrough] = useState<Record<string, Date>>({});
+  // Acknowledgements belong to the session that loaded them: locking forgets
+  // them, and the next unlock reads the stored ones again
+  const [loaded, setLoaded] = useState<{ db: typeof db; through: Record<string, Date> }>({
+    db: null,
+    through: NONE,
+  });
+  const sessionDb = isReady ? db : null;
+  const acknowledgedThrough = loaded.db === sessionDb && sessionDb ? loaded.through : NONE;
   const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(new Set());
   const acknowledgedRef = useRef(acknowledgedThrough);
 
@@ -23,43 +37,63 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
     acknowledgedRef.current = acknowledgedThrough;
   }, [acknowledgedThrough]);
 
+  /** Change this session's acknowledgements */
+  const update = useCallback(
+    (change: (current: Record<string, Date>) => Record<string, Date>) => {
+      setLoaded((prev) => ({
+        db: sessionDb,
+        through: change(prev.db === sessionDb ? prev.through : NONE),
+      }));
+    },
+    [sessionDb]
+  );
+
   useEffect(() => {
-    if (!db || !isReady) return;
+    if (!sessionDb) return;
     let cancelled = false;
-    db.getPreferences()
+    sessionDb
+      .getPreferences()
       .then((prefs) => {
         // Acknowledgements made while loading win over the stored ones
-        if (!cancelled)
-          setAcknowledgedThrough((prev) => ({
-            ...toDates(prefs?.acknowledgedAlerts),
-            ...prev,
-          }));
+        if (!cancelled) update((current) => ({ ...toDates(prefs?.acknowledgedAlerts), ...current }));
       })
       .catch(() => console.error('Failed to load alert acknowledgements'));
     return () => {
       cancelled = true;
     };
-  }, [db, isReady]);
+  }, [sessionDb, update]);
+
+  /** Read the stored acknowledgements again, e.g. after a backup restore replaced them */
+  const reload = useCallback(async () => {
+    if (!sessionDb) return;
+    const prefs = await sessionDb.getPreferences();
+    update(() => toDates(prefs?.acknowledgedAlerts));
+  }, [sessionDb, update]);
 
   const acknowledge = useCallback(
     async (biomarkerKey: string, through: Date) => {
       const previous = acknowledgedRef.current[biomarkerKey];
-      setAcknowledgedThrough((prev) => ({ ...prev, [biomarkerKey]: through }));
-      if (!db || !isReady) return;
+      const kept = later(previous, through);
+      update((current) => ({ ...current, [biomarkerKey]: later(current[biomarkerKey], through) }));
+      if (!sessionDb) return;
 
       try {
         // One transaction per save, so concurrent acknowledgements all stick
-        await db.updatePreferences((prefs) => ({
-          acknowledgedAlerts: {
-            ...prefs?.acknowledgedAlerts,
-            [biomarkerKey]: through.toISOString(),
-          },
-        }));
+        await sessionDb.updatePreferences((prefs) => {
+          const storedIso = prefs?.acknowledgedAlerts?.[biomarkerKey];
+          const stored = storedIso ? new Date(storedIso) : undefined;
+          return {
+            acknowledgedAlerts: {
+              ...prefs?.acknowledgedAlerts,
+              [biomarkerKey]: later(stored, through).toISOString(),
+            },
+          };
+        });
       } catch (err) {
         // Not saved: show the alert again rather than let it reappear on reload
-        setAcknowledgedThrough((prev) => {
-          if (prev[biomarkerKey] !== through) return prev;
-          const next = { ...prev };
+        update((current) => {
+          if (current[biomarkerKey] !== kept) return current;
+          const next = { ...current };
           if (previous) next[biomarkerKey] = previous;
           else delete next[biomarkerKey];
           return next;
@@ -67,7 +101,7 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
         throw err;
       }
     },
-    [db, isReady]
+    [sessionDb, update]
   );
 
   const dismiss = useCallback((alertId: string) => {
@@ -75,8 +109,8 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
   }, []);
 
   const value = useMemo<AlertState>(
-    () => ({ acknowledgedThrough, dismissedIds, acknowledge, dismiss }),
-    [acknowledgedThrough, dismissedIds, acknowledge, dismiss]
+    () => ({ acknowledgedThrough, dismissedIds, acknowledge, dismiss, reload }),
+    [acknowledgedThrough, dismissedIds, acknowledge, dismiss, reload]
   );
 
   return <AlertStateContext.Provider value={value}>{children}</AlertStateContext.Provider>;

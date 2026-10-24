@@ -19,8 +19,9 @@ const mockDb = {
   getPreferences: vi.fn(async () => stored),
   updatePreferences: (...args: unknown[]) => mockUpdatePreferences(...args),
 };
+let session: { db: typeof mockDb | null; isReady: boolean } = { db: mockDb, isReady: true };
 vi.mock('@hooks/useEncryptedDb', () => ({
-  useEncryptedDb: () => ({ db: mockDb, isReady: true }),
+  useEncryptedDb: () => session,
 }));
 
 /** Applies an update to the stored record, as EncryptedDb.updatePreferences does */
@@ -33,6 +34,47 @@ describe('AlertStateProvider', () => {
     vi.clearAllMocks();
     stored = { ...basePrefs, acknowledgedAlerts: { glucose: '2024-03-10T10:00:00.000Z' } };
     mockUpdatePreferences.mockImplementation(applyUpdate);
+    session = { db: mockDb, isReady: true };
+  });
+
+  it('reloads acknowledgements a restore replaced', async () => {
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+
+    stored = { ...basePrefs, acknowledgedAlerts: { hemoglobin: '2024-09-01T00:00:00.000Z' } };
+    await act(async () => {
+      await result.current.reload();
+    });
+
+    expect(result.current.acknowledgedThrough).toEqual({
+      hemoglobin: new Date('2024-09-01T00:00:00.000Z'),
+    });
+  });
+
+  it('forgets acknowledgements held in memory when the app locks', async () => {
+    const { result, rerender } = renderHook(() => useAlertState(), {
+      wrapper: AlertStateProvider,
+    });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+
+    session = { db: null, isReady: false };
+    rerender();
+
+    expect(result.current.acknowledgedThrough).toEqual({});
+  });
+
+  it('never moves an acknowledgement back to an earlier date', async () => {
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+
+    await act(async () => {
+      await result.current.acknowledge('glucose', new Date('2024-01-01T00:00:00.000Z'));
+    });
+
+    expect(result.current.acknowledgedThrough.glucose).toEqual(
+      new Date('2024-03-10T10:00:00.000Z')
+    );
+    expect(stored?.acknowledgedAlerts?.glucose).toBe('2024-03-10T10:00:00.000Z');
   });
 
   it('loads persisted acknowledgements', async () => {

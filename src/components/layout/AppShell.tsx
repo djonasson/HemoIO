@@ -36,6 +36,7 @@ import {
   useFilesystemSync,
   useAISettings,
   useAlerts,
+  useAlertState,
   useLabResults,
   usePreferences,
 } from '@hooks';
@@ -131,6 +132,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { unacknowledgedCount: alertCount } = useAlerts();
   const { refresh: refreshLabResults } = useLabResults();
   const { reload: reloadPreferences } = usePreferences();
+  const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
@@ -237,8 +239,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
-        // A backup can bring unit preferences and personal targets
-        await reloadPreferences();
+        // A backup can bring unit preferences, personal targets and acknowledgements
+        await Promise.all([reloadPreferences(), reloadAlertState()]);
         if (options.restoreAISettings) {
           await restoreAISettings(data, {
             setAiProvider,
@@ -280,6 +282,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       db,
       isReady,
       reloadPreferences,
+      reloadAlertState,
       refreshLabResults,
       syncNow,
       setAiProvider,
