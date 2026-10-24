@@ -24,3 +24,11 @@ export {
   type Measurement,
   type ConvertedMeasurement,
 } from './convertMeasurement';
+export {
+  preferredUnitOptions,
+  preferredUnitFor,
+  resolveDisplayUnit,
+  convertForDisplay,
+  type UnitSource,
+  type DisplayableValue,
+} from './displayUnit';
