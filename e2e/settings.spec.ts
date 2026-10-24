@@ -395,8 +395,8 @@ test.describe('Settings Page', () => {
       // Press arrow right to move to next tab
       await page.keyboard.press('ArrowRight');
 
-      // AI Configuration tab should be focused
-      await expect(page.getByRole('tab', { name: /AI Configuration/i })).toBeFocused();
+      // Security tab, right after Data, should be focused
+      await expect(page.getByRole('tab', { name: 'Security' })).toBeFocused();
     });
 
     test('should have accessible labels on form fields', async ({ page }) => {
