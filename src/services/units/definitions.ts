@@ -21,6 +21,8 @@ export interface UnitConversion {
   to: string;
   /** Multiply by this factor to convert from -> to */
   factor: number;
+  /** Added after multiplying, for conversions that are not plain ratios */
+  offset?: number;
 }
 
 /**
@@ -327,17 +329,15 @@ const albuminConversions: BiomarkerConversions = {
 
 /**
  * HbA1c conversions
- * NGSP (%) to IFCC (mmol/mol)
- * Formula: IFCC = (NGSP - 2.15) × 10.929
- * Simplified factor for approximation
+ * NGSP (%) to IFCC (mmol/mol), the IFCC–NGSP master equation:
+ * IFCC = (NGSP − 2.15) × 10.929, so NGSP = IFCC / 10.929 + 2.15
  */
 const hba1cConversions: BiomarkerConversions = {
   biomarker: 'Hemoglobin A1c',
   aliases: ['HbA1c', 'A1C', 'Glycated Hemoglobin', 'Glycohemoglobin'],
   conversions: [
-    // These are approximations; actual conversion is non-linear
-    { from: '%', to: 'mmol/mol', factor: 10.929 },
-    { from: 'mmol/mol', to: '%', factor: 0.0915 },
+    { from: '%', to: 'mmol/mol', factor: 10.929, offset: -2.15 * 10.929 },
+    { from: 'mmol/mol', to: '%', factor: 1 / 10.929, offset: 2.15 },
   ],
 };
 
@@ -710,15 +710,15 @@ const mcvConversions: BiomarkerConversions = {
 
 /**
  * Mean Corpuscular Hemoglobin (MCH) conversions
- * pg to fmol: Hemoglobin MW ~64,458 g/mol (tetramer)
- * 1 pg = 1/64.458 fmol ≈ 0.01552 fmol
+ * pg to fmol: MCH in fmol counts haemoglobin monomers, MW 16,114.5 g/mol
+ * 1 pg = 1/16.1145 fmol ≈ 0.06206 fmol
  */
 const mchConversions: BiomarkerConversions = {
   biomarker: 'Mean Corpuscular Hemoglobin',
   aliases: ['MCH', 'Contenuto Medio di Hb', 'Contenuto Emoglobinico Corpuscolare Medio'],
   conversions: [
-    { from: 'pg', to: 'fmol', factor: 0.01552 },
-    { from: 'fmol', to: 'pg', factor: 64.458 },
+    { from: 'pg', to: 'fmol', factor: 1 / 16.1145 },
+    { from: 'fmol', to: 'pg', factor: 16.1145 },
   ],
 };
 
@@ -1227,14 +1227,20 @@ function normalizeUnitForLookup(unit: string): string {
   return UNIT_NORMALIZATIONS[lowercased] ?? UNIT_NORMALIZATIONS[normalized] ?? normalized;
 }
 
+/** A conversion between two units: converted = value × factor + offset */
+export interface LinearConversion {
+  factor: number;
+  offset: number;
+}
+
 /**
- * Get conversion factor between two units for a biomarker
+ * The conversion between two units for a biomarker
  */
-export function getConversionFactor(
+export function getConversion(
   biomarkerName: string,
   fromUnit: string,
   toUnit: string
-): number | undefined {
+): LinearConversion | undefined {
   const definition = findConversionDefinition(biomarkerName);
   if (!definition) return undefined;
 
@@ -1243,24 +1249,41 @@ export function getConversionFactor(
   const normalizedTo = normalizeUnitForLookup(toUnit);
 
   // Same unit, no conversion needed
-  if (normalizedFrom.toLowerCase() === normalizedTo.toLowerCase()) return 1;
+  if (normalizedFrom.toLowerCase() === normalizedTo.toLowerCase()) return { factor: 1, offset: 0 };
 
   const from = normalizedFrom.toLowerCase();
   const to = normalizedTo.toLowerCase();
   const direct = definition.conversions.find(
     (c) => c.from.toLowerCase() === from && c.to.toLowerCase() === to
   );
-  if (direct) return direct.factor;
+  if (direct) return { factor: direct.factor, offset: direct.offset ?? 0 };
 
-  // No direct pair (e.g. hemoglobin mmol/L → g/L): chain two known factors
-  // through a shared unit (mmol/L → g/dL → g/L). Factors are plain ratios,
-  // so the product is exact.
+  // No direct pair (e.g. hemoglobin mmol/L → g/L): chain two known conversions
+  // through a shared unit (mmol/L → g/dL → g/L)
   for (const first of definition.conversions) {
     if (first.from.toLowerCase() !== from) continue;
     const second = definition.conversions.find(
       (c) => c.from.toLowerCase() === first.to.toLowerCase() && c.to.toLowerCase() === to
     );
-    if (second) return first.factor * second.factor;
+    if (second) {
+      return {
+        factor: first.factor * second.factor,
+        offset: (first.offset ?? 0) * second.factor + (second.offset ?? 0),
+      };
+    }
   }
   return undefined;
+}
+
+/**
+ * The multiplying factor between two units, for conversions that are plain
+ * ratios; undefined when there is no conversion or it has an offset
+ */
+export function getConversionFactor(
+  biomarkerName: string,
+  fromUnit: string,
+  toUnit: string
+): number | undefined {
+  const conversion = getConversion(biomarkerName, fromUnit, toUnit);
+  return conversion && conversion.offset === 0 ? conversion.factor : undefined;
 }

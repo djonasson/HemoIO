@@ -201,6 +201,33 @@ describe('Unit Conversion Service', () => {
     });
   });
 
+  describe('HbA1c (NGSP % ↔ IFCC mmol/mol)', () => {
+    // IFCC = (NGSP − 2.15) × 10.929: an offset, not a plain ratio
+    it('converts % to mmol/mol with the master equation', () => {
+      expect(convertValue('Hemoglobin A1c', 6.5, '%', 'mmol/mol', 1).convertedValue).toBe(47.5);
+      expect(convertValue('HbA1c', 5.7, '%', 'mmol/mol', 0).convertedValue).toBe(39);
+    });
+
+    it('converts mmol/mol to % with the master equation', () => {
+      expect(convertValue('Hemoglobin A1c', 48, 'mmol/mol', '%', 1).convertedValue).toBe(6.5);
+      expect(convertValue('HbA1c', 42, 'mmol/mol', '%', 1).convertedValue).toBe(6);
+    });
+
+    it('converts a reference range with the master equation', () => {
+      expect(
+        convertReferenceRange('HbA1c', { low: 4, high: 5.6, unit: '%' }, 'mmol/mol', 0)
+      ).toEqual({ low: 20, high: 38, unit: 'mmol/mol' });
+    });
+  });
+
+  describe('MCH (pg ↔ fmol)', () => {
+    // Per haemoglobin monomer, 16 114.5 g/mol: 1 pg = 0.06206 fmol
+    it('converts pg to fmol and back', () => {
+      expect(convertValue('MCH', 30, 'pg', 'fmol', 2).convertedValue).toBe(1.86);
+      expect(convertValue('MCH', 1.9, 'fmol', 'pg', 1).convertedValue).toBe(30.6);
+    });
+  });
+
   describe('convertReferenceRange', () => {
     it('converts both low and high values', () => {
       const result = convertReferenceRange(

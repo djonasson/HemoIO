@@ -4,7 +4,7 @@
  * Provides utilities for converting biomarker values between different units.
  */
 
-import { findConversionDefinition, getConversionFactor } from './definitions';
+import { findConversionDefinition, getConversion } from './definitions';
 
 /**
  * Result of a unit conversion
@@ -127,10 +127,9 @@ export function convertValue(
     };
   }
 
-  // Get conversion factor
-  const factor = getConversionFactor(biomarkerName, normalizedFrom, normalizedTo);
+  const conversion = getConversion(biomarkerName, normalizedFrom, normalizedTo);
 
-  if (factor === undefined) {
+  if (conversion === undefined) {
     // Check if biomarker exists
     const definition = findConversionDefinition(biomarkerName);
     if (!definition) {
@@ -143,8 +142,9 @@ export function convertValue(
     );
   }
 
-  const usedPrecision = precision ?? getPrecisionForValue(value * factor, normalizedTo);
-  const convertedValue = roundToPrecision(value * factor, usedPrecision);
+  const exact = value * conversion.factor + conversion.offset;
+  const usedPrecision = precision ?? getPrecisionForValue(exact, normalizedTo);
+  const convertedValue = roundToPrecision(exact, usedPrecision);
 
   return {
     originalValue: value,
@@ -219,7 +219,7 @@ export function canConvert(
   if (fromUnit.toLowerCase().trim() === toUnit.toLowerCase().trim()) {
     return true;
   }
-  return getConversionFactor(biomarkerName, fromUnit, toUnit) !== undefined;
+  return getConversion(biomarkerName, fromUnit, toUnit) !== undefined;
 }
 
 /**
