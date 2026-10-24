@@ -1,48 +1,32 @@
-import { describe, it, expect } from 'vitest';
-import { restoreBackup, type RestoreTarget } from './restoreBackup';
+import 'fake-indexeddb/auto';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import Dexie from 'dexie';
+import { HemoIODatabase } from '@data/db';
+import { EncryptedDb } from '@data/db/encryptedDb';
+import { restoreBackup } from './restoreBackup';
 import type { ParsedBackupData } from './jsonImport';
-import type { LabResult, TestValue, UserNote, UserPreferences } from '@/types';
 
-/**
- * In-memory stand-in for the encrypted database. IDs continue from an
- * offset because IndexedDB auto-increment does not reset when tables are
- * cleared, so restored records never get their backup IDs back.
- */
-function createFakeDb(idOffset = 100) {
-  let nextId = idOffset;
-  const db = {
-    labResults: [] as LabResult[],
-    testValues: [] as TestValue[],
-    notes: [] as UserNote[],
-    preferences: undefined as Omit<UserPreferences, 'id'> | undefined,
-    calls: [] as string[],
-    async clearLabData() {
-      db.calls.push('clear');
-      db.labResults = [];
-      db.testValues = [];
-      db.notes = [];
-    },
-    async savePreferences(preferences: Omit<UserPreferences, 'id'>) {
-      db.preferences = preferences;
-      return 1;
-    },
-    async addLabResult(labResult: Omit<LabResult, 'id'>) {
-      const id = nextId++;
-      db.labResults.push({ ...labResult, id });
-      return id;
-    },
-    async addTestValue(testValue: Omit<TestValue, 'id'>) {
-      const id = nextId++;
-      db.testValues.push({ ...testValue, id });
-      return id;
-    },
-    async addUserNote(note: Omit<UserNote, 'id'>) {
-      const id = nextId++;
-      db.notes.push({ ...note, id });
-      return id;
-    },
-  };
-  return db satisfies RestoreTarget;
+const opened: HemoIODatabase[] = [];
+afterEach(async () => {
+  vi.restoreAllMocks();
+  // Close first: deleting an open database makes Dexie warn
+  await Promise.all(
+    opened.splice(0).map((database) => {
+      database.close();
+      return Dexie.delete(database.name);
+    })
+  );
+});
+
+let dbCount = 0;
+async function openDb(): Promise<{ db: EncryptedDb; database: HemoIODatabase }> {
+  const database = new HemoIODatabase(`restore-test-${++dbCount}`);
+  opened.push(database);
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+    'encrypt',
+    'decrypt',
+  ]);
+  return { db: new EncryptedDb(key, database), database };
 }
 
 const now = new Date('2024-01-15T10:00:00Z');
@@ -71,49 +55,81 @@ function backup(overrides: Partial<ParsedBackupData> = {}): ParsedBackupData {
   };
 }
 
+/** Records with IDs 1–30, so restored records cannot get their backup IDs back */
+async function seedExisting(db: EncryptedDb): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    const labResultId = await db.addLabResult({
+      date: now,
+      labName: 'Old lab',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.addTestValue({
+      labResultId,
+      biomarkerKey: 'old',
+      value: 9,
+      unit: 'u',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.addNote({ labResultId, content: 'old note', tags: [], createdAt: now, updatedAt: now });
+  }
+}
+
 describe('restoreBackup', () => {
-  it('replaces existing data before restoring', async () => {
-    const db = createFakeDb();
-    db.labResults.push({ id: 1, date: now, labName: 'Old', createdAt: now, updatedAt: now });
+  it('replaces existing data', async () => {
+    const { db } = await openDb();
+    await seedExisting(db);
 
     await restoreBackup(db, backup());
 
-    expect(db.calls[0]).toBe('clear');
-    expect(db.labResults.map((r) => r.labName)).toEqual(['Quest', 'Quest']);
+    expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['Quest', 'Quest']);
+    expect(await db.getAllTestValues()).toHaveLength(2);
+    expect((await db.getAllNotes()).map((n) => n.content).sort()).toEqual([
+      'on biomarker',
+      'on result 2',
+      'on value 11',
+    ]);
   });
 
   it('links test values to the new IDs of their lab results', async () => {
-    const db = createFakeDb();
+    const { db } = await openDb();
+    await seedExisting(db);
 
     await restoreBackup(db, backup());
 
-    const [first, second] = db.labResults;
-    expect(db.testValues.find((tv) => tv.value === 1)?.labResultId).toBe(first.id);
-    expect(db.testValues.find((tv) => tv.value === 2)?.labResultId).toBe(second.id);
+    const results = await db.getAllLabResults();
+    const values = await db.getAllTestValues();
+    const resultIds = new Set(results.map((r) => r.id));
+    expect(values.every((tv) => resultIds.has(tv.labResultId))).toBe(true);
+    expect(new Set(values.map((tv) => tv.labResultId)).size).toBe(2);
   });
 
   it('links notes to the new IDs of their lab results and test values', async () => {
-    const db = createFakeDb();
+    const { db } = await openDb();
+    await seedExisting(db);
 
     await restoreBackup(db, backup());
 
-    const secondResult = db.labResults[1];
-    const value11 = db.testValues.find((tv) => tv.value === 2)!;
-    expect(db.notes.find((n) => n.content === 'on result 2')?.labResultId).toBe(secondResult.id);
-    expect(db.notes.find((n) => n.content === 'on value 11')?.testValueId).toBe(value11.id);
+    const value2 = (await db.getAllTestValues()).find((tv) => tv.value === 2)!;
+    const notes = await db.getAllNotes();
+    expect(notes.find((n) => n.content === 'on result 2')?.labResultId).toBe(value2.labResultId);
+    expect(notes.find((n) => n.content === 'on value 11')?.testValueId).toBe(value2.id);
   });
 
   it('keeps notes that only reference a biomarker', async () => {
-    const db = createFakeDb();
+    const { db } = await openDb();
 
     await restoreBackup(db, backup());
 
-    const note = db.notes.find((n) => n.content === 'on biomarker');
-    expect(note).toMatchObject({ biomarkerKey: 'marker-5', labResultId: undefined, testValueId: undefined });
+    const note = (await db.getAllNotes()).find((n) => n.content === 'on biomarker');
+    expect(note).toMatchObject({ biomarkerKey: 'marker-5' });
+    expect(note?.labResultId).toBeUndefined();
+    expect(note?.testValueId).toBeUndefined();
   });
 
   it('skips test values whose lab result is not in the backup', async () => {
-    const db = createFakeDb();
+    const { db } = await openDb();
     const data = backup();
     data.testValues.push({
       id: 12, labResultId: 99, biomarkerKey: 'marker-5', value: 3, unit: 'u', createdAt: now, updatedAt: now,
@@ -121,35 +137,54 @@ describe('restoreBackup', () => {
 
     const summary = await restoreBackup(db, data);
 
-    expect(db.testValues.map((tv) => tv.value)).toEqual([1, 2]);
+    expect((await db.getAllTestValues()).map((tv) => tv.value).sort()).toEqual([1, 2]);
     expect(summary).toEqual({ labResults: 2, testValues: 2, notes: 3 });
   });
 
-  it('does not reuse backup IDs for new records', async () => {
-    const db = createFakeDb();
+  it('keeps the encrypted fields readable', async () => {
+    const { db } = await openDb();
+    const data = backup();
+    data.testValues[0].rawText = 'Glucose';
 
-    await restoreBackup(db, backup());
+    await restoreBackup(db, data);
 
-    const ids = [...db.labResults, ...db.testValues, ...db.notes].map((r) => r.id);
-    expect(ids.every((id) => id! >= 100)).toBe(true);
+    expect((await db.getAllTestValues()).find((tv) => tv.value === 1)?.rawText).toBe('Glucose');
   });
 
   it('keeps existing preferences when the backup has none', async () => {
-    const db = createFakeDb();
-    const existing = { unitPreferences: {}, personalTargets: { glucose: { high: 99 } }, theme: 'dark' as const, dateFormat: 'MM/DD/YYYY' as const };
-    db.preferences = existing;
+    const { db } = await openDb();
+    await db.savePreferences({
+      unitPreferences: {},
+      personalTargets: { glucose: { high: 99 } },
+      theme: 'dark',
+      dateFormat: 'MM/DD/YYYY',
+    });
 
     await restoreBackup(db, backup({ userPreferences: null }));
 
-    expect(db.preferences).toBe(existing);
+    expect((await db.getPreferences())?.personalTargets).toEqual({ glucose: { high: 99 } });
   });
 
   it('restores preferences from the backup', async () => {
-    const db = createFakeDb();
+    const { db } = await openDb();
     const fromBackup = { id: 7, unitPreferences: { glucose: 'mmol/L' }, personalTargets: {}, theme: 'light' as const, dateFormat: 'YYYY-MM-DD' as const };
 
     await restoreBackup(db, backup({ userPreferences: fromBackup }));
 
-    expect(db.preferences).toEqual({ unitPreferences: { glucose: 'mmol/L' }, personalTargets: {}, theme: 'light', dateFormat: 'YYYY-MM-DD' });
+    expect(await db.getPreferences()).toEqual(
+      expect.objectContaining({ unitPreferences: { glucose: 'mmol/L' }, theme: 'light', dateFormat: 'YYYY-MM-DD' })
+    );
+  });
+
+  it('leaves existing data untouched when a restore fails part-way', async () => {
+    const { db, database } = await openDb();
+    await seedExisting(db);
+    vi.spyOn(database.userNotes, 'bulkAdd').mockRejectedValue(new Error('Disk full'));
+
+    await expect(restoreBackup(db, backup())).rejects.toThrow('Disk full');
+
+    expect(await db.getAllLabResults()).toHaveLength(30);
+    expect(await db.getAllTestValues()).toHaveLength(30);
+    expect(await db.getAllNotes()).toHaveLength(30);
   });
 });

@@ -457,11 +457,6 @@ export class EncryptedDb {
     await this.db.userNotes.delete(id);
   }
 
-  // Alias for addNote - used by restore flow
-  async addUserNote(note: Omit<UserNote, 'id'>): Promise<number> {
-    return this.addNote(note);
-  }
-
   // ============ Bulk Operations ============
 
   async exportAllData(): Promise<{
@@ -498,12 +493,91 @@ export class EncryptedDb {
    * Remove all lab data (results, values, notes). Settings and preferences
    * are kept: they are device configuration, not lab data.
    */
-  async clearLabData(): Promise<void> {
-    await Promise.all([
-      this.db.labResults.clear(),
-      this.db.testValues.clear(),
-      this.db.userNotes.clear(),
+  /**
+   * Replace all lab data (results, values, notes) and, when given, the
+   * preferences, in one transaction: a restore that fails part-way leaves the
+   * old data in place. Records get new IDs (auto-increment does not reset when
+   * tables are cleared), so references between them are rewritten from the
+   * given IDs to the new ones. Values whose result is not given are skipped.
+   */
+  async replaceLabData(data: {
+    labResults: LabResult[];
+    testValues: TestValue[];
+    userNotes: UserNote[];
+    userPreferences?: Omit<UserPreferences, 'id'>;
+  }): Promise<{ labResults: number; testValues: number; notes: number }> {
+    // Encrypted up front: a transaction ends at the first await outside IndexedDB
+    const encrypt = <T extends { id?: number }>(records: T[], fields: string[]) =>
+      Promise.all(
+        records.map(async (record) => {
+          const { id, ...rest } = record;
+          return { id, encrypted: await encryptFields(rest, fields, this.key) };
+        })
+      );
+    const [labResults, testValues, userNotes] = await Promise.all([
+      encrypt(data.labResults, ENCRYPTED_FIELDS.labResults),
+      encrypt(data.testValues, ENCRYPTED_FIELDS.testValues),
+      encrypt(data.userNotes, ENCRYPTED_FIELDS.userNotes),
     ]);
+
+    const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, this.db.userPreferences];
+    return this.db.transaction('rw', tables, async () => {
+      await Promise.all([
+        this.db.labResults.clear(),
+        this.db.testValues.clear(),
+        this.db.userNotes.clear(),
+      ]);
+
+      const resultKeys = await this.db.labResults.bulkAdd(
+        labResults.map((r) => r.encrypted as LabResult),
+        { allKeys: true }
+      );
+      const resultIds = new Map<number, number>();
+      labResults.forEach((r, i) => {
+        if (r.id !== undefined) resultIds.set(r.id, resultKeys[i] as number);
+      });
+
+      const linkedValues = testValues.filter((tv) => resultIds.has(tv.encrypted.labResultId));
+      const valueKeys = await this.db.testValues.bulkAdd(
+        linkedValues.map(
+          (tv) => ({ ...tv.encrypted, labResultId: resultIds.get(tv.encrypted.labResultId)! }) as TestValue
+        ),
+        { allKeys: true }
+      );
+      const valueIds = new Map<number, number>();
+      linkedValues.forEach((tv, i) => {
+        if (tv.id !== undefined) valueIds.set(tv.id, valueKeys[i] as number);
+      });
+
+      const remap = (ids: Map<number, number>, id: number | undefined) =>
+        id !== undefined ? ids.get(id) : undefined;
+      await this.db.userNotes.bulkAdd(
+        userNotes.map(
+          (note) =>
+            ({
+              ...note.encrypted,
+              labResultId: remap(resultIds, note.encrypted.labResultId),
+              testValueId: remap(valueIds, note.encrypted.testValueId),
+            }) as UserNote
+        )
+      );
+
+      if (data.userPreferences) {
+        // As savePreferences: fields the backup lacks keep their current values
+        const existing = await this.db.userPreferences.toCollection().first();
+        if (existing?.id !== undefined) {
+          await this.db.userPreferences.update(existing.id, data.userPreferences);
+        } else {
+          await this.db.userPreferences.add(data.userPreferences as UserPreferences);
+        }
+      }
+
+      return {
+        labResults: labResults.length,
+        testValues: linkedValues.length,
+        notes: userNotes.length,
+      };
+    });
   }
 }
 

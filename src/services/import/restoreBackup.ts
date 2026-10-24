@@ -12,14 +12,15 @@ import type { LabResult, TestValue, UserNote, UserPreferences } from '@/types';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
- * The database operations a restore needs (implemented by EncryptedDb)
+ * The database operation a restore needs (implemented by EncryptedDb)
  */
 export interface RestoreTarget {
-  clearLabData(): Promise<void>;
-  savePreferences(preferences: Omit<UserPreferences, 'id'>): Promise<number>;
-  addLabResult(labResult: Omit<LabResult, 'id'>): Promise<number>;
-  addTestValue(testValue: Omit<TestValue, 'id'>): Promise<number>;
-  addUserNote(note: Omit<UserNote, 'id'>): Promise<number>;
+  replaceLabData(data: {
+    labResults: LabResult[];
+    testValues: TestValue[];
+    userNotes: UserNote[];
+    userPreferences?: Omit<UserPreferences, 'id'>;
+  }): Promise<RestoreSummary>;
 }
 
 export interface RestoreSummary {
@@ -29,7 +30,8 @@ export interface RestoreSummary {
 }
 
 /**
- * Replace all data with the backup's contents.
+ * Replace all data with the backup's contents, in one transaction: a restore
+ * that fails part-way leaves the existing data in place.
  *
  * Test values whose lab result is not in the backup are skipped, since they
  * would reference a record that does not exist.
@@ -38,39 +40,12 @@ export async function restoreBackup(
   db: RestoreTarget,
   data: ParsedBackupData
 ): Promise<RestoreSummary> {
-  await db.clearLabData();
-  const summary: RestoreSummary = { labResults: 0, testValues: 0, notes: 0 };
-
-  const labResultIds = new Map<number, number>();
-  for (const labResult of data.labResults) {
-    const newId = await db.addLabResult(withoutId(labResult));
-    if (labResult.id !== undefined) labResultIds.set(labResult.id, newId);
-    summary.labResults++;
-  }
-
-  const testValueIds = new Map<number, number>();
-  for (const testValue of data.testValues) {
-    const labResultId = labResultIds.get(testValue.labResultId);
-    if (labResultId === undefined) continue;
-    const newId = await db.addTestValue({ ...withoutId(testValue), labResultId });
-    if (testValue.id !== undefined) testValueIds.set(testValue.id, newId);
-    summary.testValues++;
-  }
-
-  for (const note of data.userNotes) {
-    await db.addUserNote({
-      ...withoutId(note),
-      labResultId: note.labResultId !== undefined ? labResultIds.get(note.labResultId) : undefined,
-      testValueId: note.testValueId !== undefined ? testValueIds.get(note.testValueId) : undefined,
-    });
-    summary.notes++;
-  }
-
-  if (data.userPreferences) {
-    await db.savePreferences(withoutId(data.userPreferences));
-  }
-
-  return summary;
+  return db.replaceLabData({
+    labResults: data.labResults,
+    testValues: data.testValues,
+    userNotes: data.userNotes,
+    userPreferences: data.userPreferences ? withoutId(data.userPreferences) : undefined,
+  });
 }
 
 function withoutId<T extends { id?: number }>(record: T): Omit<T, 'id'> {
