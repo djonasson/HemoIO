@@ -405,6 +405,9 @@ test.describe('Biomarker Dictionary', () => {
         name: 'View details for Basophils Percentage',
         exact: true,
       });
+      // Read the position only once the panel has finished expanding, or the
+      // click scrolls the page again (Firefox's animation outlasts the read)
+      await waitForAnimations(panel.locator('xpath=..'));
       await item.scrollIntoViewIfNeeded();
       const scrollY = await page.evaluate(() => window.scrollY);
       expect(scrollY).toBeGreaterThan(0);
