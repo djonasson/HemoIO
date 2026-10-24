@@ -39,13 +39,35 @@ vi.mock('@hooks/useNotes', () => ({
   })),
 }));
 
-// Mock unit conversion service
+const mockSetPreferredUnit = vi.fn();
+let mockUnitPreferences: Record<string, string> = {};
+vi.mock('@hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    unitPreferences: mockUnitPreferences,
+    personalTargets: {},
+    isLoaded: true,
+    setPreferredUnit: mockSetPreferredUnit,
+    setPersonalTarget: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
+const mockShowNotification = vi.fn();
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: (...args: unknown[]) => mockShowNotification(...args) },
+}));
+
 // Mock biomarker dictionary
 vi.mock('@data/biomarkers/dictionary', () => {
   const mock = {
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Glucose') {
-      return { name: 'Glucose', category: 'metabolic', canonicalUnit: 'mg/dL' };
+      return {
+        name: 'Glucose',
+        category: 'metabolic',
+        canonicalUnit: 'mg/dL',
+        alternativeUnits: ['mmol/L'],
+      };
     }
     if (name === 'Hemoglobin') {
       return { name: 'Hemoglobin', category: 'cbc', canonicalUnit: 'g/dL' };
@@ -136,6 +158,9 @@ function createMockResult(
 describe('TrendsView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUnitPreferences = {};
+    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
+    mockShowNotification.mockReset();
 
     // Default mock for useAlerts
     vi.mocked(useAlerts).mockReturnValue({
@@ -531,5 +556,80 @@ describe('TrendsView', () => {
     expect(within(latestCard).getByText('100.0')).toBeInTheDocument();
     expect(within(latestCard).getByText('mg/dL')).toBeInTheDocument();
     expect(screen.queryByText('5.55')).not.toBeInTheDocument();
+  });
+});
+
+/** Renders Trends opened on the given biomarker, recorded twice */
+function renderWithTwoValues(key: string, rawText: string): void {
+  vi.mocked(useLabResults).mockReturnValue({
+    results: [
+      createMockResult(1, '2024-01-15', [createMockTestValue(1, 1, key, rawText, 95)]),
+      createMockResult(2, '2024-02-15', [createMockTestValue(2, 2, key, rawText, 120)]),
+    ],
+    isLoading: false,
+    error: null,
+    filters: {},
+    setFilters: vi.fn(),
+    refresh: vi.fn(),
+    deleteResult: vi.fn(),
+  });
+  renderWithProviders(<TrendsView initialBiomarkerKey={key} />);
+}
+
+describe('TrendsView preferred unit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUnitPreferences = {};
+    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
+    mockShowNotification.mockReset();
+    vi.mocked(useAlerts).mockReturnValue({
+      alerts: [],
+      groupedAlerts: [],
+      unacknowledgedCount: 0,
+      isLoading: false,
+      error: null,
+      dismissAlert: vi.fn(),
+      acknowledgeAlert: vi.fn(),
+      refresh: vi.fn(),
+      filterByCategory: vi.fn(() => []),
+      getAlertsForBiomarker: vi.fn(() => []),
+    });
+  });
+
+  const renderWithGlucose = () => renderWithTwoValues('glucose', 'Glucose');
+
+  it('shows glucose in the stored preferred unit', () => {
+    mockUnitPreferences = { glucose: 'mmol/L' };
+    renderWithGlucose();
+
+    expect(screen.getByRole('textbox', { name: 'Preferred unit' })).toHaveValue('mmol/L');
+    expect(screen.getByText('Glucose (mmol/L)')).toBeInTheDocument();
+  });
+
+  it('saves the unit chosen in the select', async () => {
+    renderWithGlucose();
+    await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
+
+    expect(mockSetPreferredUnit).toHaveBeenCalledWith('glucose', 'mmol/L');
+  });
+
+  it('tells the user when the unit could not be saved', async () => {
+    mockSetPreferredUnit.mockRejectedValueOnce(new Error('disk full'));
+    renderWithGlucose();
+    await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
+
+    await waitFor(() =>
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Preferred unit not saved', color: 'red' })
+      )
+    );
+  });
+
+  it('offers no unit choice for a biomarker outside the dictionary', () => {
+    renderWithTwoValues('mystery', 'Mystery Marker');
+    expect(screen.getByText('Mystery Marker (mg/dL)')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
   });
 });

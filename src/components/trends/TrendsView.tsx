@@ -7,10 +7,12 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
 import { useNotes } from '@hooks/useNotes';
+import { usePreferences } from '@hooks/usePreferences';
 import { TrendChart } from './TrendChart';
 import { TrendChartControls, type BiomarkerOption } from './TrendChartControls';
 import { TrendStatistics } from './TrendStatistics';
@@ -21,10 +23,11 @@ import {
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
 import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
-import { convertMeasurement } from '@services/units';
+import { convertMeasurement, preferredUnitOptions, resolveDisplayUnit } from '@services/units';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
+import { PreferredUnitSelect } from './PreferredUnitSelect';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -64,6 +67,7 @@ export function TrendsView({
 }: TrendsViewProps = {}) {
   const { results, isLoading, error } = useLabResults();
   const { unacknowledgedCount: alertCount } = useAlerts();
+  const { unitPreferences, setPreferredUnit } = usePreferences();
   const {
     createNote,
     updateNote,
@@ -159,6 +163,7 @@ export function TrendsView({
     const map = new Map<string, {
       name: string;
       unit: string;
+      unitOptions: string[];
       category: BiomarkerCategory;
       dataPoints: TrendDataPoint[];
       labInfoMap: Map<number, { date: Date; labName: string }>;
@@ -172,11 +177,12 @@ export function TrendsView({
         const biomarkerDef = getBiomarkerForTestValue(testValue);
 
         if (!map.has(biomarkerKey)) {
-          // Use canonical unit from dictionary if available, otherwise first unit encountered
-          const canonicalUnit = biomarkerDef?.canonicalUnit || testValue.unit;
+          // The preferred unit when the biomarker offers it, else its standard
+          // unit; biomarkers outside the dictionary keep their first unit
           map.set(biomarkerKey, {
             name: biomarkerDef?.name || testValue.rawText || 'Unknown biomarker',
-            unit: canonicalUnit,
+            unit: resolveDisplayUnit(biomarkerDef, unitPreferences[biomarkerKey]) ?? testValue.unit,
+            unitOptions: biomarkerDef ? preferredUnitOptions(biomarkerDef) : [],
             category: biomarkerDef?.category || 'other',
             dataPoints: [],
             labInfoMap: new Map(),
@@ -222,7 +228,7 @@ export function TrendsView({
     }
 
     return map;
-  }, [results]);
+  }, [results, unitPreferences]);
 
   // Build biomarker options for dropdown
   const biomarkerOptions = useMemo((): BiomarkerOption[] => {
@@ -279,6 +285,20 @@ export function TrendsView({
     setStartDate(null);
     setEndDate(null);
   }, []);
+
+  const handlePreferredUnitChange = useCallback(
+    (unit: string) => {
+      if (!selectedBiomarkerId) return;
+      setPreferredUnit(selectedBiomarkerId, unit).catch(() => {
+        notifications.show({
+          title: 'Preferred unit not saved',
+          message: 'Your choice could not be saved. Try again.',
+          color: 'red',
+        });
+      });
+    },
+    [selectedBiomarkerId, setPreferredUnit]
+  );
 
   // Handle compare mode
   const handleOpenCompare = useCallback(() => {
@@ -385,6 +405,18 @@ export function TrendsView({
           onCompare={handleOpenCompare}
           showCompareButton={biomarkerOptions.length >= 2}
         />
+        {selectedBiomarkerData && selectedBiomarkerData.unitOptions.length > 1 && (
+          <Group mt="sm">
+            <PreferredUnitSelect
+              // A new biomarker starts with its own unit in the search
+              key={selectedBiomarkerId}
+              biomarkerName={selectedBiomarkerData.name}
+              units={selectedBiomarkerData.unitOptions}
+              value={selectedBiomarkerData.unit}
+              onChange={handlePreferredUnitChange}
+            />
+          </Group>
+        )}
       </Paper>
 
       {!selectedBiomarkerId ? (
