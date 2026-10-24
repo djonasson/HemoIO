@@ -327,17 +327,24 @@ export function OutOfRangeAlerts({
     }));
   }, [alerts]);
 
+  // A category whose alerts are all gone (acknowledged, dismissed) is no
+  // longer offered, so it cannot stay selected either
+  const activeCategory =
+    categoryFilter !== null && categories.some((c) => c.value === categoryFilter)
+      ? categoryFilter
+      : null;
+
   // Filter alerts by category
   const filteredAlerts = useMemo(
-    () => filterByCategory(categoryFilter),
-    [categoryFilter, filterByCategory]
+    () => filterByCategory(activeCategory),
+    [activeCategory, filterByCategory]
   );
 
   // Filter groups by category
   const filteredGroups = useMemo(() => {
-    if (!categoryFilter) return groupedAlerts;
-    return groupedAlerts.filter((g) => g.category === categoryFilter);
-  }, [groupedAlerts, categoryFilter]);
+    if (!activeCategory) return groupedAlerts;
+    return groupedAlerts.filter((g) => g.category === activeCategory);
+  }, [groupedAlerts, activeCategory]);
 
   // Visible alerts (respecting maxVisible)
   const visibleAlerts = showAll ? filteredAlerts : filteredAlerts.slice(0, maxVisible);
@@ -427,7 +434,7 @@ export function OutOfRangeAlerts({
           <Select
             placeholder="Filter by category"
             data={categories}
-            value={categoryFilter}
+            value={activeCategory}
             onChange={setCategoryFilter}
             clearable
             size="xs"

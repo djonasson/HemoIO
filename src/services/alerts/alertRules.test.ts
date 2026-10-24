@@ -35,6 +35,22 @@ describe('outOfRangeSeverity', () => {
 });
 
 describe('detectConsistentDirection', () => {
+  it('counts the values of one day as one point', () => {
+    // Two labs on the same day are not two steps of a trend
+    expect(
+      detectConsistentDirection([
+        { date: new Date('2024-01-10T09:00:00Z'), value: 10 },
+        { date: new Date('2024-02-10T09:00:00Z'), value: 11 },
+        { date: new Date('2024-03-10T09:00:00Z'), value: 12 },
+        { date: new Date('2024-03-10T15:00:00Z'), value: 13 },
+      ])
+    ).toBeNull();
+  });
+
+  it('describes a span shorter than a month in days', () => {
+    expect(formatTimeframe(new Date(2024, 0, 30), new Date(2024, 1, 2))).toMatch(/^over 3 days/);
+  });
+
   it('finds four consecutive decreasing values ending with the latest', () => {
     const result = detectConsistentDirection([
       { date: d('2024-04-10'), value: 10.0 },

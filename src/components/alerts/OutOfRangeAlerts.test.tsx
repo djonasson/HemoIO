@@ -590,4 +590,49 @@ describe('OutOfRangeAlerts', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
   });
+
+  it('drops a category filter once that category has no alerts left', async () => {
+    const metabolic = alert({ id: 'm', category: 'metabolic', biomarkerName: 'Glucose' });
+    const cbc = alert({ id: 'c', category: 'cbc', biomarkerName: 'Hemoglobin', biomarkerKey: 'hb' });
+    const groups = (alerts: BiomarkerAlert[]) =>
+      alerts.map((a) => ({
+        biomarkerKey: a.biomarkerKey,
+        biomarkerName: a.biomarkerName,
+        category: a.category,
+        alerts: [a],
+        latestAlert: a,
+        unacknowledgedCount: 1,
+        severity: a.severity,
+      }));
+    const mockWith = (alerts: BiomarkerAlert[]) =>
+      vi.mocked(useAlerts).mockReturnValue({
+        alerts,
+        groupedAlerts: groups(alerts),
+        unacknowledgedCount: alerts.length,
+        hiddenCount: 0,
+        isLoading: false,
+        error: null,
+        dismissAlert: vi.fn(),
+        acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+        refresh: vi.fn(),
+        filterByCategory: vi.fn((category: string | null) =>
+          category ? alerts.filter((a) => a.category === category) : alerts
+        ),
+      });
+
+    mockWith([metabolic, cbc]);
+    const { rerender } = renderWithProviders(<OutOfRangeAlerts />);
+    await userEvent.click(screen.getByRole('textbox', { name: 'Filter alerts by category' }));
+    await userEvent.click(await screen.findByRole('option', { name: /^Metabolic/ }));
+
+    // Glucose is acknowledged: no metabolic alerts remain
+    mockWith([cbc]);
+    rerender(
+      <MantineProvider env="test">
+        <OutOfRangeAlerts />
+      </MantineProvider>
+    );
+
+    expect(screen.getByText('Hemoglobin')).toBeInTheDocument();
+  });
 });

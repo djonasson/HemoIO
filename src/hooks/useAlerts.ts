@@ -324,7 +324,10 @@ export function useAlerts(): UseAlertsResult {
     const result: GroupedAlert[] = [];
 
     for (const [biomarkerKey, biomarkerAlerts] of groups.entries()) {
-      const latestAlert = biomarkerAlerts[0]; // Already sorted by date
+      // Alerts are sorted by severity first, so find the latest by date
+      const latestAlert = biomarkerAlerts.reduce((latest, alert) =>
+        alert.date.getTime() > latest.date.getTime() ? alert : latest
+      );
       const unacknowledgedCount = biomarkerAlerts.filter((a) => a.type === 'out_of_range').length;
 
       // Get highest severity

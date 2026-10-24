@@ -614,6 +614,24 @@ describe('useAlerts', () => {
     expect(dates).toEqual(['2024-03-10']);
   });
 
+  it('heads a group with its latest alert, not its most severe', async () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 300, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 110, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const group = result.current.groupedAlerts[0];
+    expect(group.severity).toBe('critical');
+    expect(group.latestAlert.date.toISOString().slice(0, 10)).toBe('2024-03-10');
+  });
+
   it('counts the alerts acknowledgements and dismissals hide', async () => {
     alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
     mockResults([

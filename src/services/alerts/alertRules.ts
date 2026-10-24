@@ -31,7 +31,21 @@ export function outOfRangeSeverity(
 export function detectConsistentDirection(
   points: Array<{ date: Date; value: number }>
 ): { direction: TrendDirection; count: number; start: Date; end: Date } | null {
-  const sorted = [...points].sort((a, b) => a.date.getTime() - b.date.getTime());
+  // One point per day (their mean): two labs on one day are not two steps
+  const byDay = new Map<string, { date: Date; total: number; count: number }>();
+  for (const point of points) {
+    const day = `${point.date.getFullYear()}-${point.date.getMonth()}-${point.date.getDate()}`;
+    const entry = byDay.get(day);
+    if (entry) {
+      entry.total += point.value;
+      entry.count += 1;
+    } else {
+      byDay.set(day, { date: point.date, total: point.value, count: 1 });
+    }
+  }
+  const sorted = [...byDay.values()]
+    .map(({ date, total, count }) => ({ date, value: total / count }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
   if (sorted.length < MIN_TREND_VALUES) return null;
 
   const last = sorted.length - 1;
@@ -56,8 +70,11 @@ export function detectConsistentDirection(
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short' });
 
 export function formatTimeframe(start: Date, end: Date): string {
+  // Whole months only: Jan 30 to Feb 2 is 3 days, not a month
   const months =
-    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth()) -
+    (end.getDate() < start.getDate() ? 1 : 0);
   const span =
     months >= 1
       ? `${months} ${months === 1 ? 'month' : 'months'}`
