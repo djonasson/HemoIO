@@ -18,8 +18,6 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
   const [acknowledgedThrough, setAcknowledgedThrough] = useState<Record<string, Date>>({});
   const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(new Set());
   const acknowledgedRef = useRef(acknowledgedThrough);
-  // Each save reads then writes the stored record, so saves run one at a time
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     acknowledgedRef.current = acknowledgedThrough;
@@ -49,18 +47,14 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
       setAcknowledgedThrough((prev) => ({ ...prev, [biomarkerKey]: through }));
       if (!db || !isReady) return;
 
-      const save = saveQueue.current.then(() =>
-        db.updatePreferences((prefs) => ({
+      try {
+        // One transaction per save, so concurrent acknowledgements all stick
+        await db.updatePreferences((prefs) => ({
           acknowledgedAlerts: {
             ...prefs?.acknowledgedAlerts,
             [biomarkerKey]: through.toISOString(),
           },
-        }))
-      );
-      saveQueue.current = save.catch(() => undefined);
-
-      try {
-        await save;
+        }));
       } catch (err) {
         // Not saved: show the alert again rather than let it reappear on reload
         setAcknowledgedThrough((prev) => {

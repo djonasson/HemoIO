@@ -29,7 +29,7 @@ import {
   usePreferences,
 } from '@hooks';
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
-import { testProviderConnection } from '@services/ai';
+import { modelForProvider, testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from './BackupRestore';
 
@@ -167,7 +167,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       if (!apiKey) {
         return false;
       }
-      const model = aiProvider === 'openai' ? openaiModel : anthropicModel;
+      const model = modelForProvider(aiProvider, { openaiModel, anthropicModel });
       return await testProviderConnection(aiProvider, { apiKey, model });
     } catch {
       return false;

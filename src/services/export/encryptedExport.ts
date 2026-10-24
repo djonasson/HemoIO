@@ -42,15 +42,10 @@ function extractFullSettings(settings: Settings | null): FullSettingsData | null
     return null;
   }
 
-  return {
-    storageProvider: settings.storageProvider,
-    aiProvider: settings.aiProvider,
-    aiApiKey: settings.aiApiKey,
-    openaiModel: settings.openaiModel,
-    anthropicModel: settings.anthropicModel,
-    ollamaModel: settings.ollamaModel,
-    language: settings.language,
-  };
+  // Every field but the row ID, so a new setting is backed up without listing it here
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { id: _, ...fullSettings } = settings;
+  return fullSettings;
 }
 
 /**

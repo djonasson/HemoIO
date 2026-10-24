@@ -6,6 +6,7 @@ import {
   validateApiKeyFormat,
   testProviderConnection,
   providerRequiresApiKey,
+  modelForProvider,
 } from './AIProviderFactory';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
@@ -251,5 +252,19 @@ describe('AIProviderFactory', () => {
 
       expect(result).toBe(false);
     });
+  });
+});
+
+describe('modelForProvider', () => {
+  const models = { ollamaModel: 'llama', openaiModel: 'gpt-x', anthropicModel: 'claude-x' };
+
+  it('picks the model chosen for each provider', () => {
+    expect(modelForProvider('ollama', models)).toBe('llama');
+    expect(modelForProvider('openai', models)).toBe('gpt-x');
+    expect(modelForProvider('anthropic', models)).toBe('claude-x');
+  });
+
+  it('is undefined when no model was chosen for the provider', () => {
+    expect(modelForProvider('anthropic', { openaiModel: 'gpt-x' })).toBeUndefined();
   });
 });

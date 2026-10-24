@@ -50,6 +50,7 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
+import { modelForProvider } from '@services/ai';
 import { restoreAISettings, restoreBackup } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -474,15 +475,7 @@ function MainContent({
 
   // Render ImportWizard for the import view
   if (view === 'import') {
-    // Get the model for the selected provider
-    let aiModel: string | undefined;
-    if (aiProvider === 'ollama') {
-      aiModel = ollamaModel;
-    } else if (aiProvider === 'openai') {
-      aiModel = openaiModel;
-    } else if (aiProvider === 'anthropic') {
-      aiModel = anthropicModel;
-    }
+    const aiModel = modelForProvider(aiProvider, { ollamaModel, openaiModel, anthropicModel });
 
     // Check if AI is properly configured
     // Ollama doesn't require an API key, but other providers do

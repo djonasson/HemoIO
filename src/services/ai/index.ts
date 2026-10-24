@@ -27,6 +27,7 @@ export {
   validateApiKeyFormat,
   testProviderConnection,
   providerRequiresApiKey,
+  modelForProvider,
 } from './AIProviderFactory';
 export type { ProviderInfo } from './AIProviderFactory';
 

@@ -165,6 +165,19 @@ export function providerRequiresApiKey(type: AIProviderType): boolean {
   return type !== 'ollama';
 }
 
+/** The model chosen in settings for a provider */
+export function modelForProvider(
+  provider: AIProviderType,
+  models: { ollamaModel?: string; openaiModel?: string; anthropicModel?: string }
+): string | undefined {
+  const byProvider: Record<AIProviderType, string | undefined> = {
+    ollama: models.ollamaModel,
+    openai: models.openaiModel,
+    anthropic: models.anthropicModel,
+  };
+  return byProvider[provider];
+}
+
 /**
  * Test connection to a provider
  *

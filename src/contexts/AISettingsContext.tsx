@@ -8,15 +8,29 @@
  * the import view, which stays mounted across navigation.
  */
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  type ReactNode,
-} from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import { AISettingsContext, type UseAISettingsResult } from '@hooks/useAISettings';
-import type { AIProviderType } from '@/types';
+import type { AIProviderType, Settings } from '@/types';
+
+// Where the setup wizard and older versions kept these settings
+const LEGACY_KEYS = {
+  aiProvider: 'hemoio_ai_provider',
+  ollamaModel: 'hemoio_ollama_model',
+  openaiModel: 'hemoio_openai_model',
+  anthropicModel: 'hemoio_anthropic_model',
+} as const;
+
+type AIFields = Pick<Settings, 'aiProvider' | 'ollamaModel' | 'openaiModel' | 'anthropicModel'>;
+
+function readLegacySettings(): Partial<AIFields> {
+  const legacy: Partial<AIFields> = {};
+  for (const [field, key] of Object.entries(LEGACY_KEYS)) {
+    const value = localStorage.getItem(key);
+    if (value) Object.assign(legacy, { [field]: value });
+  }
+  return legacy;
+}
 
 function useAISettingsState(): UseAISettingsResult {
   const { db, isReady } = useEncryptedDb();
@@ -28,57 +42,36 @@ function useAISettingsState(): UseAISettingsResult {
 
   // Load settings from IndexedDB with localStorage migration
   useEffect(() => {
-    async function loadSettings() {
-      if (!db || !isReady) {
-        // If db not ready, try localStorage as fallback (for initial setup flow)
-        const lsProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
-        const lsOllamaModel = localStorage.getItem('hemoio_ollama_model');
-        const lsOpenaiModel = localStorage.getItem('hemoio_openai_model');
-        const lsAnthropicModel = localStorage.getItem('hemoio_anthropic_model');
+    const show = (fields: Partial<AIFields>) => {
+      if (fields.aiProvider) setAiProviderState(fields.aiProvider);
+      setOllamaModelState(fields.ollamaModel);
+      setOpenaiModelState(fields.openaiModel);
+      setAnthropicModelState(fields.anthropicModel);
+    };
 
-        if (lsProvider) setAiProviderState(lsProvider);
-        if (lsOllamaModel) setOllamaModelState(lsOllamaModel);
-        if (lsOpenaiModel) setOpenaiModelState(lsOpenaiModel);
-        if (lsAnthropicModel) setAnthropicModelState(lsAnthropicModel);
+    async function loadSettings() {
+      const legacy = readLegacySettings();
+      if (!db || !isReady) {
+        // Before unlock, during the setup flow
+        show(legacy);
         setIsLoading(false);
         return;
       }
 
       try {
         const settings = await db.getSettings();
+        // Stored values win; localStorage only fills what was never saved
+        const fields: AIFields = {
+          aiProvider: settings?.aiProvider ?? legacy.aiProvider ?? 'openai',
+          ollamaModel: settings?.ollamaModel ?? legacy.ollamaModel,
+          openaiModel: settings?.openaiModel ?? legacy.openaiModel,
+          anthropicModel: settings?.anthropicModel ?? legacy.anthropicModel,
+        };
+        show(fields);
 
-        // Check for localStorage values to migrate
-        const lsProvider = localStorage.getItem('hemoio_ai_provider') as AIProviderType | null;
-        const lsOllamaModel = localStorage.getItem('hemoio_ollama_model');
-        const lsOpenaiModel = localStorage.getItem('hemoio_openai_model');
-        const lsAnthropicModel = localStorage.getItem('hemoio_anthropic_model');
-
-        // Use IndexedDB values if available, otherwise fall back to localStorage for migration
-        const provider = settings?.aiProvider ?? lsProvider ?? 'openai';
-        const ollama = settings?.ollamaModel ?? lsOllamaModel ?? undefined;
-        const openai = settings?.openaiModel ?? lsOpenaiModel ?? undefined;
-        const anthropic = settings?.anthropicModel ?? lsAnthropicModel ?? undefined;
-
-        setAiProviderState(provider);
-        setOllamaModelState(ollama);
-        setOpenaiModelState(openai);
-        setAnthropicModelState(anthropic);
-
-        // Migrate localStorage to IndexedDB if needed
-        if (lsProvider || lsOllamaModel || lsOpenaiModel || lsAnthropicModel) {
-          await db.saveSettings({
-            storageProvider: settings?.storageProvider ?? 'local',
-            aiProvider: provider,
-            ollamaModel: ollama,
-            openaiModel: openai,
-            anthropicModel: anthropic,
-            language: settings?.language ?? 'en',
-          });
-          // Clean up localStorage after migration
-          localStorage.removeItem('hemoio_ai_provider');
-          localStorage.removeItem('hemoio_ollama_model');
-          localStorage.removeItem('hemoio_openai_model');
-          localStorage.removeItem('hemoio_anthropic_model');
+        if (Object.keys(legacy).length > 0) {
+          await db.updateSettings(fields);
+          Object.values(LEGACY_KEYS).forEach((key) => localStorage.removeItem(key));
         }
       } catch (err) {
         console.error('Failed to load AI settings:', err);
@@ -90,109 +83,74 @@ function useAISettingsState(): UseAISettingsResult {
     loadSettings();
   }, [db, isReady]);
 
-  // Update AI provider
+  const save = useCallback(
+    async (changes: Partial<AIFields>, what: string) => {
+      if (!db || !isReady) return;
+      try {
+        await db.updateSettings(changes);
+      } catch (err) {
+        console.error(`Failed to save ${what}:`, err);
+      }
+    },
+    [db, isReady]
+  );
+
   const setAiProvider = useCallback(
     async (provider: AIProviderType) => {
       setAiProviderState(provider);
-      if (db && isReady) {
-        try {
-          const settings = await db.getSettings();
-          await db.saveSettings({
-            storageProvider: settings?.storageProvider ?? 'local',
-            aiProvider: provider,
-            ollamaModel: settings?.ollamaModel,
-            openaiModel: settings?.openaiModel,
-            anthropicModel: settings?.anthropicModel,
-            language: settings?.language ?? 'en',
-          });
-        } catch (err) {
-          console.error('Failed to save AI provider:', err);
-        }
-      }
+      await save({ aiProvider: provider }, 'AI provider');
     },
-    [db, isReady]
+    [save]
   );
 
-  // Update Ollama model
   const setOllamaModel = useCallback(
     async (model: string) => {
       setOllamaModelState(model);
-      if (db && isReady) {
-        try {
-          const settings = await db.getSettings();
-          await db.saveSettings({
-            storageProvider: settings?.storageProvider ?? 'local',
-            aiProvider: settings?.aiProvider ?? 'openai',
-            ollamaModel: model,
-            openaiModel: settings?.openaiModel,
-            anthropicModel: settings?.anthropicModel,
-            language: settings?.language ?? 'en',
-          });
-        } catch (err) {
-          console.error('Failed to save Ollama model:', err);
-        }
-      }
+      await save({ ollamaModel: model }, 'Ollama model');
     },
-    [db, isReady]
+    [save]
   );
 
-  // Update OpenAI model
   const setOpenaiModel = useCallback(
     async (model: string) => {
       setOpenaiModelState(model);
-      if (db && isReady) {
-        try {
-          const settings = await db.getSettings();
-          await db.saveSettings({
-            storageProvider: settings?.storageProvider ?? 'local',
-            aiProvider: settings?.aiProvider ?? 'openai',
-            ollamaModel: settings?.ollamaModel,
-            openaiModel: model,
-            anthropicModel: settings?.anthropicModel,
-            language: settings?.language ?? 'en',
-          });
-        } catch (err) {
-          console.error('Failed to save OpenAI model:', err);
-        }
-      }
+      await save({ openaiModel: model }, 'OpenAI model');
     },
-    [db, isReady]
+    [save]
   );
 
-  // Update Anthropic model
   const setAnthropicModel = useCallback(
     async (model: string) => {
       setAnthropicModelState(model);
-      if (db && isReady) {
-        try {
-          const settings = await db.getSettings();
-          await db.saveSettings({
-            storageProvider: settings?.storageProvider ?? 'local',
-            aiProvider: settings?.aiProvider ?? 'openai',
-            ollamaModel: settings?.ollamaModel,
-            openaiModel: settings?.openaiModel,
-            anthropicModel: model,
-            language: settings?.language ?? 'en',
-          });
-        } catch (err) {
-          console.error('Failed to save Anthropic model:', err);
-        }
-      }
+      await save({ anthropicModel: model }, 'Anthropic model');
     },
-    [db, isReady]
+    [save]
   );
 
-  return {
-    aiProvider,
-    ollamaModel,
-    openaiModel,
-    anthropicModel,
-    isLoading,
-    setAiProvider,
-    setOllamaModel,
-    setOpenaiModel,
-    setAnthropicModel,
-  };
+  return useMemo(
+    () => ({
+      aiProvider,
+      ollamaModel,
+      openaiModel,
+      anthropicModel,
+      isLoading,
+      setAiProvider,
+      setOllamaModel,
+      setOpenaiModel,
+      setAnthropicModel,
+    }),
+    [
+      aiProvider,
+      ollamaModel,
+      openaiModel,
+      anthropicModel,
+      isLoading,
+      setAiProvider,
+      setOllamaModel,
+      setOpenaiModel,
+      setAnthropicModel,
+    ]
+  );
 }
 
 interface AISettingsProviderProps {

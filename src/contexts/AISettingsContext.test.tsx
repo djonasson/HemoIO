@@ -11,13 +11,13 @@ import { AISettingsProvider } from './AISettingsContext';
 
 // Mock db functions
 const mockGetSettings = vi.fn();
-const mockSaveSettings = vi.fn();
+const mockUpdateSettings = vi.fn();
 
 // Mock useEncryptedDb hook. The db object must be stable across renders, as
 // the real hook memoizes it; otherwise the load effect re-runs on every render.
 const mockDb = {
   getSettings: (...args: unknown[]) => mockGetSettings(...args),
-  saveSettings: (...args: unknown[]) => mockSaveSettings(...args),
+  updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
 };
 vi.mock('@hooks/useEncryptedDb', () => ({
   useEncryptedDb: () => ({
@@ -31,7 +31,7 @@ describe('useAISettings', () => {
     vi.clearAllMocks();
     localStorage.clear();
     mockGetSettings.mockResolvedValue(null);
-    mockSaveSettings.mockResolvedValue(1);
+    mockUpdateSettings.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -78,17 +78,16 @@ describe('useAISettings', () => {
   });
 
   describe('localStorage migration', () => {
-    it('should call saveSettings with migrated values when localStorage has settings', async () => {
+    it('should save migrated values when localStorage has settings', async () => {
       localStorage.setItem('hemoio_ai_provider', 'ollama');
       localStorage.setItem('hemoio_ollama_model', 'llama3');
       mockGetSettings.mockResolvedValue(null);
 
       renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
 
-      // Should eventually call saveSettings with the migrated values
       await waitFor(
         () => {
-          expect(mockSaveSettings).toHaveBeenCalledWith(
+          expect(mockUpdateSettings).toHaveBeenCalledWith(
             expect.objectContaining({
               aiProvider: 'ollama',
               ollamaModel: 'llama3',
@@ -120,7 +119,7 @@ describe('useAISettings', () => {
       expect(result.current.openaiModel).toBe('gpt-4');
     });
 
-    it('should not call saveSettings if no localStorage values exist', async () => {
+    it('should not save anything if no localStorage values exist', async () => {
       mockGetSettings.mockResolvedValue({
         aiProvider: 'openai',
         storageProvider: 'local',
@@ -133,8 +132,7 @@ describe('useAISettings', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Should NOT have called saveSettings since no migration needed
-      expect(mockSaveSettings).not.toHaveBeenCalled();
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
     });
   });
 
@@ -159,7 +157,7 @@ describe('useAISettings', () => {
       expect(result.current.aiProvider).toBe('anthropic');
     });
 
-    it('should preserve existing settings when saving one setting', async () => {
+    it('should save only the setting that changed', async () => {
       mockGetSettings.mockResolvedValue({
         storageProvider: 'filesystem',
         aiProvider: 'openai',
@@ -175,23 +173,15 @@ describe('useAISettings', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      mockSaveSettings.mockClear();
+      mockUpdateSettings.mockClear();
 
       await act(async () => {
         await result.current.setAiProvider('anthropic');
       });
 
-      // Should preserve all existing settings
-      await waitFor(() => {
-        expect(mockSaveSettings).toHaveBeenCalledWith({
-          storageProvider: 'filesystem',
-          aiProvider: 'anthropic',
-          ollamaModel: 'llama2',
-          openaiModel: 'gpt-4',
-          anthropicModel: 'claude-3',
-          language: 'es',
-        });
-      });
+      // The database keeps every other field
+      expect(mockUpdateSettings).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSettings).toHaveBeenCalledWith({ aiProvider: 'anthropic' });
     });
   });
 

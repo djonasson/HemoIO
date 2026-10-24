@@ -3,6 +3,7 @@
  * choices from any backup, and the API key from encrypted backups only.
  */
 
+import { modelForProvider } from '@services/ai';
 import type { AIProviderType, Settings } from '@/types';
 import type { ParsedBackupData } from './jsonImport';
 import type { ParsedEncryptedBackupData } from './encryptedImport';
@@ -41,14 +42,9 @@ export function describeBackupAISettings(
 ): BackupAISettingsSummary | null {
   const { settings, apiKey } = aiSettingsOf(data);
   if (!settings?.aiProvider) return null;
-  const modelByProvider = {
-    openai: settings.openaiModel,
-    anthropic: settings.anthropicModel,
-    ollama: settings.ollamaModel,
-  };
   return {
     provider: settings.aiProvider,
-    model: modelByProvider[settings.aiProvider],
+    model: modelForProvider(settings.aiProvider, settings),
     apiKeyLastFour: apiKey ? apiKey.slice(-4) : undefined,
   };
 }

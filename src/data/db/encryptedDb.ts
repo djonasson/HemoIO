@@ -30,6 +30,12 @@ const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id'> = {
   dateFormat: 'MM/DD/YYYY',
 };
 
+const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
+  storageProvider: 'local',
+  aiProvider: 'openai',
+  language: 'en',
+};
+
 /**
  * Fields that should be encrypted for each table
  */
@@ -296,6 +302,26 @@ export class EncryptedDb {
 
     const id = await this.db.settings.add(encrypted as Settings);
     return id!;
+  }
+
+  /**
+   * Change some settings fields, keeping the others. Reading and writing in
+   * one transaction stops concurrent updates from undoing each other.
+   */
+  async updateSettings(changes: Partial<Omit<Settings, 'id'>>): Promise<void> {
+    // Encrypted up front: a transaction ends at the first await outside IndexedDB
+    const [encryptedChanges, encryptedNew] = await Promise.all([
+      encryptFields(changes, ENCRYPTED_FIELDS.settings, this.key),
+      encryptFields({ ...DEFAULT_SETTINGS, ...changes }, ENCRYPTED_FIELDS.settings, this.key),
+    ]);
+    await this.db.transaction('rw', this.db.settings, async () => {
+      const existing = await this.db.settings.toCollection().first();
+      if (existing?.id !== undefined) {
+        await this.db.settings.update(existing.id, encryptedChanges);
+      } else {
+        await this.db.settings.add(encryptedNew as Settings);
+      }
+    });
   }
 
   // ============ User Preferences ============
