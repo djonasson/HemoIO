@@ -144,11 +144,12 @@ export function NoteEditor({
 
   const handleSave = useCallback(() => {
     const trimmedContent = content.trim();
-    if (trimmedContent.length === 0) {
+    // The save button is disabled while saving; the shortcut must be too
+    if (trimmedContent.length === 0 || isSaving) {
       return;
     }
     onSave(trimmedContent, tags);
-  }, [content, tags, onSave]);
+  }, [content, tags, onSave, isSaving]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {

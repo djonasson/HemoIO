@@ -213,6 +213,20 @@ describe('NoteEditor', () => {
       expect(onSave).toHaveBeenCalledWith('Test note', []);
     });
 
+    it('does not save again on Ctrl+Enter while a save is running', () => {
+      const onSave = vi.fn();
+      renderWithProviders(
+        <NoteEditor {...defaultProps} initialContent="Test note" onSave={onSave} isSaving />
+      );
+
+      fireEvent.keyDown(screen.getByRole('textbox', { name: /note content/i }), {
+        key: 'Enter',
+        ctrlKey: true,
+      });
+
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
     it('should cancel on Escape', async () => {
       const onCancel = vi.fn();
       const user = userEvent.setup();
