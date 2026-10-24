@@ -347,6 +347,29 @@ describe('useLabResults', () => {
     expect(result.current[1].results).toHaveLength(3);
   });
 
+  it('drops a load that finishes after the app locked', async () => {
+    const mockDb = createMockDb();
+    let finishLoading!: (results: LabResult[]) => void;
+    mockDb.getAllLabResults.mockReturnValue(
+      new Promise<LabResult[]>((resolve) => (finishLoading = resolve))
+    );
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+
+    const { result, rerender } = renderHook(() => useLabResults(), {
+      wrapper: LabResultsProvider,
+    });
+    await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalled());
+
+    // Locking drops the key and the database
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: null, isReady: false });
+    rerender();
+    await act(async () => {
+      finishLoading(mockLabResults);
+    });
+
+    expect(result.current.results).toEqual([]);
+  });
+
   it('should handle errors during fetch', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockDb = createMockDb();

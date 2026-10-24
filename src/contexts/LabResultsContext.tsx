@@ -5,7 +5,7 @@
  * only after a write (an import, a restore or a deletion), never on navigation.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import {
   LabResultsContext,
@@ -20,12 +20,21 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // The database of the current session. A load that finishes after a lock
+  // (or after the next unlock) belongs to a session that is over: its
+  // decrypted results must not reach the app.
+  const sessionDb = useRef(isReady ? db : null);
+  useEffect(() => {
+    sessionDb.current = isReady ? db : null;
+  }, [db, isReady]);
+
   const refresh = useCallback(async () => {
     if (!db || !isReady) {
       setAllResults([]);
       setIsLoading(false);
       return;
     }
+    const isCurrent = () => sessionDb.current === db;
 
     setIsLoading(true);
     setError(null);
@@ -46,12 +55,13 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
           };
         })
       );
-      setAllResults(resultsWithDetails);
+      if (isCurrent()) setAllResults(resultsWithDetails);
     } catch (err) {
+      if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to load lab results');
       console.error('Error fetching lab results:', err);
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   }, [db, isReady]);
 
