@@ -683,6 +683,29 @@ describe('useAlerts', () => {
     expect(trend?.message).toBe('Consistently decreasing over 3 months (Jan–Apr 2024)');
   });
 
+  it('raises a trend for values that share a unit the display unit cannot convert', async () => {
+    // e.g. TSH in mUI/L on Italian reports: listed, but with no conversion
+    mockResults(
+      [110, 120, 130, 140].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            value,
+            unit: 'mUI/dL',
+            status: 'high',
+            referenceRangeHigh: 100,
+            rawText: 'Glucose',
+          }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    expect(trend).toMatchObject({ direction: 'increasing' });
+  });
+
   it('does not raise a trend alert for only three consecutive values', () => {
     mockResults(
       [11.0, 10.5, 10.0].map((value, i) =>

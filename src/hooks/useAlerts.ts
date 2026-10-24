@@ -245,7 +245,7 @@ export function useAlerts(): UseAlertsResult {
         latestStatus === 'high' || latestStatus === 'low' ? latestStatus : null;
       const trendUnit =
         resolveDisplayUnit(biomarkerDef, unitPreferences[biomarkerKey]) ?? latestValue.unit;
-      const points = sortedValues.map((tv) => ({
+      const converted = sortedValues.map((tv) => ({
         date: dateOf(tv),
         ...convertMeasurement(
           biomarkerName,
@@ -253,8 +253,18 @@ export function useAlerts(): UseAlertsResult {
           trendUnit
         ),
       }));
-      const comparable = points.every((point) => point.unit === trendUnit);
-      const trend = latestOutOfRange && comparable ? detectConsistentDirection(points) : null;
+      // Values that cannot be converted can still be compared as recorded,
+      // when they all share one unit (e.g. TSH always in mUI/L)
+      const recorded = sortedValues.map((tv) => ({ date: dateOf(tv), value: tv.value as number }));
+      const sameRecordedUnit = sortedValues.every(
+        (tv) => tv.unit.trim().toLowerCase() === latestValue.unit.trim().toLowerCase()
+      );
+      const points = converted.every((point) => point.unit === trendUnit)
+        ? converted
+        : sameRecordedUnit
+          ? recorded
+          : null;
+      const trend = latestOutOfRange && points ? detectConsistentDirection(points) : null;
       if (latestOutOfRange && trend) {
         alertList.push({
           ...alertFor(latestValue, 'trend', latestOutOfRange),
