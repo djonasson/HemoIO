@@ -2920,3 +2920,31 @@ git commit -m "docs(spec): mark preferred units and biomarker detail done"
 ```
 
 Do this commit after the final review and its fix pass, once the Outcome section of this plan is written.
+
+## Outcome (2026-10-24)
+
+Executed inline (commits 8e54375..cb559da). A fresh reviewer then reviewed the whole sub-project, followed by one fix pass (commits bd9340f..0ca5f9e).
+
+The fix pass covered:
+- **Units with no direct factor:** a preferred unit with no direct conversion from the recorded unit (hemoglobin mmol/L to g/L) left values unconverted. The chart mixed scales and the trend alert disappeared. Conversion now chains two known factors through a shared unit.
+- **Settings save failures:** a failed personal-target save showed "Personal target saved" and then quietly reverted. Settings now says "Personal target not saved" and confirms only after the save succeeds.
+- **Restore reload:** the existing E2E "should show a personal target next to the standard range" was shown to fail without the reload after a restore, so it pins that behaviour.
+
+Found during verification:
+- **Keyboard focus ring:** list items in the dictionary had no visible keyboard focus ring, so they now use Mantine's focus ring.
+- **Firefox scroll test:** the scroll-position E2E failed in Firefox because it read the position while the category was still opening. The test now waits for the animation.
+- **Plan test defects:** the DB test deleted open databases (Dexie warning), a bare `focus()` caused a React `act` warning, and a Settings test used a button name that does not exist.
+
+Gates:
+- build and lint pass
+- 1656 unit tests pass, with clean output
+- full E2E: 726/726 in both browsers, with no expected failures left
+
+Deferred minors (not fixed; candidates for later work):
+- Rapid successive preference changes can revert to a stale value if the second save fails, because `mapsRef` only updates after render.
+- A change made before the initial preferences load finishes can be overwritten in memory by that load.
+- Locking does not clear the in-memory preferences. They show briefly after an unlock until the new load lands; they are not encrypted at rest anyway.
+- Legacy-key reconciliation races the initial preferences load, so the in-memory maps may keep legacy keys for that session.
+- The detail shows "Your results" in the preferred unit, while the reference range and personal target stay in the standard unit. Both are labelled.
+- A failed preference reload after a successful restore reports "Restore Failed" and skips restoring the AI settings.
+- Trend detection runs on values rounded in the preferred unit, so a coarse unit could in theory flatten a trend.

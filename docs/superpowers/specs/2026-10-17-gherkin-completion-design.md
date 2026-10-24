@@ -235,7 +235,7 @@ The existing `useAlerts` / `OutOfRangeAlerts` are mounted and completed.
 
 ## Progress
 
-Last updated 2026-10-23. This section is the place to resume from.
+Last updated 2026-10-24. This section is the place to resume from.
 
 ### Sub-projects
 
@@ -245,8 +245,8 @@ Last updated 2026-10-23. This section is the place to resume from.
 | 2 | Alerts | Done and reviewed | [plan](../plans/2026-10-18-alerts.md) |
 | 3 | Notes | Done and reviewed | [plan](../plans/2026-10-18-notes.md) |
 | 4 | Import and OCR | Done and reviewed | [plan](../plans/2026-10-23-import-and-ocr.md) |
-| 5 | Preferred units and biomarker detail | Next. No plan yet | — |
-| 6 | Change password | To do. Spec written, no plan yet | [spec](2026-10-16-change-password-design.md) |
+| 5 | Preferred units and biomarker detail | Done and reviewed | [plan](../plans/2026-10-23-preferred-units-and-biomarker-detail.md) |
+| 6 | Change password | Next. Spec written, no plan yet | [spec](2026-10-16-change-password-design.md) |
 
 Each finished plan ends with an **Outcome** section: the gates it passed, and the minor issues deferred for later.
 
@@ -267,16 +267,7 @@ Each finished plan ends with an **Outcome** section: the gates it passed, and th
 
 ### E2E failures still expected
 
-These failures belong to sub-project 5, which is not built yet. Each is counted twice, once per browser.
-
-| Sub-project | Tests |
-|---|---|
-| 5 | `unit-conversion.spec.ts`: preferred-unit conversion, saving the preference, unsupported unit, keyboard access (4) |
-
-Any failure outside this list is a regression.
-
-One test can fail intermittently:
-- `unit-conversion.spec.ts:578` opens a Mantine Select and presses arrow keys at once. Mantine resets the highlighted option in a 0 ms timer after opening, so the test must let pending timers run first. `ollama-integration.spec.ts` shows how. Fix it in sub-project 5.
+None. Any E2E failure is a regression.
 
 ### Before the branch can be merged
 
