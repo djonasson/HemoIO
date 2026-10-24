@@ -34,6 +34,7 @@ import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@da
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
 import { formatShortDate } from '@/utils/formatShortDate';
+import { hasTargetRange } from '@components/settings/personalTarget';
 import type { SpecimenType } from '@/types';
 import type { BiomarkerResultSummary } from '@services/statistics';
 import type { PersonalTargetRange } from '@hooks/usePreferences';
@@ -118,9 +119,7 @@ export function BiomarkerDetail({
     headingRef.current?.focus();
   }, [biomarker.key]);
 
-  const hasTarget =
-    personalTarget !== undefined &&
-    (personalTarget.low !== undefined || personalTarget.high !== undefined);
+  const hasTarget = hasTargetRange(personalTarget);
   const related = biomarker.related
     .map((key) => getBiomarkerByKey(key))
     .filter((entry): entry is BiomarkerDefinition => entry !== undefined);

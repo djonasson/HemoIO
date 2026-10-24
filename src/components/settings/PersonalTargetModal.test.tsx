@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { PersonalTargetModal } from './PersonalTargetModal';
-import type { PersonalTarget } from './PersonalTargets';
+import type { PersonalTarget } from './personalTarget';
 
 const GLUCOSE: PersonalTarget = {
   biomarkerKey: 'glucose',

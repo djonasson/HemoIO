@@ -14,6 +14,7 @@ import { usePreferences } from '@hooks/usePreferences';
 import { resolveDisplayUnit } from '@services/units';
 import { summarizeBiomarkerResults } from '@services/statistics';
 import { PersonalTargetModal } from '@components/settings/PersonalTargetModal';
+import { toPersonalTarget } from '@components/settings/personalTarget';
 import { BiomarkerDictionary } from './BiomarkerDictionary';
 import { BiomarkerDetail } from './BiomarkerDetail';
 import type { BiomarkerDefinition } from '@data/biomarkers';
@@ -111,19 +112,7 @@ export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.Reac
         />
       )}
       <PersonalTargetModal
-        target={
-          selected && editingTarget
-            ? {
-                biomarkerKey: selected.key,
-                biomarkerName: selected.name,
-                unit: selected.canonicalUnit,
-                standardLow: selected.defaultReferenceRange?.low,
-                standardHigh: selected.defaultReferenceRange?.high,
-                personalLow: target?.low,
-                personalHigh: target?.high,
-              }
-            : null
-        }
+        target={selected && editingTarget ? toPersonalTarget(selected, target) : null}
         onSave={handleSaveTarget}
         onClose={() => setEditingTarget(false)}
       />

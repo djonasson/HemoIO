@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeLabDate } from './labDate';
+import { normalizeLabDate, reviewedLabDate } from './labDate';
 
 describe('normalizeLabDate', () => {
   it('keeps ISO days', () => {
@@ -26,4 +26,17 @@ describe('normalizeLabDate', () => {
       expect(normalizeLabDate(value)).toBeNull();
     }
   );
+});
+
+describe('reviewedLabDate', () => {
+  it('uses the date set in review over the detected one', () => {
+    expect(reviewedLabDate({ labDate: '2024-01-15', editedLabDate: '2024-02-20' })).toBe(
+      '2024-02-20'
+    );
+    expect(reviewedLabDate({ labDate: '15.01.2024' })).toBe('2024-01-15');
+  });
+
+  it('treats a date cleared in review as no date', () => {
+    expect(reviewedLabDate({ labDate: '2024-01-15', editedLabDate: '' })).toBeNull();
+  });
 });

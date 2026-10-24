@@ -39,7 +39,7 @@ import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { BIOMARKER_DEFINITIONS, findBiomarker } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
-import { normalizeLabDate } from '@/utils/labDate';
+import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import {
   applyBiomarkerName,
   suggestBiomarkerNames,
@@ -356,7 +356,7 @@ export function ReviewStep({
     // Files left without values are not saved, so they need no date
     const toSave = reviewedResults.filter((r) => r.editedBiomarkers.length > 0);
     const missingDates = toSave
-      .filter((r) => !normalizeLabDate(r.editedLabDate ?? r.labDate))
+      .filter((r) => !reviewedLabDate(r))
       .map((r) => `Enter the lab date for "${r.fileName}"`);
     const problems = [...missingDates, ...invalidBiomarkers];
 
@@ -471,7 +471,7 @@ export function ReviewStep({
                     valueFormat="YYYY-MM-DD"
                     // Typed dates use the same YYYY-MM-DD form
                     dateParser={(input) => normalizeLabDate(input)}
-                    value={normalizeLabDate(result.editedLabDate ?? result.labDate)}
+                    value={reviewedLabDate(result)}
                     // A cleared date stays empty ('') instead of reverting to the detected one
                     onChange={(value) => updateLabDate(resultIndex, normalizeLabDate(value) ?? '')}
                     clearable

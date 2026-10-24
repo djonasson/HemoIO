@@ -6,7 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
+import { PersonalTargets } from './PersonalTargets';
+import type { PersonalTarget } from './personalTarget';
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);

@@ -27,19 +27,11 @@ import {
   IconSearch,
 } from '@tabler/icons-react';
 import { formatRange } from '@/utils/formatRange';
+import { hasTargetRange, type PersonalTarget } from './personalTarget';
 import { PersonalTargetModal } from './PersonalTargetModal';
 
-/**
- * Personal target range for a biomarker
- */
-export interface PersonalTarget {
-  biomarkerKey: string;
-  biomarkerName: string;
-  unit: string;
-  standardLow?: number;
-  standardHigh?: number;
-  personalLow?: number;
-  personalHigh?: number;
+function hasPersonalTarget(target: PersonalTarget): boolean {
+  return hasTargetRange({ low: target.personalLow, high: target.personalHigh });
 }
 
 /**
@@ -79,9 +71,7 @@ export function PersonalTargets({
   );
 
   // Count personal targets
-  const personalTargetCount = targets.filter(
-    (t) => t.personalLow !== undefined || t.personalHigh !== undefined
-  ).length;
+  const personalTargetCount = targets.filter(hasPersonalTarget).length;
 
   // Handle open edit modal
   const handleOpenEdit = useCallback((target: PersonalTarget) => {
@@ -118,11 +108,6 @@ export function PersonalTargets({
   const handleCloseModal = useCallback(() => {
     setEditingTarget(null);
   }, []);
-
-  // Check if target has personal values
-  const hasPersonalTarget = (target: PersonalTarget): boolean => {
-    return target.personalLow !== undefined || target.personalHigh !== undefined;
-  };
 
   return (
     <>

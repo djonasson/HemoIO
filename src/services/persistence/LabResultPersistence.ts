@@ -88,7 +88,7 @@ function transformReviewedToLabResult(
   reviewed: ReviewedResult
 ): Omit<LabResult, 'id'> {
   const now = new Date();
-  const labDate = parseLabDate(reviewed.editedLabDate || reviewed.labDate);
+  const labDate = parseLabDate(reviewed.editedLabDate ?? reviewed.labDate);
   const labName = reviewed.editedLabName || reviewed.labName || 'Unknown Lab';
 
   return {

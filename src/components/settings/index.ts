@@ -8,6 +8,7 @@ export { BackupRestore, type BackupRestoreProps, type RestoreOptions } from './B
 export { SettingsPage, type SettingsPageProps } from './SettingsPage';
 export { DisplaySettings, type DisplaySettingsProps } from './DisplaySettings';
 export { AISettings, type AISettingsProps } from './AISettings';
-export { PersonalTargets, type PersonalTargetsProps, type PersonalTarget } from './PersonalTargets';
+export { PersonalTargets, type PersonalTargetsProps } from './PersonalTargets';
+export { hasTargetRange, toPersonalTarget, type PersonalTarget } from './personalTarget';
 export { PersonalTargetModal, type PersonalTargetModalProps } from './PersonalTargetModal';
 export { ChangePassword } from './ChangePassword';

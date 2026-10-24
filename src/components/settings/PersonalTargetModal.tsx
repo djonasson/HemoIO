@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Modal, Stack, Text, Group, NumberInput, Button } from '@mantine/core';
 import { formatRange } from '@/utils/formatRange';
-import type { PersonalTarget } from './PersonalTargets';
+import type { PersonalTarget } from './personalTarget';
 
 export interface PersonalTargetModalProps {
   /** The biomarker being edited; null keeps the modal closed */

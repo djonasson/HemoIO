@@ -25,7 +25,7 @@ import {
   IconFiles,
 } from '@tabler/icons-react';
 import type { ReviewedResult } from './ReviewStep';
-import { normalizeLabDate } from '@/utils/labDate';
+import { reviewedLabDate } from '@/utils/labDate';
 
 /**
  * Format a biomarker value for display, handling interval values
@@ -51,10 +51,6 @@ export interface ConfirmStepProps {
   onBack: () => void;
 }
 
-/** The date a result is saved under, as review showed it */
-function labDateOf(result: ReviewedResult): string | null {
-  return normalizeLabDate(result.editedLabDate || result.labDate);
-}
 
 /**
  * Confirm Step - final confirmation before saving
@@ -71,7 +67,7 @@ export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
   const labDates = [
     ...new Set(
       results
-        .map((r) => labDateOf(r))
+        .map((r) => reviewedLabDate(r))
         .filter(Boolean) as string[]
     ),
   ];
@@ -170,9 +166,9 @@ export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
                   {result.fileName}
                 </Text>
                 <Group gap="xs">
-                  {labDateOf(result) && (
+                  {reviewedLabDate(result) && (
                     <Badge size="xs" variant="light">
-                      {labDateOf(result)}
+                      {reviewedLabDate(result)}
                     </Badge>
                   )}
                   {(result.editedLabName || result.labName) && (

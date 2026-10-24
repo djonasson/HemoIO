@@ -36,3 +36,15 @@ export function normalizeLabDate(value: string | null | undefined): string | nul
 
   return null;
 }
+
+/**
+ * The date a reviewed result is saved under: the date set in review, else
+ * the detected one. A date cleared in review ('') is no date, not a cue to
+ * fall back to the detected date.
+ */
+export function reviewedLabDate(result: {
+  labDate?: string | null;
+  editedLabDate?: string;
+}): string | null {
+  return normalizeLabDate(result.editedLabDate ?? result.labDate);
+}

@@ -19,7 +19,8 @@ import { BackupRestore } from './BackupRestore';
 import { ChangePassword } from './ChangePassword';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
-import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
+import { PersonalTargets } from './PersonalTargets';
+import { toPersonalTarget, type PersonalTarget } from './personalTarget';
 import { StorageSettings } from './StorageSettings';
 import {
   useExportData,
@@ -90,15 +91,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
   const personalTargets = useMemo<PersonalTarget[]>(
     () =>
-      BIOMARKER_DEFINITIONS.map((biomarker) => ({
-        biomarkerKey: biomarker.key,
-        biomarkerName: biomarker.name,
-        unit: biomarker.canonicalUnit,
-        standardLow: biomarker.defaultReferenceRange?.low,
-        standardHigh: biomarker.defaultReferenceRange?.high,
-        personalLow: targetMap[biomarker.key]?.low,
-        personalHigh: targetMap[biomarker.key]?.high,
-      })),
+      BIOMARKER_DEFINITIONS.map((biomarker) =>
+        toPersonalTarget(biomarker, targetMap[biomarker.key])
+      ),
     [targetMap]
   );
   const [isSavingTargets, setIsSavingTargets] = useState(false);
