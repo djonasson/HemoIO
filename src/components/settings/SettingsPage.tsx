@@ -10,11 +10,13 @@ import { useMantineColorScheme } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconDatabase,
+  IconLock,
   IconRobot,
   IconSettings,
   IconTarget,
 } from '@tabler/icons-react';
 import { BackupRestore } from './BackupRestore';
+import { ChangePassword } from './ChangePassword';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets, type PersonalTarget } from './PersonalTargets';
@@ -244,6 +246,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           <Tabs.Tab value="data" leftSection={<IconDatabase size={16} />}>
             Data
           </Tabs.Tab>
+          <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
+            Security
+          </Tabs.Tab>
           <Tabs.Tab value="ai" leftSection={<IconRobot size={16} />}>
             AI Configuration
           </Tabs.Tab>
@@ -266,6 +271,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
               isProcessing={isRestoring || isLoading}
             />
           </Stack>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="security" pt="md">
+          <ChangePassword />
         </Tabs.Panel>
 
         <Tabs.Panel value="ai" pt="md">

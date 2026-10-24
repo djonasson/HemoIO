@@ -53,6 +53,8 @@ vi.mock('@/services/ai', async (importOriginal) => ({
 // Mock hooks
 vi.mock('@hooks', () => ({
   usePreferences: () => mockPreferences,
+  // Enter-to-submit is covered by the ChangePassword tests
+  useFormKeyboardSubmit: () => ({ formRef: { current: null } }),
   useExportData: () => ({
     dataSources: {
       labResults: [],
@@ -89,6 +91,12 @@ vi.mock('@hooks', () => ({
     setOpenaiModel: vi.fn(),
     setAnthropicModel: vi.fn(),
   }),
+}));
+
+// The Security tab's form reads the auth context
+vi.mock('@contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@contexts')>()),
+  useAuth: () => ({ changePassword: vi.fn() }),
 }));
 
 // Mock BIOMARKER_DEFINITIONS
@@ -220,6 +228,27 @@ describe('SettingsPage', () => {
   });
 
   describe('tab navigation', () => {
+    it('places the Security tab right after Data', async () => {
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+
+      const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(tabs.indexOf('Security')).toBe(tabs.indexOf('Data') + 1);
+    });
+
+    it('should switch to Security tab when clicked', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+
+      const securityTab = screen.getByRole('tab', { name: 'Security' });
+      await user.click(securityTab);
+
+      expect(securityTab).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('heading', { name: 'Change password' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Current password')).toBeInTheDocument();
+    });
+
     it('should switch to AI Configuration tab when clicked', async () => {
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage {...defaultProps} />);
