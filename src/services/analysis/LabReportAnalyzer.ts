@@ -549,57 +549,30 @@ function deduplicateBiomarkers(
     }> = [];
 
     for (const biomarker of group) {
+      const entry = (converted: number, comparison: number, conversionSucceeded: boolean) => ({
+        biomarker,
+        originalValue: biomarker.value,
+        originalUnit: biomarker.unit,
+        convertedValue: converted,
+        comparisonValue: comparison,
+        conversionSucceeded,
+      });
+      const unchanged = (conversionSucceeded: boolean) =>
+        entry(biomarker.value, biomarker.value, conversionSucceeded);
+
       if (biomarker.unit.toLowerCase() === canonicalUnit.toLowerCase()) {
-        convertedValues.push({
-          biomarker,
-          originalValue: biomarker.value,
-          originalUnit: biomarker.unit,
-          convertedValue: biomarker.value,
-          comparisonValue: biomarker.value,
-          conversionSucceeded: true,
-        });
+        convertedValues.push(unchanged(true));
       } else if (canConvert(canonicalName, biomarker.unit, canonicalUnit)) {
         try {
-          const result = convertValue(
-            canonicalName,
-            biomarker.value,
-            biomarker.unit,
-            canonicalUnit
-          );
-          const unrounded = convertValue(
-            canonicalName,
-            biomarker.value,
-            biomarker.unit,
-            canonicalUnit,
-            COMPARISON_PRECISION
-          );
-          convertedValues.push({
-            biomarker,
-            originalValue: biomarker.value,
-            originalUnit: biomarker.unit,
-            convertedValue: result.convertedValue,
-            comparisonValue: unrounded.convertedValue,
-            conversionSucceeded: true,
-          });
+          const convert = (precision?: number) =>
+            convertValue(canonicalName, biomarker.value, biomarker.unit, canonicalUnit, precision)
+              .convertedValue;
+          convertedValues.push(entry(convert(), convert(COMPARISON_PRECISION), true));
         } catch {
-          convertedValues.push({
-            biomarker,
-            originalValue: biomarker.value,
-            originalUnit: biomarker.unit,
-            convertedValue: biomarker.value,
-            comparisonValue: biomarker.value,
-            conversionSucceeded: false,
-          });
+          convertedValues.push(unchanged(false));
         }
       } else {
-        convertedValues.push({
-          biomarker,
-          originalValue: biomarker.value,
-          originalUnit: biomarker.unit,
-          convertedValue: biomarker.value,
-          comparisonValue: biomarker.value,
-          conversionSucceeded: false,
-        });
+        convertedValues.push(unchanged(false));
       }
     }
 

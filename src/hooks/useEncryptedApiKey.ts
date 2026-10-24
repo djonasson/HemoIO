@@ -6,6 +6,9 @@
 
 import { createContext, useContext } from 'react';
 
+/** Where the encrypted API key is kept: written by setup, read and changed by the provider */
+export const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
+
 export interface UseEncryptedApiKeyResult {
   /** Whether the hook is ready (encryption key available) */
   isReady: boolean;

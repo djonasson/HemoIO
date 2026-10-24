@@ -6,7 +6,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getAnthropicModels,
   getDefaultAnthropicModels,
-  testAnthropicApiKey,
   clearAnthropicModelsCache,
 } from './anthropicUtils';
 
@@ -142,47 +141,4 @@ describe('anthropicUtils', () => {
     });
   });
 
-  describe('testAnthropicApiKey', () => {
-    it('should return false if no API key provided', async () => {
-      const result = await testAnthropicApiKey('');
-      expect(result).toBe(false);
-    });
-
-    it('should return true if API call succeeds', async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: true,
-      } as Response);
-
-      const result = await testAnthropicApiKey('valid-api-key');
-
-      expect(result).toBe(true);
-      expect(fetch).toHaveBeenCalledWith(
-        'https://api.anthropic.com/v1/models',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'x-api-key': 'valid-api-key',
-          }),
-        })
-      );
-    });
-
-    it('should return false if API call fails', async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: false,
-        status: 401,
-      } as Response);
-
-      const result = await testAnthropicApiKey('invalid-api-key');
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false on network error', async () => {
-      vi.mocked(fetch).mockRejectedValue(new Error('Network error'));
-
-      const result = await testAnthropicApiKey('test-api-key');
-
-      expect(result).toBe(false);
-    });
-  });
 });

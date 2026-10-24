@@ -26,13 +26,13 @@ import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
 import { useFormKeyboardSubmit } from '@hooks';
+import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
 import type { StorageProviderType, AIProviderType } from '@/types';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
 
-const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 interface SetupWizardProps {

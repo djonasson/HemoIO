@@ -18,11 +18,11 @@ import {
 import { useAuth } from './useAuth';
 import { encryptString, decryptString } from '@data/encryption';
 import {
+  ENCRYPTED_API_KEY_STORAGE_KEY,
   EncryptedApiKeyContext,
   type UseEncryptedApiKeyResult,
 } from '@hooks/useEncryptedApiKey';
 
-const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
 const LEGACY_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key';
 
 function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {

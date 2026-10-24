@@ -4,6 +4,13 @@
  * Helper functions for Anthropic model detection and configuration.
  */
 
+/** Headers every Anthropic API request from the browser needs */
+export const ANTHROPIC_API_HEADERS = {
+  'anthropic-version': '2023-06-01',
+  // Required for CORS: Anthropic rejects browser-origin requests without this opt-in
+  'anthropic-dangerous-direct-browser-access': 'true',
+};
+
 // Session cache for models (persists until page refresh)
 let cachedModels: Array<{ value: string; label: string }> | null = null;
 let cachedApiKey: string | null = null;
@@ -86,8 +93,7 @@ export async function getAnthropicModels(
       method: 'GET',
       headers: {
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
+        ...ANTHROPIC_API_HEADERS,
       },
       signal: controller.signal,
     });
@@ -128,32 +134,3 @@ export function getDefaultAnthropicModels(): Array<{ value: string; label: strin
   return [];
 }
 
-/**
- * Test if an Anthropic API key is valid by making a models request
- *
- * @param apiKey - Anthropic API key to test
- * @returns true if the API key is valid
- */
-export async function testAnthropicApiKey(apiKey: string): Promise<boolean> {
-  if (!apiKey) return false;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch('https://api.anthropic.com/v1/models', {
-      method: 'GET',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}

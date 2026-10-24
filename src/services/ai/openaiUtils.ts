@@ -138,38 +138,6 @@ export async function getOpenAIModels(
 }
 
 /**
- * Test if an OpenAI API key is valid by making a models request
- *
- * @param apiKey - OpenAI API key to test
- * @param baseUrl - Optional base URL
- * @returns true if the API key is valid
- */
-export async function testOpenAIApiKey(
-  apiKey: string,
-  baseUrl: string = 'https://api.openai.com/v1'
-): Promise<boolean> {
-  if (!apiKey) return false;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(`${baseUrl}/models`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * @deprecated Use getOpenAIModels with API key instead. This only exists for backward compatibility.
  */
 export function getDefaultOpenAIModels(): Array<{ value: string; label: string }> {

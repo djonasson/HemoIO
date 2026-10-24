@@ -19,6 +19,7 @@ import {
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
+import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
 
 /**
  * Default Anthropic configuration.
@@ -32,12 +33,6 @@ const DEFAULT_CONFIG = {
   // max_tokens, so leave enough room for the extraction JSON itself.
   maxTokens: 16000,
   baseUrl: 'https://api.anthropic.com/v1',
-};
-
-const API_HEADERS = {
-  'anthropic-version': '2023-06-01',
-  // Required for CORS: Anthropic rejects browser-origin requests without this opt-in
-  'anthropic-dangerous-direct-browser-access': 'true',
 };
 
 /**
@@ -202,7 +197,7 @@ export class AnthropicProvider implements AIProvider {
           method: 'GET',
           headers: {
             'x-api-key': this.config.apiKey,
-            ...API_HEADERS,
+            ...ANTHROPIC_API_HEADERS,
           },
         }
       );
@@ -228,7 +223,7 @@ export class AnthropicProvider implements AIProvider {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey,
-        ...API_HEADERS,
+        ...ANTHROPIC_API_HEADERS,
       },
       body: JSON.stringify({
         model: this.config.model,
