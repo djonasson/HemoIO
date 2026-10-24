@@ -6,3 +6,8 @@
 
 export * from './trendAnalysis';
 export * from './patterns';
+export {
+  summarizeBiomarkerResults,
+  type BiomarkerResultSummary,
+  type SummarizableResult,
+} from './biomarkerSummary';
