@@ -52,7 +52,12 @@ vi.mock('pdfjs-dist', () => {
     render: vi.fn(() => ({ promise: Promise.resolve() })),
   });
 
-  const createMockDocument = () => ({
+  // Every document a call opens; each must be destroyed, or its worker leaks
+  const openedDocuments: Array<{ destroy: ReturnType<typeof vi.fn> }> = [];
+
+  const createMockDocument = () => {
+    const doc = {
+    destroy: vi.fn().mockResolvedValue(undefined),
     numPages: mockConfig.numPages,
     getPage: vi.fn().mockImplementation((pageNum: number) => {
       if (mockConfig.pageErrors.includes(pageNum)) {
@@ -60,7 +65,10 @@ vi.mock('pdfjs-dist', () => {
       }
       return Promise.resolve(createMockPage());
     }),
-  });
+    };
+    openedDocuments.push(doc);
+    return doc;
+  };
 
   return {
     GlobalWorkerOptions: { workerSrc: '' },
@@ -80,6 +88,7 @@ vi.mock('pdfjs-dist', () => {
       };
     }),
     // Expose mock control
+    __openedDocuments: openedDocuments,
     __setMockConfig: (config: Partial<typeof mockConfig>) => {
       mockConfig = { ...mockConfig, ...config };
     },
@@ -96,7 +105,8 @@ vi.mock('pdfjs-dist', () => {
 
 // Get mock control functions
 import * as pdfjsLib from 'pdfjs-dist';
-const { __setMockConfig, __resetMockConfig } = pdfjsLib as unknown as {
+const { __setMockConfig, __resetMockConfig, __openedDocuments } = pdfjsLib as unknown as {
+  __openedDocuments: Array<{ destroy: ReturnType<typeof vi.fn> }>;
   __setMockConfig: (config: { numPages?: number; isScanned?: boolean; throwError?: boolean; pageErrors?: number[] }) => void;
   __resetMockConfig: () => void;
 };
@@ -239,6 +249,28 @@ describe('PDF Text Extractor', () => {
       const result = await needsOCR(mockFile);
 
       expect(result).toBe(true);
+    });
+  });
+
+  describe('releasing documents', () => {
+    it('destroys every document it opens, so no PDF worker is left running', async () => {
+      __openedDocuments.length = 0;
+      const pdf = new ArrayBuffer(8);
+      // jsdom has no canvas implementation
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+        {} as CanvasRenderingContext2D
+      );
+      vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback: BlobCallback) =>
+        callback(new Blob(['png'], { type: 'image/png' }))
+      );
+
+      await extractTextFromPDF(pdf);
+      await getPageCount(pdf);
+      await extractPageRange(pdf, 1, 1);
+      await renderPdfPages(pdf);
+
+      expect(__openedDocuments).toHaveLength(4);
+      for (const doc of __openedDocuments) expect(doc.destroy).toHaveBeenCalled();
     });
   });
 

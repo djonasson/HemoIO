@@ -31,6 +31,26 @@ function loadPdfjs(): Promise<typeof PdfjsLib> {
   return pdfjsPromise;
 }
 
+type PdfDocument = Awaited<ReturnType<typeof PdfjsLib.getDocument>['promise']>;
+
+/**
+ * Open a PDF for `read`, then destroy it: an open document keeps a PDF.js
+ * worker running, one per document
+ */
+async function withPdf<T>(
+  file: File | ArrayBuffer,
+  read: (pdf: PdfDocument, pdfjsLib: typeof PdfjsLib) => Promise<T>
+): Promise<T> {
+  const pdfjsLib = await loadPdfjs();
+  const data = file instanceof File ? await file.arrayBuffer() : file;
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  try {
+    return await read(pdf, pdfjsLib);
+  } finally {
+    await pdf.destroy();
+  }
+}
+
 /**
  * Result of extracting text from a single page
  */
@@ -97,95 +117,92 @@ export async function extractTextFromPDF(
   const errors: string[] = [];
 
   try {
-    const pdfjsLib = await loadPdfjs();
-    // Load the PDF document
-    const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdf = await loadingTask.promise;
+    return await withPdf(file, async (pdf, pdfjsLib) => {
 
-    const totalPages = pdf.numPages;
-    const pagesToProcess = maxPages ? Math.min(maxPages, totalPages) : totalPages;
-    const pages: PageExtractionResult[] = [];
+      const totalPages = pdf.numPages;
+      const pagesToProcess = maxPages ? Math.min(maxPages, totalPages) : totalPages;
+      const pages: PageExtractionResult[] = [];
 
-    // Extract text from each page
-    for (let pageNum = 1; pageNum <= pagesToProcess; pageNum++) {
-      try {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
+      // Extract text from each page
+      for (let pageNum = 1; pageNum <= pagesToProcess; pageNum++) {
+        try {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
 
-        // Combine text items, preserving some structure
-        const textItems = textContent.items
-          .filter((item) => 'str' in item && typeof item.str === 'string')
-          .map((item) => (item as { str: string }).str);
+          // Combine text items, preserving some structure
+          const textItems = textContent.items
+            .filter((item) => 'str' in item && typeof item.str === 'string')
+            .map((item) => (item as { str: string }).str);
 
-        const pageText = textItems.join(' ').trim();
+          const pageText = textItems.join(' ').trim();
 
-        // Check for images (operators that draw images)
-        const operators = await page.getOperatorList();
-        const hasImages = operators.fnArray.some(
-          (fn) =>
-            fn === pdfjsLib.OPS.paintImageXObject ||
-            fn === pdfjsLib.OPS.paintImageMaskXObject
-        );
+          // Check for images (operators that draw images)
+          const operators = await page.getOperatorList();
+          const hasImages = operators.fnArray.some(
+            (fn) =>
+              fn === pdfjsLib.OPS.paintImageXObject ||
+              fn === pdfjsLib.OPS.paintImageMaskXObject
+          );
 
-        pages.push({
-          pageNumber: pageNum,
-          text: pageText,
-          hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-          hasImages,
-        });
+          pages.push({
+            pageNumber: pageNum,
+            text: pageText,
+            hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
+            hasImages,
+          });
 
-        if (onProgress) {
-          onProgress(pageNum, totalPages);
-        }
-
-        // For quick scan, stop early if we have enough info
-        if (quickScan && pageNum >= 3) {
-          const pagesWithText = pages.filter((p) => p.hasText).length;
-          const ratio = pagesWithText / pages.length;
-          // If clearly text or clearly scanned, stop early
-          if (ratio > 0.8 || ratio < 0.2) {
-            break;
+          if (onProgress) {
+            onProgress(pageNum, totalPages);
           }
+
+          // For quick scan, stop early if we have enough info
+          if (quickScan && pageNum >= 3) {
+            const pagesWithText = pages.filter((p) => p.hasText).length;
+            const ratio = pagesWithText / pages.length;
+            // If clearly text or clearly scanned, stop early
+            if (ratio > 0.8 || ratio < 0.2) {
+              break;
+            }
+          }
+        } catch (pageError) {
+          errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
+          pages.push({
+            pageNumber: pageNum,
+            text: '',
+            hasText: false,
+            hasImages: false,
+          });
         }
-      } catch (pageError) {
-        errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
-        pages.push({
-          pageNumber: pageNum,
-          text: '',
-          hasText: false,
-          hasImages: false,
-        });
       }
-    }
 
-    // Combine all page text
-    const fullText = pages.map((p) => p.text).join('\n\n');
+      // Combine all page text
+      const fullText = pages.map((p) => p.text).join('\n\n');
 
-    // Determine if PDF is scanned
-    const pagesWithText = pages.filter((p) => p.hasText).length;
-    const pagesWithImages = pages.filter((p) => p.hasImages).length;
-    const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
+      // Determine if PDF is scanned
+      const pagesWithText = pages.filter((p) => p.hasText).length;
+      const pagesWithImages = pages.filter((p) => p.hasImages).length;
+      const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
 
-    // PDF is likely scanned if:
-    // - Most pages have images but little text
-    // - Or if total extracted text is very short relative to page count
-    const isScanned =
-      textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
-      pagesWithImages > 0 &&
-      fullText.length < totalPages * MIN_TEXT_CHARS_PER_PAGE;
+      // PDF is likely scanned if:
+      // - Most pages have images but little text
+      // - Or if total extracted text is very short relative to page count
+      const isScanned =
+        textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
+        pagesWithImages > 0 &&
+        fullText.length < totalPages * MIN_TEXT_CHARS_PER_PAGE;
 
-    // Calculate text confidence
-    const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
+      // Calculate text confidence
+      const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
 
-    return {
-      totalPages,
-      fullText,
-      pages,
-      isScanned,
-      textConfidence,
-      errors,
-    };
+      return {
+        totalPages,
+        fullText,
+        pages,
+        isScanned,
+        textConfidence,
+        errors,
+      };
+    });
   } catch (error) {
     throw new PDFExtractionError(
       `Failed to extract text from PDF: ${error instanceof Error ? error.message : String(error)}`
@@ -214,11 +231,7 @@ export async function needsOCR(file: File | ArrayBuffer): Promise<boolean> {
  * @returns Number of pages in the PDF
  */
 export async function getPageCount(file: File | ArrayBuffer): Promise<number> {
-  const pdfjsLib = await loadPdfjs();
-  const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
-  return pdf.numPages;
+  return withPdf(file, async (pdf) => pdf.numPages);
 }
 
 /**
@@ -236,76 +249,73 @@ export async function extractPageRange(
   endPage: number,
   onProgress?: (current: number, total: number) => void
 ): Promise<PDFExtractionResult> {
-  const pdfjsLib = await loadPdfjs();
-  const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
+  return withPdf(file, async (pdf, pdfjsLib) => {
+    const totalPages = pdf.numPages;
+    const actualStart = Math.max(1, startPage);
+    const actualEnd = Math.min(totalPages, endPage);
+    const pages: PageExtractionResult[] = [];
+    const errors: string[] = [];
 
-  const totalPages = pdf.numPages;
-  const actualStart = Math.max(1, startPage);
-  const actualEnd = Math.min(totalPages, endPage);
-  const pages: PageExtractionResult[] = [];
-  const errors: string[] = [];
+    for (let pageNum = actualStart; pageNum <= actualEnd; pageNum++) {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
 
-  for (let pageNum = actualStart; pageNum <= actualEnd; pageNum++) {
-    try {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
+        const textItems = textContent.items
+          .filter((item) => 'str' in item && typeof item.str === 'string')
+          .map((item) => (item as { str: string }).str);
 
-      const textItems = textContent.items
-        .filter((item) => 'str' in item && typeof item.str === 'string')
-        .map((item) => (item as { str: string }).str);
+        const pageText = textItems.join(' ').trim();
 
-      const pageText = textItems.join(' ').trim();
+        const operators = await page.getOperatorList();
+        const hasImages = operators.fnArray.some(
+          (fn) =>
+            fn === pdfjsLib.OPS.paintImageXObject ||
+            fn === pdfjsLib.OPS.paintImageMaskXObject
+        );
 
-      const operators = await page.getOperatorList();
-      const hasImages = operators.fnArray.some(
-        (fn) =>
-          fn === pdfjsLib.OPS.paintImageXObject ||
-          fn === pdfjsLib.OPS.paintImageMaskXObject
-      );
+        pages.push({
+          pageNumber: pageNum,
+          text: pageText,
+          hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
+          hasImages,
+        });
 
-      pages.push({
-        pageNumber: pageNum,
-        text: pageText,
-        hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-        hasImages,
-      });
-
-      if (onProgress) {
-        onProgress(pageNum - actualStart + 1, actualEnd - actualStart + 1);
+        if (onProgress) {
+          onProgress(pageNum - actualStart + 1, actualEnd - actualStart + 1);
+        }
+      } catch (pageError) {
+        errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
+        pages.push({
+          pageNumber: pageNum,
+          text: '',
+          hasText: false,
+          hasImages: false,
+        });
       }
-    } catch (pageError) {
-      errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
-      pages.push({
-        pageNumber: pageNum,
-        text: '',
-        hasText: false,
-        hasImages: false,
-      });
     }
-  }
 
-  const fullText = pages.map((p) => p.text).join('\n\n');
-  const pagesWithText = pages.filter((p) => p.hasText).length;
-  const pagesWithImages = pages.filter((p) => p.hasImages).length;
-  const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
+    const fullText = pages.map((p) => p.text).join('\n\n');
+    const pagesWithText = pages.filter((p) => p.hasText).length;
+    const pagesWithImages = pages.filter((p) => p.hasImages).length;
+    const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
 
-  const isScanned =
-    textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
-    pagesWithImages > 0 &&
-    fullText.length < pages.length * MIN_TEXT_CHARS_PER_PAGE;
+    const isScanned =
+      textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
+      pagesWithImages > 0 &&
+      fullText.length < pages.length * MIN_TEXT_CHARS_PER_PAGE;
 
-  const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
+    const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
 
-  return {
-    totalPages,
-    fullText,
-    pages,
-    isScanned,
-    textConfidence,
-    errors,
-  };
+    return {
+      totalPages,
+      fullText,
+      pages,
+      isScanned,
+      textConfidence,
+      errors,
+    };
+  });
 }
 
 /**
@@ -341,26 +351,25 @@ export async function renderPdfPages(
   file: File | ArrayBuffer,
   options: RenderPdfPagesOptions = {}
 ): Promise<Blob[]> {
-  const pdfjsLib = await loadPdfjs();
   const { scale = 2, maxPages, onProgress } = options;
-  const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const pagesToRender = maxPages ? Math.min(maxPages, pdf.numPages) : pdf.numPages;
-  const images: Blob[] = [];
+  return withPdf(file, async (pdf) => {
+    const pagesToRender = maxPages ? Math.min(maxPages, pdf.numPages) : pdf.numPages;
+    const images: Blob[] = [];
 
-  for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
+    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
 
-    await page.render({ canvas, viewport }).promise;
-    images.push(await canvasToPng(canvas));
-    onProgress?.(pageNum, pagesToRender);
-  }
+      await page.render({ canvas, viewport }).promise;
+      images.push(await canvasToPng(canvas));
+      onProgress?.(pageNum, pagesToRender);
+    }
 
-  return images;
+    return images;
+  });
 }
 
 function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
