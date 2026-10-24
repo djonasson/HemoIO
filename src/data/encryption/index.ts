@@ -10,7 +10,8 @@
 
 const SALT_LENGTH = 16;
 const IV_LENGTH = 12;
-const PBKDF2_ITERATIONS = 100000;
+/** PBKDF2 iterations of v1 credentials; v1 data keys are derived with this count */
+export const PBKDF2_ITERATIONS = 100000;
 const KEY_LENGTH = 256;
 
 /**
