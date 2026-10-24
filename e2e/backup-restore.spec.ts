@@ -262,9 +262,8 @@ test.describe('Backup & Restore Settings', () => {
       await page.getByRole('tab', { name: /data/i }).focus();
       await page.keyboard.press('ArrowRight');
 
-      await expect(
-        page.getByRole('tab', { name: /ai configuration/i })
-      ).toBeFocused();
+      // Security comes right after Data
+      await expect(page.getByRole('tab', { name: 'Security' })).toBeFocused();
     });
   });
 });
