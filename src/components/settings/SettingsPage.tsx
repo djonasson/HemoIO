@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Stack, Title, Tabs } from '@mantine/core';
 import { useMantineColorScheme } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   IconDatabase,
   IconRobot,
@@ -208,8 +209,14 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       setIsSavingTargets(true);
       try {
         await setPersonalTarget(biomarkerKey, target);
-      } catch {
-        console.error('Failed to save personal target');
+      } catch (err) {
+        notifications.show({
+          title: 'Personal target not saved',
+          message: 'Your target could not be saved. Try again.',
+          color: 'red',
+        });
+        // Passed on so the targets list does not confirm the save
+        throw err;
       } finally {
         setIsSavingTargets(false);
       }
@@ -219,12 +226,12 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
   const handleSetTarget = useCallback(
     (biomarkerKey: string, low: number | undefined, high: number | undefined) =>
-      void saveTarget(biomarkerKey, { low, high }),
+      saveTarget(biomarkerKey, { low, high }),
     [saveTarget]
   );
 
   const handleClearTarget = useCallback(
-    (biomarkerKey: string) => void saveTarget(biomarkerKey, null),
+    (biomarkerKey: string) => saveTarget(biomarkerKey, null),
     [saveTarget]
   );
 

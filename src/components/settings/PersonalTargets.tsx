@@ -48,10 +48,14 @@ export interface PersonalTarget {
 export interface PersonalTargetsProps {
   /** List of biomarkers with their targets */
   targets: PersonalTarget[];
-  /** Called when a personal target is set */
-  onSetTarget: (biomarkerKey: string, low: number | undefined, high: number | undefined) => void;
+  /** Called when a personal target is set; a rejected promise means it was not saved */
+  onSetTarget: (
+    biomarkerKey: string,
+    low: number | undefined,
+    high: number | undefined
+  ) => void | Promise<void>;
   /** Called when a personal target is cleared */
-  onClearTarget: (biomarkerKey: string) => void;
+  onClearTarget: (biomarkerKey: string) => void | Promise<void>;
   /** Whether changes are being saved */
   isSaving?: boolean;
 }
@@ -84,29 +88,30 @@ export function PersonalTargets({
     setEditingTarget(target);
   }, []);
 
+  // Confirm briefly, only once the change is saved; whoever saves reports a failure
+  const confirmWhenSaved = useCallback((save: void | Promise<void>) => {
+    Promise.resolve(save).then(
+      () => {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      },
+      () => {}
+    );
+  }, []);
+
   // Handle save target
   const handleSaveTarget = useCallback(
     (biomarkerKey: string, low: number | undefined, high: number | undefined) => {
-      onSetTarget(biomarkerKey, low, high);
       setEditingTarget(null);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      confirmWhenSaved(onSetTarget(biomarkerKey, low, high));
     },
-    [onSetTarget]
+    [onSetTarget, confirmWhenSaved]
   );
 
   // Handle clear target
   const handleClearTarget = useCallback(
-    (biomarkerKey: string) => {
-      onClearTarget(biomarkerKey);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
-    },
-    [onClearTarget]
+    (biomarkerKey: string) => confirmWhenSaved(onClearTarget(biomarkerKey)),
+    [onClearTarget, confirmWhenSaved]
   );
 
   // Handle close modal

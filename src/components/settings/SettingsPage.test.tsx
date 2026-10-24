@@ -30,6 +30,11 @@ const mockPreferences = vi.hoisted(() => ({
   reload: vi.fn(),
 }));
 
+const mockShowNotification = vi.hoisted(() => vi.fn());
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: (...args: unknown[]) => mockShowNotification(...args) },
+}));
+
 // Per-test overrides for the AI hooks
 const mockAI = vi.hoisted(() => ({
   hasApiKey: false,
@@ -132,6 +137,7 @@ describe('SettingsPage', () => {
     mockDb.savePreferences.mockResolvedValue(1);
     mockDb.updatePreferences.mockResolvedValue(undefined);
     mockPreferences.setPersonalTarget.mockResolvedValue(undefined);
+    mockShowNotification.mockReset();
     Object.assign(mockAI, {
       hasApiKey: false,
       apiKey: null,
@@ -299,6 +305,35 @@ describe('SettingsPage', () => {
           high: 95,
         })
       );
+    });
+
+    it('tells the user a personal target was not saved, and does not claim it was', async () => {
+      mockPreferences.setPersonalTarget.mockRejectedValueOnce(new Error('quota'));
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /personal targets/i }));
+      await user.click(screen.getByRole('button', { name: 'Set personal target for Glucose' }));
+      await user.clear(screen.getByLabelText('Personal target high value'));
+      await user.type(screen.getByLabelText('Personal target high value'), '95');
+      await user.click(screen.getByRole('button', { name: 'Save Target' }));
+
+      await waitFor(() =>
+        expect(mockShowNotification).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'Personal target not saved', color: 'red' })
+        )
+      );
+      expect(screen.queryByText('Personal target saved')).not.toBeInTheDocument();
+    });
+
+    it('confirms a personal target once it is saved', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /personal targets/i }));
+      await user.click(screen.getByRole('button', { name: 'Clear personal target for Glucose' }));
+
+      expect(await screen.findByText('Personal target saved')).toBeInTheDocument();
     });
 
     it('clears a personal target through the shared preferences', async () => {
