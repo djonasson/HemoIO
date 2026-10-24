@@ -13,6 +13,7 @@ import { test, expect, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import { setupOrUnlock } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
+import { goToTimeline, labResultCard, labResultCards } from './steps/timeline.steps';
 
 /**
  * Helper to open export dialog
@@ -232,5 +233,34 @@ test.describe('Export with Data', () => {
 
     // Both lab results remain in range; only the one Glucose value is included
     await expect(exportDialog(page).getByText('2 lab results, 1 test value')).toBeVisible();
+  });
+});
+
+test.describe('Export after changes in this session', () => {
+  test('includes changes made since the app was opened', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page);
+
+    // When I delete the lab result from 2024-01-15
+    await goToTimeline(page);
+    await labResultCard(page, '2024-01-15')
+      .getByRole('button', { name: 'Delete this lab result' })
+      .click();
+    const confirm = page.getByRole('dialog', { name: 'Delete Lab Result' });
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(labResultCards(page)).toHaveCount(1);
+
+    // And I export to JSON format
+    await openExportDialog(page);
+    await selectExportFormat(page, 'JSON (Full Backup)');
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+
+    // Then the exported file contains only the lab result from 2024-02-20
+    const backup = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
+    expect(backup.labResults).toHaveLength(1);
+    expect(backup.labResults[0].date).toMatch(/^2024-02-20/);
   });
 });

@@ -4,3 +4,4 @@ export { AISettingsProvider } from './AISettingsContext';
 export { EncryptedApiKeyProvider } from './EncryptedApiKeyContext';
 export { AlertStateProvider } from './AlertStateContext';
 export { PreferencesProvider } from './PreferencesContext';
+export { LabResultsProvider } from './LabResultsContext';

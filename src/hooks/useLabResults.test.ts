@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useLabResults } from './useLabResults';
+import { LabResultsProvider } from '@contexts/LabResultsContext';
 import type { LabResult, TestValue } from '@/types';
 
 // Mock useEncryptedDb
@@ -103,7 +104,7 @@ describe('useLabResults', () => {
       isReady: false,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -120,7 +121,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -137,7 +138,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -156,7 +157,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -180,7 +181,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -209,7 +210,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -235,7 +236,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -260,7 +261,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -284,7 +285,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -302,6 +303,50 @@ describe('useLabResults', () => {
     expect(result.current.results.find((r) => r.id === 1)).toBeUndefined();
   });
 
+  it('loads the results once for every view that shows them', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+
+    const { result } = renderHook(() => [useLabResults(), useLabResults()] as const, {
+      wrapper: LabResultsProvider,
+    });
+
+    await waitFor(() => expect(result.current[0].isLoading).toBe(false));
+    expect(result.current[1].results).toHaveLength(3);
+    expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a deletion made in one view in every other', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+
+    const { result } = renderHook(() => [useLabResults(), useLabResults()] as const, {
+      wrapper: LabResultsProvider,
+    });
+    await waitFor(() => expect(result.current[0].isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current[0].deleteResult(1);
+    });
+
+    expect(result.current[1].results.find((r) => r.id === 1)).toBeUndefined();
+  });
+
+  it('keeps filters to the view that set them', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+
+    const { result } = renderHook(() => [useLabResults(), useLabResults()] as const, {
+      wrapper: LabResultsProvider,
+    });
+    await waitFor(() => expect(result.current[0].isLoading).toBe(false));
+
+    act(() => result.current[0].setFilters({ searchTerm: 'labcorp' }));
+
+    expect(result.current[0].results).toHaveLength(1);
+    expect(result.current[1].results).toHaveLength(3);
+  });
+
   it('should handle errors during fetch', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const mockDb = createMockDb();
@@ -311,7 +356,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -330,7 +375,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -350,7 +395,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -386,7 +431,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
@@ -416,7 +461,7 @@ describe('useLabResults', () => {
       isReady: true,
     });
 
-    const { result } = renderHook(() => useLabResults());
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);

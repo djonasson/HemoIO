@@ -46,6 +46,12 @@ Feature: Export Lab Results
     When I export to JSON format
     Then the exported file should include all my notes
 
+  Scenario: Export includes changes made since the app was opened
+    Given I have lab results from "2024-01-15" and "2024-02-20"
+    When I delete the lab result from "2024-01-15"
+    And I export to JSON format
+    Then the exported file should contain only the lab result from "2024-02-20"
+
   # Export Dialog
   Scenario: Export dialog shows available options
     When I click the "Export" button

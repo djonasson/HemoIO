@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   AppShell as MantineAppShell,
   Burger,
@@ -36,6 +36,7 @@ import {
   useFilesystemSync,
   useAISettings,
   useAlerts,
+  useLabResults,
   usePreferences,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
@@ -121,23 +122,18 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [activeView, setActiveView] = useState<View>('timeline');
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
-  const {
-    dataSources,
-    labResultsData,
-    biomarkerOptions,
-    refresh: refreshExportData,
-  } = useExportData();
+  // Loaded when the export dialog opens, so an export has what is stored now
+  const { dataSources, labResultsData, biomarkerOptions } = useExportData({
+    enabled: exportDialogOpen,
+  });
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
-  const { unacknowledgedCount: alertCount, refresh: refreshAlerts } = useAlerts();
+  const { unacknowledgedCount: alertCount } = useAlerts();
+  const { refresh: refreshLabResults } = useLabResults();
   const { reload: reloadPreferences } = usePreferences();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
-  // The badge's data must follow imports, restores and deletions made in other views
-  useEffect(() => {
-    void refreshAlerts();
-  }, [activeView, refreshAlerts]);
 
   const { syncNow } = useFilesystemSync();
 
@@ -198,6 +194,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           });
         }
 
+        // Every view, the alerts badge included, shows the new results
+        await refreshLabResults();
+
         // Sync to filesystem if enabled
         await syncNow();
 
@@ -213,7 +212,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         });
       }
     },
-    [db, isReady, syncNow]
+    [db, isReady, syncNow, refreshLabResults]
   );
 
   const handleNavigateToImport = useCallback(() => {
@@ -250,8 +249,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           });
         }
 
-        // Refresh export data
-        await refreshExportData();
+        await refreshLabResults();
 
         // Sync to filesystem if enabled
         await syncNow();
@@ -282,7 +280,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       db,
       isReady,
       reloadPreferences,
-      refreshExportData,
+      refreshLabResults,
       syncNow,
       setAiProvider,
       setOpenaiModel,

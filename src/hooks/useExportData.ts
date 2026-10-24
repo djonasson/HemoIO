@@ -48,7 +48,15 @@ export interface UseExportDataResult {
  * }
  * ```
  */
-export function useExportData(): UseExportDataResult {
+export interface UseExportDataOptions {
+  /**
+   * Load while true, and again each time it turns true, so data is as current
+   * as when the export was opened. Defaults to true.
+   */
+  enabled?: boolean;
+}
+
+export function useExportData({ enabled = true }: UseExportDataOptions = {}): UseExportDataResult {
   const { db, isReady } = useEncryptedDb();
   const [dataSources, setDataSources] = useState<ExportDataSources>({
     labResults: [],
@@ -139,10 +147,9 @@ export function useExportData(): UseExportDataResult {
     }
   }, [db, isReady]);
 
-  // Fetch data on mount and when db changes
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (enabled) void fetchData();
+  }, [enabled, fetchData]);
 
   /**
    * Refresh data from database

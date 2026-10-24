@@ -1,12 +1,12 @@
 /**
- * Hook to fetch and manage lab results
+ * Hook to read and manage lab results
  *
  * Provides lab results with their test values, enriched with status information
- * and filtering capabilities.
+ * and filtering capabilities. Must be used within a LabResultsProvider: every
+ * view reads the one copy it loads, and each view filters it on its own.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useEncryptedDb } from './useEncryptedDb';
+import { createContext, useContext, useMemo, useState } from 'react';
 import type { LabResult, TestValue } from '@/types';
 
 /**
@@ -69,6 +69,20 @@ export interface UseLabResultsResult {
 }
 
 /**
+ * The shared, unfiltered lab results a LabResultsProvider loads
+ */
+export interface LabResultsStore {
+  allResults: LabResultWithDetails[];
+  isLoading: boolean;
+  error: string | null;
+  /** Reload from the database; called after imports and restores */
+  refresh: () => Promise<void>;
+  deleteResult: (id: number) => Promise<void>;
+}
+
+export const LabResultsContext = createContext<LabResultsStore | null>(null);
+
+/**
  * Determine the status of a test value based on reference range
  */
 function getTestValueStatus(testValue: TestValue): TestValueStatus {
@@ -99,7 +113,7 @@ function getTestValueStatus(testValue: TestValue): TestValueStatus {
 /**
  * Enrich a test value with status information
  */
-function enrichTestValue(testValue: TestValue): EnrichedTestValue {
+export function enrichTestValue(testValue: TestValue): EnrichedTestValue {
   return {
     ...testValue,
     status: getTestValueStatus(testValue),
@@ -134,64 +148,12 @@ function enrichTestValue(testValue: TestValue): EnrichedTestValue {
  * ```
  */
 export function useLabResults(): UseLabResultsResult {
-  const { db, isReady } = useEncryptedDb();
-  const [allResults, setAllResults] = useState<LabResultWithDetails[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const store = useContext(LabResultsContext);
+  if (!store) {
+    throw new Error('useLabResults must be used within a LabResultsProvider');
+  }
+  const { allResults, isLoading, error, refresh, deleteResult } = store;
   const [filters, setFilters] = useState<LabResultFilters>({});
-
-  /**
-   * Fetch all lab results with their test values
-   */
-  const fetchResults = useCallback(async () => {
-    if (!db || !isReady) {
-      setAllResults([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Fetch all lab results
-      const labResults = await db.getAllLabResults();
-
-      // Fetch test values for each result and compute enriched data
-      const resultsWithDetails: LabResultWithDetails[] = await Promise.all(
-        labResults.map(async (labResult) => {
-          const testValues = labResult.id
-            ? await db.getTestValuesByLabResult(labResult.id)
-            : [];
-
-          const enrichedTestValues = testValues.map(enrichTestValue);
-          const abnormalCount = enrichedTestValues.filter(
-            (tv) => tv.status === 'low' || tv.status === 'high'
-          ).length;
-
-          return {
-            ...labResult,
-            testValues: enrichedTestValues,
-            abnormalCount,
-            totalCount: testValues.length,
-          };
-        })
-      );
-
-      setAllResults(resultsWithDetails);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load lab results';
-      setError(message);
-      console.error('Error fetching lab results:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [db, isReady]);
-
-  // Fetch results on mount and when db changes
-  useEffect(() => {
-    fetchResults();
-  }, [fetchResults]);
 
   /**
    * Apply filters to the results
@@ -220,35 +182,6 @@ export function useLabResults(): UseLabResultsResult {
 
     return results;
   }, [allResults, filters]);
-
-  /**
-   * Delete a lab result
-   */
-  const deleteResult = useCallback(
-    async (id: number) => {
-      if (!db) {
-        throw new Error('Database not available');
-      }
-
-      try {
-        await db.deleteLabResult(id);
-        // Remove from local state immediately for responsive UI
-        setAllResults((prev) => prev.filter((r) => r.id !== id));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to delete lab result';
-        setError(message);
-        throw new Error(message);
-      }
-    },
-    [db]
-  );
-
-  /**
-   * Refresh data from database
-   */
-  const refresh = useCallback(async () => {
-    await fetchResults();
-  }, [fetchResults]);
 
   return {
     results: filteredResults,

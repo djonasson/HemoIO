@@ -8,6 +8,7 @@ import {
   AISettingsProvider,
   AlertStateProvider,
   EncryptedApiKeyProvider,
+  LabResultsProvider,
   PreferencesProvider,
   useAuth,
 } from '@contexts';
@@ -55,7 +56,9 @@ function App(): React.ReactNode {
           <AISettingsProvider>
             <AlertStateProvider>
               <PreferencesProvider>
-                <AppContent />
+                <LabResultsProvider>
+                  <AppContent />
+                </LabResultsProvider>
               </PreferencesProvider>
             </AlertStateProvider>
           </AISettingsProvider>

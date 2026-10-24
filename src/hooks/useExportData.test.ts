@@ -50,6 +50,25 @@ describe('useExportData', () => {
     expect(result.current.dataSources.settings).toEqual(settings);
   });
 
+  it('loads nothing until enabled, then reloads each time it is enabled again', async () => {
+    mockDb.getAllLabResults.mockResolvedValue([]);
+    mockDb.getAllTestValues.mockResolvedValue([]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { rerender } = renderHook(({ enabled }) => useExportData({ enabled }), {
+      initialProps: { enabled: false },
+    });
+    expect(mockDb.getAllLabResults).not.toHaveBeenCalled();
+
+    // Opening the export dialog loads the data as it is now
+    rerender({ enabled: true });
+    await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(1));
+
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(2));
+  });
+
   it('should return empty data sources when db returns empty arrays', async () => {
     mockDb.getAllLabResults.mockResolvedValue([]);
     mockDb.getAllTestValues.mockResolvedValue([]);
