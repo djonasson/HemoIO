@@ -29,8 +29,11 @@ export interface AuthContextValue {
   encryptionKey: CryptoKey | null;
   unlock: (password: string) => Promise<boolean>;
   lock: () => void;
-  /** Creates credentials, unlocks, and returns the session key */
-  setupPassword: (password: string) => Promise<CryptoKey>;
+  /**
+   * Creates credentials, runs `prepare` with the session key (to store what
+   * setup collected, encrypted), then unlocks: the app starts with it all
+   */
+  setupPassword: (password: string, prepare?: (key: CryptoKey) => Promise<void>) => Promise<void>;
   /** Re-wraps the data key under a new password; never throws */
   changePassword: (current: string, next: string) => Promise<ChangePasswordResult>;
   isSetupComplete: () => boolean;
@@ -103,16 +106,19 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     return credentials !== null || loadStoredCredentials() !== null;
   }, [credentials]);
 
-  const setupPassword = useCallback(async (password: string): Promise<CryptoKey> => {
-    const { credentials: newCredentials, key } = await createCredentialsV2(password);
-    saveStoredCredentials(newCredentials);
-    setCredentials(newCredentials);
+  const setupPassword = useCallback(
+    async (password: string, prepare?: (key: CryptoKey) => Promise<void>): Promise<void> => {
+      const { credentials: newCredentials, key } = await createCredentialsV2(password);
+      saveStoredCredentials(newCredentials);
+      setCredentials(newCredentials);
+      await prepare?.(key);
 
-    // Automatically unlock after setup
-    setEncryptionKey(key);
-    setStatus('unlocked');
-    return key;
-  }, []);
+      // Automatically unlock after setup
+      setEncryptionKey(key);
+      setStatus('unlocked');
+    },
+    []
+  );
 
   const unlock = useCallback(
     async (password: string): Promise<boolean> => {

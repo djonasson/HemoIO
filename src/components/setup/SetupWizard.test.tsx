@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetupWizard } from './SetupWizard';
 import { AuthProvider } from '@contexts';
+import { AuthContext, type AuthContextValue } from '@contexts/AuthContext';
 import { encryptString } from '@data/encryption';
 
 // Mock the encryption module
@@ -154,6 +155,49 @@ describe('SetupWizard', () => {
       expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
     });
   });
+
+  it('stores the AI setup before the app unlocks, so the app starts with it', async () => {
+    const user = userEvent.setup();
+    let storedBeforeUnlock = false;
+    const auth = {
+      status: 'needs_setup',
+      encryptionKey: null,
+      unlock: vi.fn(),
+      lock: vi.fn(),
+      changePassword: vi.fn(),
+      isSetupComplete: () => false,
+      // Unlocks once the setup step has run, as AuthProvider does
+      setupPassword: vi.fn(async (_password: string, prepare?: (key: CryptoKey) => Promise<void>) => {
+        const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+          'encrypt',
+          'decrypt',
+        ]);
+        await prepare?.(key);
+        storedBeforeUnlock = localStorage.getItem('hemoio_ai_api_key_encrypted') !== null;
+      }),
+    } satisfies AuthContextValue;
+    render(
+      <MantineProvider env="test">
+        <AuthContext.Provider value={auth}>
+          <SetupWizard onComplete={mockOnComplete} />
+        </AuthContext.Provider>
+      </MantineProvider>
+    );
+
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+    await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+    await user.click(screen.getByRole('textbox', { name: 'AI Provider' }));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic (Claude)' }));
+    await user.type(screen.getByLabelText('API Key'), 'sk-ant-test-1234');
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+    await user.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+    await waitFor(() => expect(mockOnComplete).toHaveBeenCalled());
+    expect(storedBeforeUnlock).toBe(true);
+    expect(localStorage.getItem('hemoio_ai_provider')).toBe('anthropic');
+  }, 15000);
 
   it('encrypts the API key with the key the password setup returned', async () => {
     const user = userEvent.setup();

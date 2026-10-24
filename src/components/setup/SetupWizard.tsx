@@ -101,26 +101,24 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const handleComplete = useCallback(async () => {
     setIsSubmitting(true);
     try {
-      // Setup password and get the session encryption key
-      const encryptionKey = await setupPassword(password);
+      // Stored before the app unlocks, so the providers that load at unlock
+      // (API key, AI settings) start with them
+      await setupPassword(password, async (encryptionKey) => {
+        localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
 
-      // Save storage provider to localStorage
-      localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
+        if (aiProvider) {
+          localStorage.setItem('hemoio_ai_provider', aiProvider);
 
-      // Save AI configuration to localStorage
-      if (aiProvider) {
-        localStorage.setItem('hemoio_ai_provider', aiProvider);
+          if (apiKey) {
+            const encryptedApiKey = await encryptString(apiKey, encryptionKey);
+            localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+          }
 
-        // Encrypt API key if provided
-        if (apiKey) {
-          const encryptedApiKey = await encryptString(apiKey, encryptionKey);
-          localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+          if (aiProvider === 'ollama' && ollamaModel) {
+            localStorage.setItem('hemoio_ollama_model', ollamaModel);
+          }
         }
-
-        if (aiProvider === 'ollama' && ollamaModel) {
-          localStorage.setItem('hemoio_ollama_model', ollamaModel);
-        }
-      }
+      });
 
       onComplete();
     } catch (error) {

@@ -111,18 +111,33 @@ describe('AuthContext', () => {
   });
 
   describe('setupPassword', () => {
-    it('writes v2 credentials, unlocks, and returns the session key', async () => {
+    it('writes v2 credentials and unlocks', async () => {
       renderAuth();
 
-      let key: CryptoKey | undefined;
       await act(async () => {
-        key = await auth.setupPassword(OLD);
+        await auth.setupPassword(OLD);
       });
 
       expect(isCredentialsV2(storedCredentials())).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      expect(auth.encryptionKey).toBe(key);
-      expect(key!.extractable).toBe(false);
+      expect(auth.encryptionKey?.extractable).toBe(false);
+    });
+
+    it('runs the setup step with the session key before reporting unlocked', async () => {
+      renderAuth();
+      let statusDuringPrepare = '';
+      let preparedWith: CryptoKey | undefined;
+
+      await act(async () => {
+        await auth.setupPassword(OLD, async (key) => {
+          statusDuringPrepare = screen.getByTestId('status').textContent ?? '';
+          preparedWith = key;
+        });
+      });
+
+      expect(statusDuringPrepare).toBe('needs_setup');
+      expect(auth.encryptionKey).toBe(preparedWith);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
   });
 
