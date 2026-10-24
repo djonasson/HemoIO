@@ -101,7 +101,9 @@ export function NoteDisplay({
     );
   }
 
+  // An unreadable edit date (NaN) is not an edit
   const wasEdited =
+    !Number.isNaN(note.updatedAt.getTime()) &&
     note.updatedAt.getTime() !== note.createdAt.getTime();
 
   return (

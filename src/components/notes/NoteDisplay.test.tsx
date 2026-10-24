@@ -68,6 +68,13 @@ describe('NoteDisplay', () => {
       expect(badges).toHaveLength(0);
     });
 
+    it('does not call a note edited when its edit date is unreadable', () => {
+      renderWithProviders(
+        <NoteDisplay {...defaultProps} note={createMockNote({ updatedAt: new Date('15/01/2024') })} />
+      );
+      expect(screen.queryByText(/edited/)).not.toBeInTheDocument();
+    });
+
     it('should show when the note was edited', () => {
       const note = createMockNote({
         createdAt: new Date('2024-01-15T10:00:00'),

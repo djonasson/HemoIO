@@ -23,6 +23,15 @@ export function RelativeTime({
   precision = 'minute',
   template,
 }: RelativeTimeProps): React.ReactNode {
+  // A date restored from an old or edited backup may not be readable
+  if (Number.isNaN(date.getTime())) {
+    return (
+      <Text component="span" size="xs" c="dimmed">
+        {template ? template('unknown date') : 'unknown date'}
+      </Text>
+    );
+  }
+
   const relative = precision === 'day' ? formatRelativeTime(date) : formatRelativeDateTime(date);
   const full = precision === 'day' ? date.toLocaleDateString() : FULL_DATE_TIME.format(date);
 

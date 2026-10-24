@@ -8,6 +8,11 @@ function renderTime(ui: React.ReactElement) {
 }
 
 describe('RelativeTime', () => {
+  it('shows "unknown date" for an invalid date instead of failing', () => {
+    renderTime(<RelativeTime date={new Date('15/01/2024')} />);
+    expect(screen.getByText('unknown date')).toBeInTheDocument();
+  });
+
   it('shows the relative time in a focusable time element', () => {
     const date = new Date(Date.now() - 5 * 60_000);
     renderTime(<RelativeTime date={date} />);
