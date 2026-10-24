@@ -221,9 +221,10 @@ export async function analyzeLabReport(
     } else {
       // Use OCR for scanned PDFs and images
       if (documentType === 'scanned-pdf') {
-        // Use any embedded text layer if there is a meaningful amount of it
+        // Use any embedded text layer if there is a meaningful amount of it:
+        // letters and digits, not page breaks and stray marks
         const pdfResult = await extractTextFromPDF(file);
-        if (pdfResult.fullText.length > 100) {
+        if (pdfResult.fullText.replace(/[^\p{L}\p{N}]/gu, '').length > 100) {
           // Some text was found, use it
           extractedText = pdfResult.fullText;
           extractionMethod = 'pdf-text';

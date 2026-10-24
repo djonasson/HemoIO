@@ -542,6 +542,54 @@ describe('LabReportAnalyzer', () => {
       expect(sentText).not.toContain('Unable to extract text');
       expect(result.extractionMethod).toBe('ocr');
     });
+
+    it('runs OCR when the text layer is only page separators and stray marks', async () => {
+      vi.mocked(ocrModule.detectDocumentType).mockResolvedValueOnce({
+        type: 'scanned-pdf',
+        mimeType: 'application/pdf',
+        fileName: 'scan.pdf',
+        fileSize: 1024,
+        needsOCR: true,
+        confidence: 0.9,
+        metadata: { isValid: true },
+      });
+      vi.mocked(ocrModule.extractTextFromPDF).mockResolvedValueOnce({
+        // 40 pages with one stray mark each: over 100 characters, all but 40 of them breaks
+        fullText: Array(40).fill('.').join('\n\n'),
+        totalPages: 2,
+        pages: [],
+        isScanned: true,
+        textConfidence: 0,
+        errors: [],
+      });
+      const analyze = vi.fn().mockResolvedValue({
+        biomarkers: [],
+        overallConfidence: 0.9,
+        analyzedText: '',
+        warnings: [],
+        modelUsed: 'test',
+        processingTime: 1,
+      });
+      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
+        type: 'openai',
+        name: 'OpenAI',
+        analyzeLabReport: analyze,
+        validateConfiguration: vi.fn(),
+        testConnection: vi.fn(),
+      });
+
+      const result = await analyzeLabReport(createMockFile('scan.pdf', 'application/pdf'), {
+        aiProvider: 'openai',
+        aiConfig: { apiKey: 'sk-test-key', model: 'test-model' },
+      });
+
+      expect(ocrModule.renderPdfPages).toHaveBeenCalled();
+      const sentText = analyze.mock.calls[0][0] as string;
+      expect(sentText).toContain('Page one: Glucose 95 mg/dL');
+      expect(sentText).toContain('Page two: Hemoglobin 14.5 g/dL');
+      expect(sentText).not.toContain('Unable to extract text');
+      expect(result.extractionMethod).toBe('ocr');
+    });
   });
 
   describe('dictionary matching', () => {
