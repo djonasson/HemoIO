@@ -246,7 +246,7 @@ Last updated 2026-10-24. This section is the place to resume from.
 | 3 | Notes | Done and reviewed | [plan](../plans/2026-10-18-notes.md) |
 | 4 | Import and OCR | Done and reviewed | [plan](../plans/2026-10-23-import-and-ocr.md) |
 | 5 | Preferred units and biomarker detail | Done and reviewed | [plan](../plans/2026-10-23-preferred-units-and-biomarker-detail.md) |
-| 6 | Change password | Next. Spec written, no plan yet | [spec](2026-10-16-change-password-design.md) |
+| 6 | Change password | Done and reviewed | [spec](2026-10-16-change-password-design.md), [plan](../plans/2026-10-24-change-password.md) |
 
 Each finished plan ends with an **Outcome** section: the gates it passed, and the minor issues deferred for later.
 

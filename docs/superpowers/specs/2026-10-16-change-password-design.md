@@ -1,7 +1,7 @@
 # Change Password — Design
 
 **Date:** 2026-10-16
-**Status:** Approved in conversation, pending written-spec review
+**Status:** Implemented on `feature/gherkin-completion` (plan: `docs/superpowers/plans/2026-10-24-change-password.md`)
 **Branch:** `feature/change-password`
 
 ## Goal

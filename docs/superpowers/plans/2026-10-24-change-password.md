@@ -2389,3 +2389,27 @@ These steps follow the sub-project process in the gherkin-completion spec's Prog
 4. Mark sub-project 6 done in the spec's Progress section.
 5. Set the change-password spec's **Status** to "Implemented on `feature/gherkin-completion`".
 6. Delete the workspace.
+
+## Outcome (2026-10-24)
+
+Executed inline (commits 84c06ff..23038d7). A fresh reviewer (Opus) then reviewed the whole sub-project and found nothing Critical or Important. One of its minors was re-graded and fixed (2316fc8), and the full E2E run caught one more stale tab-order test (afcccfc).
+
+The fix pass covered:
+- **Requirement state for screen readers:** each password requirement showed met or not met only by an icon and its colour. It now also says "(met)" or "(not met)" in visually hidden text, in setup and in Settings.
+- **Tab order in E2E:** two keyboard tests (`settings.spec.ts`, `backup-restore.spec.ts`) expected AI Configuration right after Data. They now expect Security, as the spec orders the tabs.
+
+Found during execution:
+- **`aria-invalid`:** Mantine's `PasswordInput` marks errors with `data-invalid` only, so the form sets `aria-invalid` itself.
+- **Test-only adjustments:** a lint-clean test probe, `changePassword` added to mocked auth values, and a `useFormKeyboardSubmit` stub in the Settings page test's hooks mock.
+
+Gates:
+- build and lint pass (only the known chunk-size warning)
+- 1700 unit tests pass, with clean output
+- full E2E: 742/744 in both browsers on the full run, the 2 failures being the tab-order test fixed above; after the fix, both affected specs pass 120/120
+
+Deferred minors (not fixed; candidates for later work):
+- Leaving the Security tab, or locking, while a change runs hides the outcome. The change still completes.
+- `isCredentialsV2` sets no upper bound on the stored iteration count, so tampered credentials with a huge count freeze unlocking instead of failing.
+- A tab or installed app still running the pre-update build cannot unlock v2 credentials until it reloads.
+- The tampered-credentials unit test fails at base64 decoding; a flipped-byte variant would also pin the AES-GCM authentication path.
+- Chrome suggests a (hidden) username field in password forms, for password managers.
