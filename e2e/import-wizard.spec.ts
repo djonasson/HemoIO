@@ -287,6 +287,47 @@ test.describe('Import Wizard', () => {
       await expect(page.getByRole('option', { name: 'Hematocrit' })).toBeVisible();
     });
 
+    test('keeps the unit of a renamed value and asks for one that fits', async ({ page }) => {
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      // Typing passes through other biomarkers' names ("Hb" is Hemoglobin)
+      await reviewRow(page, 'Glucose').getByRole('button', { name: 'Edit biomarker' }).click();
+      const editing = main(page)
+        .getByRole('row')
+        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const name = editing.getByPlaceholder('Biomarker name');
+      await name.clear();
+      await name.pressSequentially('HbA1c');
+      await expect(editing.getByPlaceholder('Unit', { exact: true })).toHaveValue('mg/dL');
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+      await expect(reviewCell(reviewRow(page, 'HbA1c'), 'Unit')).toHaveText('mg/dL');
+
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      await expect(main(page).getByText('Cannot Continue')).toBeVisible();
+      await expect(
+        main(page).getByText(/HbA1c in ".*": mg\/dL is not a unit for Hemoglobin A1c/)
+      ).toBeVisible();
+    });
+
+    test('saves a name that matches no dictionary entry as typed', async ({ page }) => {
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
+      const editing = main(page)
+        .getByRole('row')
+        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      await editing.getByPlaceholder('Biomarker name').fill('Zorblatin');
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+
+      await continueToConfirm(page);
+      await saveResults(page);
+
+      const card = await expandLabResult(page, '2024-01-15');
+      await expect(card.getByRole('row').filter({ hasText: 'Zorblatin' })).toContainText('14.5');
+    });
+
     test('should allow adding missing values', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));

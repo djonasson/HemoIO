@@ -542,6 +542,45 @@ describe('ReviewStep', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it('asks for a unit that fits a renamed value instead of saving it in the wrong one', () => {
+      const onComplete = vi.fn();
+      const renamed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Hemoglobin A1c',
+            value: 42,
+            unit: 'g/dL',
+            confidence: 0.9,
+            isExactMatch: true,
+            normalizedUnit: 'g/dL',
+            renamedInReview: true,
+            dictionaryMatch: {
+              key: 'hemoglobin-a1c',
+              name: 'Hemoglobin A1c',
+              canonicalUnit: '%',
+              aliases: ['HbA1c'],
+              category: 'metabolic',
+              description: '',
+              alternativeUnits: ['mmol/mol'],
+              specimenType: 'other',
+              loincCode: '4548-4',
+              related: [],
+            },
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [renamed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(screen.getByText('Cannot Continue')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Hemoglobin A1c in "lab-report.pdf": g\/dL is not a unit for Hemoglobin A1c/)
+      ).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('allows unitless biomarkers (like pH) without unit', () => {
       const onComplete = vi.fn();
       const phResult: ReviewedResult = {

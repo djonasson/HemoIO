@@ -107,6 +107,12 @@ Feature: Import Wizard
     Then the name should be kept as I typed it
     And the value should be saved as an unknown biomarker
 
+  Scenario: Renaming a value keeps the unit it was measured in
+    Given I am editing a value of 95 mg/dL on the review step
+    When I rename it to "HbA1c"
+    Then its unit should still be "mg/dL"
+    And when I try to continue I should be asked to choose a unit for Hemoglobin A1c
+
   Scenario: User must set a missing lab date
     Given a reviewed file has no lab date
     When I try to continue

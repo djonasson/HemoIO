@@ -43,6 +43,7 @@ import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import {
   applyBiomarkerName,
   suggestBiomarkerNames,
+  unitFitsBiomarker,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
 import type { SpecimenType } from '../../types';
@@ -343,6 +344,18 @@ export function ReviewStep({
           if (!biomarkerDef || biomarkerDef.canonicalUnit !== '') {
             missing.push('unit');
           }
+        }
+
+        // A renamed value keeps the unit it was measured in: check it fits
+        if (
+          missing.length === 0 &&
+          b.renamedInReview &&
+          b.dictionaryMatch &&
+          !unitFitsBiomarker(b.dictionaryMatch, b.unit)
+        ) {
+          invalidBiomarkers.push(
+            `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${b.dictionaryMatch.name}. Choose its unit.`
+          );
         }
 
         if (missing.length > 0) {

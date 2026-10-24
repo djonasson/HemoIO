@@ -62,6 +62,8 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   hasDuplicateConflict?: boolean;
   /** Details about the duplicate conflict if present */
   duplicateConflict?: DuplicateConflict;
+  /** Set when the user renamed it in review: its unit must then fit the new name */
+  renamedInReview?: boolean;
 }
 
 /**

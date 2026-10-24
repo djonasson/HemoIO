@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { applyBiomarkerName, suggestBiomarkerNames, unitOptionsFor } from './biomarkerSuggestions';
+import {
+  applyBiomarkerName,
+  suggestBiomarkerNames,
+  unitFitsBiomarker,
+  unitOptionsFor,
+} from './biomarkerSuggestions';
 import { findBiomarker } from '@data/biomarkers/dictionary';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
@@ -59,10 +64,13 @@ describe('applyBiomarkerName', () => {
     expect(applyBiomarkerName({ ...base, unit: 'mmol/L' }, 'Glucose').unit).toBe('mmol/L');
   });
 
-  it('replaces a unit the new biomarker cannot have', () => {
-    const next = applyBiomarkerName(base, 'Hemoglobin');
-    expect(unitOptionsFor('Hemoglobin')).not.toContain('mg/dL');
-    expect(next.unit).toBe(findBiomarker('Hemoglobin')!.canonicalUnit);
+  it('never changes a unit the value has, and marks the value as renamed', () => {
+    // Typing passes through prefixes that match other biomarkers ("Hb" on the
+    // way to "HbA1c"): changing the unit on the way would save a wrong value
+    const ifcc: MatchedBiomarker = { ...base, name: '', value: 42, unit: 'mmol/mol' };
+    const typed = ['H', 'Hb', 'HbA', 'HbA1c'].reduce(applyBiomarkerName, ifcc);
+    expect(typed.unit).toBe('mmol/mol');
+    expect(typed.renamedInReview).toBe(true);
   });
 
   it('keeps the unit when the name is changed to free text', () => {
@@ -74,5 +82,21 @@ describe('applyBiomarkerName', () => {
     expect(next.name).toBe('Glucose fasting');
     expect(next.dictionaryMatch).toBeUndefined();
     expect(next.isExactMatch).toBe(false);
+  });
+});
+
+describe('unitFitsBiomarker', () => {
+  it('accepts the units the dictionary lists and units that convert', () => {
+    expect(unitFitsBiomarker(findBiomarker('Hemoglobin A1c')!, 'mmol/mol')).toBe(true);
+    expect(unitFitsBiomarker(findBiomarker('Glucose')!, 'MMOL/L')).toBe(true);
+  });
+
+  it('accepts Greek mu and "u" for micro', () => {
+    expect(unitFitsBiomarker(findBiomarker('Creatinine')!, '\u03bcmol/L')).toBe(true);
+    expect(unitFitsBiomarker(findBiomarker('Creatinine')!, 'umol/L')).toBe(true);
+  });
+
+  it('rejects a unit the biomarker cannot be measured in', () => {
+    expect(unitFitsBiomarker(findBiomarker('Hemoglobin A1c')!, 'g/dL')).toBe(false);
   });
 });

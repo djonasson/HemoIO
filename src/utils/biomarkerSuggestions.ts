@@ -1,7 +1,12 @@
 /**
  * Dictionary suggestions for typing a biomarker name in review
  */
-import { findBiomarker, searchBiomarkers } from '@data/biomarkers/dictionary';
+import {
+  findBiomarker,
+  searchBiomarkers,
+  type BiomarkerDefinition,
+} from '@data/biomarkers/dictionary';
+import { canConvert, normalizeUnit } from '@services/units/conversion';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /** Dictionary names containing the text, by name first, then by alias */
@@ -23,7 +28,10 @@ export function unitOptionsFor(name: string): string[] {
 
 /**
  * Rename a value: the dictionary match follows the name, so free text is
- * saved as an unknown biomarker rather than under its previous match
+ * saved as an unknown biomarker rather than under its previous match. The
+ * unit is left as it is (an empty one gets the biomarker's standard unit):
+ * typing passes through names of other biomarkers, and the number was
+ * measured in that unit. Review asks for a fitting unit before saving.
  */
 export function applyBiomarkerName<T extends MatchedBiomarker>(biomarker: T, name: string): T {
   const match = findBiomarker(name);
@@ -32,18 +40,24 @@ export function applyBiomarkerName<T extends MatchedBiomarker>(biomarker: T, nam
     name,
     dictionaryMatch: match,
     isExactMatch: match !== undefined,
-    unit: unitAfterRename(biomarker.unit, match?.canonicalUnit, unitOptionsFor(name)),
+    unit: biomarker.unit || match?.canonicalUnit || '',
+    renamedInReview: true,
   };
 }
 
+/** Units compared as written, ignoring case and how micro is spelled */
+function unitKey(unit: string): string {
+  return normalizeUnit(unit.trim().replace(/\u03bc/g, '\u00b5')).toLowerCase();
+}
+
 /**
- * The unit after a rename: kept when the biomarker can have it (or is not in
- * the dictionary), else the biomarker's own unit, so e.g. renaming Glucose
- * (mg/dL) to Hemoglobin does not save Hemoglobin in mg/dL
+ * Whether a value in `unit` can be saved under this biomarker: a unit the
+ * dictionary lists for it, or one that converts to its standard unit
  */
-function unitAfterRename(unit: string, canonicalUnit: string | undefined, options: string[]): string {
-  if (canonicalUnit === undefined) return unit;
-  if (!unit) return canonicalUnit;
-  const known = options.some((option) => option.toLowerCase() === unit.toLowerCase());
-  return known ? unit : canonicalUnit;
+export function unitFitsBiomarker(definition: BiomarkerDefinition, unit: string): boolean {
+  const listed = [definition.canonicalUnit, ...definition.alternativeUnits];
+  return (
+    listed.some((option) => unitKey(option) === unitKey(unit)) ||
+    canConvert(definition.name, unit, definition.canonicalUnit)
+  );
 }
