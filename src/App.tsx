@@ -8,6 +8,7 @@ import {
   AISettingsProvider,
   AlertStateProvider,
   EncryptedApiKeyProvider,
+  PreferencesProvider,
   useAuth,
 } from '@contexts';
 import { SetupWizard } from '@components/setup';
@@ -53,7 +54,9 @@ function App(): React.ReactNode {
         <EncryptedApiKeyProvider>
           <AISettingsProvider>
             <AlertStateProvider>
-              <AppContent />
+              <PreferencesProvider>
+                <AppContent />
+              </PreferencesProvider>
             </AlertStateProvider>
           </AISettingsProvider>
         </EncryptedApiKeyProvider>

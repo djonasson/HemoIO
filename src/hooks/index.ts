@@ -18,3 +18,4 @@ export {
   type UseLegacyKeyReconciliationResult,
 } from './useLegacyKeyReconciliation';
 export { useAlertState, type AlertState } from './useAlertState';
+export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';

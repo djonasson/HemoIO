@@ -49,19 +49,14 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
       setAcknowledgedThrough((prev) => ({ ...prev, [biomarkerKey]: through }));
       if (!db || !isReady) return;
 
-      const save = saveQueue.current.then(async () => {
-        const prefs = await db.getPreferences();
-        await db.savePreferences({
-          unitPreferences: prefs?.unitPreferences ?? {},
-          personalTargets: prefs?.personalTargets ?? {},
-          theme: prefs?.theme ?? 'system',
-          dateFormat: prefs?.dateFormat ?? 'MM/DD/YYYY',
+      const save = saveQueue.current.then(() =>
+        db.updatePreferences((prefs) => ({
           acknowledgedAlerts: {
             ...prefs?.acknowledgedAlerts,
             [biomarkerKey]: through.toISOString(),
           },
-        });
-      });
+        }))
+      );
       saveQueue.current = save.catch(() => undefined);
 
       try {

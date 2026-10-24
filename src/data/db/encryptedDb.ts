@@ -23,6 +23,13 @@ import type {
   UserNote,
 } from '@/types';
 
+const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id'> = {
+  unitPreferences: {},
+  personalTargets: {},
+  theme: 'system',
+  dateFormat: 'MM/DD/YYYY',
+};
+
 /**
  * Fields that should be encrypted for each table
  */
@@ -308,6 +315,24 @@ export class EncryptedDb {
 
     const id = await this.db.userPreferences.add(preferences as UserPreferences);
     return id!;
+  }
+
+  /**
+   * Read, change and write the preferences in one transaction, so writers
+   * changing different preferences at the same time never undo each other
+   */
+  async updatePreferences(
+    update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
+  ): Promise<void> {
+    await this.db.transaction('rw', this.db.userPreferences, async () => {
+      const existing = await this.db.userPreferences.toCollection().first();
+      const changes = update(existing);
+      if (existing?.id !== undefined) {
+        await this.db.userPreferences.update(existing.id, changes);
+      } else {
+        await this.db.userPreferences.add({ ...DEFAULT_PREFERENCES, ...changes } as UserPreferences);
+      }
+    });
   }
 
   // ============ Biomarkers ============

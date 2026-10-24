@@ -39,6 +39,7 @@ import {
   useAISettings,
   useLegacyKeyReconciliation,
   useAlerts,
+  usePreferences,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -128,6 +129,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount, refresh: refreshAlerts } = useAlerts();
+  const { reload: reloadPreferences } = usePreferences();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
@@ -241,6 +243,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
+        // A backup can bring unit preferences and personal targets
+        await reloadPreferences();
         if (options.restoreAISettings) {
           await restoreAISettings(data, {
             setAiProvider,
@@ -282,6 +286,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [
       db,
       isReady,
+      reloadPreferences,
       refreshExportData,
       syncNow,
       setAiProvider,

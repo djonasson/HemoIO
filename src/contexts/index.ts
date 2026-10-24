@@ -3,3 +3,4 @@ export { useAuth } from './useAuth';
 export { AISettingsProvider } from './AISettingsContext';
 export { EncryptedApiKeyProvider } from './EncryptedApiKeyContext';
 export { AlertStateProvider } from './AlertStateContext';
+export { PreferencesProvider } from './PreferencesContext';
