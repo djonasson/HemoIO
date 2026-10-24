@@ -46,6 +46,7 @@ import {
   unitFitsBiomarker,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
+import { resultsToSave } from './resultsToSave';
 import type { SpecimenType } from '../../types';
 
 /** Every dictionary name, the options of the name autocomplete */
@@ -367,8 +368,7 @@ export function ReviewStep({
 
     // Without a date a result would be saved as today: ask for it instead
     // Files left without values are not saved, so they need no date
-    const toSave = reviewedResults.filter((r) => r.editedBiomarkers.length > 0);
-    const missingDates = toSave
+    const missingDates = resultsToSave(reviewedResults)
       .filter((r) => !reviewedLabDate(r))
       .map((r) => `Enter the lab date for "${r.fileName}"`);
     const problems = [...missingDates, ...invalidBiomarkers];
@@ -379,7 +379,7 @@ export function ReviewStep({
     }
 
     setValidationError(null);
-    onComplete(toSave);
+    onComplete(reviewedResults);
   }, [reviewedResults, onComplete]);
 
   return (

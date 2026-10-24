@@ -8,7 +8,7 @@
  * 4. Confirm - Confirm and save results
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Stepper, Container, Title, Text, Paper } from '@mantine/core';
 import {
   IconUpload,
@@ -23,6 +23,7 @@ import type { AnalysisResult } from './AnalysisStep';
 import { ReviewStep } from './ReviewStep';
 import type { ReviewedResult } from './ReviewStep';
 import { ConfirmStep } from './ConfirmStep';
+import { resultsToSave } from './resultsToSave';
 
 /**
  * Props for ImportWizard
@@ -99,10 +100,12 @@ export function ImportWizard({
     nextStep();
   }, [nextStep]);
 
+  const toSave = useMemo(() => resultsToSave(reviewedResults), [reviewedResults]);
+
   // Handler for final confirmation
   const handleConfirm = useCallback(() => {
-    onComplete(reviewedResults);
-  }, [onComplete, reviewedResults]);
+    onComplete(toSave);
+  }, [onComplete, toSave]);
 
   // Render current step content
   const renderStepContent = () => {
@@ -138,7 +141,7 @@ export function ImportWizard({
       case 3:
         return (
           <ConfirmStep
-            results={reviewedResults}
+            results={toSave}
             onConfirm={handleConfirm}
             onBack={prevStep}
           />

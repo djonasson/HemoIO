@@ -963,7 +963,8 @@ describe('ReviewStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
-    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
+    // Handed back in full, so going back from Confirm keeps the empty file and its edits
+    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty]);
   });
 
   it('shows what the report said when its date could not be read', () => {
