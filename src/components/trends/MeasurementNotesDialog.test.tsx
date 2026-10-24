@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
@@ -80,5 +81,34 @@ describe('MeasurementNotesDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByRole('textbox', { name: 'Note content' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Note' })).toBeInTheDocument();
+  });
+
+  it('returns focus to what opened it when it closes', async () => {
+    function Page() {
+      const [open, setOpen] = useState(false);
+      return (
+        <MantineProvider env="test">
+          <button onClick={() => setOpen(true)}>125 mg/dL point</button>
+          <MeasurementNotesDialog
+            measurement={open ? measurement : null}
+            notes={[]}
+            onClose={() => setOpen(false)}
+            onCreateNote={vi.fn()}
+            onUpdateNote={vi.fn()}
+            onDeleteNote={vi.fn()}
+          />
+        </MantineProvider>
+      );
+    }
+    render(<Page />);
+    const opener = screen.getByRole('button', { name: '125 mg/dL point' });
+    opener.focus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('dialog');
+
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
   });
 });

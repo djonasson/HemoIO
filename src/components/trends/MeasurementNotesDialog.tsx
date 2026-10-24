@@ -38,9 +38,11 @@ export function MeasurementNotesDialog({
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  if (!measurement) return null;
-
-  const what = `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`;
+  // The modal stays mounted and opens and closes through `opened`, so it can
+  // return focus to the point that opened it
+  const what = measurement
+    ? `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`
+    : '';
   const close = () => {
     setAdding(false);
     onClose();
@@ -56,36 +58,48 @@ export function MeasurementNotesDialog({
   };
 
   return (
-    <Modal opened onClose={close} title={adding ? `Note for ${what}` : what} centered>
-      <Stack gap="sm">
-        <Group gap="xs">
-          {measurement.status && <Text size="sm">Status: {measurement.status}</Text>}
-          {measurement.labName && (
-            <Text size="sm" c="dimmed">
-              {measurement.labName}
-            </Text>
+    <Modal
+      opened={measurement !== null}
+      onClose={close}
+      title={adding ? `Note for ${what}` : what}
+      centered
+    >
+      {measurement && (
+        <Stack gap="sm">
+          <Group gap="xs">
+            {measurement.status && <Text size="sm">Status: {measurement.status}</Text>}
+            {measurement.labName && (
+              <Text size="sm" c="dimmed">
+                {measurement.labName}
+              </Text>
+            )}
+          </Group>
+          {notes.map((note) => (
+            <NoteDisplay
+              key={note.id}
+              note={note}
+              onUpdate={onUpdateNote}
+              onDelete={onDeleteNote}
+            />
+          ))}
+          {adding ? (
+            <NoteEditor
+              onSave={save}
+              onCancel={() => setAdding(false)}
+              isSaving={saving}
+              placeholder="Add a note about this measurement..."
+            />
+          ) : (
+            <Button
+              variant="light"
+              leftSection={<IconPlus size={14} />}
+              onClick={() => setAdding(true)}
+            >
+              Add Note
+            </Button>
           )}
-        </Group>
-        {notes.map((note) => (
-          <NoteDisplay key={note.id} note={note} onUpdate={onUpdateNote} onDelete={onDeleteNote} />
-        ))}
-        {adding ? (
-          <NoteEditor
-            onSave={save}
-            onCancel={() => setAdding(false)}
-            isSaving={saving}
-            placeholder="Add a note about this measurement..."
-          />
-        ) : (
-          <Button
-            variant="light"
-            leftSection={<IconPlus size={14} />}
-            onClick={() => setAdding(true)}
-          >
-            Add Note
-          </Button>
-        )}
-      </Stack>
+        </Stack>
+      )}
     </Modal>
   );
 }

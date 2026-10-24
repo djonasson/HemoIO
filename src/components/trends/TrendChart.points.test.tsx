@@ -3,7 +3,7 @@
  * so it is replaced by a fixed-size container to get the points drawn.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { cloneElement, isValidElement } from 'react';
+import { cloneElement, isValidElement, useState } from 'react';
 import { render, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
@@ -62,6 +62,32 @@ describe('TrendChart points', () => {
 
     expect(onPointSelect).toHaveBeenCalledTimes(3);
     expect(onPointSelect).toHaveBeenCalledWith(expect.objectContaining({ testValueId: 2 }));
+  });
+
+  it('keeps focus on a point selected with the keyboard when the page re-renders', async () => {
+    // The trends view stores the selected point, which re-renders the chart
+    function Page() {
+      const [selected, setSelected] = useState<TrendDataPoint | null>(null);
+      return (
+        <MantineProvider env="test">
+          <TrendChart
+            dataPoints={POINTS}
+            biomarkerName="Glucose"
+            unit="mg/dL"
+            onPointSelect={setSelected}
+            highlightDate={selected?.date}
+          />
+        </MantineProvider>
+      );
+    }
+    render(<Page />);
+
+    const first = point('125 mg/dL') as SVGElement;
+    act(() => first.focus());
+    await userEvent.keyboard('{Enter}');
+
+    expect(first.isConnected).toBe(true);
+    expect(document.activeElement).toBe(first);
   });
 
   it('shows the note preview and a focus ring while a point is focused', () => {

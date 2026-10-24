@@ -140,6 +140,18 @@ export function TrendChart({
   }, [dataPoints]);
 
   // Calculate y-axis domain with padding
+  // Stable between renders: a new label object makes Recharts redraw the line
+  // and replace its points, which drops the focus of a point being selected
+  const yAxisLabel = useMemo(
+    () => ({
+      value: unit,
+      angle: -90,
+      position: 'insideLeft' as const,
+      style: { textAnchor: 'middle' as const, fontSize: 12 },
+    }),
+    [unit]
+  );
+
   const yDomain = useMemo(() => {
     if (chartData.length === 0) {
       return [0, 100];
@@ -242,12 +254,7 @@ export function TrendChart({
               domain={yDomain}
               tick={{ fontSize: 12 }}
               tickMargin={8}
-              label={{
-                value: unit,
-                angle: -90,
-                position: 'insideLeft',
-                style: { textAnchor: 'middle', fontSize: 12 },
-              }}
+              label={yAxisLabel}
             />
 
             {/* Reference range area */}
