@@ -50,7 +50,7 @@ import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { saveImportResults } from '@services/persistence';
 import { modelForProvider } from '@services/ai';
-import { restoreAISettings, restoreBackup } from '@services/import';
+import { restoreAISettings, restoreBackup, runAfterRestore } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 
@@ -135,7 +135,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
-
 
   const { syncNow } = useFilesystemSync();
 
@@ -239,29 +238,46 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
-        // A backup can bring unit preferences, personal targets and acknowledgements
-        await Promise.all([reloadPreferences(), reloadAlertState()]);
-        if (options.restoreAISettings) {
-          await restoreAISettings(data, {
-            setAiProvider,
-            setOpenaiModel,
-            setAnthropicModel,
-            setOllamaModel,
-            setApiKey,
-          });
-        }
 
-        await refreshLabResults();
+        // The data is replaced: from here on a failure is not a failed restore
+        const failed = await runAfterRestore([
+          // A backup can bring unit preferences, personal targets and acknowledgements
+          { name: 'loading your preferences', run: reloadPreferences },
+          { name: 'loading your alert acknowledgements', run: reloadAlertState },
+          ...(options.restoreAISettings
+            ? [
+                {
+                  name: 'applying the AI configuration',
+                  run: () =>
+                    restoreAISettings(data, {
+                      setAiProvider,
+                      setOpenaiModel,
+                      setAnthropicModel,
+                      setOllamaModel,
+                      setApiKey,
+                    }),
+                },
+              ]
+            : []),
+          { name: 'showing the restored results', run: refreshLabResults },
+          { name: 'syncing to your folder', run: syncNow },
+        ]);
 
-        // Sync to filesystem if enabled
-        await syncNow();
-
-        notifications.show({
-          title: 'Restore Complete',
-          message: `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).`,
-          color: 'green',
-          icon: <IconCheck size={16} />,
-        });
+        const summary = `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).`;
+        notifications.show(
+          failed.length === 0
+            ? {
+                title: 'Restore Complete',
+                message: summary,
+                color: 'green',
+                icon: <IconCheck size={16} />,
+              }
+            : {
+                title: 'Data Restored, With Problems',
+                message: `${summary} Failed: ${failed.join(', ')}. Reload the page to see everything restored.`,
+                color: 'yellow',
+              }
+        );
 
         // Navigate to timeline to show restored data
         setActiveView('timeline');
