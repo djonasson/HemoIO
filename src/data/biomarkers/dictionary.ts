@@ -1708,6 +1708,24 @@ export function findBiomarker(nameOrAlias: string): BiomarkerDefinition | undefi
 }
 
 /**
+ * Find a biomarker by name as an import does: exactly (name or alias), then
+ * ignoring spacing and punctuation ("HEMOGLOBIN." is Hemoglobin)
+ */
+export function matchBiomarkerName(name: string): BiomarkerDefinition | undefined {
+  const variations = [
+    name,
+    name.replace(/\s+/g, ''),
+    name.replace(/[^a-zA-Z0-9\s]/g, ''),
+    name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+  ];
+  for (const variation of variations) {
+    const match = findBiomarker(variation);
+    if (match) return match;
+  }
+  return undefined;
+}
+
+/**
  * Get all biomarkers in a category
  */
 export function getBiomarkersByCategory(category: BiomarkerCategory): BiomarkerDefinition[] {

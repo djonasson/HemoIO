@@ -53,6 +53,24 @@ describe('EncryptedDb.reconcileLegacyUnknownKeys', () => {
     expect(await database.testValues.where('biomarkerKey').equals('glucose').count()).toBe(1);
   });
 
+  it('keys each value by its own name when two names shared a legacy hash', async () => {
+    const { encryptedDb } = await setup('reconcile-3');
+    const shared = 'unknown:legacy-90902';
+    const zorb = await encryptedDb.addTestValue({
+      labResultId: 1, biomarkerKey: shared, rawText: 'Zorblatin',
+      value: 3, unit: 'U/L', createdAt: now, updatedAt: now,
+    });
+    const hb = await encryptedDb.addTestValue({
+      labResultId: 1, biomarkerKey: shared, rawText: 'HEMOGLOBIN.',
+      value: 14, unit: 'g/dL', createdAt: now, updatedAt: now,
+    });
+
+    await encryptedDb.reconcileLegacyUnknownKeys();
+
+    expect((await encryptedDb.getTestValue(zorb))?.biomarkerKey).toBe('unknown:zorblatin');
+    expect((await encryptedDb.getTestValue(hb))?.biomarkerKey).toBe('hemoglobin');
+  });
+
   it('does nothing when there are no legacy unknown keys', async () => {
     const { encryptedDb } = await setup('reconcile-2');
     await encryptedDb.addTestValue({

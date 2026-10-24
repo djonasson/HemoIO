@@ -2,6 +2,7 @@ export {
   BIOMARKER_DEFINITIONS,
   CATEGORY_NAMES,
   findBiomarker,
+  matchBiomarkerName,
   getBiomarkerByKey,
   unknownBiomarkerKey,
   getBiomarkerForTestValue,

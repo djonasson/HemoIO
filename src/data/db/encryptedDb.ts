@@ -12,6 +12,7 @@ import { db, HemoIODatabase } from './index';
 import { encryptString, decryptString } from '@data/encryption';
 import {
   legacyUnknownKeyMapping,
+  reconcileTestValueKey,
   remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
 import { LEGACY_UNKNOWN_PREFIX } from '@data/migrations/legacyBiomarkerIds';
@@ -127,13 +128,17 @@ export class EncryptedDb {
     const mapping = legacyUnknownKeyMapping(decrypted);
     if (mapping.size === 0) return 0;
     const legacyKeys = [...mapping.keys()];
+    // Each value by its own name: two names can share a legacy key
+    const valueKeys = new Map(
+      decrypted.map((tv) => [tv.id, reconcileTestValueKey(tv).biomarkerKey] as const)
+    );
 
     await this.db.transaction('rw', this.db.testValues, this.db.userNotes, this.db.userPreferences, async () => {
       await this.db.testValues
         .where('biomarkerKey')
         .anyOf(legacyKeys)
         .modify((record) => {
-          record.biomarkerKey = mapping.get(record.biomarkerKey)!;
+          record.biomarkerKey = valueKeys.get(record.id) ?? mapping.get(record.biomarkerKey)!;
         });
       await this.db.userNotes
         .where('biomarkerKey')

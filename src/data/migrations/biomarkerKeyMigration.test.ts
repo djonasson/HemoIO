@@ -6,6 +6,7 @@ import {
   legacyUnknownKeyMapping,
   remapBiomarkerKey,
   remapPreferenceMaps,
+  reconcileTestValueKey,
 } from './biomarkerKeyMigration';
 
 describe('migrateTestValueRecord', () => {
@@ -84,6 +85,39 @@ describe('legacyUnknownKeyMapping', () => {
     ]);
 
     expect(mapping.size).toBe(0);
+  });
+});
+
+describe('reconcileTestValueKey', () => {
+  it('gives a legacy value the dictionary key a new import of its name gets', () => {
+    // New imports match names loosely ("HEMOGLOBIN." is Hemoglobin)
+    expect(
+      reconcileTestValueKey({ biomarkerKey: 'unknown:legacy-1', rawText: 'HEMOGLOBIN.', unit: 'g/dL' })
+        .biomarkerKey
+    ).toBe('hemoglobin');
+  });
+
+  it('keeps a legacy value unknown when its unit does not fit the matching name', () => {
+    expect(
+      reconcileTestValueKey({ biomarkerKey: 'unknown:legacy-1', rawText: 'Hemoglobin', unit: 'IU/L' })
+        .biomarkerKey
+    ).toBe('unknown:hemoglobin');
+  });
+
+  it('keys each value by its own name, also when two names shared a legacy hash', () => {
+    const shared = 'unknown:legacy-90902';
+    expect(
+      reconcileTestValueKey({ biomarkerKey: shared, rawText: 'Free PSA', unit: 'ng/mL' }).biomarkerKey
+    ).not.toBe(
+      reconcileTestValueKey({ biomarkerKey: shared, rawText: 'Zorblatin', unit: 'mg/dL' }).biomarkerKey
+    );
+  });
+
+  it('leaves values that are not legacy unknowns, or have no name, as they are', () => {
+    const glucose = { biomarkerKey: 'glucose', rawText: 'Glucose', unit: 'mg/dL' };
+    expect(reconcileTestValueKey(glucose)).toBe(glucose);
+    const unnamed = { biomarkerKey: 'unknown:legacy-3', unit: 'u' };
+    expect(reconcileTestValueKey(unnamed)).toBe(unnamed);
   });
 });
 

@@ -23,7 +23,7 @@ import type {
   LabReportAnalysisResult,
   ExtractedBiomarker,
 } from '../ai';
-import { findBiomarker } from '../../data/biomarkers/dictionary';
+import { findBiomarker, matchBiomarkerName } from '../../data/biomarkers/dictionary';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
 import { normalizeUnit, canConvert, convertValue } from '../units';
 
@@ -427,7 +427,7 @@ function matchBiomarkerToDictionary(
 
   // Exact name or alias first, then variations (punctuation, spacing)
   const exactMatch = findBiomarker(biomarker.name);
-  const candidate = exactMatch ?? findFuzzyMatch(biomarker.name);
+  const candidate = exactMatch ?? matchBiomarkerName(biomarker.name);
 
   if (candidate) {
     const allUnits = [candidate.canonicalUnit, ...candidate.alternativeUnits];
@@ -656,28 +656,6 @@ function deduplicateBiomarkers(
   }
 
   return { deduplicated, conflicts };
-}
-
-/**
- * Try to find a fuzzy match for a biomarker name
- */
-function findFuzzyMatch(name: string): BiomarkerDefinition | undefined {
-  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  // Common variations to try
-  const variations = [
-    name,
-    name.replace(/\s+/g, ''),
-    name.replace(/[^a-zA-Z0-9\s]/g, ''),
-    normalized,
-  ];
-
-  for (const variation of variations) {
-    const match = findBiomarker(variation);
-    if (match) return match;
-  }
-
-  return undefined;
 }
 
 /**

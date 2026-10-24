@@ -86,30 +86,35 @@ vi.mock('../ai', () => {
 });
 
 vi.mock('../../data/biomarkers/dictionary', () => ({
-  findBiomarker: vi.fn().mockImplementation((name: string) => {
-    const dictionary: Record<string, { name: string; canonicalUnit: string; alternativeUnits: string[]; category: string }> = {
-      glucose: {
-        name: 'Glucose',
-        canonicalUnit: 'mg/dL',
-        alternativeUnits: ['mmol/L'],
-        category: 'Metabolic',
-      },
-      hemoglobin: {
-        name: 'Hemoglobin',
-        canonicalUnit: 'g/dL',
-        alternativeUnits: ['g/L'],
-        category: 'CBC',
-      },
-      creatinine: {
-        name: 'Creatinine',
-        canonicalUnit: 'mg/dL',
-        alternativeUnits: ['µmol/L'],
-        category: 'Metabolic',
-      },
-    };
-    return dictionary[name.toLowerCase()];
-  }),
+  // As the dictionary does: exactly, then ignoring spacing and punctuation
+  matchBiomarkerName: (name: string) =>
+    mockFindBiomarker(name) ?? mockFindBiomarker(name.toLowerCase().replace(/[^a-z0-9]/g, '')),
+  findBiomarker: vi.fn().mockImplementation((name: string) => mockFindBiomarker(name)),
 }));
+
+function mockFindBiomarker(name: string) {
+  const dictionary: Record<string, { name: string; canonicalUnit: string; alternativeUnits: string[]; category: string }> = {
+    glucose: {
+      name: 'Glucose',
+      canonicalUnit: 'mg/dL',
+      alternativeUnits: ['mmol/L'],
+      category: 'Metabolic',
+    },
+    hemoglobin: {
+      name: 'Hemoglobin',
+      canonicalUnit: 'g/dL',
+      alternativeUnits: ['g/L'],
+      category: 'CBC',
+    },
+    creatinine: {
+      name: 'Creatinine',
+      canonicalUnit: 'mg/dL',
+      alternativeUnits: ['µmol/L'],
+      category: 'Metabolic',
+    },
+  };
+  return dictionary[name.toLowerCase()];
+}
 
 vi.mock('../units', () => ({
   normalizeUnit: vi.fn().mockImplementation((unit: string) => unit),

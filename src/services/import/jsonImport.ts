@@ -9,6 +9,7 @@ import {
   migrateNoteRecord,
   migratePreferenceMaps,
   migrateTestValueRecord,
+  reconcileTestValueKey,
   remapBiomarkerKey,
   remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
@@ -156,7 +157,7 @@ export function migrateBackupData<T extends BackupData>(data: T): T {
       : migrated.userPreferences;
     migrated = {
       ...migrated,
-      testValues: testValues.map((tv) => remapBiomarkerKey(tv, unknownKeys)),
+      testValues: testValues.map(reconcileTestValueKey),
       userNotes: migrated.userNotes.map((note) =>
         remapBiomarkerKey(migrateNoteRecord(note), unknownKeys)
       ),

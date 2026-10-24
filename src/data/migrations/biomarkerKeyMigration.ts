@@ -6,7 +6,7 @@
  * are pure and idempotent.
  */
 
-import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { matchBiomarkerName, unknownBiomarkerKey } from '@data/biomarkers/dictionary';
 import { LEGACY_UNKNOWN_PREFIX, legacyIdToKey } from './legacyBiomarkerIds';
 
 export interface LegacyKeyed {
@@ -77,14 +77,55 @@ export function migratePreferenceMaps<T extends BiomarkerKeyedPreferences>(prefs
  * today. rawText is encrypted in the database, so this runs where plaintext is
  * available: during backup import, and after unlock for stored data.
  */
+interface ReconcilableValue {
+  biomarkerKey: string;
+  rawText?: string;
+  unit?: string;
+}
+
+/** Units compared ignoring case and how micro is spelled */
+function sameUnit(a: string, b: string): boolean {
+  const key = (unit: string) => unit.trim().replace(/\u03bc/g, '\u00b5').toLowerCase();
+  return key(a) === key(b);
+}
+
+/**
+ * The key a legacy unknown value gets today: the one a new import of its
+ * extracted name would get, a dictionary entry when the name matches one
+ * that lists the value's unit, else the unknown key of the name
+ */
+function reconciledKey(value: ReconcilableValue): string | undefined {
+  if (!value.biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX) || !value.rawText) return undefined;
+  const match = matchBiomarkerName(value.rawText);
+  const unitFits =
+    match !== undefined &&
+    [match.canonicalUnit, ...match.alternativeUnits].some((unit) =>
+      sameUnit(unit, value.unit ?? '')
+    );
+  return match && unitFits ? match.key : unknownBiomarkerKey(value.rawText);
+}
+
+/**
+ * A test value with its legacy unknown key reconciled. Values are keyed by
+ * their own name: legacy hashes collide, so two names can share a legacy key.
+ */
+export function reconcileTestValueKey<T extends ReconcilableValue>(value: T): T {
+  const key = reconciledKey(value);
+  return key ? { ...value, biomarkerKey: key } : value;
+}
+
+/**
+ * Legacy key → reconciled key, for the records keyed by biomarker alone
+ * (notes, preference maps): each takes the key of the first value under it
+ */
 export function legacyUnknownKeyMapping(
-  testValues: ReadonlyArray<{ biomarkerKey: string; rawText?: string }>
+  testValues: ReadonlyArray<ReconcilableValue>
 ): Map<string, string> {
   const mapping = new Map<string, string>();
-  for (const { biomarkerKey, rawText } of testValues) {
-    if (biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX) && rawText && !mapping.has(biomarkerKey)) {
-      mapping.set(biomarkerKey, unknownBiomarkerKey(rawText));
-    }
+  for (const value of testValues) {
+    if (mapping.has(value.biomarkerKey)) continue;
+    const key = reconciledKey(value);
+    if (key) mapping.set(value.biomarkerKey, key);
   }
   return mapping;
 }
