@@ -198,9 +198,20 @@ describe('BackupRestore', () => {
       return new File([JSON.stringify(backup)], 'backup.json', { type: 'application/json' });
     }
 
-    async function openRestoreDialog(hasApiKey: boolean, onRestore = vi.fn().mockResolvedValue(undefined)) {
+    async function openRestoreDialog(
+      hasApiKey: boolean,
+      onRestore = vi.fn().mockResolvedValue(undefined),
+      hasAIConfiguration = hasApiKey
+    ) {
       const user = userEvent.setup();
-      renderWithProviders(<BackupRestore {...defaultProps} onRestore={onRestore} hasApiKey={hasApiKey} />);
+      renderWithProviders(
+        <BackupRestore
+          {...defaultProps}
+          onRestore={onRestore}
+          hasApiKey={hasApiKey}
+          hasAIConfiguration={hasAIConfiguration}
+        />
+      );
       await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, backupFileWithAISettings());
       const dialog = await screen.findByRole('dialog', { name: 'Restore from Backup' });
       return { user, dialog, onRestore };
@@ -222,6 +233,22 @@ describe('BackupRestore', () => {
       await waitFor(() =>
         expect(onRestore).toHaveBeenCalledWith(expect.anything(), { restoreAISettings: true })
       );
+    });
+
+    it('keeps a local Ollama setup, which has no API key, unless the user opts in', async () => {
+      const { dialog } = await openRestoreDialog(false, undefined, true);
+
+      const option = within(dialog).getByRole('checkbox', { name: /restore AI configuration/i });
+      expect(option).not.toBeChecked();
+      expect(
+        within(dialog).getByText(/Your current AI provider and model will be replaced/)
+      ).toBeInTheDocument();
+    });
+
+    it('does not say the API key will be replaced when the backup has none', async () => {
+      const { dialog } = await openRestoreDialog(true);
+
+      expect(within(dialog).queryByText(/API key will be replaced/)).not.toBeInTheDocument();
     });
 
     it('keeps an existing AI configuration unless the user opts in', async () => {

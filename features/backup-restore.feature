@@ -151,6 +151,13 @@ Feature: Backup and Restore
     Then my data should be restored
     And my own API key should still be configured
 
+  Scenario: Restoring a backup keeps my local Ollama setup unless I opt in
+    Given I analyze lab reports with a local Ollama model, which needs no API key
+    And I have an encrypted backup made on a device that uses a cloud AI provider
+    When I restore from the encrypted backup
+    Then restoring the AI configuration should be off by default
+    And I should see that my current AI provider and model would be replaced
+
   # Error Handling
   Scenario: Restore with invalid file format
     When I try to restore from a non-JSON/non-hemoio file

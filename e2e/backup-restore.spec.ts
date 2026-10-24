@@ -15,6 +15,7 @@ import { seedLabData } from './steps/data.steps';
 import { expandLabResult } from './steps/timeline.steps';
 import { configureAnthropic, mockAnthropicApi, openAISettings } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
+import { loginWithOllama } from './steps/importWizard.steps';
 
 // Mock lab result data for backup file
 const MOCK_LAB_RESULTS = [
@@ -874,6 +875,28 @@ test.describe('Encrypted backup restores the API key', () => {
       await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();
       await openAISettings(other);
       await expect(other.getByText('••••••••1111')).toBeVisible();
+    } finally {
+      await otherContext.close();
+      removeTempFile(backupPath);
+    }
+  });
+
+  test('keeps a local Ollama setup unless I choose to restore the backup\'s', async ({ page, browser }) => {
+    const backupPath = await createEncryptedBackupWithApiKey(page);
+
+    // Device B analyzes with a local Ollama model and has no API key
+    const otherContext = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    try {
+      const other = await otherContext.newPage();
+      await loginWithOllama(other);
+
+      const restoreDialog = await openEncryptedRestore(other, backupPath);
+      await expect(
+        restoreDialog.getByRole('checkbox', { name: /restore AI configuration/i })
+      ).not.toBeChecked();
+      await expect(
+        restoreDialog.getByText(/Your current AI provider and model will be replaced/)
+      ).toBeVisible();
     } finally {
       await otherContext.close();
       removeTempFile(backupPath);

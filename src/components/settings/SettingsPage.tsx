@@ -263,6 +263,8 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
               getApiKey={getApiKey}
               onRestore={onRestore}
               hasApiKey={hasApiKey}
+              // Ollama runs locally and needs no key, but is still a setup to keep
+              hasAIConfiguration={hasApiKey || aiProvider === 'ollama'}
               isProcessing={isRestoring || isLoading}
             />
           </Stack>

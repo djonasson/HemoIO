@@ -74,6 +74,11 @@ export interface BackupRestoreProps {
   getApiKey?: () => Promise<string | null>;
   /** Whether an AI API key is currently configured */
   hasApiKey?: boolean;
+  /**
+   * Whether this device has an AI setup to lose: an API key, or a local
+   * provider (Ollama) that needs none. Defaults to hasApiKey.
+   */
+  hasAIConfiguration?: boolean;
 }
 
 export interface RestoreOptions {
@@ -92,6 +97,7 @@ export function BackupRestore({
   isProcessing = false,
   getApiKey,
   hasApiKey = false,
+  hasAIConfiguration = hasApiKey,
 }: BackupRestoreProps): React.ReactNode {
   // A backup's AI configuration decides where lab reports are sent, so it
   // only replaces an existing setup when the user opts in
@@ -241,13 +247,13 @@ export function BackupRestore({
         // Parse standard backup directly
         const parsed = parseBackupJson(content);
         setParsedData(parsed);
-        setRestoreAIConfig(!hasApiKey);
+        setRestoreAIConfig(!hasAIConfiguration);
         setRestoreConfirmOpen(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to read backup file');
     }
-  }, [hasApiKey]);
+  }, [hasAIConfiguration]);
 
   // Handle decryption of encrypted backup
   const handleDecryptBackup = useCallback(async () => {
@@ -259,7 +265,7 @@ export function BackupRestore({
     try {
       const parsed = await parseEncryptedBackup(pendingFileContent, importPassword);
       setParsedData(parsed);
-      setRestoreAIConfig(!hasApiKey);
+      setRestoreAIConfig(!hasAIConfiguration);
       setShowImportPasswordModal(false);
       setRestoreConfirmOpen(true);
       setPendingFileContent(null);
@@ -268,7 +274,7 @@ export function BackupRestore({
     } finally {
       setIsDecrypting(false);
     }
-  }, [pendingFileContent, importPassword, hasApiKey]);
+  }, [pendingFileContent, importPassword, hasAIConfiguration]);
 
   const aiSummary = parsedData ? describeBackupAISettings(parsedData) : null;
 
@@ -632,7 +638,11 @@ export function BackupRestore({
                   ? ` and the API key to one ending in ${aiSummary.apiKeyLastFour}`
                   : '') +
                 '. Lab reports will then be analyzed with this configuration.' +
-                (hasApiKey ? ' Your current API key will be replaced.' : '')
+                (hasApiKey && aiSummary.apiKeyLastFour
+                  ? ' Your current API key will be replaced.'
+                  : hasAIConfiguration
+                    ? ' Your current AI provider and model will be replaced.'
+                    : '')
               }
             />
           )}
