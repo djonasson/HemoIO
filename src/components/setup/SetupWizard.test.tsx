@@ -1,34 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetupWizard } from './SetupWizard';
 import { AuthProvider } from '@contexts';
+import { encryptString } from '@data/encryption';
 
 // Mock the encryption module
-vi.mock('@data/encryption', () => ({
+vi.mock('@data/encryption', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@data/encryption')>()),
   encryptString: vi.fn().mockResolvedValue('encrypted'),
-  getEncryptionKey: vi.fn().mockResolvedValue(new Uint8Array(32)),
-  checkPasswordStrength: vi.fn((password: string) => {
-    const hasMinLength = password.length >= 8;
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasLowercase = /[a-z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-    const isStrong = hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
-    return {
-      score: isStrong ? 5 : 2,
-      label: isStrong ? 'Strong' : 'Weak',
-      isStrong,
-      checks: { hasMinLength, hasUppercase, hasLowercase, hasNumber, hasSpecial },
-    };
-  }),
-  createStoredCredentials: vi.fn().mockResolvedValue({
-    salt: 'test-salt',
-    verificationHash: 'test-hash',
-  }),
-  verifyPassword: vi.fn().mockResolvedValue(true),
-  deriveKey: vi.fn().mockResolvedValue(new Uint8Array(32)),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -173,4 +154,27 @@ describe('SetupWizard', () => {
       expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
     });
   });
+
+  it('encrypts the API key with the key the password setup returned', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+    await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+    await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+
+    await user.click(screen.getByRole('textbox', { name: 'AI Provider' }));
+    await user.click(await screen.findByRole('option', { name: 'Anthropic (Claude)' }));
+    await user.type(screen.getByLabelText('API Key'), 'sk-ant-test-1234');
+    await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+    await user.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+    await waitFor(() => expect(mockOnComplete).toHaveBeenCalled());
+    expect(encryptString).toHaveBeenCalledWith(
+      'sk-ant-test-1234',
+      expect.objectContaining({ type: 'secret', extractable: false })
+    );
+    expect(localStorage.getItem('hemoio_ai_api_key_encrypted')).toBe('encrypted');
+  }, 15000);
 });

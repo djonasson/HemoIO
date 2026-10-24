@@ -30,14 +30,9 @@ import type { StorageProviderType, AIProviderType } from '@/types';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
-import {
-  encryptString,
-  getEncryptionKey,
-  type StoredCredentials,
-} from '@data/encryption';
+import { encryptString } from '@data/encryption';
 
 const ENCRYPTED_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key_encrypted';
-const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 interface SetupWizardProps {
@@ -106,8 +101,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const handleComplete = useCallback(async () => {
     setIsSubmitting(true);
     try {
-      // Setup password and get encryption key
-      await setupPassword(password);
+      // Setup password and get the session encryption key
+      const encryptionKey = await setupPassword(password);
 
       // Save storage provider to localStorage
       localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
@@ -118,16 +113,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
 
         // Encrypt API key if provided
         if (apiKey) {
-          // Get the credentials that were just stored
-          const credentialsJson = localStorage.getItem(CREDENTIALS_STORAGE_KEY);
-          if (credentialsJson) {
-            const credentials = JSON.parse(credentialsJson) as StoredCredentials;
-            // Derive the same encryption key
-            const encryptionKey = await getEncryptionKey(password, credentials);
-            // Encrypt and store the API key
-            const encryptedApiKey = await encryptString(apiKey, encryptionKey);
-            localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
-          }
+          const encryptedApiKey = await encryptString(apiKey, encryptionKey);
+          localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
         }
 
         if (aiProvider === 'ollama' && ollamaModel) {

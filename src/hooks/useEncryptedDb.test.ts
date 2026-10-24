@@ -31,6 +31,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -47,6 +48,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -64,6 +66,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -82,6 +85,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -108,6 +112,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -121,6 +126,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 
@@ -139,6 +145,7 @@ describe('useEncryptedDb', () => {
       unlock: vi.fn(),
       lock: vi.fn(),
       setupPassword: vi.fn(),
+      changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
     });
 

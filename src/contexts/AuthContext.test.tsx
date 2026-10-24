@@ -1,382 +1,318 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
-import { AuthProvider, AuthContext } from './AuthContext';
-import { useContext } from 'react';
+import { render, screen, act } from '@testing-library/react';
+import { useContext, useEffect } from 'react';
+import { AuthProvider, AuthContext, type AuthContextValue } from './AuthContext';
+import { createStoredCredentials, decryptString, encryptString } from '@data/encryption';
+import {
+  createCredentialsV2,
+  isCredentialsV2,
+  rewrapCredentials,
+} from '@data/encryption/keyWrapping';
 
-// Mock the encryption module
-vi.mock('@data/encryption', () => ({
-  createStoredCredentials: vi.fn(async () => ({
-    salt: 'test-salt-base64',
-    verificationHash: 'test-hash-base64',
-    iterations: 100000,
-    version: 1,
-  })),
-  verifyPassword: vi.fn(async () => true),
-  getEncryptionKey: vi.fn(async () => ({
-    algorithm: { name: 'AES-GCM' },
-    extractable: false,
-    type: 'secret',
-    usages: ['encrypt', 'decrypt'],
-  } as unknown as CryptoKey)),
-}));
+const CREDENTIALS_KEY = 'hemoio_credentials';
+const OLD = 'Old-Passw0rd!';
+const NEW = 'New-Passw0rd!';
 
-// Import mocked functions for test assertions
-import { createStoredCredentials, verifyPassword, getEncryptionKey } from '@data/encryption';
+let auth: AuthContextValue;
 
-const mockCreateStoredCredentials = createStoredCredentials as ReturnType<typeof vi.fn>;
-const mockVerifyPassword = verifyPassword as ReturnType<typeof vi.fn>;
-const mockGetEncryptionKey = getEncryptionKey as ReturnType<typeof vi.fn>;
-
-// Test component that displays auth state
-function AuthStateDisplay() {
+function Probe() {
   const context = useContext(AuthContext);
-  if (!context) return <div>No context</div>;
-
+  if (!context) throw new Error('no AuthContext');
+  // Exposes the latest value to the test after each commit
+  useEffect(() => {
+    auth = context;
+  });
   return (
     <div>
       <span data-testid="status">{context.status}</span>
-      <span data-testid="has-key">{context.encryptionKey ? 'yes' : 'no'}</span>
       <span data-testid="setup-complete">{context.isSetupComplete() ? 'yes' : 'no'}</span>
-      <button onClick={() => context.lock()}>Lock</button>
-      <button onClick={() => context.unlock('test-password')}>Unlock</button>
-      <button onClick={() => context.setupPassword('new-password')}>Setup</button>
     </div>
   );
 }
 
-describe('AuthContext', () => {
-  const CREDENTIALS_KEY = 'hemoio_credentials';
-  const mockCredentials = {
-    salt: 'test-salt-base64',
-    verificationHash: 'test-hash-base64',
-    iterations: 100000,
-    version: 1,
-  };
+function renderAuth() {
+  return render(
+    <AuthProvider>
+      <Probe />
+    </AuthProvider>
+  );
+}
 
+function storedCredentials(): unknown {
+  return JSON.parse(localStorage.getItem(CREDENTIALS_KEY) ?? 'null');
+}
+
+function store(credentials: unknown) {
+  localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(credentials));
+}
+
+async function setUp(password = OLD) {
+  renderAuth();
+  await act(async () => {
+    await auth.setupPassword(password);
+  });
+}
+
+async function unlock(password: string): Promise<boolean> {
+  let result = false;
+  await act(async () => {
+    result = await auth.unlock(password);
+  });
+  return result;
+}
+
+function lock() {
+  act(() => auth.lock());
+}
+
+describe('AuthContext', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     localStorage.clear();
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
   });
 
-  describe('Initial state', () => {
-    it('sets status to needs_setup when no credentials exist', () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+  describe('initial state', () => {
+    it('needs setup when no credentials exist', () => {
+      renderAuth();
 
       expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
-      expect(screen.getByTestId('has-key')).toHaveTextContent('no');
       expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
     });
 
-    it('sets status to locked when credentials exist', () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
+    it('is locked when credentials exist', async () => {
+      store((await createCredentialsV2(OLD, 1000)).credentials);
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+      renderAuth();
 
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
-      expect(screen.getByTestId('has-key')).toHaveTextContent('no');
       expect(screen.getByTestId('setup-complete')).toHaveTextContent('yes');
     });
 
-    it('handles invalid JSON in localStorage gracefully', () => {
+    it('needs setup when the stored credentials are not JSON', () => {
       localStorage.setItem(CREDENTIALS_KEY, 'invalid-json');
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+      renderAuth();
 
       expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
     });
   });
 
   describe('setupPassword', () => {
-    it('creates credentials and unlocks', async () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+    it('writes v2 credentials, unlocks, and returns the session key', async () => {
+      renderAuth();
 
-      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
-
+      let key: CryptoKey | undefined;
       await act(async () => {
-        screen.getByText('Setup').click();
+        key = await auth.setupPassword(OLD);
       });
 
-      await waitFor(() => {
-        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      });
-
-      expect(mockCreateStoredCredentials).toHaveBeenCalledWith('new-password');
-      expect(mockGetEncryptionKey).toHaveBeenCalled();
-      expect(screen.getByTestId('has-key')).toHaveTextContent('yes');
-    });
-
-    it('saves credentials to localStorage', async () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      await act(async () => {
-        screen.getByText('Setup').click();
-      });
-
-      await waitFor(() => {
-        expect(localStorage.getItem(CREDENTIALS_KEY)).not.toBeNull();
-      });
-
-      const stored = JSON.parse(localStorage.getItem(CREDENTIALS_KEY)!);
-      expect(stored).toHaveProperty('salt');
-      expect(stored).toHaveProperty('verificationHash');
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).toBe(key);
+      expect(key!.extractable).toBe(false);
     });
   });
 
   describe('unlock', () => {
-    it('unlocks with correct password', async () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-      mockVerifyPassword.mockResolvedValueOnce(true);
+    it('unlocks v2 credentials with the right password', async () => {
+      await setUp();
+      lock();
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('status')).toHaveTextContent('locked');
-
-      await act(async () => {
-        screen.getByText('Unlock').click();
-      });
-
-      await waitFor(() => {
-        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      });
-
-      expect(mockVerifyPassword).toHaveBeenCalledWith('test-password', mockCredentials);
-      expect(screen.getByTestId('has-key')).toHaveTextContent('yes');
+      expect(await unlock(OLD)).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).not.toBeNull();
     });
 
-    it('stays locked with incorrect password', async () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-      mockVerifyPassword.mockResolvedValueOnce(false);
+    it('stays locked with a wrong password', async () => {
+      await setUp();
+      lock();
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      await act(async () => {
-        screen.getByText('Unlock').click();
-      });
-
-      // Give time for async operation to complete
-      await waitFor(() => {
-        expect(mockVerifyPassword).toHaveBeenCalled();
-      });
-
+      expect(await unlock('Wrong-Passw0rd!')).toBe(false);
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
-      expect(screen.getByTestId('has-key')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('unlocks v1 credentials written before key wrapping', async () => {
+      store(await createStoredCredentials(OLD));
+      renderAuth();
+
+      expect(await unlock('Wrong-Passw0rd!')).toBe(false);
+      expect(await unlock(OLD)).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
 
     it('returns false when no credentials exist', async () => {
-      let unlockResult: boolean | undefined;
+      renderAuth();
 
-      function UnlockResultTest() {
-        const context = useContext(AuthContext);
-        return (
-          <button
-            onClick={async () => {
-              if (context) {
-                unlockResult = await context.unlock('password');
-              }
-            }}
-          >
-            Try Unlock
-          </button>
-        );
-      }
+      expect(await unlock(OLD)).toBe(false);
+    });
 
-      render(
-        <AuthProvider>
-          <UnlockResultTest />
-        </AuthProvider>
-      );
+    it('returns false for credentials of an unknown version', async () => {
+      const { credentials } = await createCredentialsV2(OLD, 1000);
+      store({ ...credentials, version: 3 });
+      renderAuth();
 
-      await act(async () => {
-        screen.getByText('Try Unlock').click();
-      });
+      expect(await unlock(OLD)).toBe(false);
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+    });
 
-      await waitFor(() => {
-        expect(unlockResult).toBe(false);
-      });
+    it('returns false for tampered credentials', async () => {
+      const { credentials } = await createCredentialsV2(OLD, 1000);
+      store({ ...credentials, wrappedKey: credentials.wrappedKey.split('').reverse().join('') });
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(false);
+    });
+
+    it('unlock reads credentials another tab wrote', async () => {
+      await setUp();
+      // Another tab changes the password while this one is open
+      const rewrapped = await rewrapCredentials(OLD, NEW, storedCredentials() as never, 1000);
+      store(rewrapped!.credentials);
+      lock();
+
+      expect(await unlock(NEW)).toBe(true);
     });
   });
 
   describe('lock', () => {
-    it('clears encryption key and sets status to locked', async () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-      mockVerifyPassword.mockResolvedValueOnce(true);
+    it('clears the key and locks', async () => {
+      await setUp();
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      // First unlock
-      await act(async () => {
-        screen.getByText('Unlock').click();
-      });
-
-      await waitFor(() => {
-        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      });
-
-      // Then lock
-      await act(async () => {
-        screen.getByText('Lock').click();
-      });
+      lock();
 
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
-      expect(screen.getByTestId('has-key')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
     });
   });
 
-  describe('isSetupComplete', () => {
-    it('returns false when no credentials exist', () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+  describe('changePassword', () => {
+    it('changes the password, keeping the session key and status', async () => {
+      await setUp();
+      const keyBefore = auth.encryptionKey;
 
-      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      let result;
+      await act(async () => {
+        result = await auth.changePassword(OLD, NEW);
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(auth.encryptionKey).toBe(keyBefore);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      lock();
+      expect(await unlock(OLD)).toBe(false);
+      expect(await unlock(NEW)).toBe(true);
     });
 
-    it('returns true when credentials exist in localStorage', () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('setup-complete')).toHaveTextContent('yes');
-    });
-
-    it('returns true after setupPassword is called', async () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+    it('keeps data readable after the change', async () => {
+      await setUp();
+      const ciphertext = await encryptString('Annual checkup', auth.encryptionKey!);
 
       await act(async () => {
-        screen.getByText('Setup').click();
+        await auth.changePassword(OLD, NEW);
       });
+      lock();
+      await unlock(NEW);
 
-      await waitFor(() => {
-        expect(screen.getByTestId('setup-complete')).toHaveTextContent('yes');
-      });
-    });
-  });
-
-  describe('encryptionKey', () => {
-    it('is null when locked', () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('has-key')).toHaveTextContent('no');
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
     });
 
-    it('is set after successful unlock', async () => {
-      localStorage.setItem(CREDENTIALS_KEY, JSON.stringify(mockCredentials));
-      mockVerifyPassword.mockResolvedValueOnce(true);
+    it('moves v1 credentials to v2 and keeps v1 data readable', async () => {
+      store(await createStoredCredentials(OLD));
+      renderAuth();
+      await unlock(OLD);
+      const ciphertext = await encryptString('Annual checkup', auth.encryptionKey!);
 
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
-
+      let result;
       await act(async () => {
-        screen.getByText('Unlock').click();
+        result = await auth.changePassword(OLD, NEW);
       });
 
-      await waitFor(() => {
-        expect(screen.getByTestId('has-key')).toHaveTextContent('yes');
-      });
+      expect(result).toEqual({ ok: true });
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      lock();
+      expect(await unlock(NEW)).toBe(true);
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
     });
 
-    it('is set after setupPassword', async () => {
-      render(
-        <AuthProvider>
-          <AuthStateDisplay />
-        </AuthProvider>
-      );
+    it('rejects a new password equal to the current one', async () => {
+      await setUp();
+      const before = localStorage.getItem(CREDENTIALS_KEY);
 
+      const result = await auth.changePassword(OLD, OLD);
+
+      expect(result).toEqual({ ok: false, reason: 'same_password' });
+      expect(localStorage.getItem(CREDENTIALS_KEY)).toBe(before);
+    });
+
+    it('rejects a wrong current password without changing anything', async () => {
+      await setUp();
+      const before = localStorage.getItem(CREDENTIALS_KEY);
+
+      const result = await auth.changePassword('Wrong-Passw0rd!', NEW);
+
+      expect(result).toEqual({ ok: false, reason: 'wrong_password' });
+      expect(localStorage.getItem(CREDENTIALS_KEY)).toBe(before);
+    });
+
+    it('fails and keeps the old credentials when they cannot be saved', async () => {
+      await setUp();
+      const before = localStorage.getItem(CREDENTIALS_KEY);
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('Quota exceeded', 'QuotaExceededError');
+      });
+
+      const result = await auth.changePassword(OLD, NEW);
+
+      expect(result).toEqual({ ok: false, reason: 'failed' });
+      expect(localStorage.getItem(CREDENTIALS_KEY)).toBe(before);
+      // A fixed message only: never the error object, which could carry key material
+      expect(consoleError).toHaveBeenCalledWith('Password change failed');
+      vi.restoreAllMocks();
+      lock();
+      expect(await unlock(OLD)).toBe(true);
+    });
+
+    it('fails when the stored credentials are missing', async () => {
+      await setUp();
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      const result = await auth.changePassword(OLD, NEW);
+
+      expect(result).toEqual({ ok: false, reason: 'failed' });
+      expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
+    });
+
+    it('fails when the stored credentials do not hold the session key', async () => {
+      await setUp();
+      // Same password, different data key: the round-trip check must catch it
+      const other = (await createCredentialsV2(OLD, 1000)).credentials;
+      store(other);
+
+      const result = await auth.changePassword(OLD, NEW);
+
+      expect(result).toEqual({ ok: false, reason: 'failed' });
+      expect(storedCredentials()).toEqual(other);
+    });
+
+    it('a change finishes even if the app locks meanwhile', async () => {
+      await setUp();
+
+      let result;
       await act(async () => {
-        screen.getByText('Setup').click();
+        const pending = auth.changePassword(OLD, NEW);
+        auth.lock();
+        result = await pending;
       });
 
-      await waitFor(() => {
-        expect(screen.getByTestId('has-key')).toHaveTextContent('yes');
-      });
-    });
-  });
-
-  describe('Provider', () => {
-    it('renders children', () => {
-      render(
-        <AuthProvider>
-          <div data-testid="child">Child content</div>
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('child')).toHaveTextContent('Child content');
-    });
-
-    it('provides context to nested components', () => {
-      function NestedComponent() {
-        const context = useContext(AuthContext);
-        return <div data-testid="nested">{context ? 'has-context' : 'no-context'}</div>;
-      }
-
-      render(
-        <AuthProvider>
-          <div>
-            <div>
-              <NestedComponent />
-            </div>
-          </div>
-        </AuthProvider>
-      );
-
-      expect(screen.getByTestId('nested')).toHaveTextContent('has-context');
+      expect(result).toEqual({ ok: true });
+      expect(await unlock(NEW)).toBe(true);
     });
   });
 });
