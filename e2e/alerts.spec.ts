@@ -279,6 +279,20 @@ test.describe('Alerts with Data', () => {
     await expect(alertCard(page, 'Glucose')).toBeHidden();
   });
 
+  // Scenario: No new alerts after acknowledging every alert
+  test('does not call values normal once every alert is acknowledged', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }, { biomarker: HEMOGLOBIN, value: 14 }] },
+    ]);
+    await viewAlerts(page);
+
+    await alertCard(page, 'Glucose').getByRole('button', { name: 'Acknowledge alert' }).click();
+
+    const main = page.getByRole('main');
+    await expect(main.getByText('No new alerts')).toBeVisible();
+    await expect(main.getByText('All values within normal range')).toBeHidden();
+  });
+
   // Scenario: Filter alerts by category
   test('should filter alerts by category', async ({ page }) => {
     await seedAlertData(page, ABNORMAL_VISITS);

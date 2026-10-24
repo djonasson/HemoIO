@@ -63,6 +63,7 @@ function mockAlerts(alerts: BiomarkerAlert[]): void {
     alerts,
     groupedAlerts: [],
     unacknowledgedCount: alerts.length,
+    hiddenCount: 0,
     isLoading: false,
     error: null,
     dismissAlert: vi.fn(),
@@ -86,6 +87,7 @@ describe('OutOfRangeAlerts', () => {
       alerts: [],
       groupedAlerts: [],
       unacknowledgedCount: 0,
+      hiddenCount: 0,
       isLoading: true,
       error: null,
       dismissAlert: vi.fn(),
@@ -104,6 +106,7 @@ describe('OutOfRangeAlerts', () => {
       alerts: [],
       groupedAlerts: [],
       unacknowledgedCount: 0,
+      hiddenCount: 0,
       isLoading: false,
       error: 'Failed to load alerts',
       dismissAlert: vi.fn(),
@@ -122,6 +125,7 @@ describe('OutOfRangeAlerts', () => {
       alerts: [],
       groupedAlerts: [],
       unacknowledgedCount: 0,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -135,6 +139,26 @@ describe('OutOfRangeAlerts', () => {
     expect(screen.getByText(/all values within normal range/i)).toBeInTheDocument();
   });
 
+  it('does not claim values are normal when every alert was acknowledged', () => {
+    vi.mocked(useAlerts).mockReturnValue({
+      alerts: [],
+      groupedAlerts: [],
+      unacknowledgedCount: 0,
+      hiddenCount: 2,
+      isLoading: false,
+      error: null,
+      dismissAlert: vi.fn(),
+      acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
+      filterByCategory: vi.fn(() => []),
+    });
+
+    renderWithProviders(<OutOfRangeAlerts />);
+
+    expect(screen.getByText('No new alerts')).toBeInTheDocument();
+    expect(screen.queryByText(/all values within normal range/i)).not.toBeInTheDocument();
+  });
+
   it('should render alert cards', () => {
     const alerts = [createMockAlert('1')];
 
@@ -142,6 +166,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -163,6 +188,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -189,6 +215,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -210,6 +237,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: mockDismiss,
@@ -234,6 +262,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -258,6 +287,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -284,6 +314,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 2,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -311,6 +342,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 0,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -336,6 +368,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -358,6 +391,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 10,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -385,6 +419,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 10,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),
@@ -416,6 +451,7 @@ describe('OutOfRangeAlerts', () => {
       alerts,
       groupedAlerts: [],
       unacknowledgedCount: 1,
+      hiddenCount: 0,
       isLoading: false,
       error: null,
       dismissAlert: vi.fn(),

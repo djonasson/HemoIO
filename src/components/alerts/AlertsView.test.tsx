@@ -43,6 +43,7 @@ function mockAlerts(alerts: BiomarkerAlert[]): void {
     alerts,
     groupedAlerts: [],
     unacknowledgedCount: alerts.length,
+    hiddenCount: 0,
     isLoading: false,
     error: null,
     dismissAlert: vi.fn(),

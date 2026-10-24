@@ -101,6 +101,8 @@ export interface UseAlertsResult {
   groupedAlerts: GroupedAlert[];
   /** Count of unacknowledged out-of-range values (the nav badge) */
   unacknowledgedCount: number;
+  /** Alerts hidden by an acknowledgement or a dismissal */
+  hiddenCount: number;
   /** Whether data is loading */
   isLoading: boolean;
   /** Error message if any */
@@ -375,6 +377,7 @@ export function useAlerts(): UseAlertsResult {
     alerts,
     groupedAlerts,
     unacknowledgedCount,
+    hiddenCount: allAlerts.length - alerts.length,
     isLoading,
     error,
     dismissAlert: dismiss,

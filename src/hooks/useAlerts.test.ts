@@ -614,6 +614,21 @@ describe('useAlerts', () => {
     expect(dates).toEqual(['2024-03-10']);
   });
 
+  it('counts the alerts acknowledgements and dismissals hide', async () => {
+    alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.alerts).toEqual([]);
+    expect(result.current.hiddenCount).toBe(1);
+  });
+
   it('gives each abnormal value its own alert id, even within one lab result', async () => {
     mockResults([
       createMockResult(1, '2024-01-15', [

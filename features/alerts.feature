@@ -81,6 +81,12 @@ Feature: Alerts
     Then the alert should be marked as acknowledged and hidden
     And it should remain hidden until a newer abnormal value for that biomarker
 
+  Scenario: No new alerts after acknowledging every alert
+    Given I have one alert for an abnormal value
+    When I acknowledge it
+    Then I should see "No new alerts"
+    And I should not be told that all values are within normal range
+
   Scenario: Filter alerts by category
     Given I have alerts from different biomarker categories
     When I filter alerts by "Metabolic"

@@ -291,6 +291,7 @@ export function OutOfRangeAlerts({
     alerts,
     groupedAlerts,
     unacknowledgedCount,
+    hiddenCount,
     isLoading,
     error,
     dismissAlert,
@@ -361,6 +362,27 @@ export function OutOfRangeAlerts({
             {error}
           </Text>
         </Group>
+      </Paper>
+    );
+  }
+
+  // Acknowledged or dismissed alerts are still out-of-range values: never
+  // call them normal
+  if (alerts.length === 0 && hiddenCount > 0) {
+    return (
+      <Paper p="lg" withBorder>
+        <Center>
+          <Stack align="center" gap="xs">
+            <ThemeIcon color="blue" variant="light" size="xl" radius="xl">
+              <IconCheck size={24} />
+            </ThemeIcon>
+            <Text fw={500}>No new alerts</Text>
+            <Text size="sm" c="dimmed" ta="center">
+              You have acknowledged or dismissed every alert. Values outside their reference
+              range are still marked in the Timeline.
+            </Text>
+          </Stack>
+        </Center>
       </Paper>
     );
   }
