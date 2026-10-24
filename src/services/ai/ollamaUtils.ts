@@ -260,7 +260,12 @@ export async function parseOllamaError(response: Response): Promise<string> {
   try {
     const data = await response.json();
     if (typeof data === 'object' && data !== null && 'error' in data) {
-      return String(data.error);
+      const { error } = data as { error: unknown };
+      // Native endpoints send a string; the /v1 (OpenAI-style) ones an object
+      if (typeof error === 'string') return error;
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        return String((error as { message: unknown }).message);
+      }
     }
   } catch {
     // Fall through to default message

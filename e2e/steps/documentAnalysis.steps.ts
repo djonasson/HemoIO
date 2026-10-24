@@ -84,7 +84,8 @@ export async function scriptOllamaChat(
           status: reply.status,
           headers: reply.headers,
           contentType: 'application/json',
-          body: JSON.stringify({ error: reply.error }),
+          // As Ollama's OpenAI-compatible endpoint sends errors
+          body: JSON.stringify({ error: { message: reply.error, type: 'api_error' } }),
         });
       } else {
         await route.fulfill({

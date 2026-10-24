@@ -328,6 +328,16 @@ describe('ollamaUtils - network functions', () => {
       expect(result).toBe('Model not found');
     });
 
+    it('reads the message of an OpenAI-style error object', async () => {
+      // The /v1 endpoints answer { error: { message, type } }
+      const mockResponse = {
+        json: () =>
+          Promise.resolve({ error: { message: 'model "llama" not found', type: 'api_error' } }),
+      } as Response;
+
+      expect(await parseOllamaError(mockResponse)).toBe('model "llama" not found');
+    });
+
     it('should handle non-JSON response', async () => {
       const mockResponse = {
         status: 500,
