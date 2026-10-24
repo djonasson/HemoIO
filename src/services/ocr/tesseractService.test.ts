@@ -100,6 +100,19 @@ describe('Tesseract OCR Service', () => {
       expect(onProgress).toHaveBeenCalledWith({ status: 'recognizing text', progress: 0.5 });
     });
 
+    it('fails, then starts a new worker, when the language data cannot load', async () => {
+      // tesseract.js reports this only through errorHandler: createWorker never settles
+      vi.mocked(Tesseract.createWorker).mockImplementationOnce((_lang, _oem, options) => {
+        const { errorHandler } = options as { errorHandler: (error: unknown) => void };
+        setTimeout(() => errorHandler('Network error while fetching ita.traineddata.gz'));
+        return new Promise<Tesseract.Worker>(() => {});
+      });
+
+      await expect(recognizeImage(image())).rejects.toThrow(/language data/);
+      await expect(recognizeImage(image())).resolves.toMatchObject({ text: expect.any(String) });
+      expect(Tesseract.createWorker).toHaveBeenCalledTimes(2);
+    });
+
     it('keeps working after a failed recognition, without another worker', async () => {
       let calls = 0;
       vi.mocked(Tesseract.createWorker).mockImplementationOnce(

@@ -128,18 +128,24 @@ function createOcrWorker(
   language: string,
   logger: (message: Tesseract.LoggerMessage) => void
 ): Promise<Worker> {
-  return createWorker(
-    language,
-    1 /* OEM.LSTM_ONLY */,
-    {
-      ...ocrAssetUrls(window.location.origin, import.meta.env.BASE_URL),
-      logger,
-    },
-    // The Italian data names a word list ("special-words") that is not part
-    // of it; without this Tesseract logs an error looking for it. The option
-    // is a Tesseract init parameter that tesseract.js's types do not list.
-    { user_words_suffix: '' } as unknown as Partial<Tesseract.InitOptions>
-  );
+  return new Promise<Worker>((resolve, reject) => {
+    createWorker(
+      language,
+      1 /* OEM.LSTM_ONLY */,
+      {
+        ...ocrAssetUrls(window.location.origin, import.meta.env.BASE_URL),
+        logger,
+        // When the language data cannot load, tesseract.js reports it only
+        // here: its createWorker promise never settles. Once the worker is
+        // ready this has no effect, as a recognition's own promise rejects.
+        errorHandler: () => reject(new Error('OCR could not load its language data')),
+      },
+      // The Italian data names a word list ("special-words") that is not part
+      // of it; without this Tesseract logs an error looking for it. The option
+      // is a Tesseract init parameter that tesseract.js's types do not list.
+      { user_words_suffix: '' } as unknown as Partial<Tesseract.InitOptions>
+    ).then(resolve, reject);
+  });
 }
 
 /**
