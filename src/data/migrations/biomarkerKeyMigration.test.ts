@@ -112,4 +112,11 @@ describe('remapBiomarkerKey', () => {
       unitPreferences: { glucose: 'mmol/L' },
     });
   });
+
+  it('remaps alert acknowledgements with the other biomarker-keyed maps', () => {
+    const acknowledged = '2024-01-15T00:00:00.000Z';
+    expect(
+      remapPreferenceMaps({ acknowledgedAlerts: { 'unknown:legacy-1': acknowledged } }, mapping)
+    ).toEqual({ acknowledgedAlerts: { 'unknown:zorblatin': acknowledged } });
+  });
 });

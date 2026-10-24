@@ -35,29 +35,36 @@ export function migrateNoteRecord<T extends object>(
   return { ...(rest as Omit<T, 'biomarkerId'>), biomarkerKey: legacyIdToKey(biomarkerId) };
 }
 
+/** Preference maps keyed by biomarker: every key migration applies to all of them */
+const BIOMARKER_KEYED_PREFERENCES = ['personalTargets', 'unitPreferences', 'acknowledgedAlerts'] as const;
+
+type BiomarkerKeyedPreferences = Partial<
+  Record<(typeof BIOMARKER_KEYED_PREFERENCES)[number], Record<string | number, unknown>>
+>;
+
+function mapPreferenceKeys<T extends BiomarkerKeyedPreferences>(
+  prefs: T,
+  newKey: (key: string) => string
+): T {
+  const result = { ...prefs };
+  for (const field of BIOMARKER_KEYED_PREFERENCES) {
+    const map = prefs[field];
+    if (map) {
+      result[field] = Object.fromEntries(
+        Object.entries(map).map(([key, value]) => [newKey(key), value])
+      ) as T[typeof field];
+    }
+  }
+  return result;
+}
+
 /** Numeric map keys come back from JSON/IndexedDB as digit strings */
 const LEGACY_MAP_KEY = /^-?\d+$/;
 
-function rekey<V>(map: Record<string | number, V>): Record<string, V> {
-  return Object.fromEntries(
-    Object.entries(map).map(([key, value]) => [
-      LEGACY_MAP_KEY.test(key) ? legacyIdToKey(Number(key)) : key,
-      value,
-    ])
+export function migratePreferenceMaps<T extends BiomarkerKeyedPreferences>(prefs: T): T {
+  return mapPreferenceKeys(prefs, (key) =>
+    LEGACY_MAP_KEY.test(key) ? legacyIdToKey(Number(key)) : key
   );
-}
-
-export function migratePreferenceMaps<
-  T extends {
-    personalTargets?: Record<string | number, unknown>;
-    unitPreferences?: Record<string | number, unknown>;
-  },
->(prefs: T): T {
-  return {
-    ...prefs,
-    ...(prefs.personalTargets && { personalTargets: rekey(prefs.personalTargets) }),
-    ...(prefs.unitPreferences && { unitPreferences: rekey(prefs.unitPreferences) }),
-  };
 }
 
 /**
@@ -91,19 +98,9 @@ export function remapBiomarkerKey<T extends object>(
   return remapped ? { ...record, biomarkerKey: remapped } : record;
 }
 
-function remapMapKeys<V>(
-  map: Record<string, V>,
+export function remapPreferenceMaps<T extends BiomarkerKeyedPreferences>(
+  prefs: T,
   mapping: ReadonlyMap<string, string>
-): Record<string, V> {
-  return Object.fromEntries(Object.entries(map).map(([key, value]) => [mapping.get(key) ?? key, value]));
-}
-
-export function remapPreferenceMaps<
-  T extends { personalTargets?: Record<string, unknown>; unitPreferences?: Record<string, unknown> },
->(prefs: T, mapping: ReadonlyMap<string, string>): T {
-  return {
-    ...prefs,
-    ...(prefs.personalTargets && { personalTargets: remapMapKeys(prefs.personalTargets, mapping) }),
-    ...(prefs.unitPreferences && { unitPreferences: remapMapKeys(prefs.unitPreferences, mapping) }),
-  };
+): T {
+  return mapPreferenceKeys(prefs, (key) => mapping.get(key) ?? key);
 }

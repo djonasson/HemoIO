@@ -280,7 +280,7 @@ export function BackupRestore({
 
     try {
       await onRestore(parsedData, {
-        restoreAISettings: restoreAIConfig && describeBackupAISettings(parsedData) !== null,
+        restoreAISettings: restoreAIConfig && aiSummary !== null,
       });
       setSuccess('Data restored successfully');
       setSelectedFile(null);

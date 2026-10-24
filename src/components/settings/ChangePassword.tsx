@@ -29,14 +29,6 @@ export function ChangePassword(): React.ReactNode {
   const currentRef = useRef<HTMLInputElement>(null);
   // Guards against a second submit before React re-renders the disabled button
   const submittingRef = useRef(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   // After a wrong password the inputs are enabled again only on the next
   // render, so focus moves once the error has rendered
@@ -65,7 +57,6 @@ export function ChangePassword(): React.ReactNode {
       setCurrentError(null);
       const result = await changePassword(currentPassword, newPassword);
       submittingRef.current = false;
-      if (!mountedRef.current) return;
 
       setIsSubmitting(false);
       if (result.ok) {

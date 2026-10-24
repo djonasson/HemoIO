@@ -232,21 +232,6 @@ export function ReviewStep({
     [reviewedResults, onReviewChange]
   );
 
-  // Rename a biomarker: its dictionary match follows the new name
-  const renameBiomarker = useCallback(
-    (resultIndex: number, biomarkerIndex: number, name: string) => {
-      const newResults = [...reviewedResults];
-      newResults[resultIndex] = {
-        ...newResults[resultIndex],
-        editedBiomarkers: newResults[resultIndex].editedBiomarkers.map((b, i) =>
-          i === biomarkerIndex ? applyBiomarkerName(b, name) : b
-        ),
-      };
-      onReviewChange(newResults);
-    },
-    [reviewedResults, onReviewChange]
-  );
-
   // Remove a biomarker
   const removeBiomarker = useCallback(
     (resultIndex: number, biomarkerIndex: number) => {
@@ -566,7 +551,14 @@ export function ReviewStep({
                               <Autocomplete
                                 size="xs"
                                 value={biomarker.name}
-                                onChange={(name) => renameBiomarker(resultIndex, bioIndex, name)}
+                                onChange={(name) =>
+                                  // Its dictionary match follows the new name
+                                  updateBiomarker(
+                                    resultIndex,
+                                    bioIndex,
+                                    applyBiomarkerName(biomarker, name)
+                                  )
+                                }
                                 data={BIOMARKER_NAMES}
                                 // Searches names and aliases; options are dictionary names
                                 filter={({ search }) =>

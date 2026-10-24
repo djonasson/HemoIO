@@ -124,7 +124,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [activeView, setActiveView] = useState<View>('timeline');
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
-  const { dataSources, labResultsData, biomarkerOptions, refresh: refreshExportData } = useExportData();
+  const {
+    dataSources,
+    labResultsData,
+    biomarkerOptions,
+    refresh: refreshExportData,
+  } = useExportData();
   const { isReconciling } = useLegacyKeyReconciliation();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
@@ -348,36 +353,39 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
         <MantineAppShell.Navbar p="md">
           <Stack gap="xs">
-            {NAV_ITEMS.filter((item) => item.view !== 'settings').map((item) => (
-              <NavLink
-                key={item.view}
-                // Without an href NavLink renders a bare <a>, which has no role
-                // and cannot be reached with Tab
-                component="button"
-                rightSection={
-                  item.view === 'alerts' && alertCount > 0 ? (
-                    <Badge color="red" variant="filled" size="sm">
-                      {alertCount}
-                    </Badge>
-                  ) : undefined
-                }
-                label={
-                  item.view === 'alerts' && alertCount > 0 ? (
-                    <>
-                      {item.label}
-                      <VisuallyHidden>, {alertCount} abnormal values</VisuallyHidden>
-                    </>
-                  ) : (
-                    item.label
-                  )
-                }
-                description={item.description}
-                leftSection={item.icon}
-                active={activeView === item.view}
-                onClick={() => handleNavClick(item.view)}
-                aria-current={activeView === item.view ? 'page' : undefined}
-              />
-            ))}
+            {NAV_ITEMS.filter((item) => item.view !== 'settings').map((item) => {
+              const showAlertCount = item.view === 'alerts' && alertCount > 0;
+              return (
+                <NavLink
+                  key={item.view}
+                  // Without an href NavLink renders a bare <a>, which has no role
+                  // and cannot be reached with Tab
+                  component="button"
+                  rightSection={
+                    showAlertCount ? (
+                      <Badge color="red" variant="filled" size="sm">
+                        {alertCount}
+                      </Badge>
+                    ) : undefined
+                  }
+                  label={
+                    showAlertCount ? (
+                      <>
+                        {item.label}
+                        <VisuallyHidden>, {alertCount} abnormal values</VisuallyHidden>
+                      </>
+                    ) : (
+                      item.label
+                    )
+                  }
+                  description={item.description}
+                  leftSection={item.icon}
+                  active={activeView === item.view}
+                  onClick={() => handleNavClick(item.view)}
+                  aria-current={activeView === item.view ? 'page' : undefined}
+                />
+              );
+            })}
 
             <Divider my="sm" />
 
@@ -398,19 +406,21 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             <Center h="50vh">
               <Loader aria-label="Preparing your data" />
             </Center>
-          ) : children ?? (
-            <MainContent
-              view={activeView}
-              onImportComplete={handleImportComplete}
-              onNavigateToImport={handleNavigateToImport}
-              onNavigate={handleNavClick}
-              trendFocus={trendFocus}
-              onOpenTrend={handleOpenTrend}
-              timelineFocus={timelineFocus}
-              onOpenLabResult={handleOpenLabResult}
-              onRestore={handleRestore}
-              isRestoring={isRestoring}
-            />
+          ) : (
+            (children ?? (
+              <MainContent
+                view={activeView}
+                onImportComplete={handleImportComplete}
+                onNavigateToImport={handleNavigateToImport}
+                onNavigate={handleNavClick}
+                trendFocus={trendFocus}
+                onOpenTrend={handleOpenTrend}
+                timelineFocus={timelineFocus}
+                onOpenLabResult={handleOpenLabResult}
+                onRestore={handleRestore}
+                isRestoring={isRestoring}
+              />
+            ))
           )}
         </MantineAppShell.Main>
       </MantineAppShell>
@@ -499,8 +509,7 @@ function MainContent({
             AI Configuration Required
           </Text>
           <Text c="dimmed">
-            Please configure your AI API key in Settings before importing lab
-            reports.
+            Please configure your AI API key in Settings before importing lab reports.
           </Text>
         </Stack>
       );
@@ -514,8 +523,7 @@ function MainContent({
             Model Selection Required
           </Title>
           <Text c="dimmed" ta="center">
-            Please select a model in Settings → AI Configuration before importing lab
-            reports.
+            Please select a model in Settings → AI Configuration before importing lab reports.
           </Text>
         </Stack>
       );
