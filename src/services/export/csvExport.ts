@@ -5,6 +5,7 @@
  */
 
 import type { LabResult, TestValue } from '@/types';
+import { isWithinDays } from '@/utils/localDate';
 
 /**
  * Options for CSV export
@@ -121,16 +122,10 @@ function filterResults(
   results: LabResultForExport[],
   options: CsvExportOptions
 ): LabResultForExport[] {
-  return results.filter((result) => {
-    // Date range filter
-    if (options.startDate && result.labResult.date < options.startDate) {
-      return false;
-    }
-    if (options.endDate && result.labResult.date > options.endDate) {
-      return false;
-    }
-    return true;
-  });
+  // The range is in days: a result anywhere in the end day is included
+  return results.filter((result) =>
+    isWithinDays(result.labResult.date, options.startDate ?? null, options.endDate ?? null)
+  );
 }
 
 /**

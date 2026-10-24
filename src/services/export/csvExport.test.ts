@@ -170,6 +170,14 @@ describe('csvExport', () => {
       expect(csv).toContain('2024-03-20');
     });
 
+    it('includes results from the whole of the end day', () => {
+      const data = createMockExportData();
+      // A local calendar day, as the date picker gives it
+      const csv = exportToCsv(data, { endDate: new Date(2024, 2, 20) });
+
+      expect(csv).toContain('2024-03-20');
+    });
+
     it('should filter by biomarker IDs', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data, { biomarkerKeys: ['marker-1'] }); // Only Glucose

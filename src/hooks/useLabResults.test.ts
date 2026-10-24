@@ -229,6 +229,18 @@ describe('useLabResults', () => {
     expect(result.current.results.map((r) => r.id)).toEqual([3, 2]);
   });
 
+  it('includes results from the whole of the end day', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // A local calendar day, as the date picker gives it; results are stored later in the day
+    act(() => result.current.setFilters({ endDate: new Date(2024, 2, 20) }));
+
+    expect(result.current.results.map((r) => r.id)).toContain(2);
+  });
+
   it('should filter by search term (lab name)', async () => {
     const mockDb = createMockDb();
     vi.mocked(useEncryptedDb).mockReturnValue({

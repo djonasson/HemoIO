@@ -35,6 +35,7 @@ import {
   type LabResultForExport,
   type ExportDataSources,
 } from '@services/export';
+import { toLocalDay } from '@/utils/localDate';
 
 /**
  * Export format options
@@ -250,7 +251,7 @@ export function ExportDialog({
                   label="Start Date"
                   value={customStartDate}
                   onChange={(value) =>
-                    setCustomStartDate(value ? new Date(value) : null)
+                    setCustomStartDate(toLocalDay(value))
                   }
                   clearable
                   aria-label="Start date"
@@ -259,7 +260,7 @@ export function ExportDialog({
                   label="End Date"
                   value={customEndDate}
                   onChange={(value) =>
-                    setCustomEndDate(value ? new Date(value) : null)
+                    setCustomEndDate(toLocalDay(value))
                   }
                   clearable
                   aria-label="End date"

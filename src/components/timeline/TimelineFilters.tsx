@@ -8,17 +8,12 @@ import { useCallback } from 'react';
 import { Group, TextInput, Button, Paper } from '@mantine/core';
 import { DatePickerInput, type DateValue } from '@mantine/dates';
 import { IconSearch, IconCalendar, IconX } from '@tabler/icons-react';
+import { toLocalDay } from '@/utils/localDate';
 import type { LabResultFilters } from '@hooks/useLabResults';
 
-/**
- * Convert a DateValue to a Date or undefined
- */
+/** The picked calendar day, in the user's timezone */
 function toDate(value: DateValue | null): Date | undefined {
-  if (!value) return undefined;
-  if (value instanceof Date) return value;
-  // It's a string, parse it
-  const parsed = new Date(value);
-  return isNaN(parsed.getTime()) ? undefined : parsed;
+  return toLocalDay(value) ?? undefined;
 }
 
 export interface TimelineFiltersProps {

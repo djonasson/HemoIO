@@ -7,6 +7,7 @@
  */
 
 import { createContext, useContext, useMemo, useState } from 'react';
+import { isWithinDays } from '@/utils/localDate';
 import type { LabResult, TestValue } from '@/types';
 
 /**
@@ -161,12 +162,11 @@ export function useLabResults(): UseLabResultsResult {
   const filteredResults = useMemo(() => {
     let results = [...allResults];
 
-    // Filter by date range
-    if (filters.startDate) {
-      results = results.filter((r) => r.date >= filters.startDate!);
-    }
-    if (filters.endDate) {
-      results = results.filter((r) => r.date <= filters.endDate!);
+    // Filter by date range, in days: a result anywhere in the end day is included
+    if (filters.startDate || filters.endDate) {
+      results = results.filter((r) =>
+        isWithinDays(r.date, filters.startDate ?? null, filters.endDate ?? null)
+      );
     }
 
     // Filter by search term (lab name)
