@@ -12,12 +12,25 @@ export interface TextEdit {
 
 const WRAP: Record<'bold' | 'italic', string> = { bold: '**', italic: '*' };
 
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
 /**
  * Wrap the selection in a marker. Markers go around the text itself, not the
- * spaces next to it, and around each line: "**iron **" or "**a\nb**" would
- * not render as bold.
+ * spaces next to it or a list item's "- ", around each line, and around whole
+ * words: "**iron **", "**a\nb**", "**- a**" and "fer*rit*in" would not render.
  */
-function wrapSelection(text: string, start: number, end: number, marker: string): TextEdit {
+function wrapSelection(
+  text: string,
+  selectionStart: number,
+  selectionEnd: number,
+  marker: string
+): TextEdit {
+  let start = selectionStart;
+  let end = selectionEnd;
+  if (text.slice(start, end).trim() !== '') {
+    while (start > 0 && WORD_CHAR.test(text[start - 1]) && WORD_CHAR.test(text[start])) start--;
+    while (end < text.length && WORD_CHAR.test(text[end]) && WORD_CHAR.test(text[end - 1])) end++;
+  }
   const selected = text.slice(start, end);
   if (selected.trim() === '') {
     const cursor = start + marker.length;
@@ -31,7 +44,12 @@ function wrapSelection(text: string, start: number, end: number, marker: string)
   const lines = selected.split('\n');
   const wrapped = lines
     .map((line) => {
-      const [, lead, core, trail] = /^(\s*)(.*?)(\s*)$/.exec(line) ?? ['', '', line, ''];
+      const [, lead, core, trail] = /^(\s*(?:- |\d+\. )?)(.*?)(\s*)$/.exec(line) ?? [
+        '',
+        '',
+        line,
+        '',
+      ];
       return core ? `${lead}${marker}${core}${marker}${trail}` : line;
     })
     .join('\n');

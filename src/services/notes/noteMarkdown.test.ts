@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { notePreview, parseInline, parseNoteMarkdown, toPlainText } from './noteMarkdown';
+import source from './noteMarkdown.ts?raw';
 
 describe('parseInline', () => {
   it('reads bold and italic', () => {
@@ -90,5 +91,13 @@ describe('toPlainText and notePreview', () => {
   it('cuts previews to the limit with an ellipsis', () => {
     expect(notePreview('word '.repeat(50), 20)).toBe('word word word word…');
     expect(notePreview('short\nnote')).toBe('short note');
+  });
+});
+
+describe('browser support', () => {
+  // Safari before 16.4 cannot parse lookbehind: a module-level regex with one
+  // throws while the app loads, and no screen renders at all
+  it('uses no lookbehind assertions', () => {
+    expect(source).not.toMatch(/\(\?<[!=]/);
   });
 });

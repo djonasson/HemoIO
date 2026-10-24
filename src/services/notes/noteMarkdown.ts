@@ -16,12 +16,14 @@ export type NoteBlock =
 
 // A marker opens only after a non-word character and before text, and closes
 // only after text and before a non-word character. So "2*3*4", "a*b*c",
-// "x ** y" and a bare "****" stay text, as typed.
-const OPEN = String.raw`(?<![\p{L}\p{N}*])`;
-const CLOSE = String.raw`(?![\p{L}\p{N}*])`;
-const CONTENT = String.raw`(?![\s*])(.+?)(?<![\s*])`;
+// "x ** y" and a bare "****" stay text, as typed. The character before an
+// opening marker is matched (group 1) rather than looked behind at: Safari
+// before 16.4 cannot parse lookbehind.
+const BEFORE = String.raw`(^|[^\p{L}\p{N}*])`;
+const CONTENT = String.raw`([^\s*](?:.*?[^\s*])?)`;
+const AFTER = String.raw`(?![\p{L}\p{N}*])`;
 const INLINE = new RegExp(
-  `${OPEN}\\*\\*${CONTENT}\\*\\*${CLOSE}|${OPEN}\\*${CONTENT}\\*${CLOSE}`,
+  `${BEFORE}(?:\\*\\*${CONTENT}\\*\\*|\\*${CONTENT}\\*)${AFTER}`,
   'gu'
 );
 const BULLET = /^- (.*)$/;
@@ -31,11 +33,11 @@ export function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = [];
   let last = 0;
   for (const match of text.matchAll(INLINE)) {
-    if (match.index > last) nodes.push({ type: 'text', text: text.slice(last, match.index) });
-    nodes.push(
-      match[1] !== undefined ? { type: 'bold', text: match[1] } : { type: 'italic', text: match[2] }
-    );
-    last = match.index + match[0].length;
+    const [whole, before, bold, italic] = match;
+    const markerStart = match.index + before.length;
+    if (markerStart > last) nodes.push({ type: 'text', text: text.slice(last, markerStart) });
+    nodes.push(bold !== undefined ? { type: 'bold', text: bold } : { type: 'italic', text: italic });
+    last = match.index + whole.length;
   }
   if (last < text.length) nodes.push({ type: 'text', text: text.slice(last) });
   return nodes;

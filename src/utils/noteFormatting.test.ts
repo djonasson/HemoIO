@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyNoteFormat } from './noteFormatting';
+import { parseNoteMarkdown } from '@services/notes/noteMarkdown';
 
 describe('applyNoteFormat', () => {
   it('wraps the selection in bold and keeps it selected', () => {
@@ -58,5 +59,29 @@ describe('applyNoteFormat', () => {
       selectionStart: 3,
       selectionEnd: 3,
     });
+  });
+
+  it('bolds the text of list items, keeping them list items', () => {
+    const text = '- iron\n- folate';
+    const { text: bolded } = applyNoteFormat(text, 0, text.length, 'bold');
+    expect(bolded).toBe('- **iron**\n- **folate**');
+    expect(parseNoteMarkdown(bolded)).toEqual([
+      {
+        type: 'bullet-list',
+        items: [[{ type: 'bold', text: 'iron' }], [{ type: 'bold', text: 'folate' }]],
+      },
+    ]);
+  });
+
+  it('formats whole words, as markers inside a word would show as typed', () => {
+    // "rit" selected inside "ferritin"
+    const { text } = applyNoteFormat('low ferritin', 7, 10, 'italic');
+    expect(text).toBe('low *ferritin*');
+    expect(parseNoteMarkdown(text)).toEqual([
+      {
+        type: 'paragraph',
+        lines: [[{ type: 'text', text: 'low ' }, { type: 'italic', text: 'ferritin' }]],
+      },
+    ]);
   });
 });
