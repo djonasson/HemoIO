@@ -10,6 +10,7 @@
 import { useMemo, useCallback } from 'react';
 import { useLabResults, type EnrichedTestValue } from './useLabResults';
 import { useAlertState } from './useAlertState';
+import { usePreferences } from './usePreferences';
 import {
   SEVERITY_ORDER,
   detectConsistentDirection,
@@ -22,7 +23,7 @@ import {
   type TrendDirection,
 } from '@services/alerts';
 import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
-import { convertMeasurement } from '@services/units';
+import { convertForDisplay, convertMeasurement, preferredUnitFor } from '@services/units';
 
 /**
  * Alert type
@@ -147,6 +148,7 @@ function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType)
 export function useAlerts(): UseAlertsResult {
   const { results, isLoading, error, refresh } = useLabResults();
   const { acknowledgedThrough, dismissedIds, acknowledge, dismiss } = useAlertState();
+  const { unitPreferences } = usePreferences();
 
   /**
    * Generate alerts from lab results
@@ -201,9 +203,15 @@ export function useAlerts(): UseAlertsResult {
         return dateB - dateA;
       });
 
+      // Alerts state values in the preferred unit when one is set
+      const preferredUnit = preferredUnitFor(biomarkerDef, unitPreferences[biomarkerKey]);
+      const shown = (tv: (typeof sortedValues)[number]) =>
+        convertForDisplay(biomarkerName, tv, preferredUnit);
+
       // Generate out-of-range alerts
       for (const testValue of sortedValues) {
         if (testValue.status === 'high' || testValue.status === 'low') {
+          const display = shown(testValue);
           const info = labInfo.get(testValue.labResultId)!;
           const alertId = generateAlertId(
             biomarkerKey,
@@ -212,23 +220,23 @@ export function useAlerts(): UseAlertsResult {
           );
 
           const referenceRange = {
-            low: testValue.referenceRangeLow,
-            high: testValue.referenceRangeHigh,
+            low: display.referenceRangeLow,
+            high: display.referenceRangeHigh,
           };
 
           alertList.push({
             id: alertId,
             type: 'out_of_range',
-            severity: outOfRangeSeverity(
-              testValue.value as number,
-              testValue.status,
-              referenceRange
-            ),
+            // A ratio to the range, so worked out on the recorded values
+            severity: outOfRangeSeverity(testValue.value as number, testValue.status, {
+              low: testValue.referenceRangeLow,
+              high: testValue.referenceRangeHigh,
+            }),
             biomarkerKey,
             biomarkerName,
             category: biomarkerDef?.category,
-            value: testValue.value as number,
-            unit: testValue.unit,
+            value: display.value as number,
+            unit: display.unit,
             referenceRange,
             status: testValue.status,
             date: info.date,
@@ -237,8 +245,8 @@ export function useAlerts(): UseAlertsResult {
             message: outOfRangeMessage(
               biomarkerName,
               testValue.status,
-              testValue.value as number,
-              testValue.unit,
+              display.value as number,
+              display.unit,
               referenceRange
             ),
           });
@@ -248,7 +256,7 @@ export function useAlerts(): UseAlertsResult {
       // A trend is only worth an alert while it ends out of range, and values
       // are compared in one unit so a lab's unit change is not read as a trend
       const latestStatus = sortedValues[0].status;
-      const trendUnit = biomarkerDef?.canonicalUnit ?? sortedValues[0].unit;
+      const trendUnit = preferredUnit ?? biomarkerDef?.canonicalUnit ?? sortedValues[0].unit;
       const points = sortedValues.map((tv) => ({
         date: labInfo.get(tv.labResultId)!.date,
         ...convertMeasurement(
@@ -264,6 +272,7 @@ export function useAlerts(): UseAlertsResult {
           : null;
       if (trend) {
         const latestValue = sortedValues[0];
+        const latestShown = shown(latestValue);
         const info = labInfo.get(latestValue.labResultId)!;
         alertList.push({
           id: generateAlertId(biomarkerKey, latestValue.id ?? latestValue.labResultId, 'trend'),
@@ -272,11 +281,11 @@ export function useAlerts(): UseAlertsResult {
           biomarkerKey,
           biomarkerName,
           category: biomarkerDef?.category,
-          value: latestValue.value as number,
-          unit: latestValue.unit,
+          value: latestShown.value as number,
+          unit: latestShown.unit,
           referenceRange: {
-            low: latestValue.referenceRangeLow,
-            high: latestValue.referenceRangeHigh,
+            low: latestShown.referenceRangeLow,
+            high: latestShown.referenceRangeHigh,
           },
           status:
             latestValue.status === 'high' || latestValue.status === 'low'
@@ -297,6 +306,7 @@ export function useAlerts(): UseAlertsResult {
         (sortedValues[1].status === 'high' || sortedValues[1].status === 'low')
       ) {
         const latestValue = sortedValues[0];
+        const latestShown = shown(latestValue);
         const info = labInfo.get(latestValue.labResultId)!;
         const alertId = generateAlertId(
           biomarkerKey,
@@ -311,11 +321,11 @@ export function useAlerts(): UseAlertsResult {
           biomarkerKey,
           biomarkerName,
           category: biomarkerDef?.category,
-          value: latestValue.value as number,
-          unit: latestValue.unit,
+          value: latestShown.value as number,
+          unit: latestShown.unit,
           referenceRange: {
-            low: latestValue.referenceRangeLow,
-            high: latestValue.referenceRangeHigh,
+            low: latestShown.referenceRangeLow,
+            high: latestShown.referenceRangeHigh,
           },
           status: 'normal',
           date: info.date,
@@ -336,7 +346,7 @@ export function useAlerts(): UseAlertsResult {
         const bySeverity = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
         return bySeverity !== 0 ? bySeverity : b.date.getTime() - a.date.getTime();
       });
-  }, [results, acknowledgedThrough, dismissedIds]);
+  }, [results, acknowledgedThrough, dismissedIds, unitPreferences]);
 
   /**
    * Group alerts by biomarker

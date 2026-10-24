@@ -2,11 +2,23 @@
  * Tests for TestValuesList component
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
+
+let mockUnitPreferences: Record<string, string> = {};
+vi.mock('@hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    unitPreferences: mockUnitPreferences,
+    personalTargets: {},
+    isLoaded: true,
+    setPreferredUnit: vi.fn(),
+    setPersonalTarget: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -31,6 +43,35 @@ function createTestValue(
 }
 
 describe('TestValuesList', () => {
+  beforeEach(() => {
+    mockUnitPreferences = {};
+  });
+
+  describe('Preferred unit', () => {
+    const glucose = (options: Partial<EnrichedTestValue>) =>
+      createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose', ...options });
+
+    it('shows a value in the preferred unit, with its range', () => {
+      mockUnitPreferences = { glucose: 'mmol/L' };
+      renderWithProviders(
+        <TestValuesList
+          testValues={[
+            glucose({ value: 100, unit: 'mg/dL', referenceRangeLow: 70, referenceRangeHigh: 100 }),
+          ]}
+        />
+      );
+
+      const row = screen.getByRole('row', { name: /^Glucose: 5\.55 mmol\/L,/ });
+      expect(within(row).getByText('mmol/L')).toBeInTheDocument();
+      expect(within(row).getByText(/ - 5\.55 mmol\/L$/)).toBeInTheDocument();
+    });
+
+    it('shows a value as recorded without a preference', () => {
+      renderWithProviders(<TestValuesList testValues={[glucose({ value: 100, unit: 'mg/dL' })]} />);
+      expect(screen.getByRole('row', { name: /^Glucose: 100 mg\/dL,/ })).toBeInTheDocument();
+    });
+  });
+
   it('should render empty message when no test values', () => {
     renderWithProviders(<TestValuesList testValues={[]} />);
 

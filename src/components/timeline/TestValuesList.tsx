@@ -19,6 +19,8 @@ import {
   getBiomarkerByKey,
   getBiomarkerForTestValue,
 } from '@data/biomarkers/dictionary';
+import { usePreferences } from '@hooks/usePreferences';
+import { convertForDisplay, preferredUnitFor } from '@services/units';
 
 export interface TestValuesListProps {
   /** Test values to display */
@@ -221,6 +223,8 @@ function formatValue(testValue: EnrichedTestValue): string {
 export function TestValuesList({
   testValues,
 }: TestValuesListProps): React.ReactNode {
+  const { unitPreferences } = usePreferences();
+
   if (testValues.length === 0) {
     return (
       <Text c="dimmed" ta="center" py="md">
@@ -242,7 +246,14 @@ export function TestValuesList({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {testValues.map((testValue) => {
+        {testValues.map((recorded) => {
+          // Shown in the preferred unit when one is set and the value converts
+          const definition = getBiomarkerForTestValue(recorded);
+          const testValue = convertForDisplay(
+            definition?.name ?? '',
+            recorded,
+            preferredUnitFor(definition, unitPreferences[recorded.biomarkerKey])
+          );
           const indicator = getStatusIndicator(testValue.status);
           const biomarkerName = getBiomarkerName(testValue);
           const metadata = getBiomarkerMetadata(testValue);

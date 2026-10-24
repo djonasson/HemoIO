@@ -21,12 +21,29 @@ const alertState = {
 };
 vi.mock('./useAlertState', () => ({ useAlertState: () => alertState }));
 
+let mockUnitPreferences: Record<string, string> = {};
+vi.mock('./usePreferences', () => ({
+  usePreferences: () => ({
+    unitPreferences: mockUnitPreferences,
+    personalTargets: {},
+    isLoaded: true,
+    setPreferredUnit: vi.fn(),
+    setPersonalTarget: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
 // Mock biomarker dictionary
 vi.mock('@data/biomarkers/dictionary', () => {
   const mock = {
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Glucose' || name.toLowerCase().includes('glucose')) {
-      return { name: 'Glucose', category: 'metabolic' };
+      return {
+        name: 'Glucose',
+        category: 'metabolic',
+        canonicalUnit: 'mg/dL',
+        alternativeUnits: ['mmol/L'],
+      };
     }
     if (name === 'Hemoglobin' || name.toLowerCase().includes('hemoglobin')) {
       return { name: 'Hemoglobin', category: 'cbc' };
@@ -84,6 +101,28 @@ describe('useAlerts', () => {
     vi.clearAllMocks();
     alertState.acknowledgedThrough = {};
     alertState.dismissedIds = new Set();
+    mockUnitPreferences = {};
+  });
+
+  it('reports an out-of-range value in the preferred unit', () => {
+    mockUnitPreferences = { glucose: 'mmol/L' };
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, {
+          biomarkerKey: 'glucose',
+          value: 120,
+          status: 'high',
+          referenceRangeLow: 70,
+          referenceRangeHigh: 100,
+        }),
+      ]),
+    ]);
+    const { result } = renderHook(() => useAlerts());
+
+    const alert = result.current.alerts.find((a) => a.type === 'out_of_range');
+    expect(alert).toEqual(expect.objectContaining({ value: 6.66, unit: 'mmol/L' }));
+    expect(alert?.message).toContain('Glucose is high at 6.66 mmol/L');
+    expect(alert?.referenceRange?.high).toBe(5.55);
   });
 
   function mockResults(results: LabResultWithDetails[]): void {

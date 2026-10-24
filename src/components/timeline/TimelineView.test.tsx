@@ -10,6 +10,17 @@ import { TimelineView } from './TimelineView';
 import { notifications } from '@mantine/notifications';
 import type { LabResultWithDetails } from '@hooks/useLabResults';
 
+vi.mock('@hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    unitPreferences: {},
+    personalTargets: {},
+    isLoaded: true,
+    setPreferredUnit: vi.fn(),
+    setPersonalTarget: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
 vi.mock('@mantine/notifications', () => ({
   notifications: { show: vi.fn() },
 }));

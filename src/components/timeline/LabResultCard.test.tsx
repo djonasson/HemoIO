@@ -9,6 +9,17 @@ import { LabResultCard } from './LabResultCard';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
 
 // Mock the biomarker dictionary
+vi.mock('@hooks/usePreferences', () => ({
+  usePreferences: () => ({
+    unitPreferences: {},
+    personalTargets: {},
+    isLoaded: true,
+    setPreferredUnit: vi.fn(),
+    setPersonalTarget: vi.fn(),
+    reload: vi.fn(),
+  }),
+}));
+
 vi.mock('@data/biomarkers/dictionary', () => {
   const mock = {
   findBiomarker: vi.fn(() => null),
