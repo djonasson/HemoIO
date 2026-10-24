@@ -63,6 +63,11 @@ import { BackupPasswordInput } from './BackupPasswordInput';
 export interface BackupRestoreProps {
   /** Data sources for backup */
   dataSources: ExportDataSources;
+  /**
+   * Load the data as it is now. Backups use it, so changes made since the
+   * page loaded (targets, AI settings, display options) are included.
+   */
+  loadDataSources?: () => Promise<ExportDataSources | null>;
   /** Called when restore is initiated */
   onRestore: (
     data: ParsedBackupData | ParsedEncryptedBackupData,
@@ -93,6 +98,7 @@ const AI_PROVIDER_LABELS = { openai: 'OpenAI', anthropic: 'Anthropic', ollama: '
  */
 export function BackupRestore({
   dataSources,
+  loadDataSources,
   onRestore,
   isProcessing = false,
   getApiKey,
@@ -141,7 +147,8 @@ export function BackupRestore({
     setSuccess(null);
 
     try {
-      const json = exportToJson(dataSources, { prettyPrint: true });
+      const current = (await loadDataSources?.()) ?? dataSources;
+      const json = exportToJson(current, { prettyPrint: true });
       const filename = generateBackupFilename();
       downloadJson(json, filename);
       setSuccess('Standard backup created successfully');
@@ -151,7 +158,7 @@ export function BackupRestore({
     } finally {
       setIsCreatingBackup(false);
     }
-  }, [dataSources]);
+  }, [dataSources, loadDataSources]);
 
   // Handle create encrypted backup - show password modal
   const handleCreateEncryptedBackup = useCallback(() => {
@@ -173,10 +180,11 @@ export function BackupRestore({
     try {
       // The API key is kept outside the database; add it for this export only
       const apiKey = getApiKey ? await getApiKey() : null;
+      const current = (await loadDataSources?.()) ?? dataSources;
       const sources =
-        apiKey && dataSources.settings
-          ? { ...dataSources, settings: { ...dataSources.settings, aiApiKey: apiKey } }
-          : dataSources;
+        apiKey && current.settings
+          ? { ...current, settings: { ...current.settings, aiApiKey: apiKey } }
+          : current;
       const json = await exportToEncryptedJson(sources, {
         password: exportPassword,
         prettyPrint: false,
@@ -192,7 +200,7 @@ export function BackupRestore({
       setExportPassword('');
       setExportPasswordConfirm('');
     }
-  }, [dataSources, exportPassword, isExportPasswordValid, getApiKey]);
+  }, [dataSources, loadDataSources, exportPassword, isExportPasswordValid, getApiKey]);
 
   // Handle backup type selection and create
   const handleCreateBackup = useCallback(() => {

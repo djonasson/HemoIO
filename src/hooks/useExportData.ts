@@ -24,8 +24,8 @@ export interface UseExportDataResult {
   isLoading: boolean;
   /** Error if loading failed */
   error: string | null;
-  /** Refresh data from database */
-  refresh: () => Promise<void>;
+  /** Reload from the database; resolves with what was loaded, null if nothing could be */
+  refresh: () => Promise<ExportDataSources | null>;
 }
 
 /**
@@ -73,10 +73,10 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Fetch all data from database
    */
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (): Promise<ExportDataSources | null> => {
     if (!db || !isReady) {
       setIsLoading(false);
-      return;
+      return null;
     }
 
     setIsLoading(true);
@@ -138,10 +138,12 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
       }));
 
       setBiomarkerOptions(options);
+      return sources;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load export data';
       setError(message);
       console.error('Error fetching export data:', err);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -154,9 +156,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Refresh data from database
    */
-  const refresh = useCallback(async () => {
-    await fetchData();
-  }, [fetchData]);
+  const refresh = useCallback(() => fetchData(), [fetchData]);
 
   return {
     dataSources,

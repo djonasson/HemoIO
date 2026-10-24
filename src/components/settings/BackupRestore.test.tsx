@@ -183,6 +183,36 @@ describe('BackupRestore', () => {
     });
   });
 
+  describe('backup contents', () => {
+    it('backs up the data as it is when the backup is made', async () => {
+      const user = userEvent.setup();
+      const current: ExportDataSources = {
+        ...createMockDataSources(),
+        settings: { storageProvider: 'local', aiProvider: 'ollama', language: 'en' } as Settings,
+      };
+      const loadDataSources = vi.fn().mockResolvedValue(current);
+      renderWithProviders(
+        <BackupRestore
+          {...defaultProps}
+          dataSources={createMockDataSources()}
+          loadDataSources={loadDataSources}
+        />
+      );
+
+      await user.click(screen.getByText('Encrypted', { exact: true }));
+      await user.click(screen.getByRole('button', { name: 'Create Encrypted Backup' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/^Backup Password/), 'Str0ng!Backup#Pass');
+      await user.type(within(dialog).getByLabelText(/^Confirm Password/), 'Str0ng!Backup#Pass');
+      await user.click(within(dialog).getByRole('button', { name: 'Create Encrypted Backup' }));
+
+      await waitFor(() => expect(exportToEncryptedJson).toHaveBeenCalled());
+      const [sources] = vi.mocked(exportToEncryptedJson).mock.calls.at(-1)!;
+      expect(loadDataSources).toHaveBeenCalled();
+      expect(sources.settings).toMatchObject({ aiProvider: 'ollama' });
+    });
+  });
+
   describe('restoring AI configuration', () => {
     function backupFileWithAISettings(): File {
       const backup = {

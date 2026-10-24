@@ -58,7 +58,7 @@ export interface SettingsPageProps {
  * Settings page with tabbed sections
  */
 export function SettingsPage({ onRestore, isRestoring = false }: SettingsPageProps): React.ReactNode {
-  const { dataSources, isLoading } = useExportData();
+  const { dataSources, isLoading, refresh: loadDataSources } = useExportData();
   const { db, isReady } = useEncryptedDb();
   const { colorScheme } = useMantineColorScheme();
   const {
@@ -260,6 +260,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             <StorageSettings />
             <BackupRestore
               dataSources={dataSources}
+              loadDataSources={loadDataSources}
               getApiKey={getApiKey}
               onRestore={onRestore}
               hasApiKey={hasApiKey}
