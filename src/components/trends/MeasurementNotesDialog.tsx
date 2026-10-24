@@ -5,9 +5,8 @@ import { useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { NoteDisplay, NoteEditor } from '@components/notes';
+import { formatShortDate } from '@/utils/formatShortDate';
 import type { UserNote } from '@/types';
-
-const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 export interface Measurement {
   testValueId: number;
@@ -41,7 +40,7 @@ export function MeasurementNotesDialog({
 
   if (!measurement) return null;
 
-  const what = `${measurement.value} ${measurement.unit} on ${DATE.format(measurement.date)}`;
+  const what = `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`;
   const close = () => {
     setAdding(false);
     onClose();

@@ -22,6 +22,7 @@ import {
 } from '@data/biomarkers/dictionary';
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
+import { statusColor } from '@/utils/statusColor';
 
 export interface TestValuesListProps {
   /** Test values to display */
@@ -40,25 +41,25 @@ function getStatusIndicator(status: TestValueStatus): {
     case 'high':
       return {
         icon: <IconArrowUp size={14} />,
-        color: 'red',
+        color: statusColor(status),
         label: 'Above reference range',
       };
     case 'low':
       return {
         icon: <IconArrowDown size={14} />,
-        color: 'orange',
+        color: statusColor(status),
         label: 'Below reference range',
       };
     case 'normal':
       return {
         icon: <IconCheck size={14} />,
-        color: 'green',
+        color: statusColor(status),
         label: 'Within reference range',
       };
     default:
       return {
         icon: <IconMinus size={14} />,
-        color: 'gray',
+        color: statusColor(status),
         label: 'No reference range available',
       };
   }

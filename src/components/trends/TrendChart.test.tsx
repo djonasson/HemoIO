@@ -279,4 +279,35 @@ describe('CustomTooltip', () => {
     );
     expect(screen.queryByText('Note')).not.toBeInTheDocument();
   });
+
+  function renderPoint(referenceRange: { low?: number; high?: number }) {
+    renderWithProviders(
+      <CustomTooltip
+        active
+        label="Jan 15, 24"
+        payload={[
+          {
+            payload: {
+              date: new Date('2024-01-15'),
+              value: 125,
+              unit: 'mg/dL',
+              referenceRange,
+              formattedDate: 'Jan 15, 24',
+            },
+          },
+        ]}
+      />
+    );
+  }
+
+  it('shows a reference range with one bound without "undefined"', () => {
+    renderPoint({ high: 100 });
+    expect(screen.getByText('< 100')).toBeInTheDocument();
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
+  });
+
+  it('shows no reference line for a point without a range', () => {
+    renderPoint({});
+    expect(screen.queryByText('Reference:')).not.toBeInTheDocument();
+  });
 });

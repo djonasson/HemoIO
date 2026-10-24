@@ -3,6 +3,8 @@
  * the preview of the point's note
  */
 import { Paper, Text, Stack, Group, Badge } from '@mantine/core';
+import { formatRange } from '@/utils/formatRange';
+import { statusColor } from '@/utils/statusColor';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 /**
@@ -24,6 +26,9 @@ export function CustomTooltip({
   }
 
   const data = payload[0].payload;
+  // Converted points always carry a range object, with or without bounds
+  const range = data.referenceRange ?? {};
+  const hasRange = range.low !== undefined || range.high !== undefined;
 
   return (
     <Paper shadow="md" p="sm" withBorder>
@@ -37,13 +42,13 @@ export function CustomTooltip({
             {data.value} {data.unit}
           </Text>
         </Group>
-        {data.referenceRange && (
+        {hasRange && (
           <Group gap="xs">
             <Text size="sm" c="dimmed">
               Reference:
             </Text>
             <Text size="sm" c="dimmed">
-              {data.referenceRange.low} - {data.referenceRange.high}
+              {formatRange(range.low, range.high)}
             </Text>
           </Group>
         )}
@@ -62,18 +67,7 @@ export function CustomTooltip({
             </Text>
           </Stack>
         )}
-        <Badge
-          size="xs"
-          color={
-            data.status === 'high'
-              ? 'red'
-              : data.status === 'low'
-                ? 'orange'
-                : data.status === 'normal'
-                  ? 'green'
-                  : 'gray'
-          }
-        >
+        <Badge size="xs" color={statusColor(data.status)}>
           {data.status || 'unknown'}
         </Badge>
       </Stack>

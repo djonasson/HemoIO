@@ -1,6 +1,7 @@
 /**
  * What a note is attached to, as a label and a place to navigate to
  */
+import { formatShortDate } from '@/utils/formatShortDate';
 import type { UserNote } from '@/types';
 
 export type NoteAttachment =
@@ -15,12 +16,6 @@ export interface AttachmentLookup {
   biomarkerName: (biomarkerKey: string) => string;
 }
 
-const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-export function formatNoteDate(date: Date): string {
-  return DATE.format(date);
-}
-
 export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup): NoteAttachment {
   if (note.biomarkerKey) {
     const name = lookup.biomarkerName(note.biomarkerKey);
@@ -30,7 +25,7 @@ export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup)
     if (testValue && result) {
       return {
         kind: 'measurement',
-        label: `${name} · ${testValue.value} ${testValue.unit} · ${formatNoteDate(result.date)}`,
+        label: `${name} · ${testValue.value} ${testValue.unit} · ${formatShortDate(result.date)}`,
         biomarkerKey: note.biomarkerKey,
         date: result.date,
       };
@@ -44,7 +39,7 @@ export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup)
     return result
       ? {
           kind: 'lab-result',
-          label: `${result.labName} · ${formatNoteDate(result.date)}`,
+          label: `${result.labName} · ${formatShortDate(result.date)}`,
           labResultId: note.labResultId,
         }
       : { kind: 'none', label: 'Deleted lab result' };

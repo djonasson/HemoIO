@@ -30,7 +30,10 @@ import {
   IconChartLine,
   IconTarget,
 } from '@tabler/icons-react';
+import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
 import { formatRange } from '@/utils/formatRange';
+import { statusColor } from '@/utils/statusColor';
+import { formatShortDate } from '@/utils/formatShortDate';
 import type { SpecimenType } from '@/types';
 import type { BiomarkerResultSummary } from '@services/statistics';
 import type { PersonalTargetRange } from '@hooks/usePreferences';
@@ -58,18 +61,14 @@ const SPECIMEN_LABELS: Record<SpecimenType, string> = {
 function getSpecimenLabel(specimenType: SpecimenType): string {
   return SPECIMEN_LABELS[specimenType] || specimenType;
 }
-import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
-
-const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** Status words, so status never relies on colour alone */
-const STATUS: Record<BiomarkerResultSummary['latest']['status'], { label: string; color: string }> =
-  {
-    high: { label: 'High', color: 'red' },
-    low: { label: 'Low', color: 'orange' },
-    normal: { label: 'Normal', color: 'green' },
-    unknown: { label: 'No reference range', color: 'gray' },
-  };
+const STATUS_LABELS: Record<BiomarkerResultSummary['latest']['status'], string> = {
+  high: 'High',
+  low: 'Low',
+  normal: 'Normal',
+  unknown: 'No reference range',
+};
 
 function formatSummaryValue(value: number | string | boolean): string {
   if (typeof value === 'boolean') return value ? 'Positive' : 'Negative';
@@ -223,10 +222,10 @@ export function BiomarkerDetail({
                   {`${formatSummaryValue(summary.latest.value)} ${summary.latest.unit}`.trim()}
                 </Text>
                 <Text size="sm" c="dimmed">
-                  {DATE.format(summary.latest.date)}
+                  {formatShortDate(summary.latest.date)}
                 </Text>
-                <Badge variant="light" color={STATUS[summary.latest.status].color}>
-                  {STATUS[summary.latest.status].label}
+                <Badge variant="light" color={statusColor(summary.latest.status)}>
+                  {STATUS_LABELS[summary.latest.status]}
                 </Badge>
               </Group>
               <Text size="sm" c="dimmed">
