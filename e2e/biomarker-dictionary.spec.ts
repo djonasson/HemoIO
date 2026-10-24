@@ -334,6 +334,8 @@ test.describe('Biomarker Dictionary', () => {
 
   test.describe('Personal Target', () => {
     test('should show a personal target next to the standard range', async ({ page }) => {
+      // Seeded through a backup restore with no page reload afterwards, so
+      // this also pins that a restore shows its preferences at once.
       // Glucose is legacy ID 22 in a schema-version-1 backup
       await seedMeasurements(
         page,
