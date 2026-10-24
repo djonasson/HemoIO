@@ -80,9 +80,9 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
         // Remove from the shared state at once, so every view updates
         setAllResults((prev) => prev.filter((r) => r.id !== id));
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to delete lab result';
-        setError(message);
-        throw new Error(message);
+        // Reported to the caller only: the results are still there, so the
+        // views showing them must not turn into an error
+        throw new Error(err instanceof Error ? err.message : 'Failed to delete lab result');
       }
     },
     [db]

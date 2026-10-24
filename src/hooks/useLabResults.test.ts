@@ -421,6 +421,10 @@ describe('useLabResults', () => {
         await result.current.deleteResult(1);
       })
     ).rejects.toThrow('Delete failed');
+    // The results are still there: other views must not turn into an error
+    await act(async () => {});
+    expect(result.current.error).toBeNull();
+    expect(result.current.results).toHaveLength(3);
   });
 
   it('should refresh data when called', async () => {
