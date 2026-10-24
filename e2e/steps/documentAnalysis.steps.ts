@@ -33,6 +33,12 @@ export interface OllamaChatScript {
 export interface OllamaChatOptions {
   /** Hold every request until `release()` is called */
   hold?: boolean;
+  /**
+   * Answer each request after this long, as a real model does. Without it,
+   * requests sent at the same time rarely overlap, so maxInFlight cannot
+   * show that they were.
+   */
+  replyDelayMs?: number;
 }
 
 /**
@@ -67,6 +73,7 @@ export async function scriptOllamaChat(
     inFlight++;
     script.maxInFlight = Math.max(script.maxInFlight, inFlight);
     await released;
+    if (options.replyDelayMs) await new Promise((wait) => setTimeout(wait, options.replyDelayMs));
 
     const reply = replies[Math.min(index, replies.length - 1)];
     try {

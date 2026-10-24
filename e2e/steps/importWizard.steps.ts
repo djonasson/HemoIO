@@ -9,7 +9,12 @@ import * as path from 'path';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { setupOrUnlock } from './app.steps';
 import { configureOllamaProvider, mockOllama, DEFAULT_EXTRACTION } from './ai.steps';
-import { scriptOllamaChat, type ChatReply, type OllamaChatScript } from './documentAnalysis.steps';
+import {
+  scriptOllamaChat,
+  type ChatReply,
+  type OllamaChatOptions,
+  type OllamaChatScript,
+} from './documentAnalysis.steps';
 
 /**
  * Given I am logged into HemoIO with a (mocked) local Ollama provider, which
@@ -19,7 +24,7 @@ import { scriptOllamaChat, type ChatReply, type OllamaChatScript } from './docum
 export async function loginWithOllama(
   page: Page,
   replies: ChatReply[] = [{ extraction: DEFAULT_EXTRACTION }],
-  options: { hold?: boolean } = {}
+  options: OllamaChatOptions = {}
 ): Promise<OllamaChatScript> {
   await mockOllama(page);
   const script = await scriptOllamaChat(page, replies, options);

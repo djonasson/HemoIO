@@ -622,10 +622,12 @@ test.describe('Document Analysis - Error Handling', () => {
   });
 
   test('should handle rate limiting gracefully', async ({ page }) => {
-    const ai = await loginWithOllama(page, [
-      { status: 429, error: 'rate limit exceeded' },
-      { extraction: DEFAULT_EXTRACTION },
-    ]);
+    const ai = await loginWithOllama(
+      page,
+      [{ status: 429, error: 'rate limit exceeded' }, { extraction: DEFAULT_EXTRACTION }],
+      // Long enough that requests sent together would be counted together
+      { replyDelayMs: 500 }
+    );
     await goToImport(page);
     await uploadFiles(page, [
       track(createTextPdf('report-1.pdf', [LAB_REPORT_LINES])),
