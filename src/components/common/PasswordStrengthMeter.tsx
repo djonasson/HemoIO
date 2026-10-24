@@ -3,7 +3,7 @@
  * Used by the setup wizard and by Settings → Security.
  */
 
-import { Stack, Text, Progress, List, ThemeIcon, Group } from '@mantine/core';
+import { Stack, Text, Progress, List, ThemeIcon, Group, VisuallyHidden } from '@mantine/core';
 import { IconCheck, IconX } from '@tabler/icons-react';
 import { checkPasswordStrength, type PasswordStrengthResult } from '@data/encryption';
 
@@ -84,6 +84,8 @@ function PasswordRequirements({ strength }: PasswordRequirementsProps): React.Re
           <Text size="sm" c={req.met ? 'green' : 'dimmed'}>
             {req.label}
           </Text>
+          {/* The icon and colour are visual only; this states it for screen readers */}
+          <VisuallyHidden>{req.met ? ' (met)' : ' (not met)'}</VisuallyHidden>
         </List.Item>
       ))}
     </List>

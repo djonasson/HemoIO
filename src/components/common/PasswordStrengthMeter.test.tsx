@@ -43,4 +43,17 @@ describe('PasswordStrengthMeter', () => {
     expect(within(list).getByText('At least one number')).toBeInTheDocument();
     expect(within(list).getByText('At least one special character')).toBeInTheDocument();
   });
+
+  it('tells screen readers which requirements are met, not only by colour', () => {
+    renderMeter('abcdefgh');
+
+    const items = screen.getAllByRole('listitem');
+    const item = (label: string) => items.find((li) => li.textContent?.startsWith(label));
+    expect(item('At least 8 characters')).toHaveTextContent('At least 8 characters (met)');
+    expect(item('At least one lowercase letter')).toHaveTextContent('(met)');
+    expect(item('At least one uppercase letter')).toHaveTextContent(
+      'At least one uppercase letter (not met)'
+    );
+    expect(item('At least one number')).toHaveTextContent('(not met)');
+  });
 });
