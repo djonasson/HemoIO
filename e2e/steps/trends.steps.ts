@@ -28,7 +28,8 @@ export interface LabVisit {
   /** ISO date (YYYY-MM-DD); stored at 10:00 UTC so it never straddles a day */
   date: string;
   labName?: string;
-  values: Array<{ biomarker: BiomarkerFixture; value: number }>;
+  /** A value is in its biomarker's unit unless it names another */
+  values: Array<{ biomarker: BiomarkerFixture; value: number; unit?: string }>;
 }
 
 /**
@@ -49,14 +50,14 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
       updatedAt: timestamp,
     });
 
-    for (const { biomarker, value } of visit.values) {
+    for (const { biomarker, value, unit } of visit.values) {
       testValues.push({
         id: testValues.length + 1,
         labResultId,
         biomarkerId: biomarker.id,
         rawText: biomarker.name,
         value,
-        unit: biomarker.unit,
+        unit: unit ?? biomarker.unit,
         referenceRangeLow: biomarker.low,
         referenceRangeHigh: biomarker.high,
         confidence: 0.95,

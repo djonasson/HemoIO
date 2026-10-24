@@ -69,6 +69,12 @@ Feature: Trend Charts
     Then I should see the single data point displayed
     And a message should indicate "More data needed for trend analysis"
 
+  Scenario: Values in a unit the chart cannot convert are not plotted
+    Given I have hemoglobin values in g/dL and one in a unit that cannot be converted to g/dL
+    When I view the hemoglobin trend chart
+    Then only the values in g/dL should be plotted
+    And I should be told that one value in the other unit is not shown
+
   Scenario: Handle missing data gracefully
     Given I have lab results with gaps in dates
     When I view the trend chart

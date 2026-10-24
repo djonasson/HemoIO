@@ -509,6 +509,40 @@ describe('TrendsView', () => {
     });
   });
 
+  it('leaves out values in a unit the chart unit cannot convert, and says so', async () => {
+    const results = [
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, 'marker-1', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+      ]),
+      createMockResult(2, '2024-02-15', [
+        createMockTestValue(2, 2, 'marker-1', 'Glucose', 110, 'high', 'mg/dL', 70, 100),
+      ]),
+      createMockResult(3, '2024-03-15', [
+        createMockTestValue(3, 3, 'marker-1', 'Glucose', 150, 'high', 'xyz/dL', 70, 100),
+      ]),
+    ];
+    vi.mocked(useLabResults).mockReturnValue({
+      results,
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+
+    // Plotted on the mg/dL scale, 150 xyz/dL would read as 150 mg/dL
+    const latestCard = (await screen.findByText('Latest Value')).closest(
+      '.mantine-Paper-root'
+    ) as HTMLElement;
+    expect(within(latestCard).getByText('110.0')).toBeInTheDocument();
+    expect(
+      screen.getByText('1 value recorded in xyz/dL is not shown: it cannot be converted to mg/dL.')
+    ).toBeInTheDocument();
+  });
+
   it('should convert values to canonical unit when biomarker has mixed units', async () => {
     // Glucose with values in different units (mg/dL and mmol/L)
     // 100 mg/dL and 5.55 mmol/L should both be displayed as ~100 mg/dL after conversion

@@ -421,6 +421,25 @@ test.describe('Trend direction indicator', () => {
     await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toBeVisible();
   });
 
+  test('does not plot a value whose unit cannot be converted to the chart unit', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedVisits(page, [
+      { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
+      { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
+      { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 140, unit: 'xyz/L' }] },
+    ]);
+    await goToTrends(page);
+    await selectBiomarker(page, 'Hemoglobin');
+
+    await expect(dataPoints(page)).toHaveCount(2);
+    await expect(
+      page.getByRole('main').getByText(
+        '1 value recorded in xyz/L is not shown: it cannot be converted to g/dL.'
+      )
+    ).toBeVisible();
+  });
+
   test('should show stable when values barely change', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);

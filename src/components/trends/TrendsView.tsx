@@ -59,6 +59,14 @@ export interface TrendsViewProps {
 /**
  * TrendsView component
  */
+/** Why some of a biomarker's values are missing from its chart */
+function excludedValuesMessage(excluded: { count: number; units: string[] }, unit: string): string {
+  const one = excluded.count === 1;
+  return `${excluded.count} ${one ? 'value' : 'values'} recorded in ${excluded.units.join(', ')} ${
+    one ? 'is' : 'are'
+  } not shown: ${one ? 'it' : 'they'} cannot be converted to ${unit}.`;
+}
+
 export function TrendsView({
   onNavigateToImport,
   onNavigateToAlerts,
@@ -166,6 +174,8 @@ export function TrendsView({
       unitOptions: string[];
       category: BiomarkerCategory;
       dataPoints: TrendDataPoint[];
+      /** Values left off the chart: their unit cannot be converted to the chart's */
+      excluded: { count: number; units: string[] };
     }>();
 
     for (const result of results) {
@@ -184,6 +194,7 @@ export function TrendsView({
             unitOptions: biomarkerDef ? preferredUnitOptions(biomarkerDef) : [],
             category: biomarkerDef?.category || 'other',
             dataPoints: [],
+            excluded: { count: 0, units: [] },
           });
         }
 
@@ -215,8 +226,19 @@ export function TrendsView({
       }
     }
 
-    // Sort data points by date for each biomarker
     for (const entry of map.values()) {
+      // One chart, one scale: a value that could not be converted to the
+      // chart's unit would be read on the wrong scale and skew the statistics
+      const inChartUnit = entry.dataPoints.filter((p) => p.unit === entry.unit);
+      const others = entry.dataPoints.filter((p) => p.unit !== entry.unit);
+      const otherUnits = [...new Set(others.map((p) => p.unit))];
+      if (inChartUnit.length === 0 && otherUnits.length === 1) {
+        // All recorded in one unit the chart unit cannot convert: chart them in it
+        entry.unit = otherUnits[0];
+      } else {
+        entry.dataPoints = inChartUnit;
+        entry.excluded = { count: others.length, units: otherUnits };
+      }
       entry.dataPoints.sort((a, b) => a.date.getTime() - b.date.getTime());
     }
 
@@ -432,6 +454,11 @@ export function TrendsView({
         </Alert>
       ) : (
         <>
+          {selectedBiomarkerData && selectedBiomarkerData.excluded.count > 0 && (
+            <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+              {excludedValuesMessage(selectedBiomarkerData.excluded, selectedBiomarkerData.unit)}
+            </Alert>
+          )}
           <Paper p="md" withBorder>
             <TrendChart
               dataPoints={filteredDataPoints}
