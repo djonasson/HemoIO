@@ -266,8 +266,9 @@ export function LabResultCard({
             <div id={`lab-result-${result.id}-content`}>
               <TestValuesList testValues={result.testValues} />
 
-              {/* Notes section */}
-              {notesEnabled && (
+              {/* Notes section: mounted with the open card, as a collapse that
+                  opens inside a closed one measures no height and stays shut */}
+              {notesEnabled && expanded && (
                 <>
                   <Divider my="md" />
                   <NotesSection
