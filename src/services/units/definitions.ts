@@ -1245,11 +1245,22 @@ export function getConversionFactor(
   // Same unit, no conversion needed
   if (normalizedFrom.toLowerCase() === normalizedTo.toLowerCase()) return 1;
 
-  const conversion = definition.conversions.find(
-    (c) =>
-      c.from.toLowerCase() === normalizedFrom.toLowerCase() &&
-      c.to.toLowerCase() === normalizedTo.toLowerCase()
+  const from = normalizedFrom.toLowerCase();
+  const to = normalizedTo.toLowerCase();
+  const direct = definition.conversions.find(
+    (c) => c.from.toLowerCase() === from && c.to.toLowerCase() === to
   );
+  if (direct) return direct.factor;
 
-  return conversion?.factor;
+  // No direct pair (e.g. hemoglobin mmol/L → g/L): chain two known factors
+  // through a shared unit (mmol/L → g/dL → g/L). Factors are plain ratios,
+  // so the product is exact.
+  for (const first of definition.conversions) {
+    if (first.from.toLowerCase() !== from) continue;
+    const second = definition.conversions.find(
+      (c) => c.from.toLowerCase() === first.to.toLowerCase() && c.to.toLowerCase() === to
+    );
+    if (second) return first.factor * second.factor;
+  }
+  return undefined;
 }

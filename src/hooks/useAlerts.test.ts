@@ -46,7 +46,12 @@ vi.mock('@data/biomarkers/dictionary', () => {
       };
     }
     if (name === 'Hemoglobin' || name.toLowerCase().includes('hemoglobin')) {
-      return { name: 'Hemoglobin', category: 'cbc' };
+      return {
+        name: 'Hemoglobin',
+        category: 'cbc',
+        canonicalUnit: 'g/dL',
+        alternativeUnits: ['g/L', 'mmol/L'],
+      };
     }
     return null;
   }),
@@ -102,6 +107,34 @@ describe('useAlerts', () => {
     alertState.acknowledgedThrough = {};
     alertState.dismissedIds = new Set();
     mockUnitPreferences = {};
+  });
+
+  it('keeps a trend whose values were recorded in two other units than the preferred one', () => {
+    // No direct mmol/L → g/L factor exists; the values go through g/dL
+    mockUnitPreferences = { hemoglobin: 'g/L' };
+    const values: Array<[number, string]> = [
+      [17, 'g/dL'],
+      [10.9, 'mmol/L'],
+      [18, 'g/dL'],
+      [11.5, 'mmol/L'],
+    ];
+    mockResults(
+      values.map(([value, unit], i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            biomarkerKey: 'hemoglobin',
+            rawText: 'Hemoglobin',
+            value,
+            unit,
+            status: 'high',
+          }),
+        ])
+      )
+    );
+    const { result } = renderHook(() => useAlerts());
+
+    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    expect(trend).toEqual(expect.objectContaining({ direction: 'increasing', unit: 'g/L' }));
   });
 
   it('reports an out-of-range value in the preferred unit', () => {
@@ -617,6 +650,7 @@ describe('useAlerts', () => {
         createMockResult(i + 1, `2024-0${i + 1}-10`, [
           createMockTestValue(i + 1, i + 1, {
             value,
+            unit: 'g/dL',
             status: 'low',
             referenceRangeLow: 12,
             rawText: 'Hemoglobin',

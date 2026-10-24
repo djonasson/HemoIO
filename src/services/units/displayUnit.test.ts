@@ -81,3 +81,14 @@ describe('convertForDisplay', () => {
     expect(convertForDisplay('Glucose', odd, 'mmol/L')).toEqual(odd);
   });
 });
+
+describe('convertForDisplay through the standard unit', () => {
+  it('converts a value recorded in one alternative unit to another', () => {
+    // Hemoglobin has mmol/L ↔ g/dL and g/dL ↔ g/L, but no mmol/L ↔ g/L pair
+    const recorded = { value: 8.5, unit: 'mmol/L', referenceRangeLow: 7.4, referenceRangeHigh: 9.9 };
+    const shown = convertForDisplay('Hemoglobin', recorded, 'g/L');
+    expect(shown.unit).toBe('g/L');
+    expect(shown.value).toBeCloseTo(136.9, 0);
+    expect(shown.referenceRangeLow).toBeCloseTo(119.2, 0);
+  });
+});
