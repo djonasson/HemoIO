@@ -5,13 +5,31 @@
  * Handles both text-based PDFs and detects scanned PDFs that need OCR.
  */
 
-import * as pdfjsLib from 'pdfjs-dist';
+import type * as PdfjsLib from 'pdfjs-dist';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+let pdfjsPromise: Promise<typeof PdfjsLib> | null = null;
+
+/**
+ * PDF.js is large and only needed to read a PDF, so it loads on first use
+ * rather than with the app
+ */
+function loadPdfjs(): Promise<typeof PdfjsLib> {
+  pdfjsPromise ??= import('pdfjs-dist').then(
+    (pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString();
+      return pdfjs;
+    },
+    (error: unknown) => {
+      // Let the next PDF try again rather than fail for the rest of the session
+      pdfjsPromise = null;
+      throw error;
+    }
+  );
+  return pdfjsPromise;
+}
 
 /**
  * Result of extracting text from a single page
@@ -79,6 +97,7 @@ export async function extractTextFromPDF(
   const errors: string[] = [];
 
   try {
+    const pdfjsLib = await loadPdfjs();
     // Load the PDF document
     const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
@@ -195,6 +214,7 @@ export async function needsOCR(file: File | ArrayBuffer): Promise<boolean> {
  * @returns Number of pages in the PDF
  */
 export async function getPageCount(file: File | ArrayBuffer): Promise<number> {
+  const pdfjsLib = await loadPdfjs();
   const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
@@ -216,6 +236,7 @@ export async function extractPageRange(
   endPage: number,
   onProgress?: (current: number, total: number) => void
 ): Promise<PDFExtractionResult> {
+  const pdfjsLib = await loadPdfjs();
   const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
@@ -320,6 +341,7 @@ export async function renderPdfPages(
   file: File | ArrayBuffer,
   options: RenderPdfPagesOptions = {}
 ): Promise<Blob[]> {
+  const pdfjsLib = await loadPdfjs();
   const { scale = 2, maxPages, onProgress } = options;
   const arrayBuffer = file instanceof File ? await file.arrayBuffer() : file;
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;

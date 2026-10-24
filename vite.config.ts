@@ -96,6 +96,23 @@ export default defineConfig(({ command }) => {
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change less often than the app, so each group stays cached across releases
+        manualChunks(id) {
+          const pkg = id.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)?.[1];
+          if (!pkg) return undefined;
+          if (/^(react|react-dom|scheduler)$/.test(pkg)) return 'vendor-react';
+          if (/^(@mantine|@floating-ui|@tabler)\//.test(pkg)) return 'vendor-mantine';
+          // Recharts and the libraries it is built on
+          const charts =
+            /^(recharts|@reduxjs\/toolkit|react-redux|immer|es-toolkit|d3-.+|decimal\.js-light|victory-vendor)$/;
+          return charts.test(pkg) ? 'vendor-charts' : undefined;
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
