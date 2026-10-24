@@ -17,6 +17,7 @@ import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import {
   findBiomarker,
   getBiomarkerByKey,
+  getBiomarkerDisplayName,
   getBiomarkerForTestValue,
 } from '@data/biomarkers/dictionary';
 import { usePreferences } from '@hooks/usePreferences';
@@ -90,12 +91,7 @@ function getBiomarkerName(testValue: EnrichedTestValue): string {
     return testValue.biomarkerName;
   }
 
-  const found = getBiomarkerForTestValue(testValue);
-  if (found) {
-    return found.name;
-  }
-
-  return testValue.rawText || 'Unknown biomarker';
+  return getBiomarkerDisplayName(testValue);
 }
 
 /**

@@ -90,6 +90,8 @@ vi.mock('@data/biomarkers/dictionary', () => {
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
     getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
+    getBiomarkerDisplayName: (tv: { rawText?: string }) =>
+      mock.findBiomarker(tv.rawText ?? '')?.name || tv.rawText || 'Unknown biomarker',
   };
 });
 
@@ -173,7 +175,6 @@ describe('TrendsView', () => {
       acknowledgeAlert: vi.fn(),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
   });
 
@@ -422,7 +423,6 @@ describe('TrendsView', () => {
       acknowledgeAlert: vi.fn(),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
 
     const onNavigateToAlerts = vi.fn();
@@ -592,7 +592,6 @@ describe('TrendsView preferred unit', () => {
       acknowledgeAlert: vi.fn(),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
   });
 

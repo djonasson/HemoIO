@@ -69,7 +69,6 @@ function mockAlerts(alerts: BiomarkerAlert[]): void {
     acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn(),
     filterByCategory: vi.fn(() => alerts),
-    getAlertsForBiomarker: vi.fn(() => alerts),
   });
 }
 
@@ -93,7 +92,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -112,7 +110,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -131,7 +128,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => []),
-      getAlertsForBiomarker: vi.fn(() => []),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -152,7 +148,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -174,7 +169,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -201,7 +195,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -223,7 +216,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -248,7 +240,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: mockAcknowledge,
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -273,7 +264,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts onAlertClick={mockClick} />);
@@ -300,7 +290,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -328,7 +317,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -354,7 +342,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);
@@ -377,7 +364,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts maxVisible={3} />);
@@ -405,7 +391,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts maxVisible={3} />);
@@ -437,7 +422,6 @@ describe('OutOfRangeAlerts', () => {
       acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
       filterByCategory: vi.fn(() => alerts),
-      getAlertsForBiomarker: vi.fn(() => alerts),
     });
 
     renderWithProviders(<OutOfRangeAlerts />);

@@ -61,6 +61,8 @@ vi.mock('@data/biomarkers/dictionary', () => {
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
     getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
+    getBiomarkerDisplayName: (tv: { rawText?: string }) =>
+      mock.findBiomarker(tv.rawText ?? '')?.name || tv.rawText || 'Unknown biomarker',
   };
 });
 
@@ -488,11 +490,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const biomarker1Alerts = result.current.getAlertsForBiomarker('marker-1');
-    expect(biomarker1Alerts).toHaveLength(2);
-
-    const biomarker2Alerts = result.current.getAlertsForBiomarker('marker-2');
-    expect(biomarker2Alerts).toHaveLength(1);
+    const alertsFor = (key: string) =>
+      result.current.groupedAlerts.find((group) => group.biomarkerKey === key)?.alerts;
+    expect(alertsFor('marker-1')).toHaveLength(2);
+    expect(alertsFor('marker-2')).toHaveLength(1);
   });
 
   it('should detect improvement when value returns to normal', () => {

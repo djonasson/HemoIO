@@ -22,7 +22,7 @@ import {
   analyzeTrend,
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
-import { getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
+import { getBiomarkerDisplayName, getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 import { convertMeasurement, preferredUnitOptions, resolveDisplayUnit } from '@services/units';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
@@ -166,7 +166,6 @@ export function TrendsView({
       unitOptions: string[];
       category: BiomarkerCategory;
       dataPoints: TrendDataPoint[];
-      labInfoMap: Map<number, { date: Date; labName: string }>;
     }>();
 
     for (const result of results) {
@@ -174,32 +173,26 @@ export function TrendsView({
         if (typeof testValue.value !== 'number') continue;
 
         const biomarkerKey = testValue.biomarkerKey;
-        const biomarkerDef = getBiomarkerForTestValue(testValue);
 
         if (!map.has(biomarkerKey)) {
+          const biomarkerDef = getBiomarkerForTestValue(testValue);
           // The preferred unit when the biomarker offers it, else its standard
           // unit; biomarkers outside the dictionary keep their first unit
           map.set(biomarkerKey, {
-            name: biomarkerDef?.name || testValue.rawText || 'Unknown biomarker',
+            name: getBiomarkerDisplayName(testValue),
             unit: resolveDisplayUnit(biomarkerDef, unitPreferences[biomarkerKey]) ?? testValue.unit,
             unitOptions: biomarkerDef ? preferredUnitOptions(biomarkerDef) : [],
             category: biomarkerDef?.category || 'other',
             dataPoints: [],
-            labInfoMap: new Map(),
           });
         }
 
         const entry = map.get(biomarkerKey)!;
-        entry.labInfoMap.set(testValue.labResultId, {
-          date: result.date,
-          labName: result.labName,
-        });
 
         // Convert to the biomarker's chart unit; values that cannot be
         // converted keep the unit they were measured in
-        const biomarkerName = biomarkerDef?.name || testValue.rawText || '';
         const converted = convertMeasurement(
-          biomarkerName,
+          entry.name,
           {
             value: testValue.value,
             unit: testValue.unit,

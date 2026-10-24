@@ -23,7 +23,7 @@ import { IconNotes, IconSearch } from '@tabler/icons-react';
 import { useNotes } from '@hooks/useNotes';
 import { useLabResults } from '@hooks/useLabResults';
 import { RelativeTime } from '@components/common/RelativeTime';
-import { getBiomarkerByKey, getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
+import { getBiomarkerByKey, getBiomarkerDisplayName } from '@data/biomarkers/dictionary';
 import {
   describeNoteAttachment,
   filterNotes,
@@ -65,16 +65,14 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
             labResultId: tv.labResultId,
           });
         }
-        names.set(
-          tv.biomarkerKey,
-          getBiomarkerForTestValue(tv)?.name ?? tv.rawText ?? tv.biomarkerKey
-        );
+        names.set(tv.biomarkerKey, getBiomarkerDisplayName(tv));
       }
     }
     return {
       labResults,
       testValues,
-      biomarkerName: (key) => getBiomarkerByKey(key)?.name ?? names.get(key) ?? 'Unknown biomarker',
+      // A note can name a biomarker no result has a value for
+      biomarkerName: (key) => names.get(key) ?? getBiomarkerByKey(key)?.name ?? 'Unknown biomarker',
     };
   }, [results]);
 

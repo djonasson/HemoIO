@@ -29,6 +29,7 @@ vi.mock('@data/biomarkers/dictionary', () => {
     // Test data uses arbitrary IDs, so biomarkers are identified by rawText
     getBiomarkerByKey: () => undefined,
     getBiomarkerForTestValue: () => mock.findBiomarker(),
+    getBiomarkerDisplayName: (tv: { rawText?: string }) => tv.rawText || 'Unknown biomarker',
   };
 });
 

@@ -49,7 +49,6 @@ function mockAlerts(alerts: BiomarkerAlert[]): void {
     acknowledgeAlert: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn(),
     filterByCategory: vi.fn(() => alerts),
-    getAlertsForBiomarker: vi.fn(() => alerts),
   });
 }
 

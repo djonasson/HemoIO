@@ -12,8 +12,8 @@ vi.mock('@hooks/useNotes', () => ({ useNotes: vi.fn() }));
 vi.mock('@hooks/useLabResults', () => ({ useLabResults: vi.fn() }));
 vi.mock('@data/biomarkers/dictionary', () => ({
   getBiomarkerByKey: (key: string) => (key === 'glucose' ? { name: 'Glucose' } : undefined),
-  getBiomarkerForTestValue: (tv: { biomarkerKey: string }) =>
-    tv.biomarkerKey === 'glucose' ? { name: 'Glucose' } : undefined,
+  getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
+    tv.biomarkerKey === 'glucose' ? 'Glucose' : tv.rawText || 'Unknown biomarker',
 }));
 
 const NOTES: UserNote[] = [

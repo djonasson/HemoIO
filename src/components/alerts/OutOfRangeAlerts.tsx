@@ -327,10 +327,10 @@ export function OutOfRangeAlerts({
   }, [alerts]);
 
   // Filter alerts by category
-  const filteredAlerts = useMemo(() => {
-    if (!categoryFilter) return alerts;
-    return filterByCategory(categoryFilter);
-  }, [alerts, categoryFilter, filterByCategory]);
+  const filteredAlerts = useMemo(
+    () => filterByCategory(categoryFilter),
+    [categoryFilter, filterByCategory]
+  );
 
   // Filter groups by category
   const filteredGroups = useMemo(() => {

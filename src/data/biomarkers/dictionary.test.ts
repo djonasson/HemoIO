@@ -3,7 +3,7 @@ import {
   getBiomarkerByKey,
   getBiomarkerForTestValue,
   unknownBiomarkerKey,
-  isUnknownBiomarkerKey,
+  getBiomarkerDisplayName,
   BIOMARKER_DEFINITIONS,
   CATEGORY_NAMES,
   findBiomarker,
@@ -227,11 +227,17 @@ describe('Biomarker Dictionary', () => {
       expect(getBiomarkerByKey('no-such-key')).toBeUndefined();
     });
 
+    it('names a test value by its dictionary entry, else its extracted text', () => {
+      expect(getBiomarkerDisplayName({ biomarkerKey: 'glucose', rawText: 'GLU' })).toBe('Glucose');
+      expect(getBiomarkerDisplayName({ biomarkerKey: 'unknown:zorb', rawText: 'Zorb' })).toBe('Zorb');
+      expect(getBiomarkerDisplayName({ biomarkerKey: 'unknown:zorb', rawText: '' })).toBe(
+        'Unknown biomarker'
+      );
+    });
+
     it('builds stable keys for unknown biomarkers', () => {
       expect(unknownBiomarkerKey('Zorblatin')).toBe('unknown:zorblatin');
       expect(unknownBiomarkerKey('  Zorb-latin (serum) ')).toBe('unknown:zorblatinserum');
-      expect(isUnknownBiomarkerKey('unknown:zorblatin')).toBe(true);
-      expect(isUnknownBiomarkerKey('glucose')).toBe(false);
     });
 
     it('keeps percentage and absolute-count variants apart', () => {

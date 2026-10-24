@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { getBiomarkerForTestValue } from '@data/biomarkers';
+import { getBiomarkerDisplayName } from '@data/biomarkers';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
@@ -110,10 +110,7 @@ export function useExportData(): UseExportDataResult {
       const biomarkerNames = new Map<string, string>();
       for (const tv of testValues) {
         if (!biomarkerNames.has(tv.biomarkerKey)) {
-          biomarkerNames.set(
-            tv.biomarkerKey,
-            getBiomarkerForTestValue(tv)?.name || tv.rawText || 'Unknown biomarker'
-          );
+          biomarkerNames.set(tv.biomarkerKey, getBiomarkerDisplayName(tv));
         }
       }
 

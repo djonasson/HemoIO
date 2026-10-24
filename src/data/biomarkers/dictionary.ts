@@ -1665,10 +1665,6 @@ export function unknownBiomarkerKey(extractedName: string): string {
   return `${UNKNOWN_PREFIX}${normalized || 'unnamed'}`;
 }
 
-export function isUnknownBiomarkerKey(key: string): boolean {
-  return key.startsWith(UNKNOWN_PREFIX);
-}
-
 /**
  * Dictionary entry for a stored test value. The stored key wins over the
  * extracted text: it reflects the match the user confirmed during review.
@@ -1684,15 +1680,31 @@ export function getBiomarkerForTestValue(testValue: {
 }
 
 /**
+ * Name shown for a stored test value: its dictionary entry, else the name
+ * extracted from the report
+ */
+export function getBiomarkerDisplayName(testValue: {
+  biomarkerKey: string;
+  rawText?: string;
+}): string {
+  return getBiomarkerForTestValue(testValue)?.name || testValue.rawText || 'Unknown biomarker';
+}
+
+// Lower-cased names and aliases, looked up for every displayed test value.
+// The first definition to claim a name keeps it.
+const BY_NAME_OR_ALIAS = new Map<string, BiomarkerDefinition>();
+for (const definition of BIOMARKER_DEFINITIONS) {
+  for (const name of [definition.name, ...definition.aliases]) {
+    const term = name.toLowerCase();
+    if (!BY_NAME_OR_ALIAS.has(term)) BY_NAME_OR_ALIAS.set(term, definition);
+  }
+}
+
+/**
  * Find a biomarker by name or alias (case-insensitive)
  */
 export function findBiomarker(nameOrAlias: string): BiomarkerDefinition | undefined {
-  const searchTerm = nameOrAlias.toLowerCase().trim();
-  return BIOMARKER_DEFINITIONS.find(
-    (b) =>
-      b.name.toLowerCase() === searchTerm ||
-      b.aliases.some((a) => a.toLowerCase() === searchTerm)
-  );
+  return BY_NAME_OR_ALIAS.get(nameOrAlias.toLowerCase().trim());
 }
 
 /**
