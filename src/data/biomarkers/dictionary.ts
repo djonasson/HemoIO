@@ -18,6 +18,7 @@
  */
 
 import type { Biomarker, BiomarkerCategory, SpecimenType } from '@/types';
+import { relatedKeysFor } from './related';
 
 /**
  * Extended biomarker definition with additional reference information
@@ -46,12 +47,17 @@ export interface BiomarkerDefinition extends Omit<Biomarker, 'id'> {
   highIndication?: string;
   /** What low values may indicate */
   lowIndication?: string;
+  /** Keys of biomarkers read together with this one (see related.ts) */
+  related: string[];
 }
+
+/** A dictionary entry as written; `related` is filled in from the curated groups */
+type BiomarkerEntry = Omit<BiomarkerDefinition, 'related'>;
 
 /**
  * Complete Blood Count (CBC) biomarkers
  */
-const cbcBiomarkers: BiomarkerDefinition[] = [
+const cbcBiomarkers: BiomarkerEntry[] = [
   {
     key: 'white-blood-cell-count',
     name: 'White Blood Cell Count',
@@ -323,7 +329,7 @@ const cbcBiomarkers: BiomarkerDefinition[] = [
 /**
  * Inflammation biomarkers
  */
-const inflammationBiomarkers: BiomarkerDefinition[] = [
+const inflammationBiomarkers: BiomarkerEntry[] = [
   {
     key: 'erythrocyte-sedimentation-rate',
     name: 'Erythrocyte Sedimentation Rate',
@@ -357,7 +363,7 @@ const inflammationBiomarkers: BiomarkerDefinition[] = [
 /**
  * Metabolic Panel biomarkers
  */
-const metabolicBiomarkers: BiomarkerDefinition[] = [
+const metabolicBiomarkers: BiomarkerEntry[] = [
   {
     key: 'glucose',
     name: 'Glucose',
@@ -503,7 +509,7 @@ const metabolicBiomarkers: BiomarkerDefinition[] = [
 /**
  * Lipid Panel biomarkers
  */
-const lipidBiomarkers: BiomarkerDefinition[] = [
+const lipidBiomarkers: BiomarkerEntry[] = [
   {
     key: 'total-cholesterol',
     name: 'Total Cholesterol',
@@ -593,7 +599,7 @@ const lipidBiomarkers: BiomarkerDefinition[] = [
 /**
  * Thyroid Panel biomarkers
  */
-const thyroidBiomarkers: BiomarkerDefinition[] = [
+const thyroidBiomarkers: BiomarkerEntry[] = [
   {
     key: 'thyroid-stimulating-hormone',
     name: 'Thyroid Stimulating Hormone',
@@ -683,7 +689,7 @@ const thyroidBiomarkers: BiomarkerDefinition[] = [
 /**
  * Iron Studies biomarkers
  */
-const ironBiomarkers: BiomarkerDefinition[] = [
+const ironBiomarkers: BiomarkerEntry[] = [
   {
     key: 'serum-iron',
     name: 'Serum Iron',
@@ -759,7 +765,7 @@ const ironBiomarkers: BiomarkerDefinition[] = [
 /**
  * Vitamin biomarkers
  */
-const vitaminBiomarkers: BiomarkerDefinition[] = [
+const vitaminBiomarkers: BiomarkerEntry[] = [
   {
     key: 'vitamin-b12',
     name: 'Vitamin B12',
@@ -821,7 +827,7 @@ const vitaminBiomarkers: BiomarkerDefinition[] = [
 /**
  * Glycemic biomarkers
  */
-const glycemicBiomarkers: BiomarkerDefinition[] = [
+const glycemicBiomarkers: BiomarkerEntry[] = [
   {
     key: 'hemoglobin-a1c',
     name: 'Hemoglobin A1c',
@@ -855,7 +861,7 @@ const glycemicBiomarkers: BiomarkerDefinition[] = [
 /**
  * Urinalysis biomarkers
  */
-const urinalysisBiomarkers: BiomarkerDefinition[] = [
+const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-ph',
     name: 'Urine pH',
@@ -1104,7 +1110,7 @@ const urinalysisBiomarkers: BiomarkerDefinition[] = [
 /**
  * Liver Function biomarkers
  */
-const liverBiomarkers: BiomarkerDefinition[] = [
+const liverBiomarkers: BiomarkerEntry[] = [
   {
     key: 'alanine-aminotransferase',
     name: 'Alanine Aminotransferase',
@@ -1250,7 +1256,7 @@ const liverBiomarkers: BiomarkerDefinition[] = [
 /**
  * Semen analysis / Fertility biomarkers
  */
-const fertilityBiomarkers: BiomarkerDefinition[] = [
+const fertilityBiomarkers: BiomarkerEntry[] = [
   {
     key: 'sexual-abstinence',
     name: 'Sexual Abstinence',
@@ -1525,7 +1531,7 @@ const fertilityBiomarkers: BiomarkerDefinition[] = [
 /**
  * Protein Electrophoresis biomarkers
  */
-const proteinElectrophoresisBiomarkers: BiomarkerDefinition[] = [
+const proteinElectrophoresisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'serum-albumin-electrophoresis',
     name: 'Serum Albumin (Electrophoresis)',
@@ -1614,7 +1620,7 @@ export const BIOMARKER_DEFINITIONS: BiomarkerDefinition[] = [
   ...liverBiomarkers,
   ...fertilityBiomarkers,
   ...proteinElectrophoresisBiomarkers,
-];
+].map((entry) => ({ ...entry, related: relatedKeysFor(entry.key) }));
 
 /**
  * Category display names

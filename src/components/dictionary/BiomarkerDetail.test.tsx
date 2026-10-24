@@ -27,6 +27,7 @@ function createMockBiomarker(): BiomarkerDefinition {
     lowIndication: 'May indicate bone marrow problems or autoimmune conditions',
     specimenType: 'whole-blood',
     loincCode: '6690-2',
+    related: [],
   };
 }
 

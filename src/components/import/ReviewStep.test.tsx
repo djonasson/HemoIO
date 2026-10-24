@@ -66,6 +66,7 @@ const mockAnalysisResult: AnalysisResult = {
         alternativeUnits: ['mmol/L'],
         specimenType: 'serum',
         loincCode: '2345-7',
+        related: [],
       },
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
     },
@@ -705,6 +706,7 @@ describe('ReviewStep', () => {
               category: 'metabolic',
               description: '',
               alternativeUnits: [],
+              related: [],
               // No loincCode or description
             },
           },
