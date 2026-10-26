@@ -165,6 +165,20 @@ Feature: Document Analysis
     Then OCR should extract its text
     And English and Italian text should be recognized
 
+  Scenario: OCR files are downloaded only when OCR is first used
+    Given I have installed the app
+    Then the OCR files should not have been downloaded
+    When I upload a scanned lab report while online
+    Then OCR should extract its text
+    And OCR should keep working without internet access afterwards
+
+  Scenario: A scan before OCR has ever been used online
+    Given OCR has never been used on this device
+    And I am offline
+    When I upload a scanned lab report
+    Then the file should fail with a message that OCR must be used online once
+    And manual entry should be offered as alternative
+
   # Performance
   Scenario: Large document handling
     Given I upload a large multi-page document

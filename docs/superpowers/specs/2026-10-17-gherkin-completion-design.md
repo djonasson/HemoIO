@@ -186,8 +186,10 @@ The existing `useAlerts` / `OutOfRangeAlerts` are mounted and completed.
   - Implemented once, in a shared request helper used by all providers.
 - **Bundled OCR.**
   - The Tesseract worker, its core (wasm) and the bundled languages' data are
-    served from the app's own origin and precached for offline PWA use. No CDN
-    requests.
+    served from the app's own origin. No CDN requests. The service worker
+    caches each file the first time OCR loads it (the user's decision, so not
+    every user downloads about 16 MB on install): OCR works offline after its
+    first use online, and before that a scan fails with a message saying so.
   - Languages: English and Italian, matching the dictionary's aliases.
     Adding a language is a config change.
 
@@ -274,7 +276,8 @@ None. Any E2E failure is a regression.
 - Done: the chunk-size warning (PDF.js loads on demand; vendor chunks).
 - Done: `npm audit` reports 0 vulnerabilities (lockfile-only update).
 - Done: `simplify`, `security-review` (no findings) and `code-review`. Its findings and their fixes are in the git-ignored ledger `.superpowers/sdd/pre-merge/progress.md`; the commits say what each fixed.
-- Open, for the user to decide: unknown biomarkers' keys (`unknown:<name>`) are stored as plain text, and the service worker precaches all three Tesseract cores (about 16 MB).
+- Done (user's decision): OCR files are cached on first use instead of precached.
+- Open: unknown biomarkers' keys (`unknown:<name>`) are stored as plain text. The user chose a keyed hash; still to decide is whether dictionary keys are hashed too.
 - Pass every gate above, with the full E2E suite green.
 - Merge `fix/ai-model-selection` first: this branch is built on it.
 

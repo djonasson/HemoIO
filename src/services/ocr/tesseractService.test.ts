@@ -7,6 +7,7 @@ import {
   terminateWorker,
   getCurrentLanguage,
   OCRError,
+  OCR_UNAVAILABLE_MESSAGE,
   PageSegmentationMode,
 } from './tesseractService';
 
@@ -108,9 +109,26 @@ describe('Tesseract OCR Service', () => {
         return new Promise<Tesseract.Worker>(() => {});
       });
 
-      await expect(recognizeImage(image())).rejects.toThrow(/language data/);
+      await expect(recognizeImage(image())).rejects.toThrow(new OCRError(OCR_UNAVAILABLE_MESSAGE));
       await expect(recognizeImage(image())).resolves.toMatchObject({ text: expect.any(String) });
       expect(Tesseract.createWorker).toHaveBeenCalledTimes(2);
+    });
+
+    it('says OCR could not load when its worker script cannot load', async () => {
+      vi.mocked(Tesseract.createWorker).mockRejectedValueOnce(
+        new Error("Failed to execute 'importScripts' on 'WorkerGlobalScope'")
+      );
+
+      const error = await recognizeImage(image()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OCRError);
+      expect(error).toHaveProperty('message', OCR_UNAVAILABLE_MESSAGE);
+    });
+
+    it('tells the user OCR works offline once it has been used online', () => {
+      expect(OCR_UNAVAILABLE_MESSAGE).toBe(
+        'OCR could not load. Connect to the internet and try again: after its first use, OCR works offline.'
+      );
     });
 
     it('keeps working after a failed recognition, without another worker', async () => {

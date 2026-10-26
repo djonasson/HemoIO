@@ -287,6 +287,25 @@ test.describe('Document Analysis - AI Processing', () => {
     );
   });
 
+  test('should explain that OCR must be used online once when its files cannot load', async ({
+    page,
+  }) => {
+    // Scenario: A scan before OCR has ever been used online
+    test.setTimeout(60000);
+    await loginWithOllama(page);
+    // Offline, with nothing cached yet: the OCR files cannot be fetched
+    await page.route('**/tesseract/**', (route) => route.abort('internetdisconnected'));
+    await goToImport(page);
+    await uploadFiles(page, track(await createTextImage(page, 'scan.png')));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'scan.png')).toContainText(
+      'OCR could not load. Connect to the internet and try again: after its first use, OCR works offline.'
+    );
+    await expect(main(page).getByRole('button', { name: 'Enter values manually' })).toBeVisible();
+  });
+
   test('should extract text from text-based PDF', async ({ page }) => {
     const ai = await loginWithOllama(page);
     await goToImport(page);

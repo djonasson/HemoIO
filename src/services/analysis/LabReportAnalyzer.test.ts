@@ -7,6 +7,7 @@ import {
 
 // Mock all dependencies
 vi.mock('../ocr', () => ({
+  OCRError: class OCRError extends Error {},
   detectDocumentType: vi.fn().mockResolvedValue({
     type: 'text-pdf',
     mimeType: 'application/pdf',
@@ -272,6 +273,25 @@ describe('LabReportAnalyzer', () => {
 
       expect(result.extractionMethod).toBe('ocr');
       expect(ocrModule.recognizeImage).toHaveBeenCalled();
+    });
+
+    it('shows why OCR failed in words the user can act on', async () => {
+      vi.mocked(ocrModule.detectDocumentType).mockResolvedValueOnce({
+        type: 'image',
+        mimeType: 'image/jpeg',
+        fileName: 'scan.jpg',
+        fileSize: 1024,
+        needsOCR: true,
+        confidence: 1.0,
+        metadata: { isValid: true },
+      });
+      vi.mocked(ocrModule.recognizeImage).mockRejectedValueOnce(
+        new ocrModule.OCRError('OCR could not load.')
+      );
+
+      await expect(
+        analyzeLabReport(createMockFile('scan.jpg', 'image/jpeg'), defaultOptions)
+      ).rejects.toThrow(/^OCR could not load\.$/);
     });
 
     it('handles document detection failure', async () => {

@@ -138,13 +138,13 @@ function createOcrWorker(
         // When the language data cannot load, tesseract.js reports it only
         // here: its createWorker promise never settles. Once the worker is
         // ready this has no effect, as a recognition's own promise rejects.
-        errorHandler: () => reject(new Error('OCR could not load its language data')),
+        errorHandler: () => reject(new OCRError(OCR_UNAVAILABLE_MESSAGE)),
       },
       // The Italian data names a word list ("special-words") that is not part
       // of it; without this Tesseract logs an error looking for it. The option
       // is a Tesseract init parameter that tesseract.js's types do not list.
       { user_words_suffix: '' } as unknown as Partial<Tesseract.InitOptions>
-    ).then(resolve, reject);
+    ).then(resolve, () => reject(new OCRError(OCR_UNAVAILABLE_MESSAGE)));
   });
 }
 
@@ -332,7 +332,14 @@ export function getCurrentLanguage(): string {
 }
 
 /**
- * Error thrown when OCR processing fails
+ * Why OCR could not start. Its files are cached the first time OCR loads
+ * them, so offline this means OCR has not been used online yet.
+ */
+export const OCR_UNAVAILABLE_MESSAGE =
+  'OCR could not load. Connect to the internet and try again: after its first use, OCR works offline.';
+
+/**
+ * Error thrown when OCR processing fails, with a message to show the user
  */
 export class OCRError extends Error {
   constructor(message: string) {

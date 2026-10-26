@@ -9,6 +9,7 @@
  */
 
 import {
+  OCRError,
   detectDocumentType,
   extractTextFromPDF,
   recognizeImage,
@@ -296,6 +297,9 @@ export async function analyzeLabReport(
   } catch (error) {
     failStage(extractionStage, error);
     if (error instanceof AnalysisError) throw error;
+    if (error instanceof OCRError) {
+      throw new AnalysisError(error.message, 'Text Extraction', error);
+    }
     throw new AnalysisError(
       `Text extraction failed: ${error instanceof Error ? error.message : String(error)}`,
       'Text Extraction',

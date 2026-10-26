@@ -4,7 +4,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import { existsSync } from 'fs';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
-import { ocrCopyTargets } from './src/services/ocr/ocrAssets';
+import {
+  OCR_PRECACHE_GLOBS,
+  OCR_PRECACHE_IGNORES,
+  ocrCopyTargets,
+  ocrRuntimeCaching,
+} from './src/services/ocr/ocrAssets';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
 const ocrTargets = ocrCopyTargets();
@@ -80,16 +85,14 @@ export default defineConfig(({ command }) => {
               },
             },
           },
+          ocrRuntimeCaching(),
         ],
         // Skip waiting and claim clients immediately for better UX
         skipWaiting: true,
         clientsClaim: true,
-        // Pre-cache app shell
-        // The OCR worker, cores and language data are precached for offline OCR
-        // .mjs: the PDF.js worker, without which no PDF opens offline
-        globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,woff,woff2}', 'tesseract/**/*'],
-        // OCR cores and language data are a few MB each
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Pre-cache app shell; OCR files are cached on first use (ocrRuntimeCaching)
+        globPatterns: [...OCR_PRECACHE_GLOBS],
+        globIgnores: [...OCR_PRECACHE_IGNORES],
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues
