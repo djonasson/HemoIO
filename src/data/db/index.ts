@@ -71,6 +71,18 @@ export class HemoIODatabase extends Dexie {
           ref.value = migratePreferenceMaps(record);
         });
       });
+
+    // Version 4: biomarker keys and note tags are stored encrypted, so they
+    // are no longer indexed. Records stored readable are encrypted after
+    // unlock (EncryptedDb.encryptReadableFields): this upgrade has no key.
+    this.version(4).stores({
+      labResults: '++id, date, labName',
+      testValues: '++id, labResultId',
+      biomarkers: '++id, name, category',
+      userPreferences: '++id',
+      settings: '++id',
+      userNotes: '++id, labResultId, testValueId, createdAt',
+    });
   }
 }
 

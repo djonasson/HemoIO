@@ -85,13 +85,23 @@ async function unlockCredentials(password: string, credentials: object): Promise
  * Migrations that need the decrypted data, run before the app is unlocked so
  * nothing reads data that is half migrated. Reconciling gives unknown
  * biomarkers stored before keys existed the key new imports of the same name
- * get. A failure is not fatal: those values keep their old key.
+ * get. Then the fields earlier versions stored readable (biomarker keys,
+ * note tags, biomarker-keyed preferences) are encrypted. A failure is not
+ * fatal: the data stays readable by the app, only less protected.
  */
 async function migrateStoredData(key: CryptoKey): Promise<void> {
+  const db = createEncryptedDb(key);
+  // Errors are not logged: they could name stored data
   try {
-    await createEncryptedDb(key).reconcileLegacyUnknownKeys();
+    await db.reconcileLegacyUnknownKeys();
   } catch {
     console.error('Failed to reconcile legacy biomarker keys');
+  }
+  // After reconciling, which reads the legacy keys readable
+  try {
+    await db.encryptReadableFields();
+  } catch {
+    console.error('Failed to encrypt stored biomarker data');
   }
 }
 

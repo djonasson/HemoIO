@@ -63,14 +63,14 @@ describe('database upgrade to biomarker keys', () => {
     db.close();
   });
 
-  it('indexes test values by biomarker key', async () => {
+  it('no longer indexes the biomarker keys or note tags, which are stored encrypted', async () => {
     await seedV2('upgrade-test-2');
     const db = new HemoIODatabase('upgrade-test-2');
+    await db.open();
 
-    expect(await db.testValues.where('biomarkerKey').equals('hemoglobin').count()).toBe(1);
-    expect(
-      await db.testValues.where('[labResultId+biomarkerKey]').equals([1, 'hemoglobin']).count()
-    ).toBe(1);
+    expect(db.testValues.schema.indexes.map((index) => index.name)).toEqual(['labResultId']);
+    expect(db.userNotes.schema.indexes.map((index) => index.name)).not.toContain('tags');
+    expect(db.userNotes.schema.indexes.map((index) => index.name)).not.toContain('biomarkerKey');
     db.close();
   });
 });

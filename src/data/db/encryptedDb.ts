@@ -8,6 +8,7 @@
  * fields like IDs and timestamps.
  */
 
+import Dexie, { type Table } from 'dexie';
 import { db, HemoIODatabase } from './index';
 import { encryptString, decryptString } from '@data/encryption';
 import {
@@ -38,30 +39,70 @@ const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
 };
 
 /**
+ * A field stored encrypted. Biomarker keys are encrypted too, so the stored
+ * data does not show which tests were done.
+ */
+interface EncryptedField {
+  /** The field as the app sees it */
+  field: string;
+  /**
+   * Where the ciphertext is stored, when not in the field itself: a readable
+   * string left by an earlier version is then told apart from ciphertext
+   */
+  storedAs?: string;
+  /** Not a string: encrypted as JSON. Ciphertext is a string, so readable values stay distinct. */
+  json?: boolean;
+}
+
+const BIOMARKER_KEY: EncryptedField = { field: 'biomarkerKey', storedAs: 'encryptedBiomarkerKey' };
+
+/**
  * Fields that should be encrypted for each table
  */
-const ENCRYPTED_FIELDS: Record<string, string[]> = {
-  labResults: ['labName', 'notes'],
-  testValues: ['rawText'],
-  settings: ['aiApiKey'],
-  userPreferences: [], // Preferences are not sensitive
-  userNotes: ['content'], // Note content is sensitive
+const ENCRYPTED_FIELDS: Record<string, EncryptedField[]> = {
+  labResults: [{ field: 'labName' }, { field: 'notes' }],
+  testValues: [{ field: 'rawText' }, BIOMARKER_KEY],
+  settings: [{ field: 'aiApiKey' }],
+  // Keyed by biomarker, and personal targets are health data
+  userPreferences: [
+    { field: 'unitPreferences', json: true },
+    { field: 'personalTargets', json: true },
+    { field: 'acknowledgedAlerts', json: true },
+  ],
+  userNotes: [{ field: 'content' }, BIOMARKER_KEY, { field: 'tags', json: true }],
 };
+
+/** Whether a stored record holds this field readable, as an earlier version stored it */
+function isReadable(record: Record<string, unknown>, spec: EncryptedField): boolean {
+  const value = record[spec.field];
+  if (spec.storedAs) return typeof value === 'string';
+  return spec.json === true && value !== undefined && value !== null && typeof value !== 'string';
+}
 
 /**
  * Encrypt an object's specified fields
  */
 async function encryptFields<T>(
   obj: T,
-  fieldsToEncrypt: string[],
+  fieldsToEncrypt: EncryptedField[],
   key: CryptoKey
 ): Promise<T> {
   const encrypted = { ...obj } as Record<string, unknown>;
 
-  for (const field of fieldsToEncrypt) {
-    const value = encrypted[field];
-    if (value !== undefined && value !== null && typeof value === 'string') {
-      encrypted[field] = await encryptString(value, key);
+  for (const spec of fieldsToEncrypt) {
+    const value = encrypted[spec.field];
+    if (value === undefined || value === null) continue;
+    if (!spec.json && typeof value !== 'string') continue;
+    const ciphertext = await encryptString(
+      spec.json ? JSON.stringify(value) : (value as string),
+      key
+    );
+    if (spec.storedAs) {
+      encrypted[spec.storedAs] = ciphertext;
+      // Undefined, not deleted: an update then removes a readable copy
+      encrypted[spec.field] = undefined;
+    } else {
+      encrypted[spec.field] = ciphertext;
     }
   }
 
@@ -73,24 +114,34 @@ async function encryptFields<T>(
  */
 async function decryptFields<T>(
   obj: T,
-  fieldsToEncrypt: string[],
+  fieldsToEncrypt: EncryptedField[],
   key: CryptoKey
 ): Promise<T> {
   const decrypted = { ...obj } as Record<string, unknown>;
 
-  for (const field of fieldsToEncrypt) {
-    const value = decrypted[field];
-    if (value !== undefined && value !== null && typeof value === 'string') {
-      try {
-        decrypted[field] = await decryptString(value, key);
-      } catch {
-        // If decryption fails, leave the field as-is (might be unencrypted data)
-        console.warn(`Failed to decrypt field ${field}, leaving as-is`);
-      }
+  for (const spec of fieldsToEncrypt) {
+    const source = spec.storedAs ?? spec.field;
+    const value = decrypted[source];
+    // Anything else is absent or stored readable by an earlier version
+    if (typeof value !== 'string') continue;
+    try {
+      const text = await decryptString(value, key);
+      decrypted[spec.field] = spec.json ? JSON.parse(text) : text;
+      if (spec.storedAs) delete decrypted[spec.storedAs];
+    } catch {
+      // If decryption fails, leave the field as-is (might be unencrypted data)
+      console.warn(`Failed to decrypt field ${spec.field}, leaving as-is`);
     }
   }
 
   return decrypted as T;
+}
+
+/** Fields whose value is undefined are left out, so an update keeps them */
+function definedFields<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
 }
 
 /**
@@ -116,10 +167,10 @@ export class EncryptedDb {
    * @returns Number of legacy keys reconciled (0 when nothing to do)
    */
   async reconcileLegacyUnknownKeys(): Promise<number> {
-    const legacyValues = await this.db.testValues
-      .where('biomarkerKey')
-      .startsWith(LEGACY_UNKNOWN_PREFIX)
-      .toArray();
+    // Legacy keys are only in records stored readable, before keys were encrypted
+    const isLegacy = (record: { biomarkerKey?: unknown }) =>
+      typeof record.biomarkerKey === 'string' && record.biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX);
+    const legacyValues = await this.db.testValues.filter(isLegacy).toArray();
     if (legacyValues.length === 0) return 0;
 
     const decrypted = await Promise.all(
@@ -127,7 +178,6 @@ export class EncryptedDb {
     );
     const mapping = legacyUnknownKeyMapping(decrypted);
     if (mapping.size === 0) return 0;
-    const legacyKeys = [...mapping.keys()];
     // Each value by its own name: two names can share a legacy key
     const valueKeys = new Map(
       decrypted.map((tv) => [tv.id, reconcileTestValueKey(tv).biomarkerKey] as const)
@@ -135,14 +185,12 @@ export class EncryptedDb {
 
     await this.db.transaction('rw', this.db.testValues, this.db.userNotes, this.db.userPreferences, async () => {
       await this.db.testValues
-        .where('biomarkerKey')
-        .anyOf(legacyKeys)
+        .filter((record) => mapping.has(record.biomarkerKey))
         .modify((record) => {
           record.biomarkerKey = valueKeys.get(record.id) ?? mapping.get(record.biomarkerKey)!;
         });
       await this.db.userNotes
-        .where('biomarkerKey')
-        .anyOf(legacyKeys)
+        .filter((record) => record.biomarkerKey !== undefined && mapping.has(record.biomarkerKey))
         .modify((record) => {
           record.biomarkerKey = mapping.get(record.biomarkerKey!)!;
         });
@@ -152,6 +200,56 @@ export class EncryptedDb {
     });
 
     return mapping.size;
+  }
+
+  /**
+   * Encrypt the fields earlier versions stored readable: biomarker keys,
+   * note tags and the biomarker-keyed preferences. Runs after unlock, after
+   * legacy keys are reconciled (which reads them readable); does nothing
+   * when everything is encrypted.
+   *
+   * @returns Number of records encrypted
+   */
+  async encryptReadableFields(): Promise<number> {
+    const counts = await Promise.all([
+      this.encryptReadable(this.db.testValues, ENCRYPTED_FIELDS.testValues),
+      this.encryptReadable(this.db.userNotes, ENCRYPTED_FIELDS.userNotes),
+      this.encryptReadable(this.db.userPreferences, ENCRYPTED_FIELDS.userPreferences),
+    ]);
+    return counts.reduce((sum, count) => sum + count, 0);
+  }
+
+  private async encryptReadable<T extends { id?: number }>(
+    table: Table<T, number | undefined>,
+    fields: EncryptedField[]
+  ): Promise<number> {
+    const readable = (record: T) =>
+      fields.filter((spec) => isReadable(record as Record<string, unknown>, spec));
+    const records = await table.filter((record) => readable(record).length > 0).toArray();
+    // Encrypted up front: a transaction ends at the first await outside IndexedDB
+    const changes = new Map(
+      await Promise.all(
+        records.map(async (record) => {
+          const specs = readable(record);
+          const values = Object.fromEntries(
+            specs.map((spec) => [spec.field, (record as Record<string, unknown>)[spec.field]])
+          );
+          return [record.id!, await encryptFields(values, specs, this.key)] as const;
+        })
+      )
+    );
+    await this.db.transaction('rw', table, () =>
+      table
+        .filter((record) => changes.has(record.id!))
+        .modify((record) => {
+          const target = record as Record<string, unknown>;
+          for (const [field, value] of Object.entries(changes.get(record.id!)!)) {
+            if (value === undefined) delete target[field];
+            else target[field] = value;
+          }
+        })
+    );
+    return changes.size;
   }
 
   // ============ Lab Results ============
@@ -257,14 +355,9 @@ export class EncryptedDb {
     );
   }
 
+  /** Biomarker keys are encrypted, so not indexed: values are filtered once read */
   async getTestValuesByBiomarker(biomarkerKey: string): Promise<TestValue[]> {
-    const results = await this.db.testValues
-      .where('biomarkerKey')
-      .equals(biomarkerKey)
-      .toArray();
-    return Promise.all(
-      results.map((r) => decryptFields(r, ENCRYPTED_FIELDS.testValues, this.key))
-    );
+    return (await this.getAllTestValues()).filter((tv) => tv.biomarkerKey === biomarkerKey);
   }
 
   async updateTestValue(
@@ -332,19 +425,22 @@ export class EncryptedDb {
   // ============ User Preferences ============
 
   async getPreferences(): Promise<UserPreferences | undefined> {
-    return this.db.userPreferences.toCollection().first();
+    const preferences = await this.db.userPreferences.toCollection().first();
+    if (!preferences) return undefined;
+    return decryptFields(preferences, ENCRYPTED_FIELDS.userPreferences, this.key);
   }
 
   async savePreferences(
     preferences: Omit<UserPreferences, 'id'>
   ): Promise<number> {
+    const encrypted = await encryptFields(preferences, ENCRYPTED_FIELDS.userPreferences, this.key);
     const existing = await this.db.userPreferences.toCollection().first();
     if (existing?.id !== undefined) {
-      await this.db.userPreferences.update(existing.id, preferences);
+      await this.db.userPreferences.update(existing.id, encrypted);
       return existing.id;
     }
 
-    const id = await this.db.userPreferences.add(preferences as UserPreferences);
+    const id = await this.db.userPreferences.add(encrypted as UserPreferences);
     return id!;
   }
 
@@ -355,13 +451,21 @@ export class EncryptedDb {
   async updatePreferences(
     update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
   ): Promise<void> {
+    const fields = ENCRYPTED_FIELDS.userPreferences;
     await this.db.transaction('rw', this.db.userPreferences, async () => {
       const existing = await this.db.userPreferences.toCollection().first();
-      const changes = update(existing);
+      // Dexie.waitFor keeps the transaction open across the decryption and
+      // encryption, which are not IndexedDB requests
+      const current = existing && (await Dexie.waitFor(decryptFields(existing, fields, this.key)));
+      const changes = update(current);
       if (existing?.id !== undefined) {
-        await this.db.userPreferences.update(existing.id, changes);
+        const encrypted = await Dexie.waitFor(encryptFields(changes, fields, this.key));
+        await this.db.userPreferences.update(existing.id, encrypted);
       } else {
-        await this.db.userPreferences.add({ ...DEFAULT_PREFERENCES, ...changes } as UserPreferences);
+        const encrypted = await Dexie.waitFor(
+          encryptFields({ ...DEFAULT_PREFERENCES, ...changes }, fields, this.key)
+        );
+        await this.db.userPreferences.add(encrypted as UserPreferences);
       }
     });
   }
@@ -419,14 +523,9 @@ export class EncryptedDb {
     );
   }
 
+  /** Biomarker keys are encrypted, so not indexed: notes are filtered once read */
   async getNotesByBiomarker(biomarkerKey: string): Promise<UserNote[]> {
-    const results = await this.db.userNotes
-      .where('biomarkerKey')
-      .equals(biomarkerKey)
-      .toArray();
-    return Promise.all(
-      results.map((r) => decryptFields(r, ENCRYPTED_FIELDS.userNotes, this.key))
-    );
+    return (await this.getAllNotes()).filter((note) => note.biomarkerKey === biomarkerKey);
   }
 
   async getNotesByTestValue(testValueId: number): Promise<UserNote[]> {
@@ -439,14 +538,9 @@ export class EncryptedDb {
     );
   }
 
+  /** Tags are encrypted, so not indexed: notes are filtered once read */
   async getNotesByTag(tag: string): Promise<UserNote[]> {
-    const results = await this.db.userNotes
-      .where('tags')
-      .equals(tag)
-      .toArray();
-    return Promise.all(
-      results.map((r) => decryptFields(r, ENCRYPTED_FIELDS.userNotes, this.key))
-    );
+    return (await this.getAllNotes()).filter((note) => note.tags.includes(tag));
   }
 
   async updateNote(id: number, changes: Partial<UserNote>): Promise<number> {
@@ -512,17 +606,23 @@ export class EncryptedDb {
     userPreferences?: Omit<UserPreferences, 'id'>;
   }): Promise<{ labResults: number; testValues: number; notes: number }> {
     // Encrypted up front: a transaction ends at the first await outside IndexedDB
-    const encrypt = <T extends { id?: number }>(records: T[], fields: string[]) =>
+    const encrypt = <T extends { id?: number }>(records: T[], fields: EncryptedField[]) =>
       Promise.all(
         records.map(async (record) => {
           const { id, ...rest } = record;
           return { id, encrypted: await encryptFields(rest, fields, this.key) };
         })
       );
-    const [labResults, testValues, userNotes] = await Promise.all([
+    const [labResults, testValues, userNotes, userPreferences] = await Promise.all([
       encrypt(data.labResults, ENCRYPTED_FIELDS.labResults),
       encrypt(data.testValues, ENCRYPTED_FIELDS.testValues),
       encrypt(data.userNotes, ENCRYPTED_FIELDS.userNotes),
+      data.userPreferences &&
+        encryptFields(
+          definedFields(data.userPreferences),
+          ENCRYPTED_FIELDS.userPreferences,
+          this.key
+        ),
     ]);
 
     const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, this.db.userPreferences];
@@ -567,13 +667,13 @@ export class EncryptedDb {
         )
       );
 
-      if (data.userPreferences) {
+      if (userPreferences) {
         // As savePreferences: fields the backup lacks keep their current values
         const existing = await this.db.userPreferences.toCollection().first();
         if (existing?.id !== undefined) {
-          await this.db.userPreferences.update(existing.id, data.userPreferences);
+          await this.db.userPreferences.update(existing.id, userPreferences);
         } else {
-          await this.db.userPreferences.add(data.userPreferences as UserPreferences);
+          await this.db.userPreferences.add(userPreferences as UserPreferences);
         }
       }
 
