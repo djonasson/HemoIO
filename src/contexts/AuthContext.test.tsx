@@ -10,13 +10,9 @@ import {
 } from '@data/encryption/keyWrapping';
 
 // Stored-data migrations run on unlock; the database itself is not under test
-const reconcile = vi.hoisted(() => vi.fn<() => Promise<void>>());
-const encryptReadable = vi.hoisted(() => vi.fn<() => Promise<void>>());
+const migrate = vi.hoisted(() => vi.fn<() => Promise<void>>());
 vi.mock('@data/db', () => ({
-  createEncryptedDb: () => ({
-    reconcileLegacyUnknownKeys: reconcile,
-    encryptReadableFields: encryptReadable,
-  }),
+  createEncryptedDb: () => ({ migrateLegacyRecords: migrate }),
 }));
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
@@ -78,10 +74,8 @@ function lock() {
 describe('AuthContext', () => {
   beforeEach(() => {
     localStorage.clear();
-    reconcile.mockReset();
-    reconcile.mockResolvedValue(undefined);
-    encryptReadable.mockReset();
-    encryptReadable.mockResolvedValue(undefined);
+    migrate.mockReset();
+    migrate.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -157,84 +151,36 @@ describe('AuthContext', () => {
       expect(auth.encryptionKey).not.toBeNull();
     });
 
-    it('reconciles stored biomarker keys before reporting unlocked', async () => {
+    it('migrates stored records before reporting unlocked', async () => {
       await setUp();
       lock();
-      let finishReconciling!: () => void;
-      reconcile.mockReturnValue(new Promise<void>((resolve) => (finishReconciling = resolve)));
+      let finishMigrating!: () => void;
+      migrate.mockReturnValue(new Promise<void>((resolve) => (finishMigrating = resolve)));
 
       let unlocking!: Promise<boolean>;
       act(() => {
         unlocking = auth.unlock(OLD);
       });
-      await vi.waitFor(() => expect(reconcile).toHaveBeenCalled());
+      await vi.waitFor(() => expect(migrate).toHaveBeenCalled());
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
 
       await act(async () => {
-        finishReconciling();
+        finishMigrating();
         await unlocking;
       });
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
 
-    it('unlocks even when reconciling stored keys fails', async () => {
+    it('unlocks even when migrating stored records fails', async () => {
       await setUp();
       lock();
-      reconcile.mockRejectedValue(new Error('IndexedDB unavailable'));
+      migrate.mockRejectedValue(new Error('IndexedDB unavailable'));
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       expect(await unlock(OLD)).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       // Logged without the error, which could name stored data
-      expect(consoleError).toHaveBeenCalledWith('Failed to reconcile legacy biomarker keys');
-    });
-
-    it('encrypts data stored readable, after reconciling, before reporting unlocked', async () => {
-      await setUp();
-      lock();
-      let finishReconciling!: () => void;
-      reconcile.mockReturnValue(new Promise<void>((resolve) => (finishReconciling = resolve)));
-      let finishEncrypting!: () => void;
-      encryptReadable.mockReturnValue(new Promise<void>((resolve) => (finishEncrypting = resolve)));
-
-      let unlocking!: Promise<boolean>;
-      act(() => {
-        unlocking = auth.unlock(OLD);
-      });
-      await vi.waitFor(() => expect(reconcile).toHaveBeenCalled());
-      // Reconciling reads the legacy keys readable, so it comes first
-      expect(encryptReadable).not.toHaveBeenCalled();
-      await act(async () => finishReconciling());
-      await vi.waitFor(() => expect(encryptReadable).toHaveBeenCalled());
-      expect(screen.getByTestId('status')).toHaveTextContent('locked');
-
-      await act(async () => {
-        finishEncrypting();
-        await unlocking;
-      });
-      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-    });
-
-    it('still encrypts data stored readable when reconciling fails', async () => {
-      await setUp();
-      lock();
-      reconcile.mockRejectedValue(new Error('IndexedDB unavailable'));
-      vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      expect(await unlock(OLD)).toBe(true);
-      expect(encryptReadable).toHaveBeenCalled();
-    });
-
-    it('unlocks even when encrypting data stored readable fails', async () => {
-      await setUp();
-      lock();
-      encryptReadable.mockRejectedValue(new Error('IndexedDB unavailable'));
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      expect(await unlock(OLD)).toBe(true);
-      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      // Logged without the error, which could name stored data
-      expect(consoleError).toHaveBeenCalledWith('Failed to encrypt stored biomarker data');
+      expect(consoleError).toHaveBeenCalledWith('Failed to migrate stored records');
     });
 
     it('stays locked with a wrong password', async () => {

@@ -17,9 +17,9 @@ import { encryptString, decryptString } from '@data/encryption';
 import {
   legacyUnknownKeyMapping,
   reconcileTestValueKey,
+  remapBiomarkerKey,
   remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
-import { LEGACY_UNKNOWN_PREFIX } from '@data/migrations/legacyBiomarkerIds';
 import type {
   LabResult,
   TestValue,
@@ -104,29 +104,14 @@ function isSealed(stored: SealedRecord): boolean {
 // ============ Records as earlier versions stored them ============
 
 /**
- * A field earlier versions encrypted on its own, leaving the rest readable
+ * The fields earlier versions encrypted one by one, leaving the rest
+ * readable. Records in this form are still read, and are sealed after unlock.
  */
-interface EncryptedField {
-  /** The field as the app sees it */
-  field: string;
-  /** Where the ciphertext was stored, when not in the field itself */
-  storedAs?: string;
-  /** Not a string: encrypted as JSON */
-  json?: boolean;
-}
-
-const BIOMARKER_KEY: EncryptedField = { field: 'biomarkerKey', storedAs: 'encryptedBiomarkerKey' };
-
-/** How each table's fields were encrypted before records were sealed */
-const LEGACY_ENCRYPTED_FIELDS: Record<SealedTable, EncryptedField[]> = {
-  labResults: [{ field: 'labName' }, { field: 'notes' }],
-  testValues: [{ field: 'rawText' }, BIOMARKER_KEY],
-  userNotes: [{ field: 'content' }, BIOMARKER_KEY, { field: 'tags', json: true }],
-  userPreferences: [
-    { field: 'unitPreferences', json: true },
-    { field: 'personalTargets', json: true },
-    { field: 'acknowledgedAlerts', json: true },
-  ],
+export const LEGACY_ENCRYPTED_FIELDS: Record<SealedTable, readonly string[]> = {
+  labResults: ['labName', 'notes'],
+  testValues: ['rawText'],
+  userNotes: ['content'],
+  userPreferences: [],
 };
 
 /** Settings are device configuration: only the API key is encrypted */
@@ -135,7 +120,7 @@ const SETTINGS_ENCRYPTED_FIELDS = ['aiApiKey'];
 /**
  * Encrypt an object's specified string fields
  */
-async function encryptFields<T>(obj: T, fields: string[], key: CryptoKey): Promise<T> {
+async function encryptFields<T>(obj: T, fields: readonly string[], key: CryptoKey): Promise<T> {
   const encrypted = { ...obj } as Record<string, unknown>;
   for (const field of fields) {
     const value = encrypted[field];
@@ -145,26 +130,20 @@ async function encryptFields<T>(obj: T, fields: string[], key: CryptoKey): Promi
 }
 
 /**
- * Decrypt an object's encrypted fields
+ * Decrypt an object's specified string fields
  */
-async function decryptFields<T>(obj: T, fields: EncryptedField[], key: CryptoKey): Promise<T> {
+async function decryptFields<T>(obj: T, fields: readonly string[], key: CryptoKey): Promise<T> {
   const decrypted = { ...obj } as Record<string, unknown>;
-
-  for (const spec of fields) {
-    const source = spec.storedAs ?? spec.field;
-    const value = decrypted[source];
-    // Anything else is absent or stored readable
+  for (const field of fields) {
+    const value = decrypted[field];
     if (typeof value !== 'string') continue;
     try {
-      const text = await decryptString(value, key);
-      decrypted[spec.field] = spec.json ? JSON.parse(text) : text;
-      if (spec.storedAs) delete decrypted[spec.storedAs];
+      decrypted[field] = await decryptString(value, key);
     } catch {
       // If decryption fails, leave the field as-is (might be unencrypted data)
-      console.warn(`Failed to decrypt field ${spec.field}, leaving as-is`);
+      console.warn(`Failed to decrypt field ${field}, leaving as-is`);
     }
   }
-
   return decrypted as T;
 }
 
@@ -248,74 +227,48 @@ export class EncryptedDb {
   // ============ Migrations needing the encryption key ============
 
   /**
-   * Give unknown biomarkers stored before biomarker keys existed
-   * ("unknown:legacy-<hash>") the key their extracted name gets today, so
-   * their history joins values imported since. Needs rawText, which is
-   * encrypted, so it runs after unlock rather than in the schema upgrade.
-   *
-   * @returns Number of legacy keys reconciled (0 when nothing to do)
-   */
-  async reconcileLegacyUnknownKeys(): Promise<number> {
-    // Legacy keys are only in records stored readable, before records were sealed
-    const isLegacy = (record: { biomarkerKey?: unknown }) =>
-      typeof record.biomarkerKey === 'string' && record.biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX);
-    const legacyValues = await this.db.testValues.filter(isLegacy).toArray();
-    if (legacyValues.length === 0) return 0;
-
-    const decrypted = await Promise.all(
-      legacyValues.map((tv) => decryptFields(tv, LEGACY_ENCRYPTED_FIELDS.testValues, this.key))
-    );
-    const mapping = legacyUnknownKeyMapping(decrypted);
-    if (mapping.size === 0) return 0;
-    // Each value by its own name: two names can share a legacy key
-    const valueKeys = new Map(
-      decrypted.map((tv) => [tv.id, reconcileTestValueKey(tv).biomarkerKey] as const)
-    );
-
-    await this.db.transaction('rw', this.db.testValues, this.db.userNotes, this.db.userPreferences, async () => {
-      await this.db.testValues
-        .filter((record) => mapping.has(record.biomarkerKey))
-        .modify((record) => {
-          record.biomarkerKey = valueKeys.get(record.id) ?? mapping.get(record.biomarkerKey)!;
-        });
-      await this.db.userNotes
-        .filter((record) => record.biomarkerKey !== undefined && mapping.has(record.biomarkerKey))
-        .modify((record) => {
-          record.biomarkerKey = mapping.get(record.biomarkerKey!)!;
-        });
-      await this.db.userPreferences
-        .filter((record) => !isSealed(record as unknown as SealedRecord))
-        .modify((record, ref) => {
-          ref.value = remapPreferenceMaps(record, mapping);
-        });
-    });
-
-    return mapping.size;
-  }
-
-  /**
-   * Seal the records earlier versions stored with only some fields
-   * encrypted. Runs after unlock, after legacy keys are reconciled (which
-   * reads them unsealed); does nothing when every record is sealed.
+   * Bring the records earlier versions stored up to date, in one pass:
+   * decrypt the fields they encrypted, give unknown biomarkers stored before
+   * biomarker keys existed ("unknown:legacy-<hash>") the key their extracted
+   * name gets today, so their history joins values imported since, and seal
+   * them. Needs the encryption key, so it runs after unlock rather than in
+   * the schema upgrade; does nothing once every record is sealed.
    *
    * @returns Number of records sealed
    */
-  async encryptReadableFields(): Promise<number> {
-    const tables: SealedTable[] = ['labResults', 'testValues', 'userNotes', 'userPreferences'];
-    const counts = await Promise.all(tables.map((name) => this.sealUnsealed(name)));
-    return counts.reduce((sum, count) => sum + count, 0);
-  }
+  async migrateLegacyRecords(): Promise<number> {
+    const names = Object.keys(READABLE_FIELDS) as SealedTable[];
+    const [labResults, testValues, userNotes, userPreferences] = await Promise.all(
+      names.map(async (name) =>
+        this.unsealAll<Record<string, unknown>>(
+          name,
+          await this.table(name).filter((record) => !isSealed(record)).toArray()
+        )
+      )
+    );
+    // Legacy keys are only in records not yet sealed
+    const values = testValues as unknown as TestValue[];
+    const mapping = legacyUnknownKeyMapping(values);
+    const migrated: Record<SealedTable, object[]> = {
+      labResults,
+      // Each value by its own name: two names can share a legacy key
+      testValues: values.map(reconcileTestValueKey),
+      userNotes: userNotes.map((note) => remapBiomarkerKey(note, mapping)),
+      userPreferences: (userPreferences as unknown as UserPreferences[]).map((prefs) =>
+        remapPreferenceMaps(prefs, mapping)
+      ),
+    };
+    if (names.every((name) => migrated[name].length === 0)) return 0;
 
-  private async sealUnsealed(name: SealedTable): Promise<number> {
-    const table = this.table(name);
-    const unsealed = await table.filter((record) => !isSealed(record)).toArray();
-    if (unsealed.length === 0) return 0;
     // Sealed up front: a transaction ends at the first await outside IndexedDB
     const sealed = await Promise.all(
-      unsealed.map(async (record) => this.seal(name, await unseal<object>(record, name, this.key)))
+      names.map((name) => Promise.all(migrated[name].map((record) => this.seal(name, record))))
     );
-    await this.db.transaction('rw', table, () => table.bulkPut(sealed));
-    return sealed.length;
+    const tables = names.map((name) => this.table(name));
+    await this.db.transaction('rw', tables, () =>
+      Promise.all(tables.map((table, i) => table.bulkPut(sealed[i])))
+    );
+    return sealed.flat().length;
   }
 
   // ============ Lab Results ============
@@ -403,11 +356,7 @@ export class EncryptedDb {
   async getSettings(): Promise<Settings | undefined> {
     const settings = await this.db.settings.toCollection().first();
     if (!settings) return undefined;
-    return decryptFields(
-      settings,
-      SETTINGS_ENCRYPTED_FIELDS.map((field) => ({ field })),
-      this.key
-    );
+    return decryptFields(settings, SETTINGS_ENCRYPTED_FIELDS, this.key);
   }
 
   async saveSettings(settings: Omit<Settings, 'id'>): Promise<number> {
@@ -588,20 +537,26 @@ export class EncryptedDb {
     // The links between records stay readable, so they are rewritten sealed.
     const sealAll = <T extends { id?: number }>(name: SealedTable, records: T[]) =>
       Promise.all(
-        records.map(async (record) => {
-          const { id, ...rest } = record;
-          return { id, sealed: await this.seal(name, rest) };
-        })
+        // Stored under new IDs: the given ID is left out
+        records.map(async (record) => ({
+          record,
+          sealed: await this.seal(name, { ...record, id: undefined }),
+        }))
       );
     const [labResults, testValues, userNotes] = await Promise.all([
       sealAll('labResults', data.labResults),
       sealAll('testValues', data.testValues),
       sealAll('userNotes', data.userNotes),
     ]);
-    const link = (record: SealedRecord, field: string) => record[field] as number | undefined;
+    /** Each given record's ID → the ID it was stored under */
+    const idMap = (added: Array<{ record: { id?: number } }>, keys: unknown[]) =>
+      new Map(
+        added.flatMap(({ record }, i) =>
+          record.id !== undefined ? [[record.id, keys[i] as number] as const] : []
+        )
+      );
 
-    const preferences = this.table('userPreferences');
-    const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, preferences];
+    const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, this.db.userPreferences];
     return this.db.transaction('rw', tables, async () => {
       await Promise.all([
         this.db.labResults.clear(),
@@ -609,51 +564,43 @@ export class EncryptedDb {
         this.db.userNotes.clear(),
       ]);
 
-      const resultKeys = await this.table('labResults').bulkAdd(
-        labResults.map((r) => r.sealed),
-        { allKeys: true }
+      const resultIds = idMap(
+        labResults,
+        await this.table('labResults').bulkAdd(
+          labResults.map((r) => r.sealed),
+          { allKeys: true }
+        )
       );
-      const resultIds = new Map<number, number>();
-      labResults.forEach((r, i) => {
-        if (r.id !== undefined) resultIds.set(r.id, resultKeys[i] as number);
-      });
 
-      const linkedValues = testValues.filter((tv) =>
-        resultIds.has(link(tv.sealed, 'labResultId')!)
+      const linkedValues = testValues.filter((tv) => resultIds.has(tv.record.labResultId));
+      const valueIds = idMap(
+        linkedValues,
+        await this.table('testValues').bulkAdd(
+          linkedValues.map((tv) => ({
+            ...tv.sealed,
+            labResultId: resultIds.get(tv.record.labResultId)!,
+          })),
+          { allKeys: true }
+        )
       );
-      const valueKeys = await this.table('testValues').bulkAdd(
-        linkedValues.map((tv) => ({
-          ...tv.sealed,
-          labResultId: resultIds.get(link(tv.sealed, 'labResultId')!)!,
-        })),
-        { allKeys: true }
-      );
-      const valueIds = new Map<number, number>();
-      linkedValues.forEach((tv, i) => {
-        if (tv.id !== undefined) valueIds.set(tv.id, valueKeys[i] as number);
-      });
 
       const remap = (ids: Map<number, number>, id: number | undefined) =>
         id !== undefined ? ids.get(id) : undefined;
       await this.table('userNotes').bulkAdd(
         userNotes.map(
-          (note) =>
+          ({ record, sealed }) =>
             definedFields({
-              ...note.sealed,
-              labResultId: remap(resultIds, link(note.sealed, 'labResultId')),
-              testValueId: remap(valueIds, link(note.sealed, 'testValueId')),
+              ...sealed,
+              labResultId: remap(resultIds, record.labResultId),
+              testValueId: remap(valueIds, record.testValueId),
             }) as SealedRecord
         )
       );
 
       if (data.userPreferences) {
         // As savePreferences: fields the backup lacks keep their current values
-        const stored = await preferences.toCollection().first();
-        const current =
-          stored &&
-          (await Dexie.waitFor(unseal<UserPreferences>(stored, 'userPreferences', this.key)));
-        const next = { ...current, ...definedFields(data.userPreferences) };
-        await preferences.put(await Dexie.waitFor(this.seal('userPreferences', next)));
+        const preferences = definedFields(data.userPreferences);
+        await this.writePreferences(() => preferences);
       }
 
       return {

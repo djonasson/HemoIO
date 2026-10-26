@@ -1,33 +1,12 @@
-import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import Dexie from 'dexie';
-import { HemoIODatabase } from '@data/db';
-import { EncryptedDb } from '@data/db/encryptedDb';
+import { openTestDb } from '@data/db/testDb';
 import { restoreBackup } from './restoreBackup';
 import type { ParsedBackupData } from './jsonImport';
+import type { EncryptedDb } from '@data/db/encryptedDb';
 
-const opened: HemoIODatabase[] = [];
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  // Close first: deleting an open database makes Dexie warn
-  await Promise.all(
-    opened.splice(0).map((database) => {
-      database.close();
-      return Dexie.delete(database.name);
-    })
-  );
 });
-
-let dbCount = 0;
-async function openDb(): Promise<{ db: EncryptedDb; database: HemoIODatabase }> {
-  const database = new HemoIODatabase(`restore-test-${++dbCount}`);
-  opened.push(database);
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
-    'encrypt',
-    'decrypt',
-  ]);
-  return { db: new EncryptedDb(key, database), database };
-}
 
 const now = new Date('2024-01-15T10:00:00Z');
 
@@ -78,7 +57,7 @@ async function seedExisting(db: EncryptedDb): Promise<void> {
 
 describe('restoreBackup', () => {
   it('replaces existing data', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     await seedExisting(db);
 
     await restoreBackup(db, backup());
@@ -93,7 +72,7 @@ describe('restoreBackup', () => {
   });
 
   it('links test values to the new IDs of their lab results', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     await seedExisting(db);
 
     await restoreBackup(db, backup());
@@ -106,7 +85,7 @@ describe('restoreBackup', () => {
   });
 
   it('links notes to the new IDs of their lab results and test values', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     await seedExisting(db);
 
     await restoreBackup(db, backup());
@@ -118,7 +97,7 @@ describe('restoreBackup', () => {
   });
 
   it('keeps notes that only reference a biomarker', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
 
     await restoreBackup(db, backup());
 
@@ -129,7 +108,7 @@ describe('restoreBackup', () => {
   });
 
   it('skips test values whose lab result is not in the backup', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     const data = backup();
     data.testValues.push({
       id: 12, labResultId: 99, biomarkerKey: 'marker-5', value: 3, unit: 'u', createdAt: now, updatedAt: now,
@@ -142,7 +121,7 @@ describe('restoreBackup', () => {
   });
 
   it('keeps the encrypted fields readable', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     const data = backup();
     data.testValues[0].rawText = 'Glucose';
 
@@ -152,7 +131,7 @@ describe('restoreBackup', () => {
   });
 
   it('keeps existing preferences when the backup has none', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     await db.savePreferences({
       unitPreferences: {},
       personalTargets: { glucose: { high: 99 } },
@@ -166,7 +145,7 @@ describe('restoreBackup', () => {
   });
 
   it('restores preferences from the backup', async () => {
-    const { db } = await openDb();
+    const { db } = await openTestDb();
     const fromBackup = { id: 7, unitPreferences: { glucose: 'mmol/L' }, personalTargets: {}, theme: 'light' as const, dateFormat: 'YYYY-MM-DD' as const };
 
     await restoreBackup(db, backup({ userPreferences: fromBackup }));
@@ -177,7 +156,7 @@ describe('restoreBackup', () => {
   });
 
   it('leaves existing data untouched when a restore fails part-way', async () => {
-    const { db, database } = await openDb();
+    const { db, database } = await openTestDb();
     await seedExisting(db);
     vi.spyOn(database.userNotes, 'bulkAdd').mockRejectedValue(new Error('Disk full'));
 

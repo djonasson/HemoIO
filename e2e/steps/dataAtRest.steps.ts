@@ -36,9 +36,14 @@ export async function readStoredRows(page: Page): Promise<StoredRows> {
   );
 }
 
-/** The stored data as one string, to search for anything readable */
+/**
+ * The stored data as one string, to search for anything readable. Sealed
+ * ciphertext is left out: being random, it can contain any short text.
+ */
 export async function readStoredData(page: Page): Promise<string> {
-  return JSON.stringify(await readStoredRows(page));
+  return JSON.stringify(await readStoredRows(page), (field, value) =>
+    field === 'encrypted' ? undefined : value
+  );
 }
 
 /** The field names stored in each object store */

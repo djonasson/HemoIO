@@ -1,33 +1,9 @@
-import 'fake-indexeddb/auto';
-import { describe, it, expect, afterEach } from 'vitest';
-import Dexie from 'dexie';
-import { HemoIODatabase } from './index';
-import { EncryptedDb } from './encryptedDb';
-
-const opened: HemoIODatabase[] = [];
-afterEach(async () => {
-  // Close first: deleting an open database makes Dexie warn
-  await Promise.all(
-    opened.splice(0).map((database) => {
-      database.close();
-      return Dexie.delete(database.name);
-    })
-  );
-});
-
-async function openDb(name: string): Promise<{ db: EncryptedDb; database: HemoIODatabase }> {
-  const database = new HemoIODatabase(name);
-  opened.push(database);
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
-    'encrypt',
-    'decrypt',
-  ]);
-  return { db: new EncryptedDb(key, database), database };
-}
+import { describe, it, expect } from 'vitest';
+import { openTestDb } from './testDb';
 
 describe('EncryptedDb.updateSettings', () => {
   it('creates the record with defaults when there is none', async () => {
-    const { db } = await openDb('settings-test-1');
+    const { db } = await openTestDb();
     await db.updateSettings({ anthropicModel: 'claude-x' });
 
     expect(await db.getSettings()).toEqual(
@@ -41,7 +17,7 @@ describe('EncryptedDb.updateSettings', () => {
   });
 
   it('changes only the fields it is given', async () => {
-    const { db } = await openDb('settings-test-2');
+    const { db } = await openTestDb();
     await db.saveSettings({
       storageProvider: 'local',
       aiProvider: 'anthropic',
@@ -64,7 +40,7 @@ describe('EncryptedDb.updateSettings', () => {
   });
 
   it('keeps concurrent updates to different fields', async () => {
-    const { db } = await openDb('settings-test-3');
+    const { db } = await openTestDb();
     await Promise.all([
       db.updateSettings({ aiProvider: 'ollama' }),
       db.updateSettings({ ollamaModel: 'llama' }),
@@ -77,7 +53,7 @@ describe('EncryptedDb.updateSettings', () => {
   });
 
   it('stores the API key encrypted', async () => {
-    const { db, database } = await openDb('settings-test-4');
+    const { db, database } = await openTestDb();
     await db.updateSettings({ aiApiKey: 'secret-key' });
 
     const stored = await database.settings.toCollection().first();

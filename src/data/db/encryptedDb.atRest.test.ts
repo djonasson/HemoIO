@@ -1,36 +1,15 @@
-import 'fake-indexeddb/auto';
-import { describe, it, expect, afterEach } from 'vitest';
-import Dexie from 'dexie';
-import { HemoIODatabase } from './index';
-import { EncryptedDb } from './encryptedDb';
-import { encryptString } from '@data/encryption';
+import { describe, it, expect } from 'vitest';
+import { openTestDb, storeAsEarlierVersion, type TestDb } from './testDb';
+import type { HemoIODatabase } from './index';
+import type { EncryptedDb } from './encryptedDb';
 
-const opened: HemoIODatabase[] = [];
-afterEach(async () => {
-  // Close first: deleting an open database makes Dexie warn
-  await Promise.all(
-    opened.splice(0).map((database) => {
-      database.close();
-      return Dexie.delete(database.name);
-    })
-  );
-});
-
-let dbCount = 0;
-async function openDb(): Promise<{ db: EncryptedDb; database: HemoIODatabase; key: CryptoKey }> {
-  const database = new HemoIODatabase(`at-rest-test-${++dbCount}`);
-  opened.push(database);
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
-    'encrypt',
-    'decrypt',
-  ]);
-  return { db: new EncryptedDb(key, database), database, key };
-}
-
-/** Everything stored, as someone without the password would read it */
+/**
+ * Everything stored, as someone without the password would read it. Sealed
+ * ciphertext is left out: being random, it can contain any short text.
+ */
 async function stored(database: HemoIODatabase): Promise<string> {
   const tables = await Promise.all(database.tables.map((table) => table.toArray()));
-  return JSON.stringify(tables);
+  return JSON.stringify(tables, (field, value) => (field === 'encrypted' ? undefined : value));
 }
 
 const now = new Date('2024-01-15T10:00:00Z');
@@ -66,7 +45,7 @@ const PREFERENCES = {
 describe('EncryptedDb: biomarker data at rest', () => {
   describe('test values', () => {
     it('stores the biomarker key encrypted', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       await addValues(db);
 
       const raw = await stored(database);
@@ -75,7 +54,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('reads the biomarker key back by every query', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const [glucoseId] = await addValues(db);
 
       expect((await db.getAllTestValues()).map((tv) => tv.biomarkerKey)).toEqual([
@@ -89,7 +68,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('stores a changed biomarker key encrypted', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       const [id] = await addValues(db);
 
       await db.updateTestValue(id, { biomarkerKey: 'hemoglobin' });
@@ -112,7 +91,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     }
 
     it('stores the biomarker key and tags encrypted', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       await addNotes(db);
 
       const raw = await stored(database);
@@ -122,7 +101,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('finds notes by biomarker and by tag', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const id = await addNotes(db);
 
       expect((await db.getNotesByBiomarker(UNKNOWN)).map((n) => n.id)).toEqual([id]);
@@ -134,7 +113,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('stores changed tags encrypted', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       const id = await addNotes(db);
 
       await db.updateNote(id, { tags: ['insulin'] });
@@ -146,7 +125,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
 
   describe('preferences', () => {
     it('stores the biomarker-keyed preferences encrypted', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       await db.savePreferences(PREFERENCES);
       await db.updatePreferences(() => ({ unitPreferences: { hemoglobin: 'g/L' } }));
 
@@ -157,7 +136,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('reads and updates them as before', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       await db.savePreferences(PREFERENCES);
 
       await db.updatePreferences((current) => ({
@@ -173,7 +152,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('creates the record encrypted when there is none', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
 
       await db.updatePreferences(() => ({ personalTargets: { glucose: { low: 1 } } }));
 
@@ -184,7 +163,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
 
   describe('restoring a backup', () => {
     it('stores the restored data encrypted, keeping preferences the backup lacks', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       await db.savePreferences(PREFERENCES);
 
       await db.replaceLabData({
@@ -235,9 +214,8 @@ describe('EncryptedDb: biomarker data at rest', () => {
   });
 
   describe('data stored readable by an earlier version', () => {
-    // As an earlier version stored them: note content was already encrypted
-    async function seedReadable(database: HemoIODatabase, key: CryptoKey): Promise<void> {
-      await database.testValues.add({
+    async function seedReadable(test: TestDb): Promise<void> {
+      await storeAsEarlierVersion(test, 'testValues', {
         labResultId: 1,
         biomarkerKey: 'glucose',
         value: 5,
@@ -245,19 +223,20 @@ describe('EncryptedDb: biomarker data at rest', () => {
         createdAt: now,
         updatedAt: now,
       });
-      await database.userNotes.add({
+      await storeAsEarlierVersion(test, 'userNotes', {
         biomarkerKey: 'glucose',
-        content: await encryptString('c', key),
+        content: 'c',
         tags: ['fasting'],
         createdAt: now,
         updatedAt: now,
       });
-      await database.userPreferences.add({ ...PREFERENCES });
+      await storeAsEarlierVersion(test, 'userPreferences', PREFERENCES);
     }
 
     it('is still read correctly', async () => {
-      const { db, database, key } = await openDb();
-      await seedReadable(database, key);
+      const test = await openTestDb();
+      const { db } = test;
+      await seedReadable(test);
 
       expect((await db.getAllTestValues())[0].biomarkerKey).toBe('glucose');
       expect((await db.getNotesByTag('fasting'))[0].biomarkerKey).toBe('glucose');
@@ -265,11 +244,12 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('is encrypted by the migration, and reads the same afterwards', async () => {
-      const { db, database, key } = await openDb();
-      await seedReadable(database, key);
+      const test = await openTestDb();
+      const { db, database } = test;
+      await seedReadable(test);
 
-      await db.encryptReadableFields();
-      await db.encryptReadableFields();
+      await db.migrateLegacyRecords();
+      expect(await db.migrateLegacyRecords()).toBe(0);
 
       const raw = await stored(database);
       expect(raw).not.toContain('glucose');
@@ -332,7 +312,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     }
 
     it('stores only IDs and links readable', async () => {
-      const { db, database } = await openDb();
+      const { db, database } = await openTestDb();
       await addEverything(db);
 
       expect(await storedFields(database)).toEqual({
@@ -349,7 +329,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('reads back every field with its type', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const { labResultId, valueId, noteId } = await addEverything(db);
 
       expect(await db.getLabResult(labResultId)).toEqual({
@@ -386,7 +366,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('keeps qualitative values as they were', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const [text, flag] = await db.addTestValues(
         ['positive', true].map((value) => ({
           labResultId: 1, biomarkerKey: 'k', value, unit: '', createdAt: now, updatedAt: now,
@@ -398,7 +378,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('changes only the fields an update gives', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const { labResultId, valueId, noteId } = await addEverything(db);
       const later = new Date('2024-05-01T00:00:00Z');
 
@@ -414,7 +394,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('removes a field an update sets to undefined', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const { labResultId } = await addEverything(db);
 
       await db.updateLabResult(labResultId, { notes: undefined });
@@ -423,7 +403,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('lists lab results newest first and finds them by date range', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       const add = (day: string) =>
         db.addLabResult({ date: new Date(`${day}T12:00:00Z`), labName: day, createdAt: now, updatedAt: now });
       await add('2024-02-01');
@@ -444,7 +424,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('lists notes newest first', async () => {
-      const { db } = await openDb();
+      const { db } = await openTestDb();
       for (const day of ['2024-01-02', '2024-01-03', '2024-01-01']) {
         const at = new Date(`${day}T00:00:00Z`);
         await db.addNote({ content: day, tags: [], createdAt: at, updatedAt: at });
@@ -458,7 +438,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     it('no longer indexes dates or lab names', async () => {
-      const { database } = await openDb();
+      const { database } = await openTestDb();
       await database.open();
 
       expect(database.labResults.schema.indexes).toEqual([]);
@@ -469,36 +449,36 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
 
     describe('records as earlier versions stored them', () => {
-      // Field by field: the text fields encrypted, everything else readable
-      async function seedEarlierVersion(database: HemoIODatabase, key: CryptoKey) {
-        const labResultId = (await database.labResults.add({
+      async function seedEarlierVersion(test: TestDb) {
+        const labResultId = await storeAsEarlierVersion(test, 'labResults', {
           date: new Date('2024-03-01T12:00:00Z'),
-          labName: await encryptString('Quest', key),
+          labName: 'Quest',
           createdAt: now,
           updatedAt: now,
-        })) as number;
-        const valueId = (await database.testValues.add({
+        });
+        const valueId = await storeAsEarlierVersion(test, 'testValues', {
           labResultId,
           biomarkerKey: 'hba1c',
           value: 48,
           unit: 'mmol/mol',
-          rawText: await encryptString('HbA1c', key),
+          rawText: 'HbA1c',
           createdAt: now,
           updatedAt: now,
-        })) as number;
-        const noteId = (await database.userNotes.add({
+        });
+        const noteId = await storeAsEarlierVersion(test, 'userNotes', {
           labResultId,
-          content: await encryptString('c', key),
+          content: 'c',
           tags: ['diabetes'],
           createdAt: now,
           updatedAt: now,
-        })) as number;
+        });
         return { labResultId, valueId, noteId };
       }
 
       it('are read and updated correctly', async () => {
-        const { db, database, key } = await openDb();
-        const { labResultId, valueId, noteId } = await seedEarlierVersion(database, key);
+        const test = await openTestDb();
+        const { db } = test;
+        const { labResultId, valueId, noteId } = await seedEarlierVersion(test);
 
         await db.updateTestValue(valueId, { value: 50 });
 
@@ -508,10 +488,11 @@ describe('EncryptedDb: biomarker data at rest', () => {
       });
 
       it('are encrypted whole by the migration', async () => {
-        const { db, database, key } = await openDb();
-        const { labResultId, valueId } = await seedEarlierVersion(database, key);
+        const test = await openTestDb();
+        const { db, database } = test;
+        const { labResultId, valueId } = await seedEarlierVersion(test);
 
-        await db.encryptReadableFields();
+        await db.migrateLegacyRecords();
 
         const fields = await storedFields(database);
         expect(fields.labResults).toEqual(['encrypted', 'id']);

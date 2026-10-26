@@ -1,33 +1,14 @@
-import 'fake-indexeddb/auto';
-import { describe, it, expect, afterEach } from 'vitest';
-import Dexie from 'dexie';
-import { HemoIODatabase } from './index';
-import { EncryptedDb } from './encryptedDb';
+import { describe, it, expect } from 'vitest';
+import { openTestDb } from './testDb';
+import type { EncryptedDb } from './encryptedDb';
 
-const opened: HemoIODatabase[] = [];
-afterEach(async () => {
-  // Close first: deleting an open database makes Dexie warn
-  await Promise.all(
-    opened.splice(0).map((database) => {
-      database.close();
-      return Dexie.delete(database.name);
-    })
-  );
-});
-
-async function openDb(name: string): Promise<EncryptedDb> {
-  const database = new HemoIODatabase(name);
-  opened.push(database);
-  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
-    'encrypt',
-    'decrypt',
-  ]);
-  return new EncryptedDb(key, database);
+async function openDb(): Promise<EncryptedDb> {
+  return (await openTestDb()).db;
 }
 
 describe('EncryptedDb.updatePreferences', () => {
   it('creates the record with defaults when there is none', async () => {
-    const db = await openDb('prefs-test-1');
+    const db = await openDb();
     await db.updatePreferences(() => ({ unitPreferences: { glucose: 'mmol/L' } }));
 
     expect(await db.getPreferences()).toEqual(
@@ -41,7 +22,7 @@ describe('EncryptedDb.updatePreferences', () => {
   });
 
   it('changes only the fields it returns', async () => {
-    const db = await openDb('prefs-test-2');
+    const db = await openDb();
     await db.savePreferences({
       unitPreferences: {},
       personalTargets: { glucose: { high: 90 } },
@@ -65,7 +46,7 @@ describe('EncryptedDb.updatePreferences', () => {
   });
 
   it('keeps both of two updates made at the same time', async () => {
-    const db = await openDb('prefs-test-3');
+    const db = await openDb();
     await Promise.all([
       db.updatePreferences((c) => ({
         unitPreferences: { ...c?.unitPreferences, glucose: 'mmol/L' },

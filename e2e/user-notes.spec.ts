@@ -36,6 +36,7 @@ import {
   noteTimestamp,
   LONG_NOTE,
 } from './steps/userNotes.steps';
+import { readStoredRows } from './steps/dataAtRest.steps';
 import { pickDate } from './steps/trends.steps';
 
 /**
@@ -677,24 +678,7 @@ test.describe('Note formatting and display', () => {
     const card = await openLabResultNotes(page, JAN_DAY);
     await addNote(card, 'Secret symptom note');
 
-    const rows = await page.evaluate(
-      () =>
-        new Promise<string[]>((resolve, reject) => {
-          const open = indexedDB.open('HemoIO');
-          open.onerror = () => reject(open.error);
-          open.onsuccess = () => {
-            const request = open.result
-              .transaction('userNotes', 'readonly')
-              .objectStore('userNotes')
-              .getAll();
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              resolve(request.result.map((row: unknown) => JSON.stringify(row)));
-              open.result.close();
-            };
-          };
-        })
-    );
+    const rows = (await readStoredRows(page)).userNotes.map((row) => JSON.stringify(row));
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).not.toContain('Secret symptom');
