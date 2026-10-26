@@ -5,7 +5,9 @@ import {
   OCR_PRECACHE_IGNORES,
   ocrAssetUrls,
   ocrCopyTargets,
+  ocrCacheName,
   ocrRuntimeCaching,
+  staleOcrCaches,
 } from './ocrAssets';
 
 describe('OCR assets', () => {
@@ -38,7 +40,7 @@ describe('OCR assets', () => {
   describe('offline caching', () => {
     const urls = ocrAssetUrls('https://app.example', '/HemoIO/');
     const matches = (url: string) => {
-      const pattern = ocrRuntimeCaching().urlPattern;
+      const pattern = ocrRuntimeCaching('ocr-assets-1').urlPattern;
       return pattern instanceof RegExp && pattern.test(url);
     };
 
@@ -49,7 +51,7 @@ describe('OCR assets', () => {
     });
 
     it('caches each OCR file the first time OCR loads it', () => {
-      expect(ocrRuntimeCaching().handler).toBe('CacheFirst');
+      expect(ocrRuntimeCaching('ocr-assets-1').handler).toBe('CacheFirst');
       expect(matches(urls.workerPath)).toBe(true);
       expect(matches(`${urls.corePath}/tesseract-core-simd-lstm.wasm.js`)).toBe(true);
       expect(matches(`${urls.langPath}/ita.traineddata.gz`)).toBe(true);
@@ -59,4 +61,21 @@ describe('OCR assets', () => {
       expect(matches('https://app.example/HemoIO/assets/index-abc.js')).toBe(false);
     });
   });
+
+  describe('versions', () => {
+    it('caches each release of the OCR files apart, so an update is never mixed with an old one', () => {
+      expect(ocrCacheName('7.0.0-7.0.0')).toBe('ocr-assets-7.0.0-7.0.0');
+      expect(ocrCacheName('7.0.1-7.0.0')).not.toBe(ocrCacheName('7.0.0-7.0.0'));
+      expect(ocrRuntimeCaching('ocr-assets-7.0.0-7.0.0').options.cacheName).toBe(
+        'ocr-assets-7.0.0-7.0.0'
+      );
+    });
+
+    it('finds the caches of other releases', () => {
+      expect(
+        staleOcrCaches(['ocr-assets-1', 'ocr-assets-2', 'workbox-precache-v2', 'ocr-assets'], 'ocr-assets-2')
+      ).toEqual(['ocr-assets-1', 'ocr-assets']);
+    });
+  });
 });
+

@@ -7,7 +7,7 @@
 
 import Tesseract, { createWorker } from 'tesseract.js';
 import type { Worker, RecognizeResult } from 'tesseract.js';
-import { OCR_LANGUAGES, ocrAssetUrls } from './ocrAssets';
+import { OCR_LANGUAGES, ocrAssetUrls, staleOcrCaches } from './ocrAssets';
 
 /** The bundled languages, recognized together */
 const DEFAULT_LANGUAGE = OCR_LANGUAGES.join('+');
@@ -120,31 +120,82 @@ let currentLogger: ((message: Tesseract.LoggerMessage) => void) | null = null;
 /** Recognitions run one after another, so progress reaches the right caller */
 let queue: Promise<unknown> = Promise.resolve();
 
+/** Whether an error is a file that could not be fetched, as offline */
+function isNetworkFailure(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return /NetworkError|Failed to fetch|Load failed|network error/i.test(message);
+}
+
+/** The error to show for a worker that could not start */
+function startFailure(error: unknown): OCRError {
+  if (isNetworkFailure(error)) return new OCRError(OCR_UNAVAILABLE_MESSAGE, { cause: error });
+  const reason = error instanceof Error ? error.message : String(error);
+  return new OCRError(ocrStartFailedMessage(reason), { cause: error });
+}
+
+/**
+ * Fetch the language data before a worker starts: when it cannot load, a
+ * started worker is never handed back to terminate. Through the service
+ * worker this also caches it for offline use.
+ */
+async function checkLanguageData(language: string, langPath: string): Promise<void> {
+  for (const lang of language.split('+')) {
+    let response: Response;
+    try {
+      response = await fetch(`${langPath}/${lang}.traineddata.gz`);
+    } catch (error) {
+      throw startFailure(error);
+    }
+    if (!response.ok) {
+      throw new OCRError(
+        ocrStartFailedMessage(`its language data could not be loaded: HTTP ${response.status}`)
+      );
+    }
+  }
+}
+
+/** Delete the OCR files earlier releases cached; they are never used again */
+async function deleteStaleOcrCaches(): Promise<void> {
+  if (typeof caches === 'undefined') return;
+  try {
+    const stale = staleOcrCaches(await caches.keys(), __OCR_CACHE_NAME__);
+    await Promise.all(stale.map((name) => caches.delete(name)));
+  } catch {
+    // Only storage is wasted
+  }
+}
+
 /**
  * Create a Tesseract worker whose script, core and language data all come
  * from the app itself, never a CDN
  */
-function createOcrWorker(
+async function createOcrWorker(
   language: string,
   logger: (message: Tesseract.LoggerMessage) => void
 ): Promise<Worker> {
+  const urls = ocrAssetUrls(window.location.origin, import.meta.env.BASE_URL);
+  await deleteStaleOcrCaches();
+  await checkLanguageData(language, urls.langPath);
   return new Promise<Worker>((resolve, reject) => {
     createWorker(
       language,
       1 /* OEM.LSTM_ONLY */,
       {
-        ...ocrAssetUrls(window.location.origin, import.meta.env.BASE_URL),
+        ...urls,
+        // Loaded from its own address rather than a blob, so the service
+        // worker controls it and caches the files it loads
+        workerBlobURL: false,
         logger,
         // When the language data cannot load, tesseract.js reports it only
         // here: its createWorker promise never settles. Once the worker is
         // ready this has no effect, as a recognition's own promise rejects.
-        errorHandler: () => reject(new OCRError(OCR_UNAVAILABLE_MESSAGE)),
+        errorHandler: (error: unknown) => reject(startFailure(error)),
       },
       // The Italian data names a word list ("special-words") that is not part
       // of it; without this Tesseract logs an error looking for it. The option
       // is a Tesseract init parameter that tesseract.js's types do not list.
       { user_words_suffix: '' } as unknown as Partial<Tesseract.InitOptions>
-    ).then(resolve, () => reject(new OCRError(OCR_UNAVAILABLE_MESSAGE)));
+    ).then(resolve, (error: unknown) => reject(startFailure(error)));
   });
 }
 
@@ -338,12 +389,17 @@ export function getCurrentLanguage(): string {
 export const OCR_UNAVAILABLE_MESSAGE =
   'OCR could not load. Connect to the internet and try again: after its first use, OCR works offline.';
 
+/** Why OCR could not start, when going online cannot help */
+export function ocrStartFailedMessage(reason: string): string {
+  return `OCR could not start (${reason}). Enter the values manually instead.`;
+}
+
 /**
  * Error thrown when OCR processing fails, with a message to show the user
  */
 export class OCRError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = 'OCRError';
   }
 }

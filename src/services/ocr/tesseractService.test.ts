@@ -62,10 +62,13 @@ describe('Tesseract OCR Service', () => {
   beforeEach(() => {
     __resetMock();
     vi.clearAllMocks();
+    // The language data is checked before a worker starts
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
   });
 
   afterEach(async () => {
     await terminateWorker();
+    vi.unstubAllGlobals();
   });
 
   describe('worker lifecycle', () => {
@@ -116,13 +119,67 @@ describe('Tesseract OCR Service', () => {
 
     it('says OCR could not load when its worker script cannot load', async () => {
       vi.mocked(Tesseract.createWorker).mockRejectedValueOnce(
-        new Error("Failed to execute 'importScripts' on 'WorkerGlobalScope'")
+        new Error(
+          "Uncaught NetworkError: Failed to execute 'importScripts' on 'WorkerGlobalScope': " +
+            'The script at /tesseract/worker.min.js failed to load.'
+        )
       );
 
       const error = await recognizeImage(image()).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(OCRError);
       expect(error).toHaveProperty('message', OCR_UNAVAILABLE_MESSAGE);
+    });
+
+    it('starts no worker when the language data cannot be fetched', async () => {
+      vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'));
+
+      await expect(recognizeImage(image())).rejects.toThrow(new OCRError(OCR_UNAVAILABLE_MESSAGE));
+      expect(Tesseract.createWorker).not.toHaveBeenCalled();
+    });
+
+    it('says why when OCR fails for a reason going online cannot fix', async () => {
+      vi.mocked(fetch).mockResolvedValue({ ok: false, status: 404 } as Response);
+
+      const notFound = await recognizeImage(image()).catch((e: unknown) => e);
+      vi.mocked(fetch).mockResolvedValue({ ok: true, status: 200 } as Response);
+      vi.mocked(Tesseract.createWorker).mockRejectedValueOnce(
+        new ReferenceError('WebAssembly is not defined')
+      );
+      const noWasm = await recognizeImage(image()).catch((e: unknown) => e);
+
+      expect(notFound).toHaveProperty(
+        'message',
+        'OCR could not start (its language data could not be loaded: HTTP 404). Enter the values manually instead.'
+      );
+      expect(noWasm).toHaveProperty(
+        'message',
+        'OCR could not start (WebAssembly is not defined). Enter the values manually instead.'
+      );
+      expect(noWasm).toHaveProperty('cause', expect.any(ReferenceError));
+    });
+
+    it('loads the worker script from its own address, so the service worker caches it', async () => {
+      await recognizeImage(image());
+
+      expect(Tesseract.createWorker).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        expect.objectContaining({ workerBlobURL: false }),
+        expect.any(Object)
+      );
+    });
+
+    it('deletes the OCR files an earlier version cached', async () => {
+      const deleted: string[] = [];
+      vi.stubGlobal('caches', {
+        keys: vi.fn().mockResolvedValue(['ocr-assets-0.0.1', __OCR_CACHE_NAME__, 'google-fonts']),
+        delete: vi.fn(async (name: string) => deleted.push(name)),
+      });
+
+      await recognizeImage(image());
+
+      expect(deleted).toEqual(['ocr-assets-0.0.1']);
     });
 
     it('tells the user OCR works offline once it has been used online', () => {

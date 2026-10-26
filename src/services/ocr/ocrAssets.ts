@@ -58,16 +58,29 @@ export const OCR_PRECACHE_GLOBS: readonly string[] = [
 /** The OCR worker and cores are .js files, which the precache globs would match */
 export const OCR_PRECACHE_IGNORES: readonly string[] = [`${OCR_ASSET_DIR}/**`];
 
+/** Prefix of the caches that hold the OCR files */
+const OCR_CACHE_PREFIX = 'ocr-assets';
+
+/** The cache for one release of the OCR files */
+export function ocrCacheName(version: string): string {
+  return `${OCR_CACHE_PREFIX}-${version}`;
+}
+
+/** The caches of OCR files from other releases, to delete */
+export function staleOcrCaches(names: readonly string[], current: string): string[] {
+  return names.filter((name) => name.startsWith(OCR_CACHE_PREFIX) && name !== current);
+}
+
 /** The Workbox runtime caching rule for the OCR files */
-export function ocrRuntimeCaching(): {
+export function ocrRuntimeCaching(cacheName: string): {
   urlPattern: RegExp;
   handler: 'CacheFirst';
   options: { cacheName: string; cacheableResponse: { statuses: number[] } };
 } {
   return {
     urlPattern: new RegExp(`/${OCR_ASSET_DIR}/`),
-    // The files never change within a build
+    // The files never change within a release, which names the cache
     handler: 'CacheFirst',
-    options: { cacheName: 'ocr-assets', cacheableResponse: { statuses: [200] } },
+    options: { cacheName, cacheableResponse: { statuses: [200] } },
   };
 }

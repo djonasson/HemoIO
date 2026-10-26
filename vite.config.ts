@@ -10,6 +10,7 @@ import {
   ocrCopyTargets,
   ocrRuntimeCaching,
 } from './src/services/ocr/ocrAssets';
+import { OCR_CACHE_NAME } from './ocrCache.config';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
 const ocrTargets = ocrCopyTargets();
@@ -24,6 +25,9 @@ export default defineConfig(({ command }) => {
 
   return {
     base,
+    define: {
+      __OCR_CACHE_NAME__: JSON.stringify(OCR_CACHE_NAME),
+    },
     plugins: [
       react(),
       viteStaticCopy({
@@ -85,7 +89,7 @@ export default defineConfig(({ command }) => {
               },
             },
           },
-          ocrRuntimeCaching(),
+          ocrRuntimeCaching(OCR_CACHE_NAME),
         ],
         // Skip waiting and claim clients immediately for better UX
         skipWaiting: true,

@@ -1,9 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { OCR_CACHE_NAME } from './ocrCache.config';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __OCR_CACHE_NAME__: JSON.stringify(OCR_CACHE_NAME),
+  },
   test: {
     globals: true,
     environment: 'jsdom',
