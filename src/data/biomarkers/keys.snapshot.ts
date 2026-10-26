@@ -115,4 +115,12 @@ export const ISSUED_BIOMARKER_KEYS: readonly (readonly [key: string, name: strin
   ['alpha-2-globulin', 'Alpha-2 Globulin'],
   ['beta-globulin', 'Beta Globulin'],
   ['gamma-globulin', 'Gamma Globulin'],
+  ['urea', 'Urea'],
+  ['uric-acid', 'Uric Acid'],
+  ['nucleated-red-blood-cells', 'Nucleated Red Blood Cells'],
+  ['nucleated-red-blood-cells-percentage', 'Nucleated Red Blood Cells Percentage'],
+  ['urine-red-blood-cells', 'Urine Red Blood Cells'],
+  ['urine-urea', 'Urine Urea'],
+  ['24-hour-urine-creatinine', '24-Hour Urine Creatinine'],
+  ['24-hour-urine-urea', '24-Hour Urine Urea'],
 ];

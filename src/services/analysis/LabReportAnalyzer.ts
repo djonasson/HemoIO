@@ -422,6 +422,18 @@ export async function analyzeLabReport(
   };
 }
 
+/** Whether a dictionary entry measures in this unit, or one it converts from */
+function unitFits(definition: BiomarkerDefinition, unit: string, normalizedUnit: string): boolean {
+  const allUnits = [definition.canonicalUnit, ...definition.alternativeUnits];
+  return (
+    allUnits.some((u) => u.toLowerCase() === normalizedUnit.toLowerCase()) ||
+    canConvert(definition.name, unit, definition.canonicalUnit)
+  );
+}
+
+/** Units of a share of cells, as a percentage or a count per 100 white cells */
+const SHARE_UNIT = /^(%|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
+
 /**
  * Match an extracted biomarker to the dictionary
  */
@@ -432,17 +444,28 @@ function matchBiomarkerToDictionary(
 
   // Exact name or alias first, then variations (punctuation, spacing)
   const exactMatch = findBiomarker(biomarker.name);
-  const candidate = exactMatch ?? matchBiomarkerName(biomarker.name);
+  let candidate = exactMatch ?? matchBiomarkerName(biomarker.name);
+
+  // Reports often name a share and an absolute count alike ("Eritroblasti"
+  // in % and in 10^9/L): a share in a count's name is the share entry
+  if (
+    candidate &&
+    !unitFits(candidate, biomarker.unit, normalizedUnit) &&
+    SHARE_UNIT.test(normalizedUnit.trim())
+  ) {
+    const share = matchBiomarkerName(`${biomarker.name} (%)`);
+    if (share && unitFits(share, biomarker.unit, normalizedUnit)) candidate = share;
+  }
 
   if (candidate) {
-    const allUnits = [candidate.canonicalUnit, ...candidate.alternativeUnits];
-    const unitCompatible =
-      allUnits.some((u: string) => u.toLowerCase() === normalizedUnit.toLowerCase()) ||
-      canConvert(candidate.name, biomarker.unit, candidate.canonicalUnit);
-
     // An incompatible unit means the name may be misread: suggest, don't assume
-    return unitCompatible
-      ? { ...biomarker, dictionaryMatch: candidate, isExactMatch: exactMatch !== undefined, normalizedUnit }
+    return unitFits(candidate, biomarker.unit, normalizedUnit)
+      ? {
+          ...biomarker,
+          dictionaryMatch: candidate,
+          isExactMatch: candidate === exactMatch,
+          normalizedUnit,
+        }
       : { ...biomarker, suggestedMatch: candidate, isExactMatch: false, normalizedUnit };
   }
 
@@ -468,195 +491,176 @@ const RELATIVE_TOLERANCE = 0.02;
 /** Decimal places used when converting values only to compare them */
 const COMPARISON_PRECISION = 10;
 
-/**
- * Check if two values (already in the same unit) are equal within tolerance.
- *
- * The tolerance is relative only: an absolute allowance would treat small
- * values that differ substantially (e.g. creatinine 0.76 vs 1.5 mg/dL) as
- * the same. Anything outside the tolerance is flagged for user review rather
- * than merged, so a borderline rounding difference costs a review, not data.
- */
-function valuesAreEqual(val1: number, val2: number): boolean {
-  if (val1 === val2) return true;
-  if (val1 === 0 || val2 === 0) return false;
+/** Half the last reported digit: how far rounding can have moved a value */
+function roundingAllowance(value: number): number {
+  const decimals = (String(value).split('.')[1] ?? '').length;
+  return 0.5 * 10 ** -decimals;
+}
 
-  const diff = Math.abs(val1 - val2);
-  const avg = (Math.abs(val1) + Math.abs(val2)) / 2;
-  return diff / avg <= RELATIVE_TOLERANCE;
+/** A value of a group, in the canonical unit when it could be converted */
+interface ComparableValue {
+  biomarker: MatchedBiomarker;
+  /** Unrounded value in the canonical unit (rounding before comparing adds error) */
+  comparison?: number;
+  /** Rounded value in the canonical unit, shown in conflict messages */
+  converted?: number;
+  /** How far the lab's rounding can have moved the value, in the canonical unit */
+  allowance: number;
 }
 
 /**
- * Deduplicate biomarkers that appear multiple times with different units.
- * - If values are the same after conversion: keep only one (prefer canonical unit)
- * - If values differ: flag as conflict for user review
+ * Whether two values are the same measurement, reported in the same or
+ * different units.
+ *
+ * The tolerance is relative: an absolute allowance would treat small values
+ * that differ substantially (e.g. creatinine 0.76 vs 1.5 mg/dL) as the same.
+ * Values reported in different units may also differ by the rounding of each
+ * (urea 3.06 mmol/L is 18.4 mg/dL, reported as 18). Anything outside is
+ * flagged for review rather than merged: a borderline difference costs a
+ * review, not data.
+ */
+function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
+  if (a.comparison === undefined || b.comparison === undefined) return false;
+  if (a.comparison === b.comparison) return true;
+  const diff = Math.abs(a.comparison - b.comparison);
+  const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;
+  if (avg > 0 && diff / avg <= RELATIVE_TOLERANCE) return true;
+  const differentUnits = a.biomarker.unit.toLowerCase() !== b.biomarker.unit.toLowerCase();
+  return differentUnits && diff <= a.allowance + b.allowance;
+}
+
+/**
+ * A group's value in the unit its values are compared in: the canonical
+ * unit when the biomarker has one, else the unit the group's first value is
+ * in (values in another unit then cannot be compared)
+ */
+function comparable(
+  biomarker: MatchedBiomarker,
+  name: string,
+  canonicalUnit: string | undefined,
+  firstUnit: string
+): ComparableValue {
+  const unchanged = {
+    biomarker,
+    comparison: biomarker.value,
+    converted: biomarker.value,
+    allowance: roundingAllowance(biomarker.value),
+  };
+  const targetUnit = canonicalUnit ?? firstUnit;
+  if (biomarker.unit.toLowerCase() === targetUnit.toLowerCase()) return unchanged;
+  if (!canonicalUnit || !canConvert(name, biomarker.unit, canonicalUnit)) {
+    return { biomarker, allowance: 0 };
+  }
+  try {
+    const convert = (value: number, precision?: number) =>
+      convertValue(name, value, biomarker.unit, canonicalUnit, precision).convertedValue;
+    const comparison = convert(biomarker.value, COMPARISON_PRECISION);
+    const step = roundingAllowance(biomarker.value);
+    return {
+      biomarker,
+      comparison,
+      converted: convert(biomarker.value),
+      allowance: Math.abs(convert(biomarker.value + step, COMPARISON_PRECISION) - comparison),
+    };
+  } catch {
+    return { biomarker, allowance: 0 };
+  }
+}
+
+/**
+ * Deduplicate biomarkers reported more than once, as labs do when they give
+ * a value in two units (SI and conventional).
+ *
+ * Values of one biomarker that are the same measurement after conversion
+ * are kept once, in the canonical unit when one of them is in it. Distinct
+ * measurements reported under distinct names (a 24-hour and a spot sample)
+ * are each kept. Anything else is flagged for the user to review.
  */
 function deduplicateBiomarkers(
   biomarkers: MatchedBiomarker[]
 ): { deduplicated: MatchedBiomarker[]; conflicts: DuplicateConflict[] } {
   const conflicts: DuplicateConflict[] = [];
 
-  // Group biomarkers by their canonical name (from dictionary match or original name)
+  // Group biomarkers by their dictionary entry, else by the name as reported
   const groups = new Map<string, MatchedBiomarker[]>();
-
   for (const biomarker of biomarkers) {
-    const canonicalName =
+    const groupKey =
       biomarker.dictionaryMatch?.name ||
       biomarker.suggestedMatch?.name ||
       biomarker.name.toLowerCase().trim();
-
-    if (!groups.has(canonicalName)) {
-      groups.set(canonicalName, []);
-    }
-    groups.get(canonicalName)!.push(biomarker);
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey)!.push(biomarker);
   }
 
   const deduplicated: MatchedBiomarker[] = [];
 
-  for (const [canonicalName, group] of groups) {
+  for (const group of groups.values()) {
     if (group.length === 1) {
-      // No duplicates, keep as is
       deduplicated.push(group[0]);
       continue;
     }
 
-    // Multiple entries for the same biomarker - check if they can be merged
     const definition = group[0].dictionaryMatch || group[0].suggestedMatch;
+    const name = definition?.name ?? group[0].name;
     const canonicalUnit = definition?.canonicalUnit;
+    const values = group.map((b) => comparable(b, name, canonicalUnit, group[0].unit));
 
-    if (!canonicalUnit) {
-      // No canonical unit available, keep all and warn
-      const conflict: DuplicateConflict = {
-        biomarkerName: canonicalName,
-        originalValues: group.map((b) => ({ value: b.value, unit: b.unit })),
-        valuesMatch: false,
-        message: `Multiple values found for "${canonicalName}" but no canonical unit available to compare them.`,
-      };
-      conflicts.push(conflict);
-
-      // Mark all as having conflict and keep them
-      for (const biomarker of group) {
-        deduplicated.push({
-          ...biomarker,
-          hasDuplicateConflict: true,
-          duplicateConflict: conflict,
-        });
-      }
-      continue;
+    // Values that are the same measurement form one cluster
+    const clusters: ComparableValue[][] = [];
+    for (const value of values) {
+      const cluster = clusters.find((c) => sameMeasurement(c[0], value));
+      if (cluster) cluster.push(value);
+      else clusters.push([value]);
     }
 
-    // Convert all values to canonical unit
-    const convertedValues: Array<{
-      biomarker: MatchedBiomarker;
-      originalValue: number;
-      originalUnit: string;
-      convertedValue: number;
-      /** Unrounded converted value: rounding before comparing adds error */
-      comparisonValue: number;
-      conversionSucceeded: boolean;
-    }> = [];
-
-    for (const biomarker of group) {
-      const entry = (converted: number, comparison: number, conversionSucceeded: boolean) => ({
-        biomarker,
-        originalValue: biomarker.value,
-        originalUnit: biomarker.unit,
-        convertedValue: converted,
-        comparisonValue: comparison,
-        conversionSucceeded,
-      });
-      const unchanged = (conversionSucceeded: boolean) =>
-        entry(biomarker.value, biomarker.value, conversionSucceeded);
-
-      if (biomarker.unit.toLowerCase() === canonicalUnit.toLowerCase()) {
-        convertedValues.push(unchanged(true));
-      } else if (canConvert(canonicalName, biomarker.unit, canonicalUnit)) {
-        try {
-          const convert = (precision?: number) =>
-            convertValue(canonicalName, biomarker.value, biomarker.unit, canonicalUnit, precision)
-              .convertedValue;
-          convertedValues.push(entry(convert(), convert(COMPARISON_PRECISION), true));
-        } catch {
-          convertedValues.push(unchanged(false));
-        }
-      } else {
-        convertedValues.push(unchanged(false));
-      }
-    }
-
-    // Check if all converted values match
-    const successfulConversions = convertedValues.filter((cv) => cv.conversionSucceeded);
-
-    if (successfulConversions.length < 2) {
-      // Can't compare, keep all with warning
-      const conflict: DuplicateConflict = {
-        biomarkerName: canonicalName,
-        originalValues: convertedValues.map((cv) => ({
-          value: cv.originalValue,
-          unit: cv.originalUnit,
-          convertedValue: cv.conversionSucceeded ? cv.convertedValue : undefined,
-          convertedUnit: cv.conversionSucceeded ? canonicalUnit : undefined,
-        })),
-        valuesMatch: false,
-        message: `Multiple values found for "${canonicalName}" but unit conversion failed for some entries.`,
-      };
-      conflicts.push(conflict);
-
-      for (const cv of convertedValues) {
-        deduplicated.push({
-          ...cv.biomarker,
-          hasDuplicateConflict: true,
-          duplicateConflict: conflict,
-        });
-      }
-      continue;
-    }
-
-    // Check if all values match after conversion
-    const firstValue = successfulConversions[0].comparisonValue;
-    const allMatch = successfulConversions.every((cv) =>
-      valuesAreEqual(cv.comparisonValue, firstValue)
+    const reportedName = (value: ComparableValue) => value.biomarker.name.toLowerCase().trim();
+    const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
+    const distinctNames = namesPerCluster.every(
+      (names, i) =>
+        names.size === 1 &&
+        namesPerCluster.every((other, j) => i === j || !other.has([...names][0]))
     );
+    const uncomparable = values.some((v) => v.comparison === undefined);
 
-    if (allMatch) {
-      // Values match - keep only the one in canonical unit, or first one
-      const preferredEntry =
-        convertedValues.find(
-          (cv) => cv.originalUnit.toLowerCase() === canonicalUnit.toLowerCase()
-        ) || convertedValues[0];
-
-      deduplicated.push(preferredEntry.biomarker);
-    } else {
-      // Values don't match - flag as conflict for user review
-      const conflict: DuplicateConflict = {
-        biomarkerName: canonicalName,
-        originalValues: convertedValues.map((cv) => ({
-          value: cv.originalValue,
-          unit: cv.originalUnit,
-          convertedValue: cv.conversionSucceeded ? cv.convertedValue : undefined,
-          convertedUnit: cv.conversionSucceeded ? canonicalUnit : undefined,
-        })),
-        valuesMatch: false,
-        message:
-          `Conflicting values found for "${canonicalName}": ` +
-          convertedValues
-            .map(
-              (cv) =>
-                `${cv.originalValue} ${cv.originalUnit}` +
-                (cv.conversionSucceeded ? ` (=${cv.convertedValue} ${canonicalUnit})` : '')
-            )
-            .join(' vs ') +
-          '. Please review and keep the correct value.',
-      };
-      conflicts.push(conflict);
-
-      // Mark all as having conflict
-      for (const cv of convertedValues) {
-        deduplicated.push({
-          ...cv.biomarker,
-          hasDuplicateConflict: true,
-          duplicateConflict: conflict,
-        });
+    if (clusters.length === 1 || (distinctNames && !uncomparable)) {
+      for (const cluster of clusters) {
+        const preferred =
+          cluster.find((v) => v.biomarker.unit.toLowerCase() === canonicalUnit?.toLowerCase()) ??
+          cluster[0];
+        deduplicated.push(preferred.biomarker);
       }
+      continue;
+    }
+
+    const units = [...new Set(group.map((b) => b.unit))];
+    const conflict: DuplicateConflict = {
+      biomarkerName: name,
+      originalValues: values.map((v) => ({
+        value: v.biomarker.value,
+        unit: v.biomarker.unit,
+        convertedValue: canonicalUnit ? v.converted : undefined,
+        convertedUnit: canonicalUnit && v.converted !== undefined ? canonicalUnit : undefined,
+      })),
+      valuesMatch: false,
+      message:
+        uncomparable
+          ? `"${name}" is reported in ${units.slice(0, -1).join(', ')} and in ${units.at(-1)}, ` +
+            'which cannot be converted to each other. Keep the value you want and delete the other.'
+          : `Conflicting values found for "${name}": ` +
+            values
+              .map(
+                (v) =>
+                  `${v.biomarker.value} ${v.biomarker.unit}` +
+                  (canonicalUnit && v.converted !== undefined
+                    ? ` (=${v.converted} ${canonicalUnit})`
+                    : '')
+              )
+              .join(' vs ') +
+            '. Please review and keep the correct value.',
+    };
+    conflicts.push(conflict);
+    for (const value of values) {
+      deduplicated.push({ ...value.biomarker, hasDuplicateConflict: true, duplicateConflict: conflict });
     }
   }
 

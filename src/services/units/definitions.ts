@@ -123,10 +123,24 @@ const creatinineConversions: BiomarkerConversions = {
  */
 const bunConversions: BiomarkerConversions = {
   biomarker: 'Blood Urea Nitrogen',
-  aliases: ['BUN', 'Urea Nitrogen', 'Urea'],
+  aliases: ['BUN', 'Urea Nitrogen'],
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.357 },
     { from: 'mmol/L', to: 'mg/dL', factor: 2.8 },
+  ],
+};
+
+/**
+ * Urea conversions (the whole molecule, not BUN)
+ * Molecular weight: 60.06 g/mol
+ * Conversion: mg/dL × 0.1665 = mmol/L
+ */
+const ureaConversions: BiomarkerConversions = {
+  biomarker: 'Urea',
+  aliases: ['Serum Urea'],
+  conversions: [
+    { from: 'mg/dL', to: 'mmol/L', factor: 0.1665 },
+    { from: 'mmol/L', to: 'mg/dL', factor: 6.006 },
   ],
 };
 
@@ -958,6 +972,75 @@ const urineCreatinineConversions: BiomarkerConversions = {
 };
 
 /**
+ * Urine Urea conversions (concentration)
+ * Molecular weight: 60.06 g/mol
+ */
+const urineUreaConversions: BiomarkerConversions = {
+  biomarker: 'Urine Urea',
+  aliases: [],
+  conversions: [
+    { from: 'g/L', to: 'mmol/L', factor: 16.65 },
+    { from: 'mmol/L', to: 'g/L', factor: 0.06006 },
+    { from: 'g/L', to: 'mg/dL', factor: 100 },
+    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
+    { from: 'mmol/L', to: 'mg/dL', factor: 6.006 },
+    { from: 'mg/dL', to: 'mmol/L', factor: 0.1665 },
+  ],
+};
+
+/**
+ * 24-hour urine creatinine conversions (amount per day)
+ * Molecular weight: 113.12 g/mol
+ */
+const urineCreatinine24hConversions: BiomarkerConversions = {
+  biomarker: '24-Hour Urine Creatinine',
+  aliases: [],
+  conversions: [
+    { from: 'g/24h', to: 'mmol/24h', factor: 8.84 },
+    { from: 'mmol/24h', to: 'g/24h', factor: 0.11312 },
+    { from: 'g/24h', to: 'µmol/24h', factor: 8840 },
+    { from: 'µmol/24h', to: 'g/24h', factor: 0.00011312 },
+    { from: 'g/24h', to: 'mg/24h', factor: 1000 },
+    { from: 'mg/24h', to: 'g/24h', factor: 0.001 },
+  ],
+};
+
+/**
+ * 24-hour urine urea conversions (amount per day)
+ * Molecular weight: 60.06 g/mol
+ */
+const urineUrea24hConversions: BiomarkerConversions = {
+  biomarker: '24-Hour Urine Urea',
+  aliases: [],
+  conversions: [
+    { from: 'g/24h', to: 'mmol/24h', factor: 16.65 },
+    { from: 'mmol/24h', to: 'g/24h', factor: 0.06006 },
+  ],
+};
+
+/**
+ * Nucleated red blood cell conversions: per 100 white cells is a percentage,
+ * and 10^3/µL is 10^9/L
+ */
+const nrbcPercentageConversions: BiomarkerConversions = {
+  biomarker: 'Nucleated Red Blood Cells Percentage',
+  aliases: [],
+  conversions: [
+    { from: '/100 WBC', to: '%', factor: 1 },
+    { from: '%', to: '/100 WBC', factor: 1 },
+  ],
+};
+
+const nrbcConversions: BiomarkerConversions = {
+  biomarker: 'Nucleated Red Blood Cells',
+  aliases: [],
+  conversions: [
+    { from: '10^3/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: '10^3/µL', factor: 1 },
+  ],
+};
+
+/**
  * Protein Creatinine Ratio conversions
  * Based on creatinine molecular weight: 113.12 g/mol
  * Conversion: mg/mmol × (1000/113.12) = mg/g
@@ -1054,6 +1137,7 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   hemoglobinConversions,
   creatinineConversions,
   bunConversions,
+  ureaConversions,
   calciumConversions,
   vitaminDConversions,
   vitaminB12Conversions,
@@ -1079,6 +1163,8 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   eosinophilConversions,
   basophilConversions,
   reticulocyteConversions,
+  nrbcConversions,
+  nrbcPercentageConversions,
   // Electrolytes
   magnesiumConversions,
   potassiumConversions,
@@ -1105,6 +1191,9 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   enzymeConversions,
   // Urinalysis
   urineCreatinineConversions,
+  urineUreaConversions,
+  urineCreatinine24hConversions,
+  urineUrea24hConversions,
   urineGlucoseConversions,
   urineProteinConversions,
   urineBilirubinConversions,

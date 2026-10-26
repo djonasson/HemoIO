@@ -324,6 +324,33 @@ const cbcBiomarkers: BiomarkerEntry[] = [
     highIndication: 'May indicate allergic reaction',
     lowIndication: 'Generally not clinically significant',
   },
+  {
+    key: 'nucleated-red-blood-cells',
+    name: 'Nucleated Red Blood Cells',
+    aliases: ['NRBC', 'Erythroblasts', 'Eritroblasti', 'Eritroblasti (assoluti)', 'NRBC #'],
+    category: 'cbc',
+    specimenType: 'whole-blood',
+    loincCode: '30392-5',
+    canonicalUnit: '10^9/L',
+    alternativeUnits: ['10^3/µL', 'K/µL'],
+    defaultReferenceRange: { low: 0, high: 0.1, unit: '10^9/L' },
+    description: 'Immature red blood cells, normally absent from adult blood.',
+    highIndication: 'May indicate bone marrow stress, severe anemia or hypoxia',
+    lowIndication: 'Normal finding',
+  },
+  {
+    key: 'nucleated-red-blood-cells-percentage',
+    name: 'Nucleated Red Blood Cells Percentage',
+    aliases: ['NRBC %', 'NRBC/100 WBC', 'Eritroblasti (%)', 'Eritroblasti %'],
+    category: 'cbc',
+    specimenType: 'whole-blood',
+    loincCode: '58413-6',
+    canonicalUnit: '/100 WBC',
+    alternativeUnits: ['%'],
+    description: 'Immature red blood cells per 100 white blood cells, normally zero in adults.',
+    highIndication: 'May indicate bone marrow stress, severe anemia or hypoxia',
+    lowIndication: 'Normal finding',
+  },
 ];
 
 /**
@@ -395,7 +422,7 @@ const metabolicBiomarkers: BiomarkerEntry[] = [
   {
     key: 'blood-urea-nitrogen',
     name: 'Blood Urea Nitrogen',
-    aliases: ['BUN', 'Urea Nitrogen', 'Urea'],
+    aliases: ['BUN', 'Urea Nitrogen'],
     category: 'metabolic',
     specimenType: 'serum',
     loincCode: '3094-0',
@@ -405,6 +432,35 @@ const metabolicBiomarkers: BiomarkerEntry[] = [
     description: 'Waste product from protein metabolism, filtered by kidneys.',
     highIndication: 'May indicate kidney disease or dehydration',
     lowIndication: 'May indicate liver disease or malnutrition',
+  },
+  {
+    key: 'urea',
+    name: 'Urea',
+    // Not BUN: urea is reported as the whole molecule (urea mg/dL ≈ 2.14 × BUN mg/dL)
+    aliases: ['Serum Urea', 'Urea (serum)', 'S-Urea', 'P-Urea', 'Urea sierica', 'Urea plasmatica'],
+    category: 'metabolic',
+    specimenType: 'serum',
+    loincCode: '3091-6',
+    canonicalUnit: 'mg/dL',
+    alternativeUnits: ['mmol/L'],
+    defaultReferenceRange: { low: 17, high: 43, unit: 'mg/dL' },
+    description: 'Waste product from protein metabolism, filtered by kidneys. Reported as urea, not as its nitrogen (BUN).',
+    highIndication: 'May indicate kidney disease or dehydration',
+    lowIndication: 'May indicate liver disease or malnutrition',
+  },
+  {
+    key: 'uric-acid',
+    name: 'Uric Acid',
+    aliases: ['Urate', 'Serum Uric Acid', 'Acido urico', 'Uricemia', 'S-Acido urico', 'P-Acido urico'],
+    category: 'metabolic',
+    specimenType: 'serum',
+    loincCode: '3084-1',
+    canonicalUnit: 'mg/dL',
+    alternativeUnits: ['µmol/L', 'umol/L', 'mmol/L'],
+    defaultReferenceRange: { low: 3.5, high: 7.2, unit: 'mg/dL' },
+    description: 'End product of purine metabolism, excreted by the kidneys.',
+    highIndication: 'May indicate gout, kidney disease or high purine intake',
+    lowIndication: 'Rarely significant; may indicate liver disease',
   },
   {
     key: 'sodium',
@@ -693,7 +749,7 @@ const ironBiomarkers: BiomarkerEntry[] = [
   {
     key: 'serum-iron',
     name: 'Serum Iron',
-    aliases: ['Iron', 'Fe', 'Iron Level'],
+    aliases: ['Iron', 'Fe', 'Iron Level', 'Ferro', 'Sideremia', 'Ferro sierico', 'S-Ferro'],
     category: 'iron',
     specimenType: 'serum',
     loincCode: '2498-4',
@@ -783,7 +839,7 @@ const vitaminBiomarkers: BiomarkerEntry[] = [
   {
     key: 'vitamin-d',
     name: 'Vitamin D',
-    aliases: ['25-OH Vitamin D', '25-Hydroxyvitamin D', 'Calcidiol', 'Vitamin D Total', 'S-25-OH Vitamina D', '25-OH Vitamina D', 'Vitamina D', 'S-Vitamina D', 'Colecalciferolo'],
+    aliases: ['25-OH Vitamin D', '25-Hydroxyvitamin D', 'Calcidiol', 'Vitamin D Total', 'S-25-OH Vitamina D', '25-OH Vitamina D', 'Vitamina D', 'S-Vitamina D', 'Colecalciferolo', 'Vitamina D (25-OH)', 'Vitamina D 25-OH', '25(OH) Vitamina D'],
     category: 'vitamin',
     specimenType: 'serum',
     loincCode: '1989-3',
@@ -932,13 +988,27 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-blood',
     name: 'Urine Blood',
-    aliases: ['Blood', 'Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Emoglobina (urine)', 'Emoglobina (urine, dipstick)', 'Urine Emoglobina', 'Sangue (urine)', 'U-Emoglobina', 'Eritrociti', 'Eritrociti (urine, per campo)', 'Esame morfologico - eritrociti per campo', 'Esame morfologico eritrociti', 'U-Esame standard Emoglobina', 'Emoglobina (urine, per campo)', 'Esame morfologico: eritrociti per campo'],
+    // The dipstick test for haemoglobin; red cell counts are Urine Red Blood Cells
+    aliases: ['Blood', 'Emoglobina (urine)', 'Emoglobina (urine, dipstick)', 'Urine Emoglobina', 'Sangue (urine)', 'U-Emoglobina', 'U-Esame standard Emoglobina', 'Emoglobina (urine, per campo)', 'Urine Hemoglobin', 'Hemoglobin (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '5794-3',
+    canonicalUnit: 'mg/dL',
+    alternativeUnits: ['mg/L', 'Ery/µL'],
+    description: 'Haemoglobin in urine by dipstick, normally negative.',
+    highIndication: 'May indicate blood in the urine (UTI, stones, kidney disease) or haemoglobin from hemolysis',
+    lowIndication: 'Normal finding',
+  },
+  {
+    key: 'urine-red-blood-cells',
+    name: 'Urine Red Blood Cells',
+    aliases: ['Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Eritrociti (urine, per campo)', 'Esame morfologico - eritrociti per campo', 'Esame morfologico eritrociti', 'Esame morfologico: eritrociti per campo', 'Urine RBC'],
+    category: 'urinalysis',
+    specimenType: 'urine',
+    loincCode: '13945-1',
     canonicalUnit: 'RBC/HPF',
-    alternativeUnits: ['/µL', '/uL', 'cells/µL', 'per campo', 'eritrociti per campo', 'mg/dL'],
-    description: 'Red blood cells in urine.',
+    alternativeUnits: ['/HPF', 'per campo', 'eritrociti per campo', '/µL', '/uL', 'cells/µL', 'cell/µL'],
+    description: 'Red blood cells counted in urine, by microscopy or flow cytometry.',
     highIndication: 'May indicate UTI, kidney stones, or kidney disease',
     lowIndication: 'Normal finding',
   },
@@ -1011,7 +1081,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-creatinine',
     name: 'Urine Creatinine',
-    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)'],
+    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)', 'Creatininuria'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '2161-8',
@@ -1021,6 +1091,19 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
     description: 'Creatinine concentration in urine, used to assess kidney function and calculate ratios.',
     highIndication: 'May indicate concentrated urine or high muscle mass',
     lowIndication: 'May indicate dilute urine or kidney dysfunction',
+  },
+  {
+    key: 'urine-urea',
+    name: 'Urine Urea',
+    aliases: ['Urea (urine)', 'U-Urea', 'Urea urinaria', 'Azoturia'],
+    category: 'urinalysis',
+    specimenType: 'urine',
+    loincCode: '3095-7',
+    canonicalUnit: 'g/L',
+    alternativeUnits: ['mmol/L', 'mg/dL'],
+    description: 'Urea concentration in urine.',
+    highIndication: 'May indicate high protein intake or catabolism',
+    lowIndication: 'May indicate low protein intake or kidney dysfunction',
   },
   {
     key: 'urine-bilirubin',
@@ -1052,7 +1135,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'albumin-creatinine-ratio',
     name: 'Albumin Creatinine Ratio',
-    aliases: ['ACR', 'Albumina / Creatinina', 'Albumin/Creatinine Ratio', 'U-Albumina/Creatinina', 'UACR', 'Rapporto albumina/creatinina'],
+    aliases: ['ACR', 'Albumina / Creatinina', 'Albumin/Creatinine Ratio', 'U-Albumina/Creatinina', 'UACR', 'Rapporto albumina/creatinina', 'Albumina/Creatinina', 'Albumina/Creatinina (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '9318-7',
@@ -1104,6 +1187,34 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
     description: 'Total albumin excreted in 24-hour urine collection.',
     highIndication: 'May indicate kidney disease or diabetic nephropathy',
     lowIndication: 'Normal finding',
+  },
+  {
+    key: '24-hour-urine-creatinine',
+    name: '24-Hour Urine Creatinine',
+    aliases: ['Creatinina (urine, 24h)', 'Creatinina 24h', 'Creatininuria 24h', 'U-Creatinina 24h', 'dU-Creatinina', 'Urine Creatinine 24h'],
+    category: 'urinalysis',
+    specimenType: 'urine-24h',
+    loincCode: '2162-6',
+    canonicalUnit: 'g/24h',
+    alternativeUnits: ['mg/24h', 'mmol/24h', 'µmol/24h'],
+    defaultReferenceRange: { low: 0.8, high: 1.9, unit: 'g/24h' },
+    description: 'Total creatinine excreted in 24-hour urine collection; also checks that the collection is complete.',
+    highIndication: 'May indicate high muscle mass or over-collection',
+    lowIndication: 'May indicate incomplete collection, low muscle mass or kidney dysfunction',
+  },
+  {
+    key: '24-hour-urine-urea',
+    name: '24-Hour Urine Urea',
+    aliases: ['Urea (urine, 24h)', 'Urea 24h', 'Azoturia 24h', 'U-Urea 24h', 'dU-Urea', 'Urine Urea 24h'],
+    category: 'urinalysis',
+    specimenType: 'urine-24h',
+    loincCode: '3096-5',
+    canonicalUnit: 'g/24h',
+    alternativeUnits: ['mmol/24h'],
+    defaultReferenceRange: { low: 25, high: 42, unit: 'g/24h' },
+    description: 'Total urea excreted in 24-hour urine collection, reflecting protein intake.',
+    highIndication: 'May indicate high protein intake or catabolism',
+    lowIndication: 'May indicate low protein intake or kidney dysfunction',
   },
 ];
 
@@ -1707,11 +1818,8 @@ export function findBiomarker(nameOrAlias: string): BiomarkerDefinition | undefi
   return BY_NAME_OR_ALIAS.get(nameOrAlias.toLowerCase().trim());
 }
 
-/**
- * Find a biomarker by name as an import does: exactly (name or alias), then
- * ignoring spacing and punctuation ("HEMOGLOBIN." is Hemoglobin)
- */
-export function matchBiomarkerName(name: string): BiomarkerDefinition | undefined {
+/** Exactly (name or alias), then ignoring spacing and punctuation */
+function matchNameVariations(name: string): BiomarkerDefinition | undefined {
   const variations = [
     name,
     name.replace(/\s+/g, ''),
@@ -1721,6 +1829,37 @@ export function matchBiomarkerName(name: string): BiomarkerDefinition | undefine
   for (const variation of variations) {
     const match = findBiomarker(variation);
     if (match) return match;
+  }
+  return undefined;
+}
+
+/** A name with a trailing qualifier, as in "Creatinina (urine, 24h)" */
+const QUALIFIED_NAME = /^(.+?)\s*\(([^()]*)\)\s*$/;
+
+/**
+ * Find a biomarker by name as an import does: exactly (name or alias), then
+ * ignoring spacing and punctuation ("HEMOGLOBIN." is Hemoglobin). A trailing
+ * qualifier that names a specimen picks that specimen's entry, never the
+ * blood test: "Creatinina (urine, per litro)" is Urine Creatinine and
+ * "Urea (urine, 24h)" is 24-Hour Urine Urea. Any other qualifier is ignored:
+ * "Vitamina D (25-OH, totale)" is Vitamin D.
+ */
+export function matchBiomarkerName(name: string): BiomarkerDefinition | undefined {
+  const match = matchNameVariations(name);
+  if (match) return match;
+
+  const qualified = QUALIFIED_NAME.exec(name);
+  if (!qualified) return undefined;
+  const [, base, qualifier] = qualified;
+  const words = qualifier.toLowerCase();
+  const perDay = /24\s*(h|ore|hours?)\b/.test(words);
+  const urine = /\burin/.test(words);
+  if (!perDay && !urine) return matchBiomarkerName(base);
+
+  const forms = perDay ? [`${base} (urine, 24h)`, `${base} 24h`] : [`${base} (urine)`, `${base} urinaria`];
+  for (const form of forms) {
+    const specimenMatch = matchNameVariations(form);
+    if (specimenMatch) return specimenMatch;
   }
   return undefined;
 }

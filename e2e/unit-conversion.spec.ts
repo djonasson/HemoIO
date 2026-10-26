@@ -498,6 +498,70 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test('should merge the values an Italian report gives in two units', async ({ page }) => {
+    // Scenario: Merge the values an Italian report gives in two units
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Urea', value: 3.06, unit: 'mmol/L', confidence: 0.95 },
+      { name: 'Urea', value: 18, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Acido urico', value: 247, unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Acido urico', value: 4.15, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Ferro', value: 38.4, unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Ferro', value: 214, unit: 'µg/dL', confidence: 0.95 },
+      { name: 'Vitamina D (25-OH)', value: 81.5, unit: 'nmol/L', confidence: 0.95 },
+      { name: 'Vitamina D (25-OH)', value: 32.6, unit: 'ng/mL', confidence: 0.95 },
+    ]);
+
+    // One value of each, in the standard unit; urea is not blood urea nitrogen
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(4);
+    for (const value of ['18', '4.15', '214', '32.6']) {
+      await expect(rows.getByRole('cell', { name: value, exact: true })).toBeVisible();
+    }
+    await expect(page.getByText(/Blood Urea Nitrogen/)).toHaveCount(0);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should keep a share and an absolute count of the same cells apart', async ({ page }) => {
+    // Scenario: Keep a share and an absolute count of the same cells apart
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Eritroblasti', value: 0, unit: '/100 WBC', confidence: 0.95 },
+      { name: 'Eritroblasti', value: 0, unit: '10^9/L', confidence: 0.95 },
+    ]);
+
+    await expect(reviewRows(page)).toHaveCount(2);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should keep separate urine samples and 24-hour amounts apart', async ({ page }) => {
+    // Scenario: Keep separate urine samples and 24-hour amounts apart
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinina (urine, 24h)', value: 13746, unit: 'µmol/24h', confidence: 0.95 },
+      { name: 'Creatinina (urine, 24h)', value: 1.55, unit: 'g/24h', confidence: 0.95 },
+      { name: 'Creatinina (urine, spot)', value: 4367, unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Creatinina (urine, spot)', value: 0.49, unit: 'g/L', confidence: 0.95 },
+    ]);
+
+    await expect(reviewRows(page)).toHaveCount(2);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should explain values whose units cannot be compared', async ({ page }) => {
+    // Scenario: Explain values whose units cannot be compared
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Zorblatin', value: 5, unit: 'mg/L', confidence: 0.95 },
+      { name: 'Zorblatin', value: 3, unit: 'µmol/L', confidence: 0.95 },
+    ]);
+
+    await expect(duplicateWarning(page)).toContainText(
+      'which cannot be converted to each other. Keep the value you want and delete the other.'
+    );
+    await expect(reviewRows(page)).toHaveCount(2);
+  });
+
   test('should flag genuinely different duplicate values as conflict', async ({ page }) => {
     // Scenario: Flag genuinely different duplicate values as conflict
     // (creatinine 67 µmol/L ≈ 0.76 mg/dL vs 1.5 mg/dL)

@@ -11,6 +11,7 @@ import {
   searchBiomarkers,
   getCanonicalUnit,
   isValidUnit,
+  matchBiomarkerName,
 } from './dictionary';
 import { ISSUED_BIOMARKER_KEYS } from './keys.snapshot';
 
@@ -278,3 +279,45 @@ describe('Biomarker Dictionary', () => {
     });
   });
 });
+
+describe('matchBiomarkerName with a qualifier', () => {
+  const keyOf = (name: string) => matchBiomarkerName(name)?.key;
+
+  it('matches the specimen a qualifier names', () => {
+    expect(keyOf('Creatinina (urine, per litro)')).toBe('urine-creatinine');
+    expect(keyOf('Creatinina (urine, spot)')).toBe('urine-creatinine');
+    expect(keyOf('Creatinina (urine, 24h)')).toBe('24-hour-urine-creatinine');
+    expect(keyOf('Urea (urine, per litro)')).toBe('urine-urea');
+    expect(keyOf('Urea (urine, 24 ore)')).toBe('24-hour-urine-urea');
+    expect(keyOf('Albumina/creatinina (urine)')).toBe('albumin-creatinine-ratio');
+  });
+
+  it('never falls back to the blood test for a urine qualifier', () => {
+    expect(keyOf('Bilirubina diretta (urine, spot)')).toBeUndefined();
+  });
+
+  it('ignores a qualifier that names no specimen', () => {
+    expect(keyOf('Vitamina D (25-OH, totale)')).toBe('vitamin-d');
+  });
+});
+
+describe('Italian names', () => {
+  it.each([
+    ['Urea', 'urea'],
+    ['Acido urico', 'uric-acid'],
+    ['Ferro', 'serum-iron'],
+    ['Vitamina D (25-OH)', 'vitamin-d'],
+    ['Eritroblasti', 'nucleated-red-blood-cells'],
+    ['Eritroblasti (%)', 'nucleated-red-blood-cells-percentage'],
+    ['Emoglobina (urine)', 'urine-blood'],
+    ['Eritrociti (urine)', 'urine-red-blood-cells'],
+  ])('%s is %s', (name, key) => {
+    expect(matchBiomarkerName(name)?.key).toBe(key);
+  });
+
+  it('does not take urea for blood urea nitrogen, a different measurement', () => {
+    expect(findBiomarker('BUN')?.key).toBe('blood-urea-nitrogen');
+    expect(findBiomarker('Urea')?.key).toBe('urea');
+  });
+});
+
