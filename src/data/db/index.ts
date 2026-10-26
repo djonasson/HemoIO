@@ -13,6 +13,9 @@ import type {
   UserNote,
 } from '@/types';
 
+/** Set by the schema upgrade: records stored by an earlier version need migrating */
+export const MIGRATE_RECORDS = 'migrate-records';
+
 /**
  * HemoIO Database
  *
@@ -26,6 +29,8 @@ export class HemoIODatabase extends Dexie {
   userPreferences!: EntityTable<UserPreferences, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
   userNotes!: EntityTable<UserNote, 'id'>;
+  /** Markers for the migrations that need the encryption key (see MIGRATE_RECORDS) */
+  meta!: EntityTable<{ key: string }, 'key'>;
 
   constructor(name = 'HemoIO') {
     super(name);
@@ -73,9 +78,8 @@ export class HemoIODatabase extends Dexie {
       });
 
     // Version 5: records are sealed (everything but IDs and links encrypted),
-    // so lab data is indexed by IDs and links only. Records stored by earlier versions are
-    // sealed after unlock (EncryptedDb.migrateLegacyRecords): this upgrade
-    // has no key. (Version 4 was never released.)
+    // so lab data is indexed by IDs and links only. (Version 4 was never
+    // released.)
     this.version(5).stores({
       labResults: '++id',
       testValues: '++id, labResultId',
@@ -84,6 +88,22 @@ export class HemoIODatabase extends Dexie {
       settings: '++id',
       userNotes: '++id, labResultId, testValueId',
     });
+
+    // Version 6: marks a database upgraded from an earlier version, so the
+    // records it stored are migrated once after unlock
+    // (EncryptedDb.migrateLegacyRecords), which needs the encryption key. A
+    // new database has nothing to migrate and is never marked.
+    this.version(6)
+      .stores({
+        labResults: '++id',
+        testValues: '++id, labResultId',
+        biomarkers: '++id, name, category',
+        userPreferences: '++id',
+        settings: '++id',
+        userNotes: '++id, labResultId, testValueId',
+        meta: '&key',
+      })
+      .upgrade((tx) => tx.table('meta').put({ key: MIGRATE_RECORDS }));
   }
 }
 

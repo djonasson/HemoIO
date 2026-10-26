@@ -85,22 +85,17 @@ async function unlockCredentials(password: string, credentials: object): Promise
  * Migrations that need the decrypted data, run before the app is unlocked so
  * nothing reads data that is half migrated: records earlier versions stored
  * are sealed, and unknown biomarkers stored before keys existed get the key
- * new imports of the same name get. Then values stored under the wrong
+ * new imports of the same name get, and values stored under the wrong
  * biomarker (urea as blood urea nitrogen) are refiled. A failure is not
- * fatal: those records stay as they are, readable by the app.
+ * fatal: those records stay as they are, readable by the app, and the
+ * migration runs again at the next unlock.
  */
 async function migrateStoredData(key: CryptoKey): Promise<void> {
-  const db = createEncryptedDb(key);
-  // Not logged with the error, which could name stored data
   try {
-    await db.migrateLegacyRecords();
+    await createEncryptedDb(key).migrateLegacyRecords();
   } catch {
+    // Not logged with the error, which could name stored data
     console.error('Failed to migrate stored records');
-  }
-  try {
-    await db.refileMisfiledValues();
-  } catch {
-    console.error('Failed to refile stored values');
   }
 }
 

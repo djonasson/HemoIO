@@ -12,10 +12,13 @@
  */
 
 import Dexie, { type Table } from 'dexie';
-import { db, HemoIODatabase } from './index';
+import { db, HemoIODatabase, MIGRATE_RECORDS } from './index';
 import { encryptString, decryptString } from '@data/encryption';
 import {
   legacyUnknownKeyMapping,
+  migrateNoteRecord,
+  migratePreferenceMaps,
+  migrateTestValueRecord,
   reconcileTestValueKey,
   refileMisfiledPreferences,
   refileMisfiledValue,
@@ -36,9 +39,6 @@ const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id'> = {
   theme: 'system',
   dateFormat: 'MM/DD/YYYY',
 };
-
-/** Recorded in the settings once refileMisfiledValues has run */
-const REFILE_MIGRATION = 'refile-urea-and-urine-red-cells';
 
 const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
   storageProvider: 'local',
@@ -61,28 +61,39 @@ const READABLE_FIELDS: Record<SealedTable, readonly string[]> = {
 /** A record as stored: its readable fields and the ciphertext of the rest */
 type SealedRecord = Record<string, unknown> & { id?: number; encrypted?: string };
 
-// Dates survive the JSON round trip as { $date: milliseconds }; an invalid
-// date, which a restored backup can hold, as { $date: null }
-function dateReplacer(this: Record<string, unknown>, field: string, value: unknown): unknown {
+// JSON holds neither dates nor NaN and ±Infinity, which IndexedDB stored as
+// they were: they are written as { $date: milliseconds } (null for an
+// invalid date, which a restored backup can hold) and { $number: 'NaN' }
+function replacer(this: Record<string, unknown>, field: string, value: unknown): unknown {
   const raw = this[field];
   if (raw instanceof Date) {
     const time = raw.getTime();
     return { $date: Number.isNaN(time) ? null : time };
   }
+  if (typeof raw === 'number' && !Number.isFinite(raw)) return { $number: String(raw) };
   return value;
 }
 
-function dateReviver(_field: string, value: unknown): unknown {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    '$date' in value &&
-    Object.keys(value).length === 1
-  ) {
-    const time = (value as { $date: number | null }).$date;
-    return new Date(time ?? NaN);
+function reviver(_field: string, value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Object.keys(value).length !== 1) {
+    return value;
   }
+  if ('$date' in value) return new Date((value as { $date: number | null }).$date ?? NaN);
+  if ('$number' in value) return Number((value as { $number: string }).$number);
   return value;
+}
+
+/**
+ * Sealed plaintext is padded to a multiple of this many bytes: ciphertext is
+ * as long as its plaintext, so unpadded lengths would tell records apart
+ * (a glucose value from one with a long unknown name)
+ */
+const PADDING_BLOCK = 256;
+
+function padded(json: string): string {
+  const bytes = new TextEncoder().encode(json).length;
+  // JSON.parse ignores the trailing spaces
+  return json + ' '.repeat(Math.ceil((bytes + 1) / PADDING_BLOCK) * PADDING_BLOCK - bytes);
 }
 
 async function seal(
@@ -98,12 +109,8 @@ async function seal(
     if (readable.includes(field)) stored[field] = value;
     else hidden[field] = value;
   }
-  stored.encrypted = await encryptString(JSON.stringify(hidden, dateReplacer), key);
+  stored.encrypted = await encryptString(padded(JSON.stringify(hidden, replacer)), key);
   return stored;
-}
-
-function isSealed(stored: SealedRecord): boolean {
-  return typeof stored.encrypted === 'string';
 }
 
 // ============ Records as earlier versions stored them ============
@@ -152,12 +159,52 @@ async function decryptFields<T>(obj: T, fields: readonly string[], key: CryptoKe
   return decrypted as T;
 }
 
-/** A stored record as the app sees it, sealed or as an earlier version stored it */
+/** Records as released versions stored them, which referenced biomarkers by dictionary position */
+const LEGACY_RECORD_MIGRATIONS: Record<SealedTable, (record: object) => object> = {
+  labResults: (record) => record,
+  testValues: migrateTestValueRecord,
+  userNotes: migrateNoteRecord,
+  userPreferences: migratePreferenceMaps,
+};
+
+/**
+ * Fields as an earlier version stored them, decrypted and given biomarker
+ * keys: a whole record, or only the fields it wrote beside a sealed one
+ */
+async function readLegacy(
+  fields: SealedRecord,
+  table: SealedTable,
+  key: CryptoKey,
+  wholeRecord: boolean
+): Promise<Record<string, unknown>> {
+  const decrypted = await decryptFields(fields, LEGACY_ENCRYPTED_FIELDS[table], key);
+  return wholeRecord || 'biomarkerId' in decrypted
+    ? (LEGACY_RECORD_MIGRATIONS[table](decrypted) as Record<string, unknown>)
+    : decrypted;
+}
+
+/**
+ * A stored record as the app sees it: sealed, as an earlier version stored
+ * it, or sealed with fields an older version wrote beside it since, which
+ * are newer and win
+ */
 async function unseal<T>(stored: SealedRecord, table: SealedTable, key: CryptoKey): Promise<T> {
-  if (!isSealed(stored)) return decryptFields(stored as T, LEGACY_ENCRYPTED_FIELDS[table], key);
-  const { encrypted, ...readable } = stored;
-  const hidden = JSON.parse(await decryptString(encrypted!, key), dateReviver) as object;
-  return { ...hidden, ...readable } as T;
+  if (typeof stored.encrypted !== 'string') return (await readLegacy(stored, table, key, true)) as T;
+  const readable: SealedRecord = {};
+  const beside: SealedRecord = {};
+  for (const [field, value] of Object.entries(stored)) {
+    if (field === 'encrypted' || value === undefined) continue;
+    if (READABLE_FIELDS[table].includes(field)) readable[field] = value;
+    else beside[field] = value;
+  }
+  const hidden = JSON.parse(await decryptString(stored.encrypted, key), reviver) as object;
+  const newer = Object.keys(beside).length > 0 ? await readLegacy(beside, table, key, false) : {};
+  return { ...hidden, ...newer, ...readable } as T;
+}
+
+/** Whether a record has a date it can be sorted by (the date indexes skipped others) */
+function hasValidDate(date: unknown): boolean {
+  return date instanceof Date && !Number.isNaN(date.getTime());
 }
 
 /** Fields whose value is undefined are left out, so an update keeps them */
@@ -193,8 +240,27 @@ export class EncryptedDb {
     return seal(record, READABLE_FIELDS[name], this.key);
   }
 
-  private unsealAll<T>(name: SealedTable, stored: SealedRecord[]): Promise<T[]> {
-    return Promise.all(stored.map((record) => unseal<T>(record, name, this.key)));
+  /**
+   * Records that cannot be decrypted (sealed under another key, or damaged)
+   * are skipped, so they do not hide the others
+   */
+  private async unsealAll<T>(name: SealedTable, stored: SealedRecord[]): Promise<T[]> {
+    const results = await Promise.allSettled(stored.map((record) => unseal<T>(record, name, this.key)));
+    const failed = results.filter((result) => result.status === 'rejected').length;
+    if (failed > 0) {
+      // Not logged with the errors or records, which could name stored data
+      console.warn(
+        failed === 1
+          ? 'Skipped a stored record that could not be decrypted'
+          : `Skipped ${failed} stored records that could not be decrypted`
+      );
+    }
+    return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
+  }
+
+  /** A record, or undefined when it cannot be decrypted */
+  private async unsealOne<T>(name: SealedTable, stored: SealedRecord | undefined): Promise<T | undefined> {
+    return stored && (await this.unsealAll<T>(name, [stored]))[0];
   }
 
   private async add(name: SealedTable, record: object): Promise<number> {
@@ -202,8 +268,7 @@ export class EncryptedDb {
   }
 
   private async get<T>(name: SealedTable, id: number): Promise<T | undefined> {
-    const stored = await this.table(name).get(id);
-    return stored && unseal<T>(stored, name, this.key);
+    return this.unsealOne<T>(name, await this.table(name).get(id));
   }
 
   private async where<T>(name: SealedTable, index: string, id: number): Promise<T[]> {
@@ -232,82 +297,53 @@ export class EncryptedDb {
   // ============ Migrations needing the encryption key ============
 
   /**
-   * Bring the records earlier versions stored up to date, in one pass:
-   * decrypt the fields they encrypted, give unknown biomarkers stored before
-   * biomarker keys existed ("unknown:legacy-<hash>") the key their extracted
-   * name gets today, so their history joins values imported since, and seal
-   * them. Needs the encryption key, so it runs after unlock rather than in
-   * the schema upgrade; does nothing once every record is sealed.
+   * Bring the records earlier versions stored up to date: seal them, give
+   * unknown biomarkers stored before biomarker keys existed
+   * ("unknown:legacy-<hash>") the key their extracted name gets today, and
+   * refile values stored under the wrong biomarker (urea as blood urea
+   * nitrogen). Needs the encryption key, so it runs after unlock rather than
+   * in the schema upgrade, which only marks that it is needed: it runs once
+   * per upgraded database, and never on a new one.
    *
-   * @returns Number of records sealed
+   * One transaction, kept open across the decryption and encryption by
+   * Dexie.waitFor, so no edit in the meantime (in another tab, say) is
+   * overwritten, and a second tab finds nothing left to do. Records that
+   * cannot be decrypted are left as they are.
+   *
+   * @returns Number of records migrated
    */
   async migrateLegacyRecords(): Promise<number> {
     const names = Object.keys(READABLE_FIELDS) as SealedTable[];
+    const tables = names.map((name) => this.table(name));
+    return this.db.transaction('rw', [...tables, this.db.meta], async () => {
+      if (!(await this.db.meta.get(MIGRATE_RECORDS))) return 0;
+      const stored = await Promise.all(tables.map((table) => table.toArray()));
+      const sealed = await Dexie.waitFor(this.migrated(names, stored));
+      await Promise.all(tables.map((table, i) => table.bulkPut(sealed[i])));
+      await this.db.meta.delete(MIGRATE_RECORDS);
+      return sealed.reduce((sum, records) => sum + records.length, 0);
+    });
+  }
+
+  /** Every record of each table, migrated and sealed */
+  private async migrated(names: SealedTable[], stored: SealedRecord[][]): Promise<SealedRecord[][]> {
     const [labResults, testValues, userNotes, userPreferences] = await Promise.all(
-      names.map(async (name) =>
-        this.unsealAll<Record<string, unknown>>(
-          name,
-          await this.table(name).filter((record) => !isSealed(record)).toArray()
-        )
-      )
+      names.map((name, i) => this.unsealAll<Record<string, unknown>>(name, stored[i]))
     );
-    // Legacy keys are only in records not yet sealed
     const values = testValues as unknown as TestValue[];
     const mapping = legacyUnknownKeyMapping(values);
     const migrated: Record<SealedTable, object[]> = {
       labResults,
       // Each value by its own name: two names can share a legacy key
-      testValues: values.map(reconcileTestValueKey),
+      testValues: values.map((value) => refileMisfiledValue(reconcileTestValueKey(value))),
       userNotes: userNotes.map((note) => remapBiomarkerKey(note, mapping)),
       userPreferences: (userPreferences as unknown as UserPreferences[]).map((prefs) =>
-        remapPreferenceMaps(prefs, mapping)
+        refileMisfiledPreferences(remapPreferenceMaps(prefs, mapping))
       ),
     };
-    if (names.every((name) => migrated[name].length === 0)) return 0;
-
-    // Sealed up front: a transaction ends at the first await outside IndexedDB
-    const sealed = await Promise.all(
+    return Promise.all(
       names.map((name) => Promise.all(migrated[name].map((record) => this.seal(name, record))))
     );
-    const tables = names.map((name) => this.table(name));
-    await this.db.transaction('rw', tables, () =>
-      Promise.all(tables.map((table, i) => table.bulkPut(sealed[i])))
-    );
-    return sealed.flat().length;
-  }
-
-  /**
-   * File the values stored under the wrong biomarker before the dictionary
-   * told them apart (see refileMisfiledValue) under the test they are. Runs
-   * once: it decrypts every value, so the settings record that it ran.
-   * Without settings (not set up yet) it runs again at the next unlock.
-   *
-   * @returns Number of values refiled
-   */
-  async refileMisfiledValues(): Promise<number> {
-    const settings = await this.db.settings.toCollection().first();
-    if (settings?.completedMigrations?.includes(REFILE_MIGRATION)) return 0;
-
-    const values = await this.getAllTestValues();
-    const refiled = values
-      .map(refileMisfiledValue)
-      .filter((value, i) => value.biomarkerKey !== values[i].biomarkerKey);
-    await Promise.all(
-      refiled.map((value) => this.updateTestValue(value.id!, { biomarkerKey: value.biomarkerKey }))
-    );
-
-    const preferences = await this.getPreferences();
-    const refiledPreferences = preferences && refileMisfiledPreferences(preferences);
-    if (preferences && refiledPreferences !== preferences) {
-      await this.updatePreferences(() => ({ unitPreferences: refiledPreferences!.unitPreferences }));
-    }
-
-    if (settings) {
-      await this.updateSettings({
-        completedMigrations: [...(settings.completedMigrations ?? []), REFILE_MIGRATION],
-      });
-    }
-    return refiled.length;
   }
 
   // ============ Lab Results ============
@@ -324,7 +360,7 @@ export class EncryptedDb {
   async getAllLabResults(): Promise<LabResult[]> {
     const stored = await this.table('labResults').toArray();
     const results = await this.unsealAll<LabResult>('labResults', stored);
-    return results.sort(newestFirst((r) => r.date));
+    return results.filter((r) => hasValidDate(r.date)).sort(newestFirst((r) => r.date));
   }
 
   /** From the start date, inclusive, to the end date, exclusive; oldest first */
@@ -436,7 +472,7 @@ export class EncryptedDb {
 
   async getPreferences(): Promise<UserPreferences | undefined> {
     const stored = await this.table('userPreferences').toCollection().first();
-    return stored && unseal<UserPreferences>(stored, 'userPreferences', this.key);
+    return this.unsealOne<UserPreferences>('userPreferences', stored);
   }
 
   /** Save the given fields, keeping the others */
@@ -464,10 +500,12 @@ export class EncryptedDb {
       const stored = await table.toCollection().first();
       // Dexie.waitFor keeps the transaction open across the decryption and
       // encryption, which are not IndexedDB requests
-      const current =
-        stored &&
-        (await Dexie.waitFor(unseal<UserPreferences>(stored, 'userPreferences', this.key)));
-      const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current) };
+      // Unreadable preferences are replaced
+      const current = await Dexie.waitFor(
+        this.unsealOne<UserPreferences>('userPreferences', stored)
+      );
+      // Under the stored record's ID, so unreadable preferences are replaced
+      const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current), id: stored?.id };
       return (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
     });
   }
@@ -504,7 +542,7 @@ export class EncryptedDb {
   async getAllNotes(): Promise<UserNote[]> {
     const stored = await this.table('userNotes').toArray();
     const notes = await this.unsealAll<UserNote>('userNotes', stored);
-    return notes.sort(newestFirst((n) => n.createdAt));
+    return notes.filter((n) => hasValidDate(n.createdAt)).sort(newestFirst((n) => n.createdAt));
   }
 
   async getNotesByLabResult(labResultId: number): Promise<UserNote[]> {

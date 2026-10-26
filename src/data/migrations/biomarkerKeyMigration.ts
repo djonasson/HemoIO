@@ -99,7 +99,14 @@ function sameUnit(a: string, b: string): boolean {
  * that lists the value's unit, else the unknown key of the name
  */
 function reconciledKey(value: ReconcilableValue): string | undefined {
-  if (!value.biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX) || !value.rawText) return undefined;
+  // A value with no key yet (stored by a version before keys) is not legacy-unknown
+  if (
+    typeof value.biomarkerKey !== 'string' ||
+    !value.biomarkerKey.startsWith(LEGACY_UNKNOWN_PREFIX) ||
+    !value.rawText
+  ) {
+    return undefined;
+  }
   const match = matchBiomarkerName(value.rawText);
   const unitFits =
     match !== undefined &&

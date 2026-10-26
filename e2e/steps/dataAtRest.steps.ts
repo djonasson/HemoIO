@@ -73,7 +73,12 @@ export async function storeReadableAsEarlierVersion(
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const database = open.result;
-          const transaction = database.transaction(['testValues', 'userPreferences'], 'readwrite');
+          const transaction = database.transaction(
+            ['testValues', 'userPreferences', 'meta'],
+            'readwrite'
+          );
+          // As the schema upgrade marks a database an earlier version wrote
+          transaction.objectStore('meta').put({ key: 'migrate-records' });
           const at = new Date('2024-02-20T14:30:00.000Z');
           transaction.objectStore('testValues').add({
             labResultId: glucose.labResultId,
@@ -117,7 +122,9 @@ export async function storeTestValueAsEarlierVersion(
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const database = open.result;
-          const transaction = database.transaction('testValues', 'readwrite');
+          const transaction = database.transaction(['testValues', 'meta'], 'readwrite');
+          // As the schema upgrade marks a database an earlier version wrote
+          transaction.objectStore('meta').put({ key: 'migrate-records' });
           const at = new Date('2024-02-20T14:30:00.000Z');
           transaction.objectStore('testValues').add({ ...value, createdAt: at, updatedAt: at });
           transaction.oncomplete = () => {

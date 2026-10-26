@@ -318,6 +318,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
       expect(await storedFields(database)).toEqual({
         biomarkers: [],
         labResults: ['encrypted', 'id'],
+        meta: [],
         testValues: ['encrypted', 'id', 'labResultId'],
         userNotes: ['encrypted', 'id', 'labResultId', 'testValueId'],
         userPreferences: ['encrypted', 'id'],

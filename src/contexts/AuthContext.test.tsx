@@ -11,9 +11,8 @@ import {
 
 // Stored-data migrations run on unlock; the database itself is not under test
 const migrate = vi.hoisted(() => vi.fn<() => Promise<void>>());
-const refile = vi.hoisted(() => vi.fn<() => Promise<void>>());
 vi.mock('@data/db', () => ({
-  createEncryptedDb: () => ({ migrateLegacyRecords: migrate, refileMisfiledValues: refile }),
+  createEncryptedDb: () => ({ migrateLegacyRecords: migrate }),
 }));
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
@@ -77,8 +76,6 @@ describe('AuthContext', () => {
     localStorage.clear();
     migrate.mockReset();
     migrate.mockResolvedValue(undefined);
-    refile.mockReset();
-    refile.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -184,39 +181,6 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       // Logged without the error, which could name stored data
       expect(consoleError).toHaveBeenCalledWith('Failed to migrate stored records');
-    });
-
-    it('refiles misfiled values before reporting unlocked, even when migrating fails', async () => {
-      await setUp();
-      lock();
-      migrate.mockRejectedValue(new Error('IndexedDB unavailable'));
-      vi.spyOn(console, 'error').mockImplementation(() => {});
-      let finishRefiling!: () => void;
-      refile.mockReturnValue(new Promise<void>((resolve) => (finishRefiling = resolve)));
-
-      let unlocking!: Promise<boolean>;
-      act(() => {
-        unlocking = auth.unlock(OLD);
-      });
-      await vi.waitFor(() => expect(refile).toHaveBeenCalled());
-      expect(screen.getByTestId('status')).toHaveTextContent('locked');
-
-      await act(async () => {
-        finishRefiling();
-        await unlocking;
-      });
-      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-    });
-
-    it('unlocks even when refiling misfiled values fails', async () => {
-      await setUp();
-      lock();
-      refile.mockRejectedValue(new Error('IndexedDB unavailable'));
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      expect(await unlock(OLD)).toBe(true);
-      // Logged without the error, which could name stored data
-      expect(consoleError).toHaveBeenCalledWith('Failed to refile stored values');
     });
 
     it('stays locked with a wrong password', async () => {

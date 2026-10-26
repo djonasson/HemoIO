@@ -126,8 +126,6 @@ export interface Settings {
   openaiModel?: string;
   anthropicModel?: string;
   language: string;
-  /** One-time data migrations already run on this device */
-  completedMigrations?: string[];
 }
 
 export type StorageProviderType = 'local' | 'filesystem' | 'dropbox' | 'googledrive';
