@@ -149,3 +149,15 @@ Feature: Biomarker Dictionary
     Then all biomarker information should have appropriate ARIA labels
     And categories should be properly announced
     And search results should be announced when updated
+
+  # Values filed under the wrong test by earlier versions
+  Scenario: A backup from before urea and urine red cells had their own tests
+    Given I restore a backup in which urea was filed as blood urea nitrogen and a urine red cell count as urine blood
+    Then urea should be listed as Urea, not as Blood Urea Nitrogen
+    And the urine red cell count should be listed as Urine Red Blood Cells
+
+  Scenario: Values an earlier version filed under the wrong test
+    Given an earlier version stored a urine red cell count as urine blood
+    When I unlock the application
+    Then the red cell count should be listed as Urine Red Blood Cells
+

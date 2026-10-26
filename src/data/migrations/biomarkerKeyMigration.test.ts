@@ -7,6 +7,8 @@ import {
   remapBiomarkerKey,
   remapPreferenceMaps,
   reconcileTestValueKey,
+  refileMisfiledValue,
+  refileMisfiledPreferences,
 } from './biomarkerKeyMigration';
 
 describe('migrateTestValueRecord', () => {
@@ -154,3 +156,60 @@ describe('remapBiomarkerKey', () => {
     ).toEqual({ acknowledgedAlerts: { 'unknown:zorblatin': acknowledged } });
   });
 });
+
+describe('refileMisfiledValue', () => {
+  const value = (biomarkerKey: string, rawText: string | undefined, unit: string) => ({
+    biomarkerKey,
+    rawText,
+    unit,
+    value: 1,
+  });
+
+  it('moves urea, once filed as its alias of blood urea nitrogen, to urea', () => {
+    expect(refileMisfiledValue(value('blood-urea-nitrogen', 'Urea', 'mg/dL')).biomarkerKey).toBe('urea');
+    expect(refileMisfiledValue(value('blood-urea-nitrogen', 'UREA', 'mmol/L')).biomarkerKey).toBe('urea');
+  });
+
+  it('leaves blood urea nitrogen reported as such', () => {
+    for (const rawText of ['BUN', 'Blood Urea Nitrogen', 'Urea Nitrogen', undefined]) {
+      expect(refileMisfiledValue(value('blood-urea-nitrogen', rawText, 'mg/dL')).biomarkerKey).toBe(
+        'blood-urea-nitrogen'
+      );
+    }
+  });
+
+  it('moves urine red cell counts out of urine blood, by their unit', () => {
+    for (const unit of ['cell/µL', 'cells/µL', '/μL', 'RBC/HPF', 'per campo']) {
+      expect(refileMisfiledValue(value('urine-blood', 'Eritrociti (urine)', unit)).biomarkerKey).toBe(
+        'urine-red-blood-cells'
+      );
+    }
+  });
+
+  it('leaves the dipstick haemoglobin in urine blood', () => {
+    for (const unit of ['mg/dL', 'mg/L', '']) {
+      expect(refileMisfiledValue(value('urine-blood', 'Emoglobina (urine)', unit)).biomarkerKey).toBe(
+        'urine-blood'
+      );
+    }
+  });
+
+  it('leaves every other value as it is', () => {
+    const glucose = value('glucose', 'Urea', 'mg/dL');
+    expect(refileMisfiledValue(glucose)).toBe(glucose);
+  });
+});
+
+describe('refileMisfiledPreferences', () => {
+  it('moves a preferred red cell count unit from urine blood to urine red blood cells', () => {
+    expect(refileMisfiledPreferences({ unitPreferences: { 'urine-blood': 'cells/µL', glucose: 'mmol/L' } })).toEqual({
+      unitPreferences: { 'urine-red-blood-cells': 'cells/µL', glucose: 'mmol/L' },
+    });
+  });
+
+  it('keeps a preferred dipstick unit, and one already set for red cells', () => {
+    const prefs = { unitPreferences: { 'urine-blood': 'mg/dL', 'urine-red-blood-cells': '/HPF' } };
+    expect(refileMisfiledPreferences(prefs)).toEqual(prefs);
+  });
+});
+

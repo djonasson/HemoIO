@@ -335,7 +335,7 @@ describe('jsonImport', () => {
       expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual(['hemoglobin', 'unknown:legacy-10042']);
       expect(parsed.userNotes[0].biomarkerKey).toBe('hemoglobin');
       expect(parsed.userPreferences?.personalTargets).toEqual({ hemoglobin: { low: 13 } });
-      expect(parsed.schemaVersion).toBe(2);
+      expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     });
 
     it('gives unknown biomarkers the same key new imports of that name get', () => {
@@ -355,7 +355,58 @@ describe('jsonImport', () => {
     });
 
     it('rejects backups from a newer version', () => {
-      expect(() => parseBackupJson(JSON.stringify({ ...v1, schemaVersion: 3 }))).toThrow(/newer version/);
+      expect(() =>
+        parseBackupJson(JSON.stringify({ ...v1, schemaVersion: BACKUP_SCHEMA_VERSION + 1 }))
+      ).toThrow(/newer version/);
+    });
+  });
+
+  describe('backups made before urea and urine red cells had their own entries', () => {
+    const at = '2024-01-15T00:00:00.000Z';
+    const backup = (schemaVersion: number) => ({
+      schemaVersion,
+      exportedAt: at,
+      appVersion: '1.0.0',
+      labResults: [{ id: 1, date: at, labName: 'Lab', createdAt: at, updatedAt: at }],
+      testValues: [
+        { id: 1, labResultId: 1, biomarkerKey: 'blood-urea-nitrogen', rawText: 'Urea', value: 18, unit: 'mg/dL', createdAt: at, updatedAt: at },
+        { id: 2, labResultId: 1, biomarkerKey: 'blood-urea-nitrogen', rawText: 'BUN', value: 9, unit: 'mg/dL', createdAt: at, updatedAt: at },
+        { id: 3, labResultId: 1, biomarkerKey: 'urine-blood', rawText: 'Eritrociti (urine)', value: 15, unit: 'cell/µL', createdAt: at, updatedAt: at },
+        { id: 4, labResultId: 1, biomarkerKey: 'urine-blood', rawText: 'Emoglobina (urine)', value: 0, unit: 'mg/dL', createdAt: at, updatedAt: at },
+      ],
+      userNotes: [],
+      userPreferences: {
+        theme: 'dark',
+        dateFormat: 'MM/DD/YYYY',
+        personalTargets: {},
+        unitPreferences: { 'urine-blood': 'cells/µL' },
+      },
+      settings: null,
+    });
+
+    it('files each value under the test it is', () => {
+      const parsed = parseBackupJson(JSON.stringify(backup(2)));
+
+      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual([
+        'urea',
+        'blood-urea-nitrogen',
+        'urine-red-blood-cells',
+        'urine-blood',
+      ]);
+      expect(parsed.userPreferences?.unitPreferences).toEqual({ 'urine-red-blood-cells': 'cells/µL' });
+      expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
+    });
+
+    it('leaves a newer backup as it is: its values were filed with both entries known', () => {
+      const parsed = parseBackupJson(JSON.stringify(backup(BACKUP_SCHEMA_VERSION)));
+
+      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual([
+        'blood-urea-nitrogen',
+        'blood-urea-nitrogen',
+        'urine-blood',
+        'urine-blood',
+      ]);
     });
   });
 });
+

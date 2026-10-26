@@ -17,6 +17,8 @@ import { encryptString, decryptString } from '@data/encryption';
 import {
   legacyUnknownKeyMapping,
   reconcileTestValueKey,
+  refileMisfiledPreferences,
+  refileMisfiledValue,
   remapBiomarkerKey,
   remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
@@ -34,6 +36,9 @@ const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id'> = {
   theme: 'system',
   dateFormat: 'MM/DD/YYYY',
 };
+
+/** Recorded in the settings once refileMisfiledValues has run */
+const REFILE_MIGRATION = 'refile-urea-and-urine-red-cells';
 
 const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
   storageProvider: 'local',
@@ -269,6 +274,40 @@ export class EncryptedDb {
       Promise.all(tables.map((table, i) => table.bulkPut(sealed[i])))
     );
     return sealed.flat().length;
+  }
+
+  /**
+   * File the values stored under the wrong biomarker before the dictionary
+   * told them apart (see refileMisfiledValue) under the test they are. Runs
+   * once: it decrypts every value, so the settings record that it ran.
+   * Without settings (not set up yet) it runs again at the next unlock.
+   *
+   * @returns Number of values refiled
+   */
+  async refileMisfiledValues(): Promise<number> {
+    const settings = await this.db.settings.toCollection().first();
+    if (settings?.completedMigrations?.includes(REFILE_MIGRATION)) return 0;
+
+    const values = await this.getAllTestValues();
+    const refiled = values
+      .map(refileMisfiledValue)
+      .filter((value, i) => value.biomarkerKey !== values[i].biomarkerKey);
+    await Promise.all(
+      refiled.map((value) => this.updateTestValue(value.id!, { biomarkerKey: value.biomarkerKey }))
+    );
+
+    const preferences = await this.getPreferences();
+    const refiledPreferences = preferences && refileMisfiledPreferences(preferences);
+    if (preferences && refiledPreferences !== preferences) {
+      await this.updatePreferences(() => ({ unitPreferences: refiledPreferences!.unitPreferences }));
+    }
+
+    if (settings) {
+      await this.updateSettings({
+        completedMigrations: [...(settings.completedMigrations ?? []), REFILE_MIGRATION],
+      });
+    }
+    return refiled.length;
   }
 
   // ============ Lab Results ============

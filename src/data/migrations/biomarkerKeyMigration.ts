@@ -6,7 +6,11 @@
  * are pure and idempotent.
  */
 
-import { matchBiomarkerName, unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import {
+  getBiomarkerByKey,
+  matchBiomarkerName,
+  unknownBiomarkerKey,
+} from '@data/biomarkers/dictionary';
 import { LEGACY_UNKNOWN_PREFIX, legacyIdToKey } from './legacyBiomarkerIds';
 
 export interface LegacyKeyed {
@@ -145,3 +149,64 @@ export function remapPreferenceMaps<T extends BiomarkerKeyedPreferences>(
 ): T {
   return mapPreferenceKeys(prefs, (key) => mapping.get(key) ?? key);
 }
+
+/**
+ * Values filed under the wrong biomarker before the dictionary told them
+ * apart: urea under Blood Urea Nitrogen, whose alias it was (urea is the
+ * whole molecule, a different measurement), and urine red cell counts under
+ * Urine Blood, which then held the dipstick haemoglobin too. Each moves to
+ * the entry it is: urea by the name it was reported under, a red cell
+ * count by its unit.
+ */
+const UREA_KEY = 'urea';
+const BUN_KEY = 'blood-urea-nitrogen';
+const URINE_BLOOD_KEY = 'urine-blood';
+const URINE_RED_CELLS_KEY = 'urine-red-blood-cells';
+
+/** Whether a biomarker's dictionary entry lists this unit */
+function listsUnit(key: string, unit: string): boolean {
+  const definition = getBiomarkerByKey(key);
+  return (
+    definition !== undefined &&
+    [definition.canonicalUnit, ...definition.alternativeUnits].some((u) => sameUnit(u, unit))
+  );
+}
+
+/** A red cell count's unit, which the dipstick haemoglobin is never in */
+function isRedCellCountUnit(unit: string): boolean {
+  return listsUnit(URINE_RED_CELLS_KEY, unit) && !listsUnit(URINE_BLOOD_KEY, unit);
+}
+
+export function refileMisfiledValue<T extends ReconcilableValue>(value: T): T {
+  if (
+    value.biomarkerKey === BUN_KEY &&
+    value.rawText !== undefined &&
+    matchBiomarkerName(value.rawText)?.key === UREA_KEY
+  ) {
+    return { ...value, biomarkerKey: UREA_KEY };
+  }
+  if (value.biomarkerKey === URINE_BLOOD_KEY && isRedCellCountUnit(value.unit ?? '')) {
+    return { ...value, biomarkerKey: URINE_RED_CELLS_KEY };
+  }
+  return value;
+}
+
+/**
+ * Preferences filed under the wrong biomarker: a preferred red cell count
+ * unit moves from Urine Blood to Urine Red Blood Cells (unless one is set
+ * there). Other preferences stay: a target or acknowledgement cannot tell
+ * which of the two tests it was set for.
+ */
+export function refileMisfiledPreferences<T extends { unitPreferences?: Record<string, string> }>(
+  prefs: T
+): T {
+  const units = prefs.unitPreferences;
+  const unit = units?.[URINE_BLOOD_KEY];
+  if (!units || unit === undefined || !isRedCellCountUnit(unit) || URINE_RED_CELLS_KEY in units) {
+    return prefs;
+  }
+  const refiled: Record<string, string> = { ...units, [URINE_RED_CELLS_KEY]: unit };
+  delete refiled[URINE_BLOOD_KEY];
+  return { ...prefs, unitPreferences: refiled };
+}
+

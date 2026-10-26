@@ -10,6 +10,8 @@ import {
   migratePreferenceMaps,
   migrateTestValueRecord,
   reconcileTestValueKey,
+  refileMisfiledPreferences,
+  refileMisfiledValue,
   remapBiomarkerKey,
   remapPreferenceMaps,
 } from '@data/migrations/biomarkerKeyMigration';
@@ -163,6 +165,19 @@ export function migrateBackupData<T extends BackupData>(data: T): T {
       ),
       userPreferences,
       schemaVersion: 2,
+    };
+  }
+
+  if (migrated.schemaVersion < 3) {
+    // Urea was filed as blood urea nitrogen, and urine red cell counts as
+    // urine blood, before each had its own entry
+    migrated = {
+      ...migrated,
+      testValues: migrated.testValues.map(refileMisfiledValue),
+      userPreferences: migrated.userPreferences
+        ? refileMisfiledPreferences(migrated.userPreferences)
+        : migrated.userPreferences,
+      schemaVersion: 3,
     };
   }
 

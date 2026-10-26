@@ -101,3 +101,32 @@ export async function storeReadableAsEarlierVersion(
     glucose
   );
 }
+
+/**
+ * Given an earlier version stored this test value: add it unsealed, as
+ * earlier versions stored values (readable but for the name, left out here)
+ */
+export async function storeTestValueAsEarlierVersion(
+  page: Page,
+  value: { labResultId: number; biomarkerKey: string; value: number; unit: string }
+): Promise<void> {
+  await page.evaluate(
+    (value) =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('HemoIO');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          const transaction = database.transaction('testValues', 'readwrite');
+          const at = new Date('2024-02-20T14:30:00.000Z');
+          transaction.objectStore('testValues').add({ ...value, createdAt: at, updatedAt: at });
+          transaction.oncomplete = () => {
+            database.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+    value
+  );
+}
