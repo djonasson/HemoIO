@@ -53,11 +53,13 @@ Feature: Authentication
     Given I have imported lab results, including a biomarker that is not in the dictionary
     And I have set a personal target and a preferred unit, acknowledged an alert, and added a tagged note on a biomarker
     When someone reads the app's stored data without my password
-    Then they should not find any biomarker's name or key
+    Then they should not find any biomarker's name or key, value, unit or reference range
+    And they should not find any lab's name or any date
     And they should not find my personal targets, preferred units, acknowledged alerts or note tags
+    And they should find only record IDs and the links between records
 
   Scenario: Data stored before this protection is protected at the next unlock
-    Given biomarker keys, preferences and note tags were stored readable by an earlier version
+    Given lab data, preferences and note tags were stored partly readable by an earlier version
     When I unlock the application
     Then they should be stored encrypted
     And my lab results, preferences and notes should be unchanged

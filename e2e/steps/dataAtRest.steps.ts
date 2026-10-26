@@ -4,28 +4,31 @@
 
 import type { Page } from '@playwright/test';
 
+/** Every IndexedDB record, by object store */
+type StoredRows = Record<string, Record<string, unknown>[]>;
+
 /**
  * When someone reads the app's stored data without my password: every
- * IndexedDB record, as JSON
+ * IndexedDB record, by object store
  */
-export async function readStoredData(page: Page): Promise<string> {
+export async function readStoredRows(page: Page): Promise<StoredRows> {
   return page.evaluate(
     () =>
-      new Promise<string>((resolve, reject) => {
+      new Promise<StoredRows>((resolve, reject) => {
         const open = indexedDB.open('HemoIO');
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const database = open.result;
           const names = [...database.objectStoreNames];
           const transaction = database.transaction(names, 'readonly');
-          const rows: unknown[] = [];
+          const rows: StoredRows = {};
           for (const name of names) {
             const request = transaction.objectStore(name).getAll();
-            request.onsuccess = () => rows.push(...request.result);
+            request.onsuccess = () => (rows[name] = request.result);
           }
           transaction.oncomplete = () => {
             database.close();
-            resolve(JSON.stringify(rows));
+            resolve(rows);
           };
           transaction.onerror = () => reject(transaction.error);
         };
@@ -33,49 +36,55 @@ export async function readStoredData(page: Page): Promise<string> {
   );
 }
 
+/** The stored data as one string, to search for anything readable */
+export async function readStoredData(page: Page): Promise<string> {
+  return JSON.stringify(await readStoredRows(page));
+}
+
+/** The field names stored in each object store */
+export async function storedFieldNames(page: Page): Promise<Record<string, string[]>> {
+  const rows = await readStoredRows(page);
+  return Object.fromEntries(
+    Object.entries(rows).map(([name, records]) => [
+      name,
+      [...new Set(records.flatMap((record) => Object.keys(record)))].sort(),
+    ])
+  );
+}
+
 /**
- * Given biomarker keys, preferences and note tags were stored readable by an
- * earlier version: rewrite the stored glucose value, the note and the
- * preferences the way earlier versions stored them
+ * Given lab data and preferences were stored readable by an earlier version:
+ * add a glucose value to a lab result, and replace the preferences, in the
+ * form earlier versions stored them
  */
 export async function storeReadableAsEarlierVersion(
   page: Page,
-  glucoseValue: number,
-  tags: string[]
+  glucose: { labResultId: number; value: number }
 ): Promise<void> {
   await page.evaluate(
-    ({ glucoseValue, tags }) =>
+    (glucose) =>
       new Promise<void>((resolve, reject) => {
         const open = indexedDB.open('HemoIO');
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
           const database = open.result;
-          const transaction = database.transaction(
-            ['testValues', 'userNotes', 'userPreferences'],
-            'readwrite'
-          );
-          const rewrite = (name: string, change: (row: Record<string, unknown>) => boolean) => {
-            const store = transaction.objectStore(name);
-            const request = store.getAll();
-            request.onsuccess = () => {
-              for (const row of request.result) if (change(row)) store.put(row);
-            };
-          };
-          rewrite('testValues', (row) => {
-            if (row.value !== glucoseValue) return false;
-            row.biomarkerKey = 'glucose';
-            delete row.encryptedBiomarkerKey;
-            return true;
+          const transaction = database.transaction(['testValues', 'userPreferences'], 'readwrite');
+          const at = new Date('2024-02-20T14:30:00.000Z');
+          transaction.objectStore('testValues').add({
+            labResultId: glucose.labResultId,
+            biomarkerKey: 'glucose',
+            value: glucose.value,
+            unit: 'mg/dL',
+            createdAt: at,
+            updatedAt: at,
           });
-          rewrite('userNotes', (row) => {
-            row.biomarkerKey = 'glucose';
-            delete row.encryptedBiomarkerKey;
-            row.tags = tags;
-            return true;
-          });
-          rewrite('userPreferences', (row) => {
-            row.personalTargets = { glucose: { low: 70, high: 90 } };
-            return true;
+          const preferences = transaction.objectStore('userPreferences');
+          preferences.clear();
+          preferences.add({
+            unitPreferences: {},
+            personalTargets: { glucose: { low: 70, high: 90 } },
+            theme: 'system',
+            dateFormat: 'MM/DD/YYYY',
           });
           transaction.oncomplete = () => {
             database.close();
@@ -84,6 +93,6 @@ export async function storeReadableAsEarlierVersion(
           transaction.onerror = () => reject(transaction.error);
         };
       }),
-    { glucoseValue, tags }
+    glucose
   );
 }

@@ -277,7 +277,7 @@ None. Any E2E failure is a regression.
 - Done: `npm audit` reports 0 vulnerabilities (lockfile-only update).
 - Done: `simplify`, `security-review` (no findings) and `code-review`. Its findings and their fixes are in the git-ignored ledger `.superpowers/sdd/pre-merge/progress.md`; the commits say what each fixed.
 - Done (user's decision): OCR files are cached on first use instead of precached.
-- Done (user's decision): every biomarker key, the biomarker-keyed preferences and note tags are stored encrypted, so the stored data does not show which tests were done. Data stored readable is encrypted at the next unlock.
+- Done (user's decision): lab data is stored sealed, with only IDs and links readable. Biomarker keys, values, units, ranges, dates, lab names, tags and preferences are encrypted, so the stored data does not show which tests were done, when, or with what results. Records stored partly readable are sealed at the next unlock.
 - Pass every gate above, with the full E2E suite green.
 - Merge `fix/ai-model-selection` first: this branch is built on it.
 

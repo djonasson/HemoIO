@@ -171,14 +171,15 @@ High-level entity relationships:
 All user data is stored in IndexedDB via Dexie.js:
 
 ```typescript
-// Simplified schema
+// Current schema: only IDs and links are indexed, the rest is encrypted
 const db = new Dexie('HemoIO');
-db.version(1).stores({
-  labResults: '++id, date, labName',
-  testValues: '++id, labResultId, biomarkerId, date',
+db.version(5).stores({
+  labResults: '++id',
+  testValues: '++id, labResultId',
   biomarkers: '++id, name, category',
-  userPreferences: 'id',
-  settings: 'id'
+  userPreferences: '++id',
+  settings: '++id',
+  userNotes: '++id, labResultId, testValueId',
 });
 ```
 
@@ -190,15 +191,13 @@ Data is encrypted at rest using the Web Crypto API:
 - AES-GCM for symmetric encryption
 - Encryption happens at the data layer before storage
 - Decryption requires authentication each session
-- Encrypted fields: lab names and notes, test names (`rawText`), biomarker
-  keys, note content and tags, the biomarker-keyed preferences (preferred
-  units, personal targets, acknowledged alerts) and the AI API key. Biomarker
-  keys are encrypted so the stored data does not show which tests were done;
-  they and note tags are therefore not indexed, and lookups by them filter
-  decrypted records.
-- Stored readable: IDs, record links, dates (indexed), theme and date format,
-  and each value with its unit, reference range and confidence. A unit or
-  range can hint at the kind of test, but not name it.
+- Lab data is stored sealed: each lab result, test value, note and the
+  preferences record keeps only its ID and the IDs it links to readable
+  (which the indexes need); every other field is one AES-GCM encrypted JSON
+  blob. The stored data does not show which tests were done, when, or with
+  what results. Dates and biomarker keys are therefore not indexed: lookups
+  and sorting by them happen on decrypted records.
+- Settings are device configuration: only the AI API key is encrypted.
 
 ### Storage Provider Abstraction
 

@@ -282,4 +282,245 @@ describe('EncryptedDb: biomarker data at rest', () => {
       expect(await db.getPreferences()).toEqual(expect.objectContaining(PREFERENCES));
     });
   });
+
+  describe('everything but IDs and links', () => {
+    /** The fields of each stored record, which someone without the password sees */
+    async function storedFields(database: HemoIODatabase): Promise<Record<string, string[]>> {
+      const fields: Record<string, string[]> = {};
+      for (const table of database.tables) {
+        if (table.name === 'settings') continue;
+        const rows = (await table.toArray()) as Record<string, unknown>[];
+        fields[table.name] = [
+          ...new Set(rows.flatMap((row) => Object.keys(row).filter((k) => row[k] !== undefined))),
+        ].sort();
+      }
+      return fields;
+    }
+
+    async function addEverything(db: EncryptedDb): Promise<{ labResultId: number; valueId: number; noteId: number }> {
+      const labResultId = await db.addLabResult({
+        date: new Date('2024-03-01T12:00:00Z'),
+        labName: 'Quest',
+        notes: 'fasting',
+        createdAt: now,
+        updatedAt: now,
+      });
+      const [valueId] = await db.addTestValues([
+        {
+          labResultId,
+          biomarkerKey: 'hba1c',
+          value: 48,
+          unit: 'mmol/mol',
+          referenceRangeLow: 20,
+          referenceRangeHigh: 42,
+          method: 'HPLC',
+          confidence: 0.9,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+      const noteId = await db.addNote({
+        labResultId,
+        testValueId: valueId,
+        content: 'c',
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.savePreferences(PREFERENCES);
+      return { labResultId, valueId, noteId };
+    }
+
+    it('stores only IDs and links readable', async () => {
+      const { db, database } = await openDb();
+      await addEverything(db);
+
+      expect(await storedFields(database)).toEqual({
+        biomarkers: [],
+        labResults: ['encrypted', 'id'],
+        testValues: ['encrypted', 'id', 'labResultId'],
+        userNotes: ['encrypted', 'id', 'labResultId', 'testValueId'],
+        userPreferences: ['encrypted', 'id'],
+      });
+      const raw = await stored(database);
+      for (const text of ['mmol/mol', '2024-03-01', '2024-01-15', 'HPLC', 'Quest', '48']) {
+        expect(raw).not.toContain(text);
+      }
+    });
+
+    it('reads back every field with its type', async () => {
+      const { db } = await openDb();
+      const { labResultId, valueId, noteId } = await addEverything(db);
+
+      expect(await db.getLabResult(labResultId)).toEqual({
+        id: labResultId,
+        date: new Date('2024-03-01T12:00:00Z'),
+        labName: 'Quest',
+        notes: 'fasting',
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect(await db.getTestValue(valueId)).toEqual({
+        id: valueId,
+        labResultId,
+        biomarkerKey: 'hba1c',
+        value: 48,
+        unit: 'mmol/mol',
+        referenceRangeLow: 20,
+        referenceRangeHigh: 42,
+        method: 'HPLC',
+        confidence: 0.9,
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect(await db.getNote(noteId)).toEqual({
+        id: noteId,
+        labResultId,
+        testValueId: valueId,
+        content: 'c',
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      expect(await db.getPreferences()).toEqual(expect.objectContaining(PREFERENCES));
+    });
+
+    it('keeps qualitative values as they were', async () => {
+      const { db } = await openDb();
+      const [text, flag] = await db.addTestValues(
+        ['positive', true].map((value) => ({
+          labResultId: 1, biomarkerKey: 'k', value, unit: '', createdAt: now, updatedAt: now,
+        }))
+      );
+
+      expect((await db.getTestValue(text))?.value).toBe('positive');
+      expect((await db.getTestValue(flag))?.value).toBe(true);
+    });
+
+    it('changes only the fields an update gives', async () => {
+      const { db } = await openDb();
+      const { labResultId, valueId, noteId } = await addEverything(db);
+      const later = new Date('2024-05-01T00:00:00Z');
+
+      await db.updateLabResult(labResultId, { labName: 'LabCorp', updatedAt: later });
+      await db.updateTestValue(valueId, { value: 50 });
+      await db.updateNote(noteId, { content: 'edited', updatedAt: later });
+
+      expect(await db.getLabResult(labResultId)).toMatchObject({
+        labName: 'LabCorp', notes: 'fasting', date: new Date('2024-03-01T12:00:00Z'), updatedAt: later,
+      });
+      expect(await db.getTestValue(valueId)).toMatchObject({ value: 50, unit: 'mmol/mol', biomarkerKey: 'hba1c' });
+      expect(await db.getNote(noteId)).toMatchObject({ content: 'edited', createdAt: now, updatedAt: later });
+    });
+
+    it('removes a field an update sets to undefined', async () => {
+      const { db } = await openDb();
+      const { labResultId } = await addEverything(db);
+
+      await db.updateLabResult(labResultId, { notes: undefined });
+
+      expect(await db.getLabResult(labResultId)).not.toHaveProperty('notes');
+    });
+
+    it('lists lab results newest first and finds them by date range', async () => {
+      const { db } = await openDb();
+      const add = (day: string) =>
+        db.addLabResult({ date: new Date(`${day}T12:00:00Z`), labName: day, createdAt: now, updatedAt: now });
+      await add('2024-02-01');
+      await add('2024-04-01');
+      await add('2024-03-01');
+
+      expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual([
+        '2024-04-01',
+        '2024-03-01',
+        '2024-02-01',
+      ]);
+      const inRange = await db.getLabResultsByDateRange(
+        new Date('2024-02-15T00:00:00Z'),
+        new Date('2024-04-01T12:00:00Z')
+      );
+      // As the date index did: the start is included, the end is not
+      expect(inRange.map((r) => r.labName)).toEqual(['2024-03-01']);
+    });
+
+    it('lists notes newest first', async () => {
+      const { db } = await openDb();
+      for (const day of ['2024-01-02', '2024-01-03', '2024-01-01']) {
+        const at = new Date(`${day}T00:00:00Z`);
+        await db.addNote({ content: day, tags: [], createdAt: at, updatedAt: at });
+      }
+
+      expect((await db.getAllNotes()).map((n) => n.content)).toEqual([
+        '2024-01-03',
+        '2024-01-02',
+        '2024-01-01',
+      ]);
+    });
+
+    it('no longer indexes dates or lab names', async () => {
+      const { database } = await openDb();
+      await database.open();
+
+      expect(database.labResults.schema.indexes).toEqual([]);
+      expect(database.userNotes.schema.indexes.map((index) => index.name).sort()).toEqual([
+        'labResultId',
+        'testValueId',
+      ]);
+    });
+
+    describe('records as earlier versions stored them', () => {
+      // Field by field: the text fields encrypted, everything else readable
+      async function seedEarlierVersion(database: HemoIODatabase, key: CryptoKey) {
+        const labResultId = (await database.labResults.add({
+          date: new Date('2024-03-01T12:00:00Z'),
+          labName: await encryptString('Quest', key),
+          createdAt: now,
+          updatedAt: now,
+        })) as number;
+        const valueId = (await database.testValues.add({
+          labResultId,
+          biomarkerKey: 'hba1c',
+          value: 48,
+          unit: 'mmol/mol',
+          rawText: await encryptString('HbA1c', key),
+          createdAt: now,
+          updatedAt: now,
+        })) as number;
+        const noteId = (await database.userNotes.add({
+          labResultId,
+          content: await encryptString('c', key),
+          tags: ['diabetes'],
+          createdAt: now,
+          updatedAt: now,
+        })) as number;
+        return { labResultId, valueId, noteId };
+      }
+
+      it('are read and updated correctly', async () => {
+        const { db, database, key } = await openDb();
+        const { labResultId, valueId, noteId } = await seedEarlierVersion(database, key);
+
+        await db.updateTestValue(valueId, { value: 50 });
+
+        expect(await db.getLabResult(labResultId)).toMatchObject({ labName: 'Quest', date: new Date('2024-03-01T12:00:00Z') });
+        expect(await db.getTestValue(valueId)).toMatchObject({ value: 50, unit: 'mmol/mol', rawText: 'HbA1c' });
+        expect(await db.getNote(noteId)).toMatchObject({ content: 'c', tags: ['diabetes'] });
+      });
+
+      it('are encrypted whole by the migration', async () => {
+        const { db, database, key } = await openDb();
+        const { labResultId, valueId } = await seedEarlierVersion(database, key);
+
+        await db.encryptReadableFields();
+
+        const fields = await storedFields(database);
+        expect(fields.labResults).toEqual(['encrypted', 'id']);
+        expect(fields.testValues).toEqual(['encrypted', 'id', 'labResultId']);
+        expect(fields.userNotes).toEqual(['encrypted', 'id', 'labResultId']);
+        expect(await db.getLabResult(labResultId)).toMatchObject({ labName: 'Quest' });
+        expect(await db.getTestValue(valueId)).toMatchObject({ value: 48, rawText: 'HbA1c', biomarkerKey: 'hba1c' });
+      });
+    });
+  });
 });
+

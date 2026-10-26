@@ -1,7 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
-import { readStoredData, storeReadableAsEarlierVersion } from './steps/dataAtRest.steps';
+import {
+  readStoredData,
+  storeReadableAsEarlierVersion,
+  storedFieldNames,
+} from './steps/dataAtRest.steps';
 import { noteSeed, viewTrendsFor } from './steps/userNotes.steps';
 
 // Helper to set up a user with password
@@ -201,7 +205,6 @@ test.describe('Authentication', () => {
 test.describe('Data at rest', () => {
   // Restored from a schema version 1 backup: 22 is Glucose, 10042 an unknown
   // biomarker's legacy hash ID
-  const GLUCOSE_VALUE = 125;
   const backup = {
     testValues: [
       ...SEED_TEST_VALUES,
@@ -219,7 +222,14 @@ test.describe('Data at rest', () => {
       dateFormat: 'MM/DD/YYYY',
     },
   };
-  const READABLE = /glucose|hemoglobin|zorblatin|diabetes|mmol/i;
+  // Biomarker names and keys, units, lab names, tags and dates
+  const READABLE = /glucose|hemoglobin|zorblatin|diabetes|mmol|mg\/dL|U\/L|Quest|LabCorp|2024-/i;
+  const SEALED = {
+    labResults: ['encrypted', 'id'],
+    testValues: ['encrypted', 'id', 'labResultId'],
+    userNotes: ['encrypted', 'id'],
+    userPreferences: ['encrypted', 'id'],
+  };
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -227,26 +237,25 @@ test.describe('Data at rest', () => {
     await seedLabData(page, backup);
   });
 
-  test('stores no biomarker, target, unit, acknowledgement or tag readable', async ({ page }) => {
+  test('stores nothing about the tests readable, only IDs and links', async ({ page }) => {
     // Scenario: Which tests were done cannot be read without the password
-    const stored = await readStoredData(page);
-
-    expect(stored).toContain('encryptedBiomarkerKey');
-    expect(stored).not.toMatch(READABLE);
-    expect(stored).not.toContain('2024-01-15T10:00:00.000Z"}');
+    expect(await storedFieldNames(page)).toMatchObject(SEALED);
+    expect(await readStoredData(page)).not.toMatch(READABLE);
   });
 
   test('encrypts data an earlier version stored readable at the next unlock', async ({ page }) => {
     // Scenario: Data stored before this protection is protected at the next unlock
-    await storeReadableAsEarlierVersion(page, GLUCOSE_VALUE, ['diabetes']);
+    await storeReadableAsEarlierVersion(page, { labResultId: 2, value: 131 });
     expect(await readStoredData(page)).toMatch(READABLE);
 
     await page.reload();
     await unlockApp(page);
 
+    expect(await storedFieldNames(page)).toMatchObject(SEALED);
     expect(await readStoredData(page)).not.toMatch(READABLE);
-    // The data is unchanged: the note is still on Glucose, with its tag
+    // The data is unchanged: both glucose values, and the note with its tag
     const main = await viewTrendsFor(page, 'Glucose');
+    await expect(main.getByText('Showing 2 data points')).toBeVisible();
     await expect(main.getByText('Fasting sample')).toBeVisible();
     await expect(main.getByText('diabetes')).toBeVisible();
   });

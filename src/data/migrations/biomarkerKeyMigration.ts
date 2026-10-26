@@ -49,7 +49,8 @@ function mapPreferenceKeys<T extends BiomarkerKeyedPreferences>(
   const result = { ...prefs };
   for (const field of BIOMARKER_KEYED_PREFERENCES) {
     const map = prefs[field];
-    if (map) {
+    // A string is a map encrypted at rest, which only the encrypted layer reads
+    if (map && typeof map === 'object') {
       result[field] = Object.fromEntries(
         Object.entries(map).map(([key, value]) => [newKey(key), value])
       ) as T[typeof field];

@@ -153,4 +153,10 @@ describe('remapBiomarkerKey', () => {
       remapPreferenceMaps({ acknowledgedAlerts: { 'unknown:legacy-1': acknowledged } }, mapping)
     ).toEqual({ acknowledgedAlerts: { 'unknown:zorblatin': acknowledged } });
   });
+
+  it('leaves a map stored encrypted as it is', () => {
+    const prefs = { personalTargets: 'AbCd==' } as unknown as Parameters<typeof remapPreferenceMaps>[0];
+
+    expect(remapPreferenceMaps(prefs, mapping)).toEqual({ personalTargets: 'AbCd==' });
+  });
 });

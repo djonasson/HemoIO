@@ -83,6 +83,19 @@ export class HemoIODatabase extends Dexie {
       settings: '++id',
       userNotes: '++id, labResultId, testValueId, createdAt',
     });
+
+    // Version 5: records are sealed (everything but IDs and links encrypted),
+    // so lab dates and names, and note dates, are no longer indexed. Records
+    // stored with readable fields are sealed after unlock
+    // (EncryptedDb.encryptReadableFields): this upgrade has no key.
+    this.version(5).stores({
+      labResults: '++id',
+      testValues: '++id, labResultId',
+      biomarkers: '++id, name, category',
+      userPreferences: '++id',
+      settings: '++id',
+      userNotes: '++id, labResultId, testValueId',
+    });
   }
 }
 
