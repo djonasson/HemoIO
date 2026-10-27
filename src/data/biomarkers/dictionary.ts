@@ -921,7 +921,7 @@ const glycemicBiomarkers: BiomarkerEntry[] = [
     specimenType: 'whole-blood',
     loincCode: '4548-4',
     canonicalUnit: '%',
-    alternativeUnits: ['mmol/mol', 'mmol/molHb'],
+    alternativeUnits: ['mmol/mol', 'mmol/molHb', 'mmol/mol Hb'],
     defaultReferenceRange: { low: 4.0, high: 5.6, unit: '%' },
     description: 'Average blood sugar over past 2-3 months.',
     highIndication: 'May indicate diabetes or prediabetes',

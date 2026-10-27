@@ -114,7 +114,7 @@ Feature: Unit Conversion
     And the values should be merged without conflict
 
   Scenario: Merge the values an Italian report gives in two units
-    Given a lab report gives urea as 3.06 mmol/L and 18 mg/dL, uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, and urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L
+    Given a lab report gives urea as 3.06 mmol/L and 18 mg/dL, uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L, and HbA1c as 42 mmol/mol Hb and 6.0 %
     When the values are analyzed
     Then each should be recognized as one measurement in two units
     And only one value of each should be kept

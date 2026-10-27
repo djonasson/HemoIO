@@ -156,6 +156,15 @@ describe('analyzeLabReport: values reported in two units', () => {
     ).toEqual(['urine-wbc: 12 cell/µL', 'urine-epithelial-cells: 4 cell/μL']);
   });
 
+  it('takes HbA1c in mmol/mol Hb, as Italian reports print the IFCC unit', async () => {
+    expect(
+      await kept([
+        extracted('Er-EMOGLOBINA GLICATA', 42, 'mmol/mol Hb'),
+        extracted('Er-EMOGLOBINA GLICATA', 6.0, '%'),
+      ])
+    ).toEqual(['hemoglobin-a1c: 6 %']);
+  });
+
   it('keeps a percentage and an absolute count of the same cells apart', async () => {
     expect(
       await kept([

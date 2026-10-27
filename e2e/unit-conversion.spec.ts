@@ -515,12 +515,14 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name: 'Reticolociti', value: 1.67, unit: '%', confidence: 0.95 },
       { name: 'Urea/L (urine)', value: 117, unit: 'mmol/L', confidence: 0.95 },
       { name: 'Urea/L (urine)', value: 7, unit: 'g/L', confidence: 0.95 },
+      { name: 'Er-EMOGLOBINA GLICATA', value: 42, unit: 'mmol/mol Hb', confidence: 0.95 },
+      { name: 'Er-EMOGLOBINA GLICATA', value: 6.0, unit: '%', confidence: 0.95 },
     ]);
 
     // One value of each, in the standard unit; urea is not blood urea nitrogen
     const rows = reviewRows(page);
-    await expect(rows).toHaveCount(6);
-    for (const value of ['18', '4.15', '214', '32.6', '1.67', '7']) {
+    await expect(rows).toHaveCount(7);
+    for (const value of ['18', '4.15', '214', '32.6', '1.67', '7', '6']) {
       await expect(rows.getByRole('cell', { name: value, exact: true })).toBeVisible();
     }
     await expect(page.getByText(/Blood Urea Nitrogen/)).toHaveCount(0);

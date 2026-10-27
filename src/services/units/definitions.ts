@@ -1273,6 +1273,9 @@ const UNIT_NORMALIZATIONS: Record<string, string> = {
   // ASCII 'u' variants
   'umol/l': 'µmol/L',
   'umol/L': 'µmol/L',
+  // HbA1c's IFCC unit, written per mol of haemoglobin
+  'mmol/mol hb': 'mmol/mol',
+  'mmol/molhb': 'mmol/mol',
   // Micro sign (U+00B5) variants
   'µmol/l': 'µmol/L',
   // Greek mu (U+03BC) variants - common in European lab reports
