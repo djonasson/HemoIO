@@ -6,6 +6,7 @@
  */
 import { canConvert } from './conversion';
 import { convertMeasurement } from './convertMeasurement';
+import { unitsMatch } from './definitions';
 
 /** What a biomarker definition needs to offer units */
 export interface UnitSource {
@@ -30,7 +31,8 @@ export function preferredUnitFor(
   preferred: string | undefined
 ): string | undefined {
   if (!definition || !preferred) return undefined;
-  return preferredUnitOptions(definition).includes(preferred) ? preferred : undefined;
+  // In the offered spelling: a preference stored as "umol/L" is µmol/L
+  return preferredUnitOptions(definition).find((unit) => unitsMatch(unit, preferred));
 }
 
 /**

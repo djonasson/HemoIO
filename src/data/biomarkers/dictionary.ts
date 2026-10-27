@@ -583,7 +583,7 @@ const metabolicBiomarkers: BiomarkerEntry[] = [
     specimenType: 'serum',
     loincCode: '33914-3',
     canonicalUnit: 'mL/min/1.73m²',
-    alternativeUnits: ['mL/min/1,73m²', 'mL/min/1,73m^2'],
+    alternativeUnits: [],
     defaultReferenceRange: { low: 90, high: 120, unit: 'mL/min/1.73m²' },
     description: 'Estimate of how well kidneys filter waste.',
     highIndication: 'Generally not concerning',
@@ -693,7 +693,7 @@ const thyroidBiomarkers: BiomarkerEntry[] = [
     specimenType: 'serum',
     loincCode: '3016-3',
     canonicalUnit: 'mIU/L',
-    alternativeUnits: ['µIU/mL', 'mU/L', 'μUI/mL', 'mUI/L'],
+    alternativeUnits: ['µIU/mL'],
     defaultReferenceRange: { low: 0.4, high: 4.0, unit: 'mIU/L' },
     description: 'Pituitary hormone that controls thyroid function.',
     highIndication: 'May indicate hypothyroidism',
@@ -763,7 +763,7 @@ const thyroidBiomarkers: BiomarkerEntry[] = [
     specimenType: 'serum',
     loincCode: '8099-4',
     canonicalUnit: 'IU/mL',
-    alternativeUnits: ['UI/mL', 'U/mL', 'kIU/L'],
+    alternativeUnits: ['U/mL', 'kIU/L'],
     defaultReferenceRange: { low: 0, high: 35, unit: 'IU/mL' },
     description: 'Antibodies against thyroid peroxidase enzyme, marker for autoimmune thyroid disease.',
     highIndication: 'May indicate Hashimoto thyroiditis or Graves disease',
@@ -1036,7 +1036,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
     specimenType: 'urine',
     loincCode: '13945-1',
     canonicalUnit: 'RBC/HPF',
-    alternativeUnits: ['/HPF', 'per campo', 'eritrociti per campo', '/µL', '/uL', 'cells/µL', 'cell/µL'],
+    alternativeUnits: ['/HPF', 'per campo', 'eritrociti per campo', '/µL', 'cells/µL'],
     description: 'Red blood cells counted in urine, by microscopy or flow cytometry.',
     highIndication: 'May indicate UTI, kidney stones, or kidney disease',
     lowIndication: 'Normal finding',
@@ -1049,7 +1049,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
     specimenType: 'urine',
     loincCode: '5821-4',
     canonicalUnit: 'WBC/HPF',
-    alternativeUnits: ['/µL', '/uL', 'cells/µL', 'cell/µL'],
+    alternativeUnits: ['/µL', 'cells/µL'],
     description: 'White blood cells in urine, indicates infection.',
     highIndication: 'May indicate urinary tract infection',
     lowIndication: 'Normal finding',
@@ -1083,12 +1083,12 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'microalbumin',
     name: 'Microalbumin',
-    aliases: ['Urine Microalbumin', 'MAU', 'Albumin/Creatinine Ratio', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
+    aliases: ['Urine Microalbumin', 'MAU', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '14957-5',
     canonicalUnit: 'mg/L',
-    alternativeUnits: ['µg/min', 'mg/g creatinine', 'mg/g creat.'],
+    alternativeUnits: ['µg/min'],
     defaultReferenceRange: { low: 0, high: 30, unit: 'mg/L' },
     description: 'Small amounts of albumin in urine, early kidney damage marker.',
     highIndication: 'May indicate early diabetic nephropathy',
@@ -1102,7 +1102,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
     specimenType: 'urine',
     loincCode: '5787-7',
     canonicalUnit: '/HPF',
-    alternativeUnits: ['/µL', '/uL', 'cells/µL', 'cell/µL'],
+    alternativeUnits: ['/µL', 'cells/µL'],
     description: 'Cells from urinary tract lining in urine.',
     highIndication: 'May indicate contamination or urinary tract issues',
     lowIndication: 'Normal finding',
@@ -1418,7 +1418,7 @@ const fertilityBiomarkers: BiomarkerEntry[] = [
     specimenType: 'semen',
     loincCode: '3168-2',
     canonicalUnit: 'mL',
-    alternativeUnits: ['cc'],
+    alternativeUnits: [],
     defaultReferenceRange: { low: 1.5, high: 5, unit: 'mL' },
     description: 'Total volume of ejaculate.',
     highIndication: 'May indicate inflammation or infection',
@@ -1460,7 +1460,7 @@ const fertilityBiomarkers: BiomarkerEntry[] = [
     specimenType: 'semen',
     loincCode: '10617-2',
     canonicalUnit: 'million',
-    alternativeUnits: ['mil.', 'mil', '10^6'],
+    alternativeUnits: ['10^6'],
     defaultReferenceRange: { low: 39, high: 500, unit: 'million' },
     description: 'Total number of sperm in the ejaculate.',
     highIndication: 'Generally positive for fertility',
@@ -1919,18 +1919,4 @@ export function searchBiomarkers(query: string): BiomarkerDefinition[] {
 export function getCanonicalUnit(nameOrAlias: string): string | undefined {
   const biomarker = findBiomarker(nameOrAlias);
   return biomarker?.canonicalUnit;
-}
-
-/**
- * Check if a unit is valid for a biomarker
- */
-export function isValidUnit(nameOrAlias: string, unit: string): boolean {
-  const biomarker = findBiomarker(nameOrAlias);
-  if (!biomarker) return false;
-
-  const normalizedUnit = unit.toLowerCase().trim();
-  return (
-    biomarker.canonicalUnit.toLowerCase() === normalizedUnit ||
-    biomarker.alternativeUnits.some((u) => u.toLowerCase() === normalizedUnit)
-  );
 }

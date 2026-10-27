@@ -6,7 +6,8 @@ import {
   searchBiomarkers,
   type BiomarkerDefinition,
 } from '@data/biomarkers/dictionary';
-import { canConvert, normalizeUnit } from '@services/units/conversion';
+import { canConvert } from '@services/units/conversion';
+import { unitsMatch } from '@services/units/definitions';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /** Dictionary names containing the text, by name first, then by alias */
@@ -49,11 +50,6 @@ export function applyBiomarkerName<T extends MatchedBiomarker>(biomarker: T, nam
   };
 }
 
-/** Units compared as written, ignoring case and how micro is spelled */
-function unitKey(unit: string): string {
-  return normalizeUnit(unit.trim().replace(/\u03bc/g, '\u00b5')).toLowerCase();
-}
-
 /**
  * Whether a value in `unit` can be saved under this biomarker: a unit the
  * dictionary lists for it, or one that converts to its standard unit
@@ -61,7 +57,7 @@ function unitKey(unit: string): string {
 export function unitFitsBiomarker(definition: BiomarkerDefinition, unit: string): boolean {
   const listed = [definition.canonicalUnit, ...definition.alternativeUnits];
   return (
-    listed.some((option) => unitKey(option) === unitKey(unit)) ||
+    listed.some((option) => unitsMatch(option, unit)) ||
     canConvert(definition.name, unit, definition.canonicalUnit)
   );
 }

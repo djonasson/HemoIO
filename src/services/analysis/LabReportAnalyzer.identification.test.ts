@@ -131,6 +131,12 @@ describe('analyzeLabReport: identifying each value', () => {
     }
   });
 
+  it('files an albumin/creatinine ratio in mg/g under the ratio, not microalbumin', async () => {
+    const [value] = (await analyze([extracted('Albumin/Creatinine Ratio', 25, 'mg/g')]))
+      .matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('albumin-creatinine-ratio');
+  });
+
   it('labels a value nothing identifies', async () => {
     const [value] = (await analyze([extracted('Zorblatin', 1, 'U/L')])).matchedBiomarkers;
     expect(value.identifiedBy).toBeUndefined();

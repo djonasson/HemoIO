@@ -15,6 +15,7 @@ export {
   UNIT_CONVERSIONS,
   findConversionDefinition,
   getConversionFactor,
+  unitsMatch,
   type UnitConversion,
   type BiomarkerConversions,
 } from './definitions';

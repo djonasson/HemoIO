@@ -205,7 +205,7 @@ const folateConversions: BiomarkerConversions = {
 /**
  * TSH conversions
  * mIU/L and µIU/mL are equivalent
- * μUI/mL is also equivalent (alternate notation)
+ * (μUI/mL, uIU/mL and mU/L are spellings of these, see UNIT_SPELLINGS)
  */
 const tshConversions: BiomarkerConversions = {
   biomarker: 'Thyroid Stimulating Hormone',
@@ -213,20 +213,6 @@ const tshConversions: BiomarkerConversions = {
   conversions: [
     { from: 'mIU/L', to: 'µIU/mL', factor: 1 },
     { from: 'µIU/mL', to: 'mIU/L', factor: 1 },
-    { from: 'mIU/L', to: 'mU/L', factor: 1 },
-    { from: 'mU/L', to: 'mIU/L', factor: 1 },
-    // μUI/mL variant (common in Italian reports)
-    { from: 'μUI/mL', to: 'mIU/L', factor: 1 },
-    { from: 'mIU/L', to: 'μUI/mL', factor: 1 },
-    { from: 'μUI/mL', to: 'µIU/mL', factor: 1 },
-    { from: 'µIU/mL', to: 'μUI/mL', factor: 1 },
-    { from: 'μUI/mL', to: 'mU/L', factor: 1 },
-    { from: 'mU/L', to: 'μUI/mL', factor: 1 },
-    // uIU/mL variant (ASCII approximation)
-    { from: 'uIU/mL', to: 'mIU/L', factor: 1 },
-    { from: 'mIU/L', to: 'uIU/mL', factor: 1 },
-    { from: 'uIU/mL', to: 'µIU/mL', factor: 1 },
-    { from: 'µIU/mL', to: 'uIU/mL', factor: 1 },
   ],
 };
 
@@ -380,12 +366,8 @@ const wbcConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
-    { from: 'K/uL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: 'K/uL', factor: 1 },
     { from: '10^3/μL', to: 'k/μL', factor: 1 },
     { from: 'k/μL', to: '10^3/μL', factor: 1 },
     // cells/μL to 10^9/L: divide by 10^6
@@ -408,12 +390,8 @@ const rbcConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^6/μL', to: '10^12/L', factor: 1 },
     { from: '10^12/L', to: '10^6/μL', factor: 1 },
-    { from: '10^6/µL', to: '10^12/L', factor: 1 },
-    { from: '10^12/L', to: '10^6/µL', factor: 1 },
     { from: 'M/μL', to: '10^12/L', factor: 1 },
     { from: '10^12/L', to: 'M/μL', factor: 1 },
-    { from: 'M/uL', to: '10^12/L', factor: 1 },
-    { from: '10^12/L', to: 'M/uL', factor: 1 },
     { from: '10^6/μL', to: 'M/μL', factor: 1 },
     { from: 'M/μL', to: '10^6/μL', factor: 1 },
   ],
@@ -430,12 +408,8 @@ const plateletConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
-    { from: 'K/uL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: 'K/uL', factor: 1 },
     { from: '10^3/μL', to: 'k/μL', factor: 1 },
     { from: 'k/μL', to: '10^3/μL', factor: 1 },
   ],
@@ -450,8 +424,6 @@ const neutrophilConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
@@ -468,8 +440,6 @@ const lymphocyteConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
@@ -486,8 +456,6 @@ const monocyteConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
@@ -504,8 +472,6 @@ const eosinophilConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
@@ -522,8 +488,6 @@ const basophilConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
     { from: 'cells/μL', to: '10^9/L', factor: 0.000001 },
@@ -540,12 +504,8 @@ const reticulocyteConversions: BiomarkerConversions = {
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
-    { from: '10^3/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
-    { from: 'K/µL', to: '10^9/L', factor: 1 },
-    { from: '10^9/L', to: 'K/µL', factor: 1 },
     // Percentage conversion - these need context of total RBC
     // Only include direct unit equivalences here
   ],
@@ -773,35 +733,12 @@ const tpoAntibodiesConversions: BiomarkerConversions = {
   biomarker: 'TPO Antibodies',
   aliases: ['Anti-TPO', 'Thyroid Peroxidase Antibodies', 'TPOAb', 'Anticorpi anti Tireoperossidasi'],
   conversions: [
-    { from: 'IU/mL', to: 'UI/mL', factor: 1 },
     { from: 'IU/mL', to: 'U/mL', factor: 1 },
     { from: 'IU/mL', to: 'kIU/L', factor: 1 },
-    { from: 'UI/mL', to: 'IU/mL', factor: 1 },
-    { from: 'UI/mL', to: 'U/mL', factor: 1 },
-    { from: 'UI/mL', to: 'kIU/L', factor: 1 },
     { from: 'U/mL', to: 'IU/mL', factor: 1 },
-    { from: 'U/mL', to: 'UI/mL', factor: 1 },
     { from: 'U/mL', to: 'kIU/L', factor: 1 },
     { from: 'kIU/L', to: 'IU/mL', factor: 1 },
-    { from: 'kIU/L', to: 'UI/mL', factor: 1 },
     { from: 'kIU/L', to: 'U/mL', factor: 1 },
-  ],
-};
-
-/**
- * eGFR conversions
- * Handle notation variants (comma vs period, superscript)
- */
-const egfrConversions: BiomarkerConversions = {
-  biomarker: 'eGFR',
-  aliases: ['Estimated GFR', 'Glomerular Filtration Rate', 'GFR', 'Filtrato Glomerulare', 'VFG'],
-  conversions: [
-    { from: 'mL/min/1.73m²', to: 'mL/min/1,73m²', factor: 1 },
-    { from: 'mL/min/1.73m²', to: 'mL/min/1,73m^2', factor: 1 },
-    { from: 'mL/min/1,73m²', to: 'mL/min/1.73m²', factor: 1 },
-    { from: 'mL/min/1,73m²', to: 'mL/min/1,73m^2', factor: 1 },
-    { from: 'mL/min/1,73m^2', to: 'mL/min/1.73m²', factor: 1 },
-    { from: 'mL/min/1,73m^2', to: 'mL/min/1,73m²', factor: 1 },
   ],
 };
 
@@ -1065,15 +1002,7 @@ const proteinCreatinineRatioConversions: BiomarkerConversions = {
   aliases: ['PCR', 'U-Proteine/Creatinina', 'Proteine/Creatinina'],
   conversions: [
     { from: 'mg/mmol', to: 'mg/g', factor: 8.84 },
-    { from: 'mg/mmolcreat.', to: 'mg/g', factor: 8.84 },
-    { from: 'mg/mmol creat.', to: 'mg/g', factor: 8.84 },
     { from: 'mg/g', to: 'mg/mmol', factor: 0.1131 },
-    { from: 'mg/gcreat.', to: 'mg/mmol', factor: 0.1131 },
-    { from: 'mg/g creat.', to: 'mg/mmol', factor: 0.1131 },
-    { from: 'mg/g creat', to: 'mg/mmol', factor: 0.1131 },
-    // Cross conversions between creat. variants
-    { from: 'mg/mmolcreat.', to: 'mg/gcreat.', factor: 8.84 },
-    { from: 'mg/gcreat.', to: 'mg/mmolcreat.', factor: 0.1131 },
   ],
 };
 
@@ -1086,10 +1015,7 @@ const albuminCreatinineRatioConversions: BiomarkerConversions = {
   aliases: ['ACR', 'UACR', 'Albumina/Creatinina', 'U-Albumina/Creatinina'],
   conversions: [
     { from: 'mg/mmol', to: 'mg/g', factor: 8.84 },
-    { from: 'mg/mmol creat.', to: 'mg/g', factor: 8.84 },
     { from: 'mg/g', to: 'mg/mmol', factor: 0.1131 },
-    { from: 'mg/g creat.', to: 'mg/mmol', factor: 0.1131 },
-    { from: 'mg/g creat', to: 'mg/mmol', factor: 0.1131 },
   ],
 };
 
@@ -1115,12 +1041,8 @@ const spermCountConversions: BiomarkerConversions = {
   biomarker: 'Total Sperm Count',
   aliases: ['Sperm Count', 'Spermatozoi totali', 'Conta spermatozoi'],
   conversions: [
-    { from: 'mil.', to: 'million', factor: 1 },
-    { from: 'million', to: 'mil.', factor: 1 },
     { from: 'M', to: 'million', factor: 1 },
     { from: 'million', to: 'M', factor: 1 },
-    { from: 'mil.', to: 'M', factor: 1 },
-    { from: 'M', to: 'mil.', factor: 1 },
   ],
 };
 
@@ -1201,7 +1123,6 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   // Thyroid antibodies
   tpoAntibodiesConversions,
   // Kidney function
-  egfrConversions,
   // Enzyme conversions
   enzymeConversions,
   // Urinalysis
@@ -1266,76 +1187,92 @@ export function findConversionDefinition(
 }
 
 /**
- * Normalize unit strings to canonical form
- * Handles common variations like ASCII 'u' vs Unicode 'µ'
+ * One spelling for units written several ways, keyed by the lowercased unit
+ * with the micro sign and single spaces (see normalizeUnitForLookup). A Map,
+ * so a unit such as "toString" is never read as an inherited name.
  */
-const UNIT_NORMALIZATIONS: Record<string, string> = {
-  // ASCII 'u' variants
-  'umol/l': 'µmol/L',
-  'umol/L': 'µmol/L',
+const UNIT_SPELLINGS = new Map<string, string>([
+  // ASCII 'u' and micro sign, and case
+  ['umol/l', 'µmol/L'],
+  ['µmol/l', 'µmol/L'],
+  ['nmol/l', 'nmol/L'],
+  ['pmol/l', 'pmol/L'],
+  ['mg/dl', 'mg/dL'],
+  ['mmol/l', 'mmol/L'],
+  ['g/dl', 'g/dL'],
+  ['g/l', 'g/L'],
+  ['ng/ml', 'ng/mL'],
+  ['pg/ml', 'pg/mL'],
+  ['ug/dl', 'µg/dL'],
+  ['µg/dl', 'µg/dL'],
+  ['ug/min', 'µg/min'],
+  ['u/l', 'U/L'],
+  ['iu/l', 'IU/L'],
+  ['meq/l', 'mEq/L'],
+  ['ml', 'mL'],
+  ['cc', 'mL'],
+  // Cell counts
+  ['/ul', '/µL'],
+  ['/µl', '/µL'],
+  ['k/ul', 'K/µL'],
+  ['k/µl', 'K/µL'],
+  ['m/ul', 'M/µL'],
+  ['m/µl', 'M/µL'],
+  ['cells/ul', 'cells/µL'],
+  ['cells/µl', 'cells/µL'],
+  ['cell/ul', 'cells/µL'],
+  ['cell/µl', 'cells/µL'],
+  ['mil', 'million'],
+  ['mil.', 'million'],
+  // International units, also as Italian reports write them (UI); mU = mIU
+  ['miu/l', 'mIU/L'],
+  ['mui/l', 'mIU/L'],
+  ['mu/l', 'mIU/L'],
+  ['uiu/ml', 'µIU/mL'],
+  ['µiu/ml', 'µIU/mL'],
+  ['uui/ml', 'µIU/mL'],
+  ['µui/ml', 'µIU/mL'],
+  ['ui/ml', 'IU/mL'],
+  ['ui/l', 'IU/L'],
   // HbA1c's IFCC unit, written per mol of haemoglobin
-  'mmol/mol hb': 'mmol/mol',
-  'mmol/molhb': 'mmol/mol',
-  // Micro sign (U+00B5) variants
-  'µmol/l': 'µmol/L',
-  // Greek mu (U+03BC) variants - common in European lab reports
-  'μmol/l': 'µmol/L',
-  'μmol/L': 'µmol/L',
-  // Other units
-  'nmol/l': 'nmol/L',
-  'pmol/l': 'pmol/L',
-  'mg/dl': 'mg/dL',
-  'mmol/l': 'mmol/L',
-  'g/dl': 'g/dL',
-  'g/l': 'g/L',
-  'ng/ml': 'ng/mL',
-  'pg/ml': 'pg/mL',
-  // µg variants
-  'ug/dl': 'µg/dL',
-  'ug/dL': 'µg/dL',
-  'µg/dl': 'µg/dL',
-  'μg/dl': 'µg/dL',
-  'μg/dL': 'µg/dL',
-  // mIU/L variants
-  'miu/l': 'mIU/L',
-  'mIU/l': 'mIU/L',
-  // µIU/mL variants
-  'uiu/ml': 'µIU/mL',
-  'µiu/ml': 'µIU/mL',
-  'μiu/ml': 'µIU/mL',
-  'μIU/mL': 'µIU/mL',
-  // Other
-  'u/l': 'U/L',
-  'iu/l': 'IU/L',
-  'meq/l': 'mEq/L',
-  'ug/min': 'µg/min',
-  'μg/min': 'µg/min',
-  // Creatinine ratio units - normalize to canonical forms
-  'mg/gcreat.': 'mg/g',
-  'mg/g creat.': 'mg/g',
-  'mg/g creat': 'mg/g',
-  'mg/mmolcreat.': 'mg/mmol',
-  'mg/mmol creat.': 'mg/mmol',
-};
+  ['mmol/mol hb', 'mmol/mol'],
+  ['mmol/molhb', 'mmol/mol'],
+  ['mmol/mol di hb', 'mmol/mol'],
+  ['mmol/mol (ifcc)', 'mmol/mol'],
+  // eGFR, with a decimal comma or ^2
+  ['ml/min/1.73m²', 'mL/min/1.73m²'],
+  ['ml/min/1,73m²', 'mL/min/1.73m²'],
+  ['ml/min/1.73m^2', 'mL/min/1.73m²'],
+  ['ml/min/1,73m^2', 'mL/min/1.73m²'],
+  ['ml/min/1.73 m²', 'mL/min/1.73m²'],
+  ['ml/min/1,73 m²', 'mL/min/1.73m²'],
+  ['ml/min/1.73 m^2', 'mL/min/1.73m²'],
+  ['ml/min/1,73 m^2', 'mL/min/1.73m²'],
+  // Creatinine ratios, per gram or millimole of creatinine
+  ['mg/gcreat', 'mg/g'],
+  ['mg/gcreat.', 'mg/g'],
+  ['mg/g creat', 'mg/g'],
+  ['mg/g creat.', 'mg/g'],
+  ['mg/g creatinine', 'mg/g'],
+  ['mg/mmolcreat.', 'mg/mmol'],
+  ['mg/mmol creat', 'mg/mmol'],
+  ['mg/mmol creat.', 'mg/mmol'],
+  ['mg/mmol creatinine', 'mg/mmol'],
+]);
 
 /**
- * Normalize Greek mu (μ, U+03BC) to micro sign (µ, U+00B5)
- * This ensures consistent handling of units from different sources
- */
-function normalizeGreekMu(unit: string): string {
-  return unit.replace(/μ/g, 'µ');
-}
-
-/**
- * A unit's standard spelling: the micro sign for Greek mu, standard case, and
- * one form for units written several ways (the one table every unit check uses)
+ * A unit's standard spelling: trimmed, single spaces, the micro sign for
+ * Greek mu, and one form for units written several ways (the one table every
+ * unit check uses)
  */
 export function normalizeUnitForLookup(unit: string): string {
-  const trimmed = unit.trim();
-  // First normalize Greek mu to micro sign
-  const normalized = normalizeGreekMu(trimmed);
-  const lowercased = normalized.toLowerCase();
-  return UNIT_NORMALIZATIONS[lowercased] ?? UNIT_NORMALIZATIONS[normalized] ?? normalized;
+  const spelled = unit.trim().replace(/\s+/g, ' ').replace(/\u03bc/g, '\u00b5');
+  return UNIT_SPELLINGS.get(spelled.toLowerCase()) ?? spelled;
+}
+
+/** Whether two units are one unit, however each is spelled */
+export function unitsMatch(a: string, b: string): boolean {
+  return normalizeUnitForLookup(a).toLowerCase() === normalizeUnitForLookup(b).toLowerCase();
 }
 
 /** A conversion between two units: converted = value × factor + offset */
@@ -1352,29 +1289,22 @@ export function getConversion(
   fromUnit: string,
   toUnit: string
 ): LinearConversion | undefined {
+  // Same unit, however spelled: no conversion needed, even for a test with none
+  if (unitsMatch(fromUnit, toUnit)) return { factor: 1, offset: 0 };
   const definition = findConversionDefinition(biomarkerName);
   if (!definition) return undefined;
 
-  // Normalize units to handle variations like umol/L vs µmol/L
-  const normalizedFrom = normalizeUnitForLookup(fromUnit);
-  const normalizedTo = normalizeUnitForLookup(toUnit);
-
-  // Same unit, no conversion needed
-  if (normalizedFrom.toLowerCase() === normalizedTo.toLowerCase()) return { factor: 1, offset: 0 };
-
-  const from = normalizedFrom.toLowerCase();
-  const to = normalizedTo.toLowerCase();
   const direct = definition.conversions.find(
-    (c) => c.from.toLowerCase() === from && c.to.toLowerCase() === to
+    (c) => unitsMatch(c.from, fromUnit) && unitsMatch(c.to, toUnit)
   );
   if (direct) return { factor: direct.factor, offset: direct.offset ?? 0 };
 
   // No direct pair (e.g. hemoglobin mmol/L → g/L): chain two known conversions
   // through a shared unit (mmol/L → g/dL → g/L)
   for (const first of definition.conversions) {
-    if (first.from.toLowerCase() !== from) continue;
+    if (!unitsMatch(first.from, fromUnit)) continue;
     const second = definition.conversions.find(
-      (c) => c.from.toLowerCase() === first.to.toLowerCase() && c.to.toLowerCase() === to
+      (c) => unitsMatch(c.from, first.to) && unitsMatch(c.to, toUnit)
     );
     if (second) {
       return {

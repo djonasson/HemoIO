@@ -54,4 +54,22 @@ describe('PreferredUnitSelect', () => {
     await userEvent.type(input, 'mmol');
     expect(screen.queryByText('Unit not supported for Glucose')).not.toBeInTheDocument();
   });
+
+  it('offers the unit typed in another spelling', async () => {
+    render(
+      <MantineProvider env="test">
+        <PreferredUnitSelect
+          biomarkerName="Creatinine"
+          units={['mg/dL', 'µmol/L']}
+          value="mg/dL"
+          onChange={vi.fn()}
+        />
+      </MantineProvider>
+    );
+    const input = screen.getByRole('textbox', { name: 'Preferred unit' });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'umol/L');
+    expect(screen.queryByText('Unit not supported for Creatinine')).not.toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'µmol/L' })).toBeInTheDocument();
+  });
 });

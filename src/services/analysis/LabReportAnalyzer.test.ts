@@ -119,6 +119,7 @@ function mockFindBiomarker(name: string) {
 
 vi.mock('../units', () => ({
   normalizeUnit: vi.fn().mockImplementation((unit: string) => unit),
+  unitsMatch: (a: string, b: string) => a.toLowerCase() === b.toLowerCase(),
   canConvert: vi.fn().mockImplementation((name: string, from: string, to: string) => {
     // Glucose can be converted between mg/dL and mmol/L
     if (name.toLowerCase() === 'glucose') {

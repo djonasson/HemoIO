@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeUnitForLookup,
+  unitsMatch,
   UNIT_CONVERSIONS,
   findConversionDefinition,
+  getConversion,
   getConversionFactor,
 } from './definitions';
 
@@ -200,5 +203,47 @@ describe('Unit Conversion Definitions', () => {
       // Product should be close to 1
       expect(ngToNmol! * nmolToNg!).toBeCloseTo(1, 2);
     });
+  });
+});
+
+describe('unit spellings', () => {
+  it('matches conversion rows written with the Greek mu', () => {
+    // Row: μUI/mL → mIU/L
+    expect(getConversion('Thyroid Stimulating Hormone', 'µUI/mL', 'mIU/L')).toBeDefined();
+    expect(getConversion('White Blood Cells', 'cells/μL', '10^9/L')).toBeDefined();
+  });
+
+  it('takes two spellings of one unit as the same unit, with or without a conversion', () => {
+    expect(getConversion('Fructosamine', 'µmol/L', 'μmol/L')).toEqual({ factor: 1, offset: 0 });
+    expect(getConversion('Zorblatin', 'mL/min/1,73m^2', 'mL/min/1.73m²')).toEqual({
+      factor: 1,
+      offset: 0,
+    });
+  });
+
+  it('reads a unit with spaces run together or around it', () => {
+    expect(normalizeUnitForLookup('  mmol/mol   Hb ')).toBe('mmol/mol');
+  });
+
+  it('never reads a unit as a name the lookup table inherits', () => {
+    expect(normalizeUnitForLookup('toString')).toBe('toString');
+    expect(normalizeUnitForLookup('constructor')).toBe('constructor');
+  });
+});
+
+describe('conversion rows', () => {
+  it('lists each conversion once, never one spelling of a unit to another', () => {
+    const repeated = UNIT_CONVERSIONS.flatMap((definition) =>
+      definition.conversions
+        .filter(
+          (row, i) =>
+            unitsMatch(row.from, row.to) ||
+            definition.conversions.findIndex(
+              (other) => unitsMatch(other.from, row.from) && unitsMatch(other.to, row.to)
+            ) !== i
+        )
+        .map((row) => `${definition.biomarker}: ${row.from} → ${row.to}`)
+    );
+    expect(repeated).toEqual([]);
   });
 });

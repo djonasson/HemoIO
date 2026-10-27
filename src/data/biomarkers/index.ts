@@ -10,7 +10,6 @@ export {
   getBiomarkersByCategory,
   searchBiomarkers,
   getCanonicalUnit,
-  isValidUnit,
   type BiomarkerDefinition,
 } from './dictionary';
 

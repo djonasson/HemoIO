@@ -99,6 +99,13 @@ describe('reconcileTestValueKey', () => {
     ).toBe('hemoglobin');
   });
 
+  it('fits the unit in any of its spellings', () => {
+    expect(
+      reconcileTestValueKey({ biomarkerKey: 'unknown:legacy-1', rawText: 'Acido urico', unit: 'umol/L' })
+        .biomarkerKey
+    ).toBe('uric-acid');
+  });
+
   it('keeps a legacy value unknown when its unit does not fit the matching name', () => {
     expect(
       reconcileTestValueKey({ biomarkerKey: 'unknown:legacy-1', rawText: 'Hemoglobin', unit: 'IU/L' })

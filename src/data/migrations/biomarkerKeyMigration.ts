@@ -11,6 +11,7 @@ import {
   matchBiomarkerName,
   unknownBiomarkerKey,
 } from '@data/biomarkers/dictionary';
+import { unitsMatch } from '../../services/units/definitions';
 import { LEGACY_UNKNOWN_PREFIX, legacyIdToKey } from './legacyBiomarkerIds';
 
 export interface LegacyKeyed {
@@ -87,12 +88,6 @@ interface ReconcilableValue {
   unit?: string;
 }
 
-/** Units compared ignoring case and how micro is spelled */
-function sameUnit(a: string, b: string): boolean {
-  const key = (unit: string) => unit.trim().replace(/\u03bc/g, '\u00b5').toLowerCase();
-  return key(a) === key(b);
-}
-
 /**
  * The key a legacy unknown value gets today: the one a new import of its
  * extracted name would get, a dictionary entry when the name matches one
@@ -111,7 +106,7 @@ function reconciledKey(value: ReconcilableValue): string | undefined {
   const unitFits =
     match !== undefined &&
     [match.canonicalUnit, ...match.alternativeUnits].some((unit) =>
-      sameUnit(unit, value.unit ?? '')
+      unitsMatch(unit, value.unit ?? '')
     );
   return match && unitFits ? match.key : unknownBiomarkerKey(value.rawText);
 }
@@ -175,7 +170,7 @@ function listsUnit(key: string, unit: string): boolean {
   const definition = getBiomarkerByKey(key);
   return (
     definition !== undefined &&
-    [definition.canonicalUnit, ...definition.alternativeUnits].some((u) => sameUnit(u, unit))
+    [definition.canonicalUnit, ...definition.alternativeUnits].some((u) => unitsMatch(u, unit))
   );
 }
 

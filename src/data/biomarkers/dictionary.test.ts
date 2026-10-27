@@ -11,7 +11,6 @@ import {
   getBiomarkersByCategory,
   searchBiomarkers,
   getCanonicalUnit,
-  isValidUnit,
   matchBiomarkerName,
 } from './dictionary';
 import { ISSUED_BIOMARKER_KEYS } from './keys.snapshot';
@@ -179,28 +178,6 @@ describe('Biomarker Dictionary', () => {
     });
   });
 
-  describe('isValidUnit', () => {
-    it('returns true for canonical unit', () => {
-      expect(isValidUnit('Glucose', 'mg/dL')).toBe(true);
-    });
-
-    it('returns true for alternative unit', () => {
-      expect(isValidUnit('Glucose', 'mmol/L')).toBe(true);
-    });
-
-    it('returns false for invalid unit', () => {
-      expect(isValidUnit('Glucose', 'stones')).toBe(false);
-    });
-
-    it('returns false for unknown biomarker', () => {
-      expect(isValidUnit('Unknown', 'mg/dL')).toBe(false);
-    });
-
-    it('is case-insensitive', () => {
-      expect(isValidUnit('Glucose', 'MG/DL')).toBe(true);
-      expect(isValidUnit('Glucose', 'MMOL/L')).toBe(true);
-    });
-  });
 
 
   describe('biomarker keys', () => {

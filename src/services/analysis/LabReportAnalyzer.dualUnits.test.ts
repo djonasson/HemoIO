@@ -281,6 +281,24 @@ describe('analyzeLabReport: values reported in two units', () => {
     ]);
   });
 
+  it('flags a small whole value that only its rounding would make agree', async () => {
+    // 48 mmol/mol is 6.54 %: a "6" read as 6.0 % does not agree
+    const result = await analyze([
+      extracted('Emoglobina glicata', 6, '%'),
+      extracted('Emoglobina glicata', 48, 'mmol/mol Hb'),
+    ]);
+    expect(result.duplicateConflicts).toHaveLength(1);
+  });
+
+  it('keeps the canonical unit, and merges one unit spelled two ways', async () => {
+    expect(
+      await kept([extracted('Ferro', 38.4, 'μmol/L'), extracted('Ferro', 214, 'μg/dL')])
+    ).toEqual(['serum-iron: 214 μg/dL']);
+    expect(
+      await kept([extracted('Zorblatin', 12, 'µmol/L'), extracted('Zorblatin', 12, 'μmol/L')])
+    ).toEqual(['Zorblatin: 12 µmol/L']);
+  });
+
   it('still flags one name reported with two different values', async () => {
     const result = await analyze([
       extracted('Acido urico', 4.15, 'mg/dL'),

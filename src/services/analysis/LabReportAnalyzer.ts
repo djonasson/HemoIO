@@ -33,7 +33,7 @@ import {
   matchBiomarkerName,
 } from '../../data/biomarkers/dictionary';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
-import { normalizeUnit, canConvert, convertValue } from '../units';
+import { normalizeUnit, canConvert, convertValue, unitsMatch } from '../units';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -470,9 +470,9 @@ export async function analyzeLabReport(
 }
 
 /** Whether a dictionary entry measures in this unit, or one it converts from */
-function unitFits(definition: BiomarkerDefinition, unit: string, normalizedUnit: string): boolean {
-  // Review's check (either micro spelling, units that convert), so the two never disagree
-  return unitFitsBiomarker(definition, unit) || unitFitsBiomarker(definition, normalizedUnit);
+function unitFits(definition: BiomarkerDefinition, unit: string): boolean {
+  // Review's check (any spelling, units that convert), so the two never disagree
+  return unitFitsBiomarker(definition, unit);
 }
 
 /**
@@ -514,7 +514,7 @@ function alikeFitting(
     UNIT_PAIRS[definition.key],
   ]
     .map((key) => (key ? getBiomarkerByKey(key) : undefined))
-    .find((alike) => alike && unitFits(alike, unit, normalizedUnit));
+    .find((alike) => alike && unitFits(alike, unit));
 }
 
 /**
@@ -530,7 +530,7 @@ async function matchBiomarkerToDictionary(
 ): Promise<MatchedBiomarker> {
   const normalizedUnit = normalizeUnit(biomarker.unit);
   const fits = (definition: BiomarkerDefinition) =>
-    unitFits(definition, biomarker.unit, normalizedUnit);
+    unitFits(definition, biomarker.unit);
   const aiKey = biomarker.biomarkerKey ? getBiomarkerByKey(biomarker.biomarkerKey) : undefined;
   // The AI's test, or the one reported alike that the unit fits (its
   // percentage, its 24-hour pair), as for names
@@ -627,13 +627,13 @@ function matchByName(
   // entry of that one the unit fits: a count's percentage ("Eritroblasti",
   // "Neutrophils" in %), or a 24-hour urine collection's concentration,
   // which reports name after the collection
-  if (candidate && !unitFits(candidate, biomarker.unit, normalizedUnit)) {
+  if (candidate && !unitFits(candidate, biomarker.unit)) {
     candidate = alikeFitting(candidate, biomarker.unit, normalizedUnit) ?? candidate;
   }
 
   if (candidate) {
     // An incompatible unit means the name may be misread: suggest, don't assume
-    return unitFits(candidate, biomarker.unit, normalizedUnit)
+    return unitFits(candidate, biomarker.unit)
       ? {
           ...biomarker,
           dictionaryMatch: candidate,
@@ -667,10 +667,15 @@ const RELATIVE_TOLERANCE = 0.02;
 /** Decimal places used when converting values only to compare them */
 const COMPARISON_PRECISION = 10;
 
-/** Half the last reported digit: how far rounding can have moved a value */
+/**
+ * Half the last reported digit: how far rounding can have moved a value. A
+ * small whole value counts as printed with one decimal (an HbA1c "6.0 %"
+ * reaches the analyzer as 6): labs print small values with decimals.
+ */
 function roundingAllowance(value: number): number {
   const decimals = (String(value).split('.')[1] ?? '').length;
-  return 0.5 * 10 ** -decimals;
+  const printed = decimals === 0 && Math.abs(value) < 10 ? 1 : decimals;
+  return 0.5 * 10 ** -printed;
 }
 
 /** A value of a group, in the canonical unit when it could be converted */
@@ -701,7 +706,7 @@ function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
   const diff = Math.abs(a.comparison - b.comparison);
   const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;
   if (avg > 0 && diff / avg <= RELATIVE_TOLERANCE) return true;
-  const differentUnits = a.biomarker.unit.toLowerCase() !== b.biomarker.unit.toLowerCase();
+  const differentUnits = !unitsMatch(a.biomarker.unit, b.biomarker.unit);
   return differentUnits && diff <= a.allowance + b.allowance;
 }
 
@@ -723,7 +728,7 @@ function comparable(
     allowance: roundingAllowance(biomarker.value),
   };
   const targetUnit = canonicalUnit ?? firstUnit;
-  if (biomarker.unit.toLowerCase() === targetUnit.toLowerCase()) return unchanged;
+  if (unitsMatch(biomarker.unit, targetUnit)) return unchanged;
   if (!canonicalUnit || !canConvert(name, biomarker.unit, canonicalUnit)) {
     return { biomarker, allowance: 0 };
   }
@@ -804,7 +809,7 @@ function deduplicateBiomarkers(
     if (clusters.length === 1 || (distinctNames && !uncomparable)) {
       for (const cluster of clusters) {
         const preferred =
-          cluster.find((v) => v.biomarker.unit.toLowerCase() === canonicalUnit?.toLowerCase()) ??
+          cluster.find((v) => canonicalUnit !== undefined && unitsMatch(v.biomarker.unit, canonicalUnit)) ??
           cluster[0];
         deduplicated.push(preferred.biomarker);
       }

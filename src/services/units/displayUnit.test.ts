@@ -31,6 +31,11 @@ describe('preferredUnitFor and resolveDisplayUnit', () => {
     expect(resolveDisplayUnit(GLUCOSE, 'mmol/L')).toBe('mmol/L');
   });
 
+  it('uses a stored preference spelled another way, as the offered unit', () => {
+    const creatinine = { name: 'Creatinine', canonicalUnit: 'mg/dL', alternativeUnits: ['µmol/L'] };
+    expect(preferredUnitFor(creatinine, 'umol/L')).toBe('µmol/L');
+  });
+
   it('ignores a stored preference the biomarker does not offer', () => {
     expect(preferredUnitFor(GLUCOSE, 'stones')).toBeUndefined();
     expect(resolveDisplayUnit(GLUCOSE, 'stones')).toBe('mg/dL');
