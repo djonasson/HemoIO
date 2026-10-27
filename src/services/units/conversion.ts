@@ -4,7 +4,7 @@
  * Provides utilities for converting biomarker values between different units.
  */
 
-import { findConversionDefinition, getConversion } from './definitions';
+import { findConversionDefinition, getConversion, normalizeUnitForLookup } from './definitions';
 
 /**
  * Result of a unit conversion
@@ -292,30 +292,5 @@ export function parseValueWithUnit(
  * Handles common variations like "umol/L" -> "µmol/L"
  */
 export function normalizeUnit(unit: string): string {
-  const normalizations: Record<string, string> = {
-    'umol/l': 'µmol/L',
-    'umol/L': 'µmol/L',
-    'µmol/l': 'µmol/L',
-    'nmol/l': 'nmol/L',
-    'pmol/l': 'pmol/L',
-    'mg/dl': 'mg/dL',
-    'mmol/l': 'mmol/L',
-    'g/dl': 'g/dL',
-    'g/l': 'g/L',
-    'ng/ml': 'ng/mL',
-    'pg/ml': 'pg/mL',
-    'ug/dl': 'µg/dL',
-    'ug/dL': 'µg/dL',
-    'µg/dl': 'µg/dL',
-    'miu/l': 'mIU/L',
-    'mIU/l': 'mIU/L',
-    'uiu/ml': 'µIU/mL',
-    'µiu/ml': 'µIU/mL',
-    'u/l': 'U/L',
-    'iu/l': 'IU/L',
-    'meq/l': 'mEq/L',
-  };
-
-  const lowercase = unit.toLowerCase().trim();
-  return normalizations[lowercase] ?? unit.trim();
+  return normalizeUnitForLookup(unit);
 }

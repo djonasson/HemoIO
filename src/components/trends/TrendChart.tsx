@@ -349,7 +349,7 @@ export function TrendChart({
                       cy={cy}
                       r={r}
                       fill={fill}
-                      stroke={highlighted ? '#1c7ed6' : '#fff'}
+                      stroke={highlighted ? '#1c7ed6' : 'var(--mantine-color-body)'}
                       strokeWidth={highlighted ? 3 : 2}
                       aria-current={highlighted ? 'true' : undefined}
                       aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
@@ -401,7 +401,7 @@ export function TrendChart({
                 r: 8,
                 stroke: '#228be6',
                 strokeWidth: 2,
-                fill: '#fff',
+                fill: 'var(--mantine-color-body)',
               }}
               name={biomarkerName}
             />

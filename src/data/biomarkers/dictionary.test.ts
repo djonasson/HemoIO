@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { normalizeUnit } from '@services/units/conversion';
 import {
   getBiomarkerByKey,
   getBiomarkerForTestValue,
@@ -336,3 +337,15 @@ describe('Italian names', () => {
   });
 });
 
+
+describe('units each test lists', () => {
+  it('lists each unit once, not again in another spelling', () => {
+    const repeated = BIOMARKER_DEFINITIONS.flatMap((definition) => {
+      const units = [definition.canonicalUnit, ...(definition.alternativeUnits ?? [])]
+        .filter(Boolean)
+        .map((unit) => normalizeUnit(unit).toLowerCase());
+      return units.length === new Set(units).size ? [] : [definition.key];
+    });
+    expect(repeated).toEqual([]);
+  });
+});

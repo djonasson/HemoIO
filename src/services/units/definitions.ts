@@ -1326,7 +1326,11 @@ function normalizeGreekMu(unit: string): string {
   return unit.replace(/μ/g, 'µ');
 }
 
-function normalizeUnitForLookup(unit: string): string {
+/**
+ * A unit's standard spelling: the micro sign for Greek mu, standard case, and
+ * one form for units written several ways (the one table every unit check uses)
+ */
+export function normalizeUnitForLookup(unit: string): string {
   const trimmed = unit.trim();
   // First normalize Greek mu to micro sign
   const normalized = normalizeGreekMu(trimmed);

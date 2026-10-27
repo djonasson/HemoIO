@@ -348,6 +348,12 @@ describe('Unit Conversion Service', () => {
       expect(normalizeUnit('ng/ml')).toBe('ng/mL');
     });
 
+    it('uses the same spellings as unit conversion', () => {
+      expect(normalizeUnit('mmol/mol Hb')).toBe('mmol/mol');
+      expect(normalizeUnit('\u03bcmol/L')).toBe('µmol/L');
+      expect(normalizeUnit('mg/g creat.')).toBe('mg/g');
+    });
+
     it('preserves already normalized units', () => {
       expect(normalizeUnit('µmol/L')).toBe('µmol/L');
       expect(normalizeUnit('mg/dL')).toBe('mg/dL');

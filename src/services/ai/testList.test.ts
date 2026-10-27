@@ -7,7 +7,7 @@ describe('buildTestList', () => {
   it('gives one line per test: key, name, specimen and units', () => {
     const lines = buildTestList([getBiomarkerByKey('urine-creatinine')!]).split('\n');
     expect(lines).toEqual([
-      'urine-creatinine: Urine Creatinine [urine; mg/dL, µmol/L, umol/L, g/L, mmol/L]',
+      'urine-creatinine: Urine Creatinine [urine; mg/dL, µmol/L, g/L, mmol/L]',
     ]);
   });
 

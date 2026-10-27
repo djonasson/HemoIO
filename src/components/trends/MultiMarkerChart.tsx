@@ -281,7 +281,7 @@ export function MultiMarkerChart({
               stroke={marker.color}
               strokeWidth={2}
               dot={{ r: 4, fill: marker.color }}
-              activeDot={{ r: 6, stroke: marker.color, strokeWidth: 2, fill: '#fff' }}
+              activeDot={{ r: 6, stroke: marker.color, strokeWidth: 2, fill: 'var(--mantine-color-body)' }}
               yAxisId={
                 useDualAxis && marker.unit === uniqueUnits[1] ? 'right' : 'left'
               }
