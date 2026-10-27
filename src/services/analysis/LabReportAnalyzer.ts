@@ -431,8 +431,11 @@ function unitFits(definition: BiomarkerDefinition, unit: string, normalizedUnit:
   );
 }
 
-/** Units of a share of cells, as a percentage or a count per 100 white cells */
-const SHARE_UNIT = /^(%|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
+/**
+ * Units of a share of cells: a percentage, per mille, or a count per 100
+ * white cells
+ */
+const SHARE_UNIT = /^(%|‰|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
 
 /**
  * Match an extracted biomarker to the dictionary

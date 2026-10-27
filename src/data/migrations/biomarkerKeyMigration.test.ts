@@ -70,12 +70,12 @@ describe('legacyUnknownKeyMapping', () => {
     const mapping = legacyUnknownKeyMapping([
       { biomarkerKey: 'unknown:legacy-12345', rawText: 'Zorblatin' },
       { biomarkerKey: 'unknown:legacy-12345', rawText: 'Zorblatin' },
-      { biomarkerKey: 'unknown:legacy-777', rawText: 'Reticulocytes %' },
+      { biomarkerKey: 'unknown:legacy-777', rawText: 'IG%' },
     ]);
 
     expect(Object.fromEntries(mapping)).toEqual({
       'unknown:legacy-12345': 'unknown:zorblatin',
-      'unknown:legacy-777': 'unknown:reticulocytes%',
+      'unknown:legacy-777': 'unknown:ig%',
     });
   });
 

@@ -123,4 +123,6 @@ export const ISSUED_BIOMARKER_KEYS: readonly (readonly [key: string, name: strin
   ['urine-urea', 'Urine Urea'],
   ['24-hour-urine-creatinine', '24-Hour Urine Creatinine'],
   ['24-hour-urine-urea', '24-Hour Urine Urea'],
+  ['reticulocytes', 'Reticulocyte Count'],
+  ['reticulocytes-percentage', 'Reticulocytes Percentage'],
 ];

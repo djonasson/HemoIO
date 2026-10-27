@@ -114,6 +114,27 @@ describe('analyzeLabReport: values reported in two units', () => {
     ]);
   });
 
+  it('tells concentrations in a 24-hour collection from the 24-hour amounts', async () => {
+    // As the report names them: per litre of the 24-hour collection, and per 24 hours
+    expect(
+      await kept([
+        extracted('Creatinina/L (urine 24h)', 4582, 'μmol/L'),
+        extracted('Creatinina/L (urine 24h)', 0.51, 'g/L'),
+        extracted('Creatinina 24h (urine)', 13746, 'μmol/24h'),
+        extracted('Creatinina 24h (urine)', 1.55, 'g/24h'),
+        extracted('Urea/L (urine 24h)', 117, 'mmol/L'),
+        extracted('Urea/L (urine 24h)', 7, 'g/L'),
+        extracted('Urea 24h (urine)', 351, 'mmol/24h'),
+        extracted('Urea 24h (urine)', 21, 'g/24h'),
+      ])
+    ).toEqual([
+      'urine-creatinine: 4582 μmol/L',
+      '24-hour-urine-creatinine: 1.55 g/24h',
+      'urine-urea: 7 g/L',
+      '24-hour-urine-urea: 21 g/24h',
+    ]);
+  });
+
   it('keeps a percentage and an absolute count of the same cells apart', async () => {
     expect(
       await kept([
@@ -124,6 +145,24 @@ describe('analyzeLabReport: values reported in two units', () => {
       'nucleated-red-blood-cells-percentage: 0 /100 WBC',
       'nucleated-red-blood-cells: 0 10^9/L',
     ]);
+    expect(
+      await kept([extracted('Reticolociti', 81.3, '10^9/L'), extracted('Reticolociti', 1.67, '%')])
+    ).toEqual(['reticulocytes: 81.3 10^9/L', 'reticulocytes-percentage: 1.67 %']);
+    // English reports name both alike too
+    expect(
+      await kept([extracted('Reticulocytes', 75, '10^9/L'), extracted('Reticulocytes', 1.5, '%')])
+    ).toEqual(['reticulocytes: 75 10^9/L', 'reticulocytes-percentage: 1.5 %']);
+  });
+
+  it('merges reticulocytes reported in ‰ and %, and in 10^9/L and K/µL', async () => {
+    expect(
+      await kept([
+        extracted('Reticolociti', 16.7, '‰'),
+        extracted('Reticolociti', 1.67, '%'),
+        extracted('Reticolociti', 81.3, '10^9/L'),
+        extracted('Reticolociti', 81.3, 'K/µL'),
+      ])
+    ).toEqual(['reticulocytes-percentage: 1.67 %', 'reticulocytes: 81.3 10^9/L']);
   });
 
   it('keeps the urine dipstick haemoglobin and the urine red cell count apart', async () => {

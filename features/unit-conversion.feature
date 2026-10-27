@@ -114,7 +114,7 @@ Feature: Unit Conversion
     And the values should be merged without conflict
 
   Scenario: Merge the values an Italian report gives in two units
-    Given a lab report gives urea as 3.06 mmol/L and 18 mg/dL, uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, and vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL
+    Given a lab report gives urea as 3.06 mmol/L and 18 mg/dL, uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, and reticulocytes as 16.7 ‰ and 1.67 %
     When the values are analyzed
     Then each should be recognized as one measurement in two units
     And only one value of each should be kept
@@ -122,15 +122,21 @@ Feature: Unit Conversion
     And no duplicate conflict warning should be shown
 
   Scenario: Keep a share and an absolute count of the same cells apart
-    Given a lab report gives nucleated red cells as 0 /100 WBC and as 0 10^9/L
+    Given a lab report gives nucleated red cells as 0 /100 WBC and as 0 10^9/L, and reticulocytes as 81.3 10^9/L and as 1.67 %
     When the values are analyzed
-    Then both values should be kept, as two different tests
+    Then both values of each should be kept, as two different tests
     And no duplicate conflict warning should be shown
 
   Scenario: Keep separate urine samples and 24-hour amounts apart
     Given a lab report gives creatinine from a 24-hour collection, as 13746 µmol/24h and 1.55 g/24h, and from a spot sample, as 4367 µmol/L and 0.49 g/L
     When the values are analyzed
     Then one value should be kept for the 24-hour amount and one for the spot sample
+    And no duplicate conflict warning should be shown
+
+  Scenario: Tell a 24-hour collection's concentration from its 24-hour amount
+    Given a lab report gives, for one 24-hour urine collection, "Creatinina/L (urine 24h)" as 4582 µmol/L and 0.51 g/L, and "Creatinina 24h (urine)" as 13746 µmol/24h and 1.55 g/24h
+    When the values are analyzed
+    Then one value should be kept for the concentration and one for the 24-hour amount
     And no duplicate conflict warning should be shown
 
   Scenario: Explain values whose units cannot be compared

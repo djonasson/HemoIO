@@ -544,8 +544,22 @@ const reticulocyteConversions: BiomarkerConversions = {
     { from: '10^9/L', to: '10^3/µL', factor: 1 },
     { from: 'k/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: 'k/μL', factor: 1 },
+    { from: 'K/µL', to: '10^9/L', factor: 1 },
+    { from: '10^9/L', to: 'K/µL', factor: 1 },
     // Percentage conversion - these need context of total RBC
     // Only include direct unit equivalences here
+  ],
+};
+
+/**
+ * Reticulocytes as a share of red cells: per mille is a tenth of a percent
+ */
+const reticulocytePercentageConversions: BiomarkerConversions = {
+  biomarker: 'Reticulocytes Percentage',
+  aliases: [],
+  conversions: [
+    { from: '‰', to: '%', factor: 0.1 },
+    { from: '%', to: '‰', factor: 10 },
   ],
 };
 
@@ -1163,6 +1177,7 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   eosinophilConversions,
   basophilConversions,
   reticulocyteConversions,
+  reticulocytePercentageConversions,
   nrbcConversions,
   nrbcPercentageConversions,
   // Electrolytes

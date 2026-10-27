@@ -510,12 +510,14 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name: 'Ferro', value: 214, unit: 'µg/dL', confidence: 0.95 },
       { name: 'Vitamina D (25-OH)', value: 81.5, unit: 'nmol/L', confidence: 0.95 },
       { name: 'Vitamina D (25-OH)', value: 32.6, unit: 'ng/mL', confidence: 0.95 },
+      { name: 'Reticolociti', value: 16.7, unit: '‰', confidence: 0.95 },
+      { name: 'Reticolociti', value: 1.67, unit: '%', confidence: 0.95 },
     ]);
 
     // One value of each, in the standard unit; urea is not blood urea nitrogen
     const rows = reviewRows(page);
-    await expect(rows).toHaveCount(4);
-    for (const value of ['18', '4.15', '214', '32.6']) {
+    await expect(rows).toHaveCount(5);
+    for (const value of ['18', '4.15', '214', '32.6', '1.67']) {
       await expect(rows.getByRole('cell', { name: value, exact: true })).toBeVisible();
     }
     await expect(page.getByText(/Blood Urea Nitrogen/)).toHaveCount(0);
@@ -528,9 +530,11 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await analyzeReport(page, [
       { name: 'Eritroblasti', value: 0, unit: '/100 WBC', confidence: 0.95 },
       { name: 'Eritroblasti', value: 0, unit: '10^9/L', confidence: 0.95 },
+      { name: 'Reticolociti', value: 81.3, unit: '10^9/L', confidence: 0.95 },
+      { name: 'Reticolociti', value: 1.67, unit: '%', confidence: 0.95 },
     ]);
 
-    await expect(reviewRows(page)).toHaveCount(2);
+    await expect(reviewRows(page)).toHaveCount(4);
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
@@ -545,6 +549,28 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     ]);
 
     await expect(reviewRows(page)).toHaveCount(2);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test("should tell a 24-hour collection's concentration from its 24-hour amount", async ({
+    page,
+  }) => {
+    // Scenario: Tell a 24-hour collection's concentration from its 24-hour amount
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinina/L (urine 24h)', value: 4582, unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Creatinina/L (urine 24h)', value: 0.51, unit: 'g/L', confidence: 0.95 },
+      { name: 'Creatinina 24h (urine)', value: 13746, unit: 'µmol/24h', confidence: 0.95 },
+      { name: 'Creatinina 24h (urine)', value: 1.55, unit: 'g/24h', confidence: 0.95 },
+    ]);
+
+    // Each filed under its own test: the specimen comes from the dictionary entry
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(2);
+    const row = (value: string) =>
+      rows.filter({ has: page.getByRole('cell', { name: value, exact: true }) });
+    await expect(row('4582').getByRole('cell', { name: 'Urine', exact: true })).toBeVisible();
+    await expect(row('1.55').getByRole('cell', { name: '24h Urine', exact: true })).toBeVisible();
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 

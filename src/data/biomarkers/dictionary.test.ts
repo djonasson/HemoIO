@@ -242,8 +242,8 @@ describe('Biomarker Dictionary', () => {
     });
 
     it('keeps percentage and absolute-count variants apart', () => {
-      // e.g. "Reticulocytes %" vs "Reticulocytes #", "IG%" vs "IG#"
-      expect(unknownBiomarkerKey('Reticulocytes %')).not.toBe(unknownBiomarkerKey('Reticulocytes #'));
+      // e.g. "IG%" vs "IG#"
+      expect(unknownBiomarkerKey('IG%')).not.toBe(unknownBiomarkerKey('IG#'));
       expect(unknownBiomarkerKey('IG%')).toBe('unknown:ig%');
       expect(unknownBiomarkerKey('IG#')).toBe('unknown:ig#');
     });
@@ -309,6 +309,14 @@ describe('Italian names', () => {
     ['Vitamina D (25-OH)', 'vitamin-d'],
     ['Eritroblasti', 'nucleated-red-blood-cells'],
     ['Eritroblasti (%)', 'nucleated-red-blood-cells-percentage'],
+    ['Reticolociti', 'reticulocytes'],
+    ['Reticolociti (%)', 'reticulocytes-percentage'],
+    ['Reticulocytes (%)', 'reticulocytes-percentage'],
+    // A 24-hour urine collection: its concentration and its amount per day
+    ['Creatinina/L (urine 24h)', 'urine-creatinine'],
+    ['Creatinina 24h (urine)', '24-hour-urine-creatinine'],
+    ['Urea/L (urine 24h)', 'urine-urea'],
+    ['Urea 24h (urine)', '24-hour-urine-urea'],
     ['Emoglobina (urine)', 'urine-blood'],
     ['Eritrociti (urine)', 'urine-red-blood-cells'],
   ])('%s is %s', (name, key) => {

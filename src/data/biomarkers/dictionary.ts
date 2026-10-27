@@ -351,6 +351,35 @@ const cbcBiomarkers: BiomarkerEntry[] = [
     highIndication: 'May indicate bone marrow stress, severe anemia or hypoxia',
     lowIndication: 'Normal finding',
   },
+  {
+    key: 'reticulocytes',
+    name: 'Reticulocyte Count',
+    aliases: ['Reticulocytes', 'Reticolociti', 'Reticolociti (assoluti)', 'RET#', 'Retics'],
+    category: 'cbc',
+    specimenType: 'whole-blood',
+    loincCode: '60474-4',
+    canonicalUnit: '10^9/L',
+    alternativeUnits: ['10^3/µL', 'K/µL'],
+    defaultReferenceRange: { low: 25, high: 100, unit: '10^9/L' },
+    description: 'Young red blood cells in the blood, showing how fast the bone marrow makes red cells.',
+    highIndication: 'May indicate blood loss, hemolysis or recovery from anemia',
+    lowIndication: 'May indicate reduced red cell production by the bone marrow',
+  },
+  {
+    key: 'reticulocytes-percentage',
+    name: 'Reticulocytes Percentage',
+    aliases: ['Reticulocytes %', 'Reticulocytes (%)', 'Reticolociti (%)', 'Reticolociti %', 'RET%'],
+    category: 'cbc',
+    specimenType: 'whole-blood',
+    loincCode: '17849-1',
+    canonicalUnit: '%',
+    // Italian reports often give it per mille
+    alternativeUnits: ['‰'],
+    defaultReferenceRange: { low: 0.5, high: 2.5, unit: '%' },
+    description: 'Young red blood cells as a share of all red blood cells.',
+    highIndication: 'May indicate blood loss, hemolysis or recovery from anemia',
+    lowIndication: 'May indicate reduced red cell production by the bone marrow',
+  },
 ];
 
 /**
@@ -1081,7 +1110,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-creatinine',
     name: 'Urine Creatinine',
-    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)', 'Creatininuria'],
+    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)', 'Creatininuria', 'Creatinina/L (urine 24h)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '2161-8',
@@ -1095,7 +1124,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-urea',
     name: 'Urine Urea',
-    aliases: ['Urea (urine)', 'U-Urea', 'Urea urinaria', 'Azoturia'],
+    aliases: ['Urea (urine)', 'U-Urea', 'Urea urinaria', 'Azoturia', 'Urea/L (urine 24h)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '3095-7',
@@ -1191,7 +1220,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: '24-hour-urine-creatinine',
     name: '24-Hour Urine Creatinine',
-    aliases: ['Creatinina (urine, 24h)', 'Creatinina 24h', 'Creatininuria 24h', 'U-Creatinina 24h', 'dU-Creatinina', 'Urine Creatinine 24h'],
+    aliases: ['Creatinina (urine, 24h)', 'Creatinina 24h', 'Creatininuria 24h', 'U-Creatinina 24h', 'dU-Creatinina', 'Urine Creatinine 24h', 'Creatinina 24h (urine)'],
     category: 'urinalysis',
     specimenType: 'urine-24h',
     loincCode: '2162-6',
@@ -1205,7 +1234,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: '24-hour-urine-urea',
     name: '24-Hour Urine Urea',
-    aliases: ['Urea (urine, 24h)', 'Urea 24h', 'Azoturia 24h', 'U-Urea 24h', 'dU-Urea', 'Urine Urea 24h'],
+    aliases: ['Urea (urine, 24h)', 'Urea 24h', 'Azoturia 24h', 'U-Urea 24h', 'dU-Urea', 'Urine Urea 24h', 'Urea 24h (urine)'],
     category: 'urinalysis',
     specimenType: 'urine-24h',
     loincCode: '3096-5',
@@ -1764,9 +1793,8 @@ export function getBiomarkerByKey(key: string): BiomarkerDefinition | undefined 
  *
  * Normalised to NFKC so composed and decomposed spellings match. Letters,
  * combining marks and digits are kept, as are "%" and "#", which distinguish
- * percentage and absolute-count variants of the same marker (e.g.
- * "Reticulocytes %" vs "Reticulocytes #"). Keys are permanent: changing these
- * rules requires a data migration.
+ * percentage and absolute-count variants of the same marker (e.g. "IG%" vs
+ * "IG#"). Keys are permanent: changing these rules requires a data migration.
  */
 export function unknownBiomarkerKey(extractedName: string): string {
   const normalized = extractedName
