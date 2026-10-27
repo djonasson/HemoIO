@@ -4,7 +4,7 @@
  * Shows progress while documents are being processed and analyzed.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import {
   Stack,
   Group,
@@ -31,6 +31,8 @@ import type { AnalysisResult as ServiceAnalysisResult } from '../../services/ana
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { processWithConcurrency } from '../../utils/concurrency';
 import { manualEntryResult } from './manualEntry';
+import { PreferencesContext } from '@hooks/usePreferences';
+import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
 
 /**
  * Analysis result for a single file
@@ -101,6 +103,12 @@ export function AnalysisStep({
   onComplete,
   onBack,
 }: AnalysisStepProps) {
+  // The user's learned names, as they are when each file is matched
+  const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
+  const learnedAliasesRef = useRef(learnedAliases);
+  useEffect(() => {
+    learnedAliasesRef.current = learnedAliases;
+  }, [learnedAliases]);
   const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
@@ -195,6 +203,9 @@ export function AnalysisStep({
                   model: aiModel,
                 },
                 signal: controller.signal,
+                nameFallback: {
+                  learned: (name) => lookupLearnedAlias(learnedAliasesRef.current ?? {}, name),
+                },
                 onProgress: (stage, progress) => {
                   if (!cancelled) {
                     updateFileStatus(uploadedFile.id, {

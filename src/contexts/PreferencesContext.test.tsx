@@ -69,6 +69,31 @@ describe('PreferencesProvider', () => {
     expect(stored?.personalTargets).toEqual({ ferritin: { low: 50 } });
   });
 
+  it('learns the names saved under a test, and forgets a removed one', async () => {
+    const { result } = await renderLoaded();
+    await act(() => result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea' }]));
+
+    expect(result.current.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
+    expect(stored?.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
+    expect(stored?.unitPreferences).toEqual({ glucose: 'mmol/L' });
+
+    await act(() => result.current.removeLearnedAlias('Zorb (urine)'));
+    expect(result.current.learnedAliases).toEqual({});
+    expect(stored?.learnedAliases).toEqual({});
+  });
+
+  it('goes back to the previous learned names when saving fails', async () => {
+    const { result } = await renderLoaded();
+    mockUpdatePreferences.mockRejectedValueOnce(new Error('disk full'));
+
+    await act(async () => {
+      await expect(
+        result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea' }])
+      ).rejects.toThrow('disk full');
+    });
+    expect(result.current.learnedAliases).toEqual({});
+  });
+
   it('goes back to the previous unit when saving fails', async () => {
     const { result } = await renderLoaded();
     mockUpdatePreferences.mockRejectedValueOnce(new Error('disk full'));

@@ -4,7 +4,14 @@
 import { test, expect } from './fixtures';
 import { setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
-import { savedAsCell, rowFor, changeTest } from './steps/identification.steps';
+import {
+  changeTest,
+  expectNotLearned,
+  removeLearnedName,
+  rowFor,
+  saveReviewed,
+  savedAsCell,
+} from './steps/identification.steps';
 
 test.describe('AI biomarker identification', () => {
   test.beforeEach(async ({ page }) => {
@@ -106,5 +113,63 @@ test.describe('AI biomarker identification', () => {
     await page.getByPlaceholder('Biomarker name').fill('Urea urinaria');
     await row.getByRole('button', { name: 'Save changes' }).click();
     await expect(savedAsCell(rowFor(page, '7'))).toHaveText(/Urine Urea/);
+  });
+
+  test('learns a name saved under a test', async ({ page }) => {
+    // Scenario: A confirmed name is learned
+    await analyzeReport(page, [
+      {
+        name: 'Zorblatina (urine)',
+        value: 7,
+        unit: 'g/L',
+        confidence: 0.95,
+        biomarkerKey: 'urine-urea',
+      },
+    ]);
+    await saveReviewed(page);
+    await analyzeReport(page, [
+      { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
+    ]);
+    await expect(savedAsCell(rowFor(page, '6'))).toHaveText(/Urine Urea/);
+    await expect(rowFor(page, '6').getByText('Matched by name only')).toBeVisible();
+  });
+
+  test('forgets a learned name removed in Settings', async ({ page }) => {
+    // Scenario: Remove a learned name
+    await analyzeReport(page, [
+      {
+        name: 'Zorblatina (urine)',
+        value: 7,
+        unit: 'g/L',
+        confidence: 0.95,
+        biomarkerKey: 'urine-urea',
+      },
+    ]);
+    await saveReviewed(page);
+    await removeLearnedName(page, 'zorblatina (urine)');
+    await analyzeReport(page, [
+      { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
+    ]);
+    await expect(savedAsCell(rowFor(page, '6'))).toHaveText(/Not in dictionary/);
+  });
+
+  test('forgets a learned name saved as not in the dictionary', async ({ page }) => {
+    // Scenario: Saving as "Not in dictionary" forgets a learned name
+    await analyzeReport(page, [
+      {
+        name: 'Zorblatina (urine)',
+        value: 7,
+        unit: 'g/L',
+        confidence: 0.95,
+        biomarkerKey: 'urine-urea',
+      },
+    ]);
+    await saveReviewed(page);
+    await analyzeReport(page, [
+      { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
+    ]);
+    await changeTest(page, rowFor(page, '6'), 'Not in dictionary');
+    await saveReviewed(page);
+    await expectNotLearned(page, 'zorblatina (urine)');
   });
 });

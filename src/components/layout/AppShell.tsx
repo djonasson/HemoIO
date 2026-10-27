@@ -136,7 +136,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
   const { refresh: refreshLabResults } = useLabResults();
-  const { reload: reloadPreferences } = usePreferences();
+  const { reload: reloadPreferences, learnAliases } = usePreferences();
   const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
@@ -200,6 +200,17 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           });
         }
 
+        // Names saved under a test are this user's aliases from now on
+        await learnAliases(
+          results.flatMap((r) =>
+            r.editedBiomarkers.map((b) => ({
+              name: b.name,
+              key: b.dictionaryMatch?.key,
+              savedAsUnknown: b.savedAsUnknown,
+            }))
+          )
+        ).catch(() => console.error('Failed to save learned names'));
+
         // Every view, the alerts badge included, shows the new results
         await refreshLabResults();
 
@@ -218,7 +229,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         });
       }
     },
-    [db, isReady, syncNow, refreshLabResults]
+    [db, isReady, syncNow, refreshLabResults, learnAliases]
   );
 
   const handleNavigateToImport = useCallback(() => {

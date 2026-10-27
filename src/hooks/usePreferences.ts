@@ -9,6 +9,13 @@ export interface PersonalTargetRange {
   high?: number;
 }
 
+/** A saved value's printed name and the test it was saved under */
+export interface SavedName {
+  name: string;
+  key?: string;
+  savedAsUnknown?: boolean;
+}
+
 export interface PreferencesState {
   /** biomarkerKey → preferred unit */
   unitPreferences: Readonly<Record<string, string>>;
@@ -19,6 +26,11 @@ export interface PreferencesState {
   setPreferredUnit(biomarkerKey: string, unit: string): Promise<void>;
   /** null removes the target */
   setPersonalTarget(biomarkerKey: string, target: PersonalTargetRange | null): Promise<void>;
+  /** The user's own aliases: printed name (normalised) → biomarker key */
+  learnedAliases: Readonly<Record<string, string>>;
+  /** Learn the names of saved values; "Not in dictionary" forgets them */
+  learnAliases(values: ReadonlyArray<SavedName>): Promise<void>;
+  removeLearnedAlias(name: string): Promise<void>;
   /** Re-read the stored preferences, e.g. after a backup restore */
   reload(): Promise<void>;
 }

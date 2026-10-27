@@ -14,12 +14,14 @@ import {
   IconRobot,
   IconSettings,
   IconTarget,
+  IconBook,
 } from '@tabler/icons-react';
 import { BackupRestore } from './BackupRestore';
 import { ChangePassword } from './ChangePassword';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets } from './PersonalTargets';
+import { LearnedAliases } from './LearnedAliases';
 import { toPersonalTarget, type PersonalTarget } from './personalTarget';
 import { StorageSettings } from './StorageSettings';
 import {
@@ -253,6 +255,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           <Tabs.Tab value="targets" leftSection={<IconTarget size={16} />}>
             Personal Targets
           </Tabs.Tab>
+          <Tabs.Tab value="biomarkers" leftSection={<IconBook size={16} />}>
+            Biomarkers
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="data" pt="md">
@@ -310,6 +315,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
             onClearTarget={handleClearTarget}
             isSaving={isSavingTargets}
           />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="biomarkers" pt="md">
+          <LearnedAliases />
         </Tabs.Panel>
       </Tabs>
     </Stack>

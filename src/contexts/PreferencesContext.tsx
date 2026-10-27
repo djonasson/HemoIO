@@ -11,12 +11,15 @@ import {
   PreferencesContext,
   type PersonalTargetRange,
   type PreferencesState,
+  type SavedName,
 } from '@hooks/usePreferences';
+import { learnFromSaved, learnedAliasName } from '@data/biomarkers/learnedAliases';
 import type { UserPreferences } from '@/types';
 
 interface Maps {
   unitPreferences: Record<string, string>;
   personalTargets: Record<string, PersonalTargetRange>;
+  learnedAliases: Record<string, string>;
 }
 
 type MapField = keyof Maps;
@@ -25,6 +28,7 @@ function fromStored(prefs: UserPreferences | undefined): Maps {
   return {
     unitPreferences: prefs?.unitPreferences ?? {},
     personalTargets: prefs?.personalTargets ?? {},
+    learnedAliases: prefs?.learnedAliases ?? {},
   };
 }
 
@@ -38,7 +42,11 @@ function withEntry<T>(map: Record<string, T>, key: string, value: T | null): Rec
 
 export function PreferencesProvider({ children }: { children: ReactNode }): ReactNode {
   const { db, isReady } = useEncryptedDb();
-  const [maps, setMaps] = useState<Maps>({ unitPreferences: {}, personalTargets: {} });
+  const [maps, setMaps] = useState<Maps>({
+    unitPreferences: {},
+    personalTargets: {},
+    learnedAliases: {},
+  });
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -102,9 +110,41 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     [setEntry]
   );
 
+  const removeLearnedAlias = useCallback(
+    (name: string) => setEntry('learnedAliases', learnedAliasName(name), null),
+    [setEntry]
+  );
+  const learnAliases = useCallback(
+    async (values: ReadonlyArray<SavedName>) => {
+      const previous = mapsRef.current.learnedAliases;
+      setMaps((current) => ({
+        ...current,
+        learnedAliases: learnFromSaved(current.learnedAliases, values),
+      }));
+      try {
+        if (!db || !isReady) throw new Error('Database not available');
+        await db.updatePreferences((stored) => ({
+          learnedAliases: learnFromSaved(stored?.learnedAliases ?? {}, values),
+        }));
+      } catch (err) {
+        setMaps((current) => ({ ...current, learnedAliases: previous }));
+        throw err;
+      }
+    },
+    [db, isReady]
+  );
+
   const value = useMemo<PreferencesState>(
-    () => ({ ...maps, isLoaded, setPreferredUnit, setPersonalTarget, reload }),
-    [maps, isLoaded, setPreferredUnit, setPersonalTarget, reload]
+    () => ({
+      ...maps,
+      isLoaded,
+      setPreferredUnit,
+      setPersonalTarget,
+      learnAliases,
+      removeLearnedAlias,
+      reload,
+    }),
+    [maps, isLoaded, setPreferredUnit, setPersonalTarget, learnAliases, removeLearnedAlias, reload]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;

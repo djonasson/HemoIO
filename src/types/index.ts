@@ -112,6 +112,8 @@ export interface UserPreferences {
   personalTargets: Record<string, { low?: number; high?: number }>; // biomarkerKey -> target range
   /** Per biomarker: alerts dated on or before this ISO date are acknowledged */
   acknowledgedAlerts?: Record<string, string>;
+  /** The user's own aliases: printed name (normalised) -> biomarker key */
+  learnedAliases?: Record<string, string>;
   theme: 'light' | 'dark' | 'system';
   dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
 }
