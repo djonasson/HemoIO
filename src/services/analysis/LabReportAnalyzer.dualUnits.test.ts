@@ -135,6 +135,18 @@ describe('analyzeLabReport: values reported in two units', () => {
     ]);
   });
 
+  it('merges a per-litre urine value named with its specimen only', async () => {
+    // As the AI names the 24-hour collection's concentration on some runs
+    expect(
+      await kept([
+        extracted('Urea/L (urine)', 117, 'mmol/L'),
+        extracted('Urea/L (urine)', 7, 'g/L'),
+        extracted('Creatinina/L (urine)', 4582, 'µmol/L'),
+        extracted('Creatinina/L (urine)', 0.51, 'g/L'),
+      ])
+    ).toEqual(['urine-urea: 7 g/L', 'urine-creatinine: 4582 µmol/L']);
+  });
+
   it('keeps a percentage and an absolute count of the same cells apart', async () => {
     expect(
       await kept([

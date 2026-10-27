@@ -1110,7 +1110,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-creatinine',
     name: 'Urine Creatinine',
-    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)', 'Creatininuria', 'Creatinina/L (urine 24h)', 'U-Creatinina/L'],
+    aliases: ['U-Creatinina', 'Creatinina urinaria', 'Creatinina (urine)', 'U-Creatinina urinaria prima minzione', 'Creatinina urinaria prima minzione', 'U-Creatinina (urine)', 'Creatininuria', 'Creatinina/L (urine 24h)', 'Creatinina/L (urine)', 'U-Creatinina/L'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '2161-8',
@@ -1124,7 +1124,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-urea',
     name: 'Urine Urea',
-    aliases: ['Urea (urine)', 'U-Urea', 'Urea urinaria', 'Azoturia', 'Urea/L (urine 24h)', 'U-Urea/L'],
+    aliases: ['Urea (urine)', 'U-Urea', 'Urea urinaria', 'Azoturia', 'Urea/L (urine 24h)', 'Urea/L (urine)', 'U-Urea/L'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '3095-7',

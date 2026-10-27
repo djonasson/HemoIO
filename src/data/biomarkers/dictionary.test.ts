@@ -318,6 +318,8 @@ describe('Italian names', () => {
     ['Urea/L (urine 24h)', 'urine-urea'],
     ['Urea 24h (urine)', '24-hour-urine-urea'],
     // As the report itself prints them, under its timed urine collections
+    ['Creatinina/L (urine)', 'urine-creatinine'],
+    ['Urea/L (urine)', 'urine-urea'],
     ['U-Creatinina/L', 'urine-creatinine'],
     ['U-Urea/L', 'urine-urea'],
     ['U-Proteine totali/L', 'urine-protein'],
