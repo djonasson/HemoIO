@@ -90,7 +90,8 @@ export type IdentificationFlag =
   | 'name-disagrees'
   | 'name-only'
   | 'similar-name'
-  | 'not-identified';
+  | 'not-identified'
+  | 'no-unit';
 
 /** Names matched after the dictionary's own aliases: learned aliases, then the model */
 export interface NameFallback {
@@ -535,7 +536,18 @@ async function matchBiomarkerToDictionary(
   // percentage, its 24-hour pair), as for names
   const aiChoice = aiKey && !fits(aiKey) ? (alikeFitting(aiKey, biomarker.unit, normalizedUnit) ?? aiKey) : aiKey;
 
+  // A value the report gives no unit (a dipstick screening, "< 15") is not
+  // the measured test its name or key is: saved under its own name
+  const unitless = {
+    ...biomarker,
+    isExactMatch: false,
+    normalizedUnit,
+    identificationFlags: ['no-unit'] satisfies IdentificationFlag[],
+  };
+  const noUnit = biomarker.unit.trim() === '';
+
   if (aiChoice) {
+    if (!fits(aiChoice) && noUnit) return unitless;
     if (!fits(aiChoice)) {
       return {
         ...biomarker,
@@ -562,6 +574,8 @@ async function matchBiomarkerToDictionary(
   }
 
   const byName = matchByName(biomarker);
+  const named = byName.dictionaryMatch ?? byName.suggestedMatch;
+  if (noUnit && named && named.canonicalUnit !== '') return unitless;
   if (byName.dictionaryMatch) {
     return { ...byName, identifiedBy: 'name', identificationFlags: ['name-only'] };
   }

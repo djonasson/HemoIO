@@ -82,6 +82,23 @@ test.describe('AI biomarker identification', () => {
     await expect(page.getByText('Values to Import')).toBeVisible();
   });
 
+  test('saves a screening result without a unit under its own name', async ({ page }) => {
+    // Scenario: A screening result without a unit is saved under its own name
+    await analyzeReport(page, [
+      {
+        name: 'Proteine (urine)',
+        value: 15,
+        unit: '',
+        confidence: 0.95,
+        biomarkerKey: 'urine-protein',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '15'))).toHaveText(/Not in dictionary/);
+    await expect(rowFor(page, '15').getByText('No unit in report')).toBeVisible();
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText('Values to Import')).toBeVisible();
+  });
+
   test('notes and labels values when the model gives no tests', async ({ page }) => {
     // Scenario: The model identifies no tests
     await analyzeReport(page, [

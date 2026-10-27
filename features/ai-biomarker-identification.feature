@@ -35,6 +35,13 @@ Feature: AI biomarker identification
     When I continue from review
     Then I should not be asked for its unit
 
+  Scenario: A screening result without a unit is saved under its own name
+    Given the report gives "Proteine < 15" in its urine screening, without a unit
+    And the AI identifies it as Urine Protein, which is measured in a unit
+    When the report is analyzed
+    Then the value should be saved as "Not in dictionary", labelled "No unit in report"
+    And I should be able to continue without giving it a unit
+
   Scenario: The model identifies no tests
     Given the AI returns no test for any value
     When the report is analyzed

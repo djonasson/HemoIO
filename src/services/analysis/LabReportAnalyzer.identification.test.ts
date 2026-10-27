@@ -81,6 +81,27 @@ describe('analyzeLabReport: identifying each value', () => {
     expect(value.identificationFlags).toEqual(['unit-mismatch']);
   });
 
+  it('files a value the report gives no unit under its own name, not a test with a unit', async () => {
+    // A dipstick screening ("Proteine < 15") prints no unit: it cannot be the measured test
+    const result = await analyze([
+      extracted('Proteine (urine)', 15, '', 'urine-protein'),
+      extracted('Proteine (urine)', 15, ''),
+    ]);
+    for (const value of result.matchedBiomarkers) {
+      expect(value.dictionaryMatch).toBeUndefined();
+      expect(value.suggestedMatch).toBeUndefined();
+      expect(value.identificationFlags).toEqual(['no-unit']);
+    }
+  });
+
+  it('keeps a unitless test the AI keyed with no unit', async () => {
+    const [value] = (
+      await analyze([extracted('Densità Relativa (urine)', 1.006, '', 'urine-specific-gravity')])
+    ).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('urine-specific-gravity');
+    expect(value.identificationFlags).toEqual([]);
+  });
+
   it("flags a printed name whose test, read with its unit, differs from the AI's", async () => {
     // BUN is blood urea nitrogen, which mg/dL fits too: the AI said urea
     const [value] = (await analyze([extracted('BUN', 18, 'mg/dL', 'urea')])).matchedBiomarkers;

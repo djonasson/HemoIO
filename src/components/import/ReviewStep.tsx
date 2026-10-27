@@ -343,10 +343,12 @@ export function ReviewStep({
         if (!b.name) missing.push('name');
         if (b.value === undefined || b.value === null) missing.push('value');
         // Check if unit is required - some biomarkers like pH are unitless
-        if (!b.unit) {
-          // The test the value is saved as (rows not analyzed: by name)
+        if (!b.unit.trim()) {
+          // The test the value is saved as or proposed for (rows not analyzed: by name)
           const biomarkerDef =
-            b.dictionaryMatch ?? (b.identificationFlags ? undefined : findBiomarker(b.name || ''));
+            b.dictionaryMatch ??
+            proposedTest(b) ??
+            (b.identificationFlags ? undefined : findBiomarker(b.name || ''));
           // A test with a unit needs one; an analyzed value with no test may
           // have none (specific gravity, ratios), as the report gave it
           const unitRequired = biomarkerDef

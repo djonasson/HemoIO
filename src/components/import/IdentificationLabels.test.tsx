@@ -24,3 +24,22 @@ it('shows each flag as text', () => {
   expect(screen.getByText("Unit doesn't fit")).toBeInTheDocument();
   expect(screen.getByText('Name suggests Urea')).toBeInTheDocument();
 });
+
+it('says a value the report gives no unit is saved under its name', () => {
+  render(
+    <MantineProvider env="test">
+      <IdentificationLabels
+        biomarker={{
+          name: 'Proteine (urine)',
+          value: 15,
+          unit: '',
+          confidence: 1,
+          isExactMatch: false,
+          normalizedUnit: '',
+          identificationFlags: ['no-unit'],
+        }}
+      />
+    </MantineProvider>
+  );
+  expect(screen.getByText('No unit in report')).toBeInTheDocument();
+});

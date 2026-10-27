@@ -9,4 +9,5 @@ export const IDENTIFICATION_LABELS: Record<IdentificationFlag, (b: MatchedBiomar
   'name-only': () => 'Matched by name only',
   'similar-name': () => 'Matched by similar name',
   'not-identified': () => 'Not identified',
+  'no-unit': () => 'No unit in report',
 };

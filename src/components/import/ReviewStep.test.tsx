@@ -660,6 +660,66 @@ describe('ReviewStep', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it('asks for the unit of a proposed test when the value has none', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Glicemia',
+            value: 5,
+            // Blank but for spaces, as a model may give it
+            unit: ' ',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: '',
+            identificationFlags: ['unit-mismatch'],
+            suggestedMatch: {
+              key: 'glucose',
+              name: 'Glucose',
+              canonicalUnit: 'mg/dL',
+              aliases: [],
+              category: 'metabolic',
+              description: '',
+              alternativeUnits: ['mmol/L'],
+              specimenType: 'serum',
+              loincCode: '2345-7',
+              related: [],
+            },
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(screen.getByText(/Glicemia in ".*" is missing: unit/)).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('saves a value the report gives no unit under its own name', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Proteine (urine)',
+            value: 15,
+            unit: '',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: '',
+            identificationFlags: ['no-unit'],
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(onComplete).toHaveBeenCalled();
+    });
+
     it('saves a value the user put as not in the dictionary, whatever its unit', () => {
       const onComplete = vi.fn();
       const reviewed: ReviewedResult = {
