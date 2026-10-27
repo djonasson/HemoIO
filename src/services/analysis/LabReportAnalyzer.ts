@@ -20,6 +20,7 @@ import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '..
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
 import { MODEL_LOAD_NOTE } from '../matching/notes';
+import { unitFitsBiomarker } from '@/utils/biomarkerSuggestions';
 import type {
   AIProviderConfig,
   AIProviderType,
@@ -469,11 +470,8 @@ export async function analyzeLabReport(
 
 /** Whether a dictionary entry measures in this unit, or one it converts from */
 function unitFits(definition: BiomarkerDefinition, unit: string, normalizedUnit: string): boolean {
-  const allUnits = [definition.canonicalUnit, ...definition.alternativeUnits];
-  return (
-    allUnits.some((u) => u.toLowerCase() === normalizedUnit.toLowerCase()) ||
-    canConvert(definition.name, unit, definition.canonicalUnit)
-  );
+  // Review's check (either micro spelling, units that convert), so the two never disagree
+  return unitFitsBiomarker(definition, unit) || unitFitsBiomarker(definition, normalizedUnit);
 }
 
 /**
@@ -548,7 +546,10 @@ async function matchBiomarkerToDictionary(
       };
     }
     // The printed name is an exact alias of another test: the AI wins, the user checks
-    const named = findBiomarker(biomarker.name);
+    // The test the printed name is, read with its unit (a count's name in %
+    // is its percentage): only a different one is worth a check
+    const byName = matchByName(biomarker);
+    const named = byName.dictionaryMatch ?? findBiomarker(biomarker.name);
     const disagrees = named !== undefined && named.key !== aiChoice.key;
     return {
       ...biomarker,

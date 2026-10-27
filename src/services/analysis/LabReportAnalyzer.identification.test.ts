@@ -81,13 +81,21 @@ describe('analyzeLabReport: identifying each value', () => {
     expect(value.identificationFlags).toEqual(['unit-mismatch']);
   });
 
-  it('flags a printed name that is an exact alias of another test', async () => {
-    const [value] = (
-      await analyze([extracted('Creatinina 24h', 4582, 'µmol/L', 'urine-creatinine')])
-    ).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('urine-creatinine');
+  it("flags a printed name whose test, read with its unit, differs from the AI's", async () => {
+    // BUN is blood urea nitrogen, which mg/dL fits too: the AI said urea
+    const [value] = (await analyze([extracted('BUN', 18, 'mg/dL', 'urea')])).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('urea');
     expect(value.identificationFlags).toEqual(['name-disagrees']);
-    expect(value.nameSuggests?.key).toBe('24-hour-urine-creatinine');
+    expect(value.nameSuggests?.key).toBe('blood-urea-nitrogen');
+  });
+
+  it("does not flag a name the unit makes the AI's test", async () => {
+    // The count's name in /100 WBC is its percentage; "Creatinina 24h" in µmol/L its concentration
+    const result = await analyze([
+      extracted('Eritroblasti', 0, '/100 WBC', 'nucleated-red-blood-cells-percentage'),
+      extracted('Creatinina 24h', 4582, 'µmol/L', 'urine-creatinine'),
+    ]);
+    expect(result.matchedBiomarkers.map((b) => b.identificationFlags)).toEqual([[], []]);
   });
 
   it('falls back to the name for unknown and malformed keys', async () => {

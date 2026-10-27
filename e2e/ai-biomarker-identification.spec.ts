@@ -52,17 +52,34 @@ test.describe('AI biomarker identification', () => {
   test('says when the name suggests another test', async ({ page }) => {
     // Scenario: The printed name suggests a different test
     await analyzeReport(page, [
+      { name: 'BUN', value: 18, unit: 'mg/dL', confidence: 0.95, biomarkerKey: 'urea' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '18'))).toHaveText(/^Urea/);
+    await expect(rowFor(page, '18').getByText('Name suggests Blood Urea Nitrogen')).toBeVisible();
+  });
+
+  test("does not question a name the unit makes the AI's test", async ({ page }) => {
+    // Scenario: A name the unit makes the AI's test is not questioned
+    await analyzeReport(page, [
       {
-        name: 'Creatinina 24h',
-        value: 4582,
-        unit: 'µmol/L',
+        name: 'Eritroblasti',
+        value: 0,
+        unit: '/100 WBC',
         confidence: 0.95,
-        biomarkerKey: 'urine-creatinine',
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
       },
     ]);
-    await expect(
-      rowFor(page, '4582').getByText('Name suggests 24-Hour Urine Creatinine')
-    ).toBeVisible();
+    await expect(savedAsCell(rowFor(page, '0'))).toHaveText(/Nucleated Red Blood Cells Percentage/);
+    await expect(rowFor(page, '0').getByText(/Name suggests/)).toHaveCount(0);
+  });
+
+  test('lets a value with no test have no unit', async ({ page }) => {
+    // Scenario: A value with no test may have no unit
+    await analyzeReport(page, [
+      { name: 'Zorblatin ratio', value: 1.02, unit: '', confidence: 0.95 },
+    ]);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText('Values to Import')).toBeVisible();
   });
 
   test('notes and labels values when the model gives no tests', async ({ page }) => {

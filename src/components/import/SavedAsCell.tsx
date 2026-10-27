@@ -39,13 +39,15 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
 
   return (
     <Stack gap={4}>
-      <Group gap="xs" wrap="nowrap">
-        <Text size="sm" data-testid="saved-as">
+      <Group gap="xs" wrap="nowrap" align="flex-start">
+        <Text size="sm" data-testid="saved-as" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
           {savedAsText(biomarker)}
         </Text>
         <Button
           size="compact-xs"
           variant="subtle"
+          // Never squeezed by a long test name: the name wraps instead
+          style={{ flexShrink: 0 }}
           onClick={() => setOpen(true)}
           aria-label={`Change test for ${biomarker.name}`}
         >

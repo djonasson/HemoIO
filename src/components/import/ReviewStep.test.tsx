@@ -684,6 +684,29 @@ describe('ReviewStep', () => {
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
     });
 
+    it('lets a value with no test have no unit, as specific gravity has none', () => {
+      const onComplete = vi.fn();
+      const unitless: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Zorblatin ratio',
+            value: 1.02,
+            unit: '',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: '',
+            identificationFlags: ['not-identified'],
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [unitless], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+    });
+
     it('allows unitless biomarkers (like pH) without unit', () => {
       const onComplete = vi.fn();
       const phResult: ReviewedResult = {

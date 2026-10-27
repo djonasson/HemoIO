@@ -20,10 +20,20 @@ Feature: AI biomarker identification
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
 
   Scenario: The printed name suggests a different test
-    Given the AI identifies "Creatinina 24h" in µmol/L as Urine Creatinine
+    Given the AI identifies "BUN" in mg/dL as Urea
     When the report is analyzed
-    Then the value should be saved as Urine Creatinine
-    And the row should be labelled "Name suggests 24-Hour Urine Creatinine"
+    Then the value should be saved as Urea
+    And the row should be labelled "Name suggests Blood Urea Nitrogen"
+
+  Scenario: A name the unit makes the AI's test is not questioned
+    Given the AI identifies "Eritroblasti" in /100 WBC as Nucleated Red Blood Cells Percentage
+    When the report is analyzed
+    Then the row should carry no label that asks for a check
+
+  Scenario: A value with no test may have no unit
+    Given the AI gives no test for a value the report gives without a unit
+    When I continue from review
+    Then I should not be asked for its unit
 
   Scenario: The model identifies no tests
     Given the AI returns no test for any value

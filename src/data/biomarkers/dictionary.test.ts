@@ -321,6 +321,7 @@ describe('Italian names', () => {
     ['Creatinina/L (urine)', 'urine-creatinine'],
     ['Urea/L (urine)', 'urine-urea'],
     ['U-Creatinina/L', 'urine-creatinine'],
+    ['Densità Relativa (urine)', 'urine-specific-gravity'],
     ['U-Urea/L', 'urine-urea'],
     ['U-Proteine totali/L', 'urine-protein'],
     ['Emoglobina (urine)', 'urine-blood'],

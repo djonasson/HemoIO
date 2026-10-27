@@ -147,6 +147,15 @@ describe('analyzeLabReport: values reported in two units', () => {
     ).toEqual(['urine-urea: 7 g/L', 'urine-creatinine: 4582 µmol/L']);
   });
 
+  it('takes urine cell counts in cell/µL, as Italian reports print them', async () => {
+    expect(
+      await kept([
+        extracted('Leucociti (urine)', 12, 'cell/µL'),
+        extracted('Cellule epiteliali (urine)', 4, 'cell/μL'),
+      ])
+    ).toEqual(['urine-wbc: 12 cell/µL', 'urine-epithelial-cells: 4 cell/μL']);
+  });
+
   it('keeps a percentage and an absolute count of the same cells apart', async () => {
     expect(
       await kept([
