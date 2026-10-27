@@ -539,7 +539,7 @@ export function ReviewStep({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Biomarker</Table.Th>
-                      <Table.Th>Saved as</Table.Th>
+                      <Table.Th miw={180}>Saved as</Table.Th>
                       <Table.Th>Specimen</Table.Th>
                       <Table.Th>Value</Table.Th>
                       <Table.Th>Unit</Table.Th>

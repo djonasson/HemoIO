@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Group, Modal, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { Button, Modal, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import {
   BIOMARKER_DEFINITIONS,
   searchBiomarkers,
@@ -38,22 +38,21 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
   };
 
   return (
-    <Stack gap={4}>
-      <Group gap="xs" wrap="nowrap" align="flex-start">
-        <Text size="sm" data-testid="saved-as" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-          {savedAsText(biomarker)}
-        </Text>
-        <Button
-          size="compact-xs"
-          variant="subtle"
-          // Never squeezed by a long test name: the name wraps instead
-          style={{ flexShrink: 0 }}
-          onClick={() => setOpen(true)}
-          aria-label={`Change test for ${biomarker.name}`}
-        >
-          Change
-        </Button>
-      </Group>
+    // The test's name on its own line, wrapping between words; Change and
+    // the labels below it, so neither squeezes the other
+    <Stack gap={4} align="flex-start">
+      <Text size="sm" data-testid="saved-as">
+        {savedAsText(biomarker)}
+      </Text>
+      <Button
+        size="compact-xs"
+        variant="subtle"
+        px={0}
+        onClick={() => setOpen(true)}
+        aria-label={`Change test for ${biomarker.name}`}
+      >
+        Change
+      </Button>
       <IdentificationLabels biomarker={biomarker} />
       <Modal opened={open} onClose={() => setOpen(false)} title={`Saved as: ${biomarker.name}`}>
         <TextInput
