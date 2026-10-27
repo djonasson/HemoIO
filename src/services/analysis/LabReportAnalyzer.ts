@@ -545,7 +545,6 @@ async function matchBiomarkerToDictionary(
         identificationFlags: ['unit-mismatch'],
       };
     }
-    // The printed name is an exact alias of another test: the AI wins, the user checks
     // The test the printed name is, read with its unit (a count's name in %
     // is its percentage): only a different one is worth a check
     const byName = matchByName(biomarker);
