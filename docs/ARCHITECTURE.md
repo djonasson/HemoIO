@@ -376,13 +376,25 @@ interface ValueWithConfidence<T> {
 
 Multiple AI providers can be supported (OpenAI, Anthropic, etc.) behind this interface.
 
+### Biomarker Identification
+
+Each extracted value is filed under a dictionary test (`src/data/biomarkers/dictionary.ts`), or under the unknown key of its printed name.
+
+- **By the AI.** The extraction prompt carries the dictionary's tests, one line each (`key: Name [specimen; units]`, `src/services/ai/testList.ts`). The AI returns a `biomarkerKey` per value, judged from the report's headings, specimen and units. One parser reads it for every provider; the analyzer trusts it only when the dictionary has the key and the value's unit fits that test (listed, or convertible to its standard unit). With an unfitting unit the test is only proposed.
+- **Fallback, when the AI gives no usable key**, first that matches with a fitting unit:
+  1. the printed name: exact names and aliases, then spacing and punctuation variations, a urine qualifier, a count's percentage or a 24-hour collection's concentration told apart by the unit;
+  2. the user's learned aliases: printed names they saved under a test, kept in the sealed preferences record (encrypted at rest), listed and removable in Settings → Biomarkers;
+  3. a small in-browser model (`src/services/matching/`): a multilingual sentence-embedding model run by transformers.js on the app's own copy of the ONNX runtime, downloaded from Hugging Face the first time a name needs it and cached for offline use. Only the model is downloaded; no report data leaves the device. A name matches only above a calibrated similarity (`similarNames.calibration.ts`), so a wrong match stays rarer than no match.
+- **Review** shows, per value, the test it will be saved as, with a Change list, and text labels for what needs checking: "Unit doesn't fit", "Name suggests …", "Matched by name only", "Matched by similar name", "Not identified". A value is saved under a test only in a unit of that test.
+- **Ollama** is called through its native `/api/chat` with a context size fitted to the prompt (its OpenAI-compatible endpoint cannot set one).
+
 ### Offline Capability
 
 With local text extraction:
 
 - **Fully offline**: Viewing data, manual entry, trends, export
 - **Partially offline**: Text extraction from documents (PDF.js, Tesseract.js)
-- **Requires internet**: AI-powered intelligent parsing of extracted text
+- **Requires internet**: AI-powered intelligent parsing of extracted text, and the first download of the OCR files and the matching model
 
 Users could potentially extract text offline and queue documents for AI processing when connectivity is restored (future enhancement).
 
