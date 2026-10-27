@@ -74,7 +74,7 @@ export {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
   RESPONSE_SCHEMA,
-  BIOMARKER_CONTEXT,
+  IDENTIFICATION_CONTEXT,
 } from './prompts';
 
 // Interval value parsing
