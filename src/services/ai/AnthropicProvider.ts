@@ -18,6 +18,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { parseIntervalValue } from './parseIntervalValue';
+import { withBiomarkerKey } from './biomarkerKey';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
 
@@ -275,6 +276,7 @@ export class AnthropicProvider implements AIProvider {
 
           return {
             name: String(b.name || ''),
+            ...withBiomarkerKey(b),
             value: parsedValue.value,
             unit: String(b.unit || ''),
             referenceRange: b.referenceRange

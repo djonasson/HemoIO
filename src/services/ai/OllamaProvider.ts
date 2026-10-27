@@ -29,6 +29,7 @@ import {
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
+import { withBiomarkerKey } from './biomarkerKey';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
@@ -533,6 +534,7 @@ Respond with ONLY a valid JSON object containing:
 
           return {
             name: String(b.name || ''),
+            ...withBiomarkerKey(b),
             value: parsedValue.value,
             unit: cleanedUnit,
             referenceRange: hasRange
