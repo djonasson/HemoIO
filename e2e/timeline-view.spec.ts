@@ -13,7 +13,8 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {

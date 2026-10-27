@@ -9,7 +9,8 @@
  * - File download
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import { setupOrUnlock } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';

@@ -12,7 +12,8 @@
  */
 
 import * as fs from 'fs';
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, labResultCard, goToTimeline } from './steps/timeline.steps';

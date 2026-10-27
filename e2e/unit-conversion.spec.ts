@@ -12,7 +12,8 @@
  * - the user can choose a preferred display unit per biomarker
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
 import {

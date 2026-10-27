@@ -7,7 +7,7 @@
  * timestamps and accessibility.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { setupOrUnlock } from './steps/app.steps';
 import {
   ORANGE_INDICATOR,

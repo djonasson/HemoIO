@@ -8,7 +8,8 @@
  * Scenario: OCR files are downloaded only when OCR is first used
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { unlockApp } from '../steps/app.steps';
 import { createTextImage } from '../steps/documentAnalysis.steps';
 import {

@@ -12,7 +12,7 @@
  * runs; the AI mock records the text it receives.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';

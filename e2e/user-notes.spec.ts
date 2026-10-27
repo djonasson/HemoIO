@@ -10,7 +10,8 @@
  * - Notes in trends view
  */
 
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import {
   BIOMARKERS,

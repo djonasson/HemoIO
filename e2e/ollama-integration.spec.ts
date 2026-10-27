@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page, Route } from '@playwright/test';
 
 // Mock Ollama API responses
 const mockOllamaModels = {

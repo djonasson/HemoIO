@@ -8,7 +8,8 @@
  * - Data management (backup/restore)
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';

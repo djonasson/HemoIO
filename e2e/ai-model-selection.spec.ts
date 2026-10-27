@@ -4,7 +4,7 @@
  * See features/ai-model-selection.feature
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import {
   MOCK_MODELS,
   analyzeLabReport,
