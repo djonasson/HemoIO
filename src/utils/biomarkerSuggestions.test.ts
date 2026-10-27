@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   applyBiomarkerName,
+  chooseTest,
   suggestBiomarkerNames,
   unitFitsBiomarker,
   unitOptionsFor,
 } from './biomarkerSuggestions';
-import { findBiomarker } from '@data/biomarkers/dictionary';
+import { findBiomarker, getBiomarkerByKey } from '@data/biomarkers/dictionary';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 const base: MatchedBiomarker = {
@@ -98,5 +99,38 @@ describe('unitFitsBiomarker', () => {
 
   it('rejects a unit the biomarker cannot be measured in', () => {
     expect(unitFitsBiomarker(findBiomarker('Hemoglobin A1c')!, 'g/dL')).toBe(false);
+  });
+});
+
+describe('chooseTest', () => {
+  const value: MatchedBiomarker = { ...base, name: 'Creatinina', unit: 'g/24h', dictionaryMatch: undefined,
+    suggestedMatch: getBiomarkerByKey('urine-creatinine'), identificationFlags: ['unit-mismatch'] };
+
+  it('saves the value as the chosen test, picked by the user', () => {
+    const chosen = chooseTest(value, getBiomarkerByKey('24-hour-urine-creatinine')!);
+    expect(chosen).toMatchObject({ identifiedBy: 'user', identificationFlags: [], savedAsUnknown: false });
+    expect(chosen.dictionaryMatch?.key).toBe('24-hour-urine-creatinine');
+    expect(chosen.suggestedMatch).toBeUndefined();
+  });
+
+  it('saves it as not in the dictionary', () => {
+    const chosen = chooseTest(value, null);
+    expect(chosen.dictionaryMatch).toBeUndefined();
+    expect(chosen).toMatchObject({ savedAsUnknown: true, identificationFlags: ['not-identified'] });
+  });
+});
+
+describe('applyBiomarkerName with a test the AI or the user chose', () => {
+  it('keeps the test', () => {
+    for (const identifiedBy of ['ai', 'user'] as const) {
+      const value = { ...base, identifiedBy, dictionaryMatch: getBiomarkerByKey('urine-urea') };
+      // 'Hematocrit' would match another test by name
+      expect(applyBiomarkerName(value, 'Hematocrit').dictionaryMatch?.key).toBe('urine-urea');
+    }
+  });
+
+  it('still re-matches a value matched by name', () => {
+    const value = { ...base, identifiedBy: 'name' as const };
+    expect(applyBiomarkerName(value, 'Hematocrit').dictionaryMatch?.name).toBe('Hematocrit');
   });
 });

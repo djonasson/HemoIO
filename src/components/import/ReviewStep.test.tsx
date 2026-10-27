@@ -232,7 +232,8 @@ describe('ReviewStep', () => {
     it('displays biomarker name', () => {
       renderReviewStep();
 
-      expect(screen.getByText('Glucose')).toBeInTheDocument();
+      // The printed name, before the test it is saved as
+      expect(screen.getAllByText('Glucose')[0]).toBeInTheDocument();
     });
 
     it('displays biomarker value', () => {
@@ -576,9 +577,111 @@ describe('ReviewStep', () => {
 
       expect(screen.getByText('Cannot Continue')).toBeInTheDocument();
       expect(
-        screen.getByText(/Hemoglobin A1c in "lab-report.pdf": g\/dL is not a unit for Hemoglobin A1c/)
+        screen.getByText(
+          /Hemoglobin A1c in "lab-report.pdf": g\/dL is not a unit for Hemoglobin A1c\. Choose a fitting unit, another test, or "Not in dictionary"\./
+        )
       ).toBeInTheDocument();
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('asks for a unit that fits any value saved under a test, renamed or not', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Creatinina',
+            value: 1.55,
+            unit: 'g/24h',
+            confidence: 0.9,
+            isExactMatch: true,
+            normalizedUnit: 'g/24h',
+            identifiedBy: 'user',
+            dictionaryMatch: {
+              key: 'urine-creatinine',
+              name: 'Urine Creatinine',
+              canonicalUnit: 'mg/dL',
+              aliases: [],
+              category: 'urinalysis',
+              description: '',
+              alternativeUnits: ['µmol/L', 'g/L'],
+              specimenType: 'urine',
+              loincCode: '2161-8',
+              related: [],
+            },
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(
+        screen.getByText(
+          /Creatinina in "lab-report.pdf": g\/24h is not a unit for Urine Creatinine\. Choose a fitting unit, another test, or "Not in dictionary"\./
+        )
+      ).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('asks the same when the unit does not fit the test the AI proposed', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Creatinina',
+            value: 1.55,
+            unit: 'g/24h',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: 'g/24h',
+            identificationFlags: ['unit-mismatch'],
+            suggestedMatch: {
+              key: 'urine-creatinine',
+              name: 'Urine Creatinine',
+              canonicalUnit: 'mg/dL',
+              aliases: [],
+              category: 'urinalysis',
+              description: '',
+              alternativeUnits: ['µmol/L', 'g/L'],
+              specimenType: 'urine',
+              loincCode: '2161-8',
+              related: [],
+            },
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(screen.getByText(/g\/24h is not a unit for Urine Creatinine/)).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('saves a value the user put as not in the dictionary, whatever its unit', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Creatinina',
+            value: 1.55,
+            unit: 'g/24h',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: 'g/24h',
+            identificationFlags: ['not-identified'],
+            savedAsUnknown: true,
+          },
+        ],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
     });
 
     it('allows unitless biomarkers (like pH) without unit', () => {
@@ -722,7 +825,7 @@ describe('ReviewStep', () => {
       renderReviewStep();
 
       // The biomarker name should have help cursor style (indicating tooltip)
-      const glucoseText = screen.getByText('Glucose');
+      const [glucoseText] = screen.getAllByText('Glucose');
       expect(glucoseText).toHaveStyle({ cursor: 'help' });
     });
 
@@ -754,7 +857,7 @@ describe('ReviewStep', () => {
 
       renderReviewStep({ reviewedResults: [noLoincResult] });
 
-      const testMarkerText = screen.getByText('Test Marker');
+      const testMarkerText = screen.getAllByText('Test Marker')[0];
       expect(testMarkerText).not.toHaveStyle({ cursor: 'help' });
     });
   });
@@ -848,6 +951,45 @@ describe('ReviewStep', () => {
 
       expect(await screen.findByRole('option', { name: 'Hematocrit' })).toBeInTheDocument();
       expect(screen.queryByRole('option', { name: 'Glucose' })).not.toBeInTheDocument();
+    });
+
+    it("makes the AI's proposed test the value's test once its unit fits", async () => {
+      const onReviewChange = vi.fn();
+      const proposed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [
+          {
+            name: 'Glicemia',
+            value: 95,
+            unit: 'mmol/24h',
+            confidence: 0.9,
+            isExactMatch: false,
+            normalizedUnit: 'mmol/24h',
+            identificationFlags: ['unit-mismatch'],
+            suggestedMatch: {
+              key: 'glucose',
+              name: 'Glucose',
+              canonicalUnit: 'mg/dL',
+              aliases: [],
+              category: 'metabolic',
+              description: '',
+              alternativeUnits: ['mmol/L'],
+              related: [],
+            },
+          },
+        ],
+      };
+      renderReviewStep({ reviewedResults: [proposed], onReviewChange });
+      await userEvent.click(screen.getByRole('button', { name: 'Edit biomarker' }));
+
+      fireEvent.change(screen.getByPlaceholderText('Unit'), { target: { value: 'mg/dL' } });
+
+      const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
+      expect(last[0].editedBiomarkers[0]).toMatchObject({
+        unit: 'mg/dL',
+        dictionaryMatch: { key: 'glucose' },
+        identificationFlags: [],
+      });
     });
 
     it('re-matches the biomarker when its name is edited', async () => {

@@ -34,6 +34,10 @@ export function unitOptionsFor(name: string): string[] {
  * measured in that unit. Review asks for a fitting unit before saving.
  */
 export function applyBiomarkerName<T extends MatchedBiomarker>(biomarker: T, name: string): T {
+  // A test the AI identified or the user picked stays: only the label changes
+  if (biomarker.identifiedBy === 'ai' || biomarker.identifiedBy === 'user') {
+    return { ...biomarker, name, renamedInReview: true };
+  }
   const match = findBiomarker(name);
   return {
     ...biomarker,
@@ -60,4 +64,23 @@ export function unitFitsBiomarker(definition: BiomarkerDefinition, unit: string)
     listed.some((option) => unitKey(option) === unitKey(unit)) ||
     canConvert(definition.name, unit, definition.canonicalUnit)
   );
+}
+
+/**
+ * Save a value as a test the user chose in review, or as not in the
+ * dictionary (null): the choice is final, so name edits no longer move it
+ */
+export function chooseTest<T extends MatchedBiomarker>(
+  biomarker: T,
+  definition: BiomarkerDefinition | null
+): T {
+  return {
+    ...biomarker,
+    dictionaryMatch: definition ?? undefined,
+    suggestedMatch: undefined,
+    identifiedBy: definition ? 'user' : undefined,
+    identificationFlags: definition ? [] : ['not-identified'],
+    nameSuggests: undefined,
+    savedAsUnknown: definition === null,
+  };
 }

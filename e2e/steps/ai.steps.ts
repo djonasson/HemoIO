@@ -12,6 +12,8 @@ export interface ExtractedBiomarkerFixture {
   unit: string;
   confidence: number;
   referenceRange?: { low?: number; high?: number; unit: string };
+  /** The dictionary key the AI identifies */
+  biomarkerKey?: string;
 }
 
 export const DEFAULT_EXTRACTION = {

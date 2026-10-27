@@ -54,6 +54,8 @@ function parseLabDate(dateStr: string | undefined): Date {
  * lookup by name, else a stable key for the unknown name.
  */
 function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
+  // The user chose "Not in dictionary"
+  if (biomarker.savedAsUnknown) return unknownBiomarkerKey(biomarker.name);
   const definition = biomarker.dictionaryMatch ?? findBiomarker(biomarker.name);
   return definition?.key ?? unknownBiomarkerKey(biomarker.name);
 }

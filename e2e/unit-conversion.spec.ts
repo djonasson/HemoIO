@@ -466,7 +466,7 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     // Only one value is kept — the one in the standard unit
     const rows = reviewRows(page);
     await expect(rows).toHaveCount(1);
-    await expect(rows.getByRole('cell', { name: 'Creatinine' })).toBeVisible();
+    await expect(rows.getByRole('cell', { name: 'Creatinine', exact: true })).toBeVisible();
     await expect(rows.getByRole('cell', { name: '0.76', exact: true })).toBeVisible();
     await expect(rows.getByRole('cell', { name: 'mg/dL', exact: true })).toBeVisible();
 

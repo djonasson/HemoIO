@@ -191,6 +191,17 @@ describe('LabResultPersistence', () => {
       expect(result.warnings[0]).toContain('UnknownBiomarker');
     });
 
+    it('saves a value the user put as not in the dictionary under its own name', async () => {
+      const mockDb = createMockDb();
+      const biomarkers = [
+        createMockBiomarker('Glucose', 95, 'mg/dL', { savedAsUnknown: true }),
+      ];
+
+      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
+
+      expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
+    });
+
     it('should handle empty biomarkers list', async () => {
       const mockDb = createMockDb();
       const reviewed = createMockReviewedResult('test.pdf', []);

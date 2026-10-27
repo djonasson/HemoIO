@@ -76,6 +76,8 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   identificationFlags?: IdentificationFlag[];
   /** With 'name-disagrees': the test the printed name is an exact alias of */
   nameSuggests?: BiomarkerDefinition;
+  /** The user chose "Not in dictionary": saved under the unknown key of its name */
+  savedAsUnknown?: boolean;
 }
 
 export type IdentifiedBy = 'ai' | 'name' | 'model' | 'user';

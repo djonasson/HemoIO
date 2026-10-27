@@ -107,6 +107,7 @@ export function reviewRow(page: Page, name: string | RegExp): Locator {
  */
 const REVIEW_COLUMNS = [
   'Biomarker',
+  'Saved as',
   'Specimen',
   'Value',
   'Unit',

@@ -42,15 +42,37 @@ import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import {
   applyBiomarkerName,
+  chooseTest,
   suggestBiomarkerNames,
   unitFitsBiomarker,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
 import { resultsToSave } from './resultsToSave';
+import { SavedAsCell } from './SavedAsCell';
 import type { SpecimenType } from '../../types';
 
 /** Every dictionary name, the options of the name autocomplete */
 const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
+
+/**
+ * A value with a changed unit. A test the AI proposed but whose unit did not
+ * fit becomes the value's test once the unit fits it.
+ */
+function withUnit(biomarker: MatchedBiomarker, unit: string): Partial<MatchedBiomarker> {
+  const proposed = biomarker.identificationFlags?.includes('unit-mismatch')
+    ? biomarker.suggestedMatch
+    : undefined;
+  if (proposed && unitFitsBiomarker(proposed, unit)) {
+    return {
+      unit,
+      dictionaryMatch: proposed,
+      suggestedMatch: undefined,
+      identifiedBy: 'ai',
+      identificationFlags: [],
+    };
+  }
+  return { unit };
+}
 
 /**
  * Human-readable labels for specimen types
@@ -347,15 +369,15 @@ export function ReviewStep({
           }
         }
 
-        // A renamed value keeps the unit it was measured in: check it fits
-        if (
-          missing.length === 0 &&
-          b.renamedInReview &&
-          b.dictionaryMatch &&
-          !unitFitsBiomarker(b.dictionaryMatch, b.unit)
-        ) {
+        // A value is saved under its test only in a unit of that test: the
+        // one the AI proposed, or the one it is saved as (renamed or not)
+        const test = b.savedAsUnknown
+          ? undefined
+          : (b.dictionaryMatch ??
+            (b.identificationFlags?.includes('unit-mismatch') ? b.suggestedMatch : undefined));
+        if (missing.length === 0 && test && !unitFitsBiomarker(test, b.unit)) {
           invalidBiomarkers.push(
-            `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${b.dictionaryMatch.name}. Choose its unit.`
+            `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
           );
         }
 
@@ -532,6 +554,7 @@ export function ReviewStep({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Biomarker</Table.Th>
+                      <Table.Th>Saved as</Table.Th>
                       <Table.Th>Specimen</Table.Th>
                       <Table.Th>Value</Table.Th>
                       <Table.Th>Unit</Table.Th>
@@ -625,6 +648,14 @@ export function ReviewStep({
                             )}
                           </Table.Td>
                           <Table.Td>
+                            <SavedAsCell
+                              biomarker={biomarker}
+                              onChoose={(definition) =>
+                                updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
+                              }
+                            />
+                          </Table.Td>
+                          <Table.Td>
                             <Group gap={4}>
                               <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
                               <Text size="sm" c="dimmed">
@@ -696,8 +727,14 @@ export function ReviewStep({
                               <Autocomplete
                                 size="xs"
                                 value={biomarker.unit}
-                                onChange={(unit) => updateBiomarker(resultIndex, bioIndex, { unit })}
-                                data={unitOptionsFor(biomarker.name)}
+                                onChange={(unit) =>
+                                  updateBiomarker(resultIndex, bioIndex, withUnit(biomarker, unit))
+                                }
+                                data={unitOptionsFor(
+                                  biomarker.dictionaryMatch?.name ??
+                                    biomarker.suggestedMatch?.name ??
+                                    biomarker.name
+                                )}
                                 placeholder="Unit"
                                 w={80}
                               />
