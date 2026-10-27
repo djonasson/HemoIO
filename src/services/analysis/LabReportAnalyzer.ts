@@ -70,7 +70,34 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   duplicateConflict?: DuplicateConflict;
   /** Set when the user renamed it in review: its unit must then fit the new name */
   renamedInReview?: boolean;
+  /** How its test was chosen: by the AI, the printed name, the matching model or the user */
+  identifiedBy?: IdentifiedBy;
+  /** Checks the identification needs; absent means none (manual rows, fixtures) */
+  identificationFlags?: IdentificationFlag[];
+  /** With 'name-disagrees': the test the printed name is an exact alias of */
+  nameSuggests?: BiomarkerDefinition;
 }
+
+export type IdentifiedBy = 'ai' | 'name' | 'model' | 'user';
+
+/** What review asks the user to check about a value's test */
+export type IdentificationFlag =
+  | 'unit-mismatch'
+  | 'name-disagrees'
+  | 'name-only'
+  | 'similar-name'
+  | 'not-identified';
+
+/** Names matched after the dictionary's own aliases: learned aliases, then the model */
+export interface NameFallback {
+  /** A learned alias of the printed name */
+  learned?: (name: string) => BiomarkerDefinition | undefined;
+  /** Tests whose names mean the same as the printed name, closest first */
+  similar?: (name: string) => Promise<BiomarkerDefinition[]>;
+}
+
+export const NO_KEYS_NOTE =
+  'This model did not identify the tests; they were matched by name. Check the Saved as column.';
 
 /**
  * Complete analysis result
@@ -136,6 +163,8 @@ export interface AnalyzerOptions {
   onProgress?: (stage: string, progress: number) => void;
   /** Cancels the AI request, e.g. when the user leaves the analysis */
   signal?: AbortSignal;
+  /** How names no dictionary alias knows are matched */
+  nameFallback?: NameFallback;
 }
 
 /**
@@ -366,8 +395,10 @@ export async function analyzeLabReport(
   try {
     startStage(matchingStage);
 
-    const initialMatches = aiAnalysis.biomarkers.map((biomarker) =>
-      matchBiomarkerToDictionary(biomarker)
+    const initialMatches = await Promise.all(
+      aiAnalysis.biomarkers.map((biomarker) =>
+        matchBiomarkerToDictionary(biomarker, options.nameFallback)
+      )
     );
 
     // Deduplicate biomarkers with different units
@@ -383,6 +414,9 @@ export async function analyzeLabReport(
       warnings.push(
         `${unmatchedCount} biomarker(s) could not be matched to the dictionary`
       );
+    }
+    if (aiAnalysis.biomarkers.length > 0 && aiAnalysis.biomarkers.every((b) => !b.biomarkerKey)) {
+      warnings.push(NO_KEYS_NOTE);
     }
 
     // Add warnings for duplicate conflicts
@@ -463,9 +497,75 @@ const UNIT_PAIRS: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * Match an extracted biomarker to the dictionary
+ * Choose an extracted value's test, first that applies: the AI's key when
+ * the dictionary has it and the unit fits (only proposed when the unit does
+ * not fit); else the printed name, a learned alias, then the matching model,
+ * each only with a fitting unit. Flags say what review should check.
  */
-function matchBiomarkerToDictionary(
+async function matchBiomarkerToDictionary(
+  biomarker: ExtractedBiomarker,
+  fallback: NameFallback = {}
+): Promise<MatchedBiomarker> {
+  const normalizedUnit = normalizeUnit(biomarker.unit);
+  const fits = (definition: BiomarkerDefinition) =>
+    unitFits(definition, biomarker.unit, normalizedUnit);
+  const aiChoice = biomarker.biomarkerKey ? getBiomarkerByKey(biomarker.biomarkerKey) : undefined;
+
+  if (aiChoice) {
+    if (!fits(aiChoice)) {
+      return {
+        ...biomarker,
+        suggestedMatch: aiChoice,
+        isExactMatch: false,
+        normalizedUnit,
+        identificationFlags: ['unit-mismatch'],
+      };
+    }
+    // The printed name is an exact alias of another test: the AI wins, the user checks
+    const named = findBiomarker(biomarker.name);
+    const disagrees = named !== undefined && named.key !== aiChoice.key;
+    return {
+      ...biomarker,
+      dictionaryMatch: aiChoice,
+      isExactMatch: true,
+      normalizedUnit,
+      identifiedBy: 'ai',
+      identificationFlags: disagrees ? ['name-disagrees'] : [],
+      ...(disagrees && { nameSuggests: named }),
+    };
+  }
+
+  const byName = matchByName(biomarker);
+  if (byName.dictionaryMatch) {
+    return { ...byName, identifiedBy: 'name', identificationFlags: ['name-only'] };
+  }
+  const learned = fallback.learned?.(biomarker.name);
+  if (learned && fits(learned)) {
+    return {
+      ...byName,
+      dictionaryMatch: learned,
+      suggestedMatch: undefined,
+      identifiedBy: 'name',
+      identificationFlags: ['name-only'],
+    };
+  }
+  const similar = (await fallback.similar?.(biomarker.name))?.find(fits);
+  if (similar) {
+    return {
+      ...byName,
+      dictionaryMatch: similar,
+      suggestedMatch: undefined,
+      identifiedBy: 'model',
+      identificationFlags: ['similar-name'],
+    };
+  }
+  return { ...byName, identificationFlags: ['not-identified'] };
+}
+
+/**
+ * Match an extracted biomarker to the dictionary by its printed name
+ */
+function matchByName(
   biomarker: ExtractedBiomarker
 ): MatchedBiomarker {
   const normalizedUnit = normalizeUnit(biomarker.unit);
