@@ -54,6 +54,12 @@ Feature: Alerts
     Then I should see a success message
     And it should say "All values within normal range"
 
+  Scenario: Nothing to check before any values are imported
+    Given I have no lab results
+    When I view the alerts
+    Then it should say "No values to check yet"
+    And I should not be told that all values are within normal range
+
   Scenario: Alert priority based on severity
     Given I have values that are:
       | Biomarker  | Value | Reference High | Severity |

@@ -103,6 +103,8 @@ export interface UseAlertsResult {
   unacknowledgedCount: number;
   /** Alerts hidden by an acknowledgement or a dismissal */
   hiddenCount: number;
+  /** Values checked against a reference range: none, and there is nothing to call normal */
+  assessedCount: number;
   /** Whether data is loading */
   isLoading: boolean;
   /** Error message if any */
@@ -154,6 +156,18 @@ export function useAlerts(): UseAlertsResult {
   const { results, isLoading, error, refresh } = useLabResults();
   const { acknowledgedThrough, dismissedIds, acknowledge, dismiss } = useAlertState();
   const { unitPreferences } = usePreferences();
+
+  const assessedCount = useMemo(
+    () =>
+      results
+        .flatMap((result) => result.testValues)
+        .filter(
+          (tv) =>
+            typeof tv.value === 'number' &&
+            (tv.status === 'normal' || tv.status === 'high' || tv.status === 'low')
+        ).length,
+    [results]
+  );
 
   /**
    * Every alert the lab results raise, before acknowledgements and dismissals
@@ -391,6 +405,7 @@ export function useAlerts(): UseAlertsResult {
     groupedAlerts,
     unacknowledgedCount,
     hiddenCount: allAlerts.length - alerts.length,
+    assessedCount,
     isLoading,
     error,
     dismissAlert: dismiss,

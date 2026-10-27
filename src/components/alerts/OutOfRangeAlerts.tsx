@@ -292,6 +292,7 @@ export function OutOfRangeAlerts({
     groupedAlerts,
     unacknowledgedCount,
     hiddenCount,
+    assessedCount,
     isLoading,
     error,
     dismissAlert,
@@ -394,6 +395,22 @@ export function OutOfRangeAlerts({
     );
   }
 
+  // Nothing imported, or no value with a reference range: nothing is normal yet
+  if (alerts.length === 0 && assessedCount === 0) {
+    return (
+      <Paper p="lg" withBorder>
+        <Center>
+          <Stack align="center" gap="xs">
+            <Text fw={500}>No values to check yet</Text>
+            <Text size="sm" c="dimmed" ta="center">
+              Alerts appear here for imported values outside their reference range.
+            </Text>
+          </Stack>
+        </Center>
+      </Paper>
+    );
+  }
+
   // All values normal
   if (alerts.length === 0) {
     return (
@@ -403,9 +420,7 @@ export function OutOfRangeAlerts({
             <ThemeIcon color="green" size="xl" radius="xl">
               <IconCheck size={24} />
             </ThemeIcon>
-            <Text fw={500} c="var(--mantine-color-green-light-color)">
-              All values within normal range
-            </Text>
+            <Text fw={500}>All values within normal range</Text>
             <Text size="sm" c="dimmed">
               No abnormal biomarker values detected
             </Text>

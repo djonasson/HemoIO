@@ -200,6 +200,17 @@ test.describe('Alerts with Data', () => {
     await expect(alertCards(page)).toHaveCount(0);
   });
 
+  // Scenario: Nothing to check before any values are imported
+  test('says there is nothing to check before any values are imported', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await viewAlerts(page);
+
+    const main = page.getByRole('main');
+    await expect(main.getByText('No values to check yet')).toBeVisible();
+    await expect(main.getByText('All values within normal range')).toBeHidden();
+  });
+
   // Scenario: Alert priority based on severity
   test('should show critical alerts before warning alerts', async ({ page }) => {
     // Hemoglobin is the more recent value, so date order alone would put it first

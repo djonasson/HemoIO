@@ -189,6 +189,27 @@ describe('useAlerts', () => {
     expect(result.current.unacknowledgedCount).toBe(0);
   });
 
+  it('counts the values checked against a reference range', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2026-01-01', [
+          createMockTestValue(1, 1, { status: 'normal' }),
+          createMockTestValue(2, 1, { status: 'unknown' as EnrichedTestValue['status'] }),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.assessedCount).toBe(1);
+  });
+
   it('should return loading state from useLabResults', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
