@@ -292,7 +292,7 @@ export function MultiMarkerChart({
       </ResponsiveContainer>
 
       {useDualAxis && (
-        <Paper p="sm" withBorder bg="gray.0">
+        <Paper p="sm" withBorder bg="var(--mantine-color-gray-light)">
           <Group gap="lg">
             <Text size="sm" c="dimmed">
               Note: Chart uses dual axes due to different units.

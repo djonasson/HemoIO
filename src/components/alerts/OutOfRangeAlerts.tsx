@@ -397,13 +397,13 @@ export function OutOfRangeAlerts({
   // All values normal
   if (alerts.length === 0) {
     return (
-      <Paper p="lg" withBorder bg="green.0">
+      <Paper p="lg" withBorder bg="var(--mantine-color-green-light)">
         <Center>
           <Stack align="center" gap="xs">
             <ThemeIcon color="green" size="xl" radius="xl">
               <IconCheck size={24} />
             </ThemeIcon>
-            <Text fw={500} c="green.7">
+            <Text fw={500} c="var(--mantine-color-green-light-color)">
               All values within normal range
             </Text>
             <Text size="sm" c="dimmed">

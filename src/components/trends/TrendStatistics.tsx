@@ -222,7 +222,7 @@ export function TrendStatistics({
       )}
 
       {referenceRange && (referenceRange.low !== undefined || referenceRange.high !== undefined) && (
-        <Paper p="sm" withBorder bg="gray.0">
+        <Paper p="sm" withBorder bg="var(--mantine-color-gray-light)">
           <Group gap="md">
             <Text size="sm" c="dimmed">
               Reference Range:
