@@ -172,4 +172,13 @@ test.describe('AI biomarker identification', () => {
     await saveReviewed(page);
     await expectNotLearned(page, 'zorblatina (urine)');
   });
+
+  test('says when the matching model cannot load', async ({ page }) => {
+    // Scenario: The matching model cannot load (the fixture blocks the model host)
+    await analyzeReport(page, [
+      { name: 'Zorblatina sierica', value: 3, unit: 'mg/dL', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '3').getByText('Not identified')).toBeVisible();
+    await expect(page.getByText(/The matching model could not load/)).toBeVisible();
+  });
 });

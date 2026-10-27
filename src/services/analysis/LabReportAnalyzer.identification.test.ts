@@ -3,7 +3,9 @@
  * unit, else the name. Real dictionary; text extraction and the AI mocked.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { analyzeLabReport, NO_KEYS_NOTE } from './LabReportAnalyzer';
+import { analyzeLabReport, NO_KEYS_NOTE, type NameFallback } from './LabReportAnalyzer';
+import { getBiomarkerByKey } from '../../data/biomarkers/dictionary';
+import { MODEL_LOAD_NOTE } from '../matching';
 import type { ExtractedBiomarker } from '../ai';
 import * as aiModule from '../ai';
 
@@ -42,7 +44,7 @@ function extracted(
   return { name, value, unit, confidence: 0.95, ...(biomarkerKey && { biomarkerKey }) };
 }
 
-async function analyze(biomarkers: ExtractedBiomarker[]) {
+async function analyze(biomarkers: ExtractedBiomarker[], nameFallback?: NameFallback) {
   vi.mocked(aiModule.getAIProvider).mockReturnValue({
     analyzeLabReport: vi.fn().mockResolvedValue({
       biomarkers,
@@ -55,7 +57,7 @@ async function analyze(biomarkers: ExtractedBiomarker[]) {
     }),
   } as unknown as ReturnType<typeof aiModule.getAIProvider>);
   const file = new File([new ArrayBuffer(8)], 'report.pdf', { type: 'application/pdf' });
-  return analyzeLabReport(file, { aiProvider: 'ollama', aiConfig: {} });
+  return analyzeLabReport(file, { aiProvider: 'ollama', aiConfig: {}, nameFallback });
 }
 
 describe('analyzeLabReport: identifying each value', () => {
@@ -128,5 +130,59 @@ describe('analyzeLabReport: identifying each value', () => {
     ]);
     expect(result.duplicateConflicts).toEqual([]);
     expect(result.matchedBiomarkers).toHaveLength(1);
+  });
+
+  it('matches a learned name after the dictionary aliases, with a fitting unit', async () => {
+    const learned = () => getBiomarkerByKey('urine-urea');
+    const result = await analyze(
+      [
+        extracted('Zorb', 7, 'g/L'),
+        extracted('Glucose', 95, 'mg/dL'),
+        extracted('Zorb', 3, '10^9/L'),
+      ],
+      { learned }
+    );
+
+    expect(
+      result.matchedBiomarkers.map((b) => [b.dictionaryMatch?.key, b.identificationFlags])
+    ).toEqual([
+      ['urine-urea', ['name-only']],
+      ['glucose', ['name-only']],
+      [undefined, ['not-identified']],
+    ]);
+  });
+
+  it('matches a name by meaning only with a fitting unit', async () => {
+    const similar = async () => [getBiomarkerByKey('urine-urea')!];
+    const result = await analyze(
+      [extracted('Zorb urinaria', 7, 'g/L'), extracted('Zorb urinaria', 3, '10^9/L')],
+      { similar }
+    );
+
+    expect(
+      result.matchedBiomarkers.map((b) => [
+        b.dictionaryMatch?.key,
+        b.identifiedBy,
+        b.identificationFlags,
+      ])
+    ).toEqual([
+      ['urine-urea', 'model', ['similar-name']],
+      [undefined, undefined, ['not-identified']],
+    ]);
+  });
+
+  it('notes once when the matching model could not load', async () => {
+    const similar = async () => {
+      throw new Error('offline');
+    };
+    const result = await analyze([extracted('Zorb', 1, 'U/L'), extracted('Blarg', 2, 'U/L')], {
+      similar,
+    });
+
+    expect(result.matchedBiomarkers.map((b) => b.identificationFlags)).toEqual([
+      ['not-identified'],
+      ['not-identified'],
+    ]);
+    expect(result.warnings.filter((w) => w === MODEL_LOAD_NOTE)).toHaveLength(1);
   });
 });

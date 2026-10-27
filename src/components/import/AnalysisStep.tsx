@@ -33,6 +33,7 @@ import { processWithConcurrency } from '../../utils/concurrency';
 import { manualEntryResult } from './manualEntry';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
+import { getSimilarNameMatcher, MODEL_LOADING_STAGE } from '@services/matching';
 
 /**
  * Analysis result for a single file
@@ -205,6 +206,15 @@ export function AnalysisStep({
                 signal: controller.signal,
                 nameFallback: {
                   learned: (name) => lookupLearnedAlias(learnedAliasesRef.current ?? {}, name),
+                  // Loaded the first time a name needs it, then kept for offline use
+                  similar: async (name) => {
+                    const matcher = await getSimilarNameMatcher(() => {
+                      if (!cancelled) {
+                        updateFileStatus(uploadedFile.id, { stage: MODEL_LOADING_STAGE });
+                      }
+                    });
+                    return matcher.similar(name);
+                  },
                 },
                 onProgress: (stage, progress) => {
                   if (!cancelled) {

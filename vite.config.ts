@@ -11,6 +11,7 @@ import {
   ocrRuntimeCaching,
 } from './src/services/ocr/ocrAssets';
 import { OCR_CACHE_NAME } from './ocrCache.config';
+import { ONNX_ASSET_DIR, ONNX_RUNTIME_FILES } from './src/services/matching/onnxAssets';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
 const ocrTargets = ocrCopyTargets();
@@ -32,7 +33,15 @@ export default defineConfig(({ command }) => {
       react(),
       viteStaticCopy({
         // Flat into tesseract/…, without the node_modules path
-        targets: ocrTargets.map((target) => ({ ...target, rename: { stripBase: true as const } })),
+        targets: [
+          ...ocrTargets.map((target) => ({ ...target, rename: { stripBase: true as const } })),
+          // The ONNX runtime the matching model runs on, served by the app itself
+          ...ONNX_RUNTIME_FILES.map((file) => ({
+            src: `node_modules/onnxruntime-web/dist/${file}`,
+            dest: ONNX_ASSET_DIR,
+            rename: { stripBase: true as const },
+          })),
+        ],
       }),
       VitePWA({
         registerType: 'prompt',
@@ -90,20 +99,34 @@ export default defineConfig(({ command }) => {
             },
           },
           ocrRuntimeCaching(OCR_CACHE_NAME),
+          {
+            // Downloaded the first time the matching model is needed, then offline
+            urlPattern: new RegExp(`/${ONNX_ASSET_DIR}/`),
+            handler: 'CacheFirst',
+            options: { cacheName: 'onnx-runtime', cacheableResponse: { statuses: [0, 200] } },
+          },
         ],
         // Skip waiting and claim clients immediately for better UX
         skipWaiting: true,
         clientsClaim: true,
         // Pre-cache app shell; OCR files are cached on first use (ocrRuntimeCaching)
         globPatterns: [...OCR_PRECACHE_GLOBS],
-        globIgnores: [...OCR_PRECACHE_IGNORES],
+        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`],
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues
       },
     }),
   ],
+  optimizeDeps: {
+    // Loaded only when the matching model is first needed: pre-bundled at
+    // start, so the dev server does not reload the page when it is
+    include: ['@huggingface/transformers'],
+  },
   build: {
+    // transformers.js (~580 kB) is one library, loaded only when the matching
+    // model is first needed; every chunk the app starts with stays under 500 kB
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         // Libraries change less often than the app, so each group stays cached across releases

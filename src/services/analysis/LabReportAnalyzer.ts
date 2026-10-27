@@ -19,6 +19,7 @@ import {
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
+import { MODEL_LOAD_NOTE } from '../matching/notes';
 import type {
   AIProviderConfig,
   AIProviderType,
@@ -397,11 +398,13 @@ export async function analyzeLabReport(
   try {
     startStage(matchingStage);
 
+    const model = { failed: false };
     const initialMatches = await Promise.all(
       aiAnalysis.biomarkers.map((biomarker) =>
-        matchBiomarkerToDictionary(biomarker, options.nameFallback)
+        matchBiomarkerToDictionary(biomarker, options.nameFallback, model)
       )
     );
+    if (model.failed) warnings.push(MODEL_LOAD_NOTE);
 
     // Deduplicate biomarkers with different units
     const deduplicationResult = deduplicateBiomarkers(initialMatches);
@@ -506,7 +509,8 @@ const UNIT_PAIRS: Record<string, string> = Object.fromEntries(
  */
 async function matchBiomarkerToDictionary(
   biomarker: ExtractedBiomarker,
-  fallback: NameFallback = {}
+  fallback: NameFallback = {},
+  model: { failed: boolean } = { failed: false }
 ): Promise<MatchedBiomarker> {
   const normalizedUnit = normalizeUnit(biomarker.unit);
   const fits = (definition: BiomarkerDefinition) =>
@@ -551,7 +555,13 @@ async function matchBiomarkerToDictionary(
       identificationFlags: ['name-only'],
     };
   }
-  const similar = (await fallback.similar?.(biomarker.name))?.find(fits);
+  let similar: BiomarkerDefinition | undefined;
+  try {
+    similar = (await fallback.similar?.(biomarker.name))?.find(fits);
+  } catch {
+    // The matching model could not load: the value is not identified, the notes say why
+    model.failed = true;
+  }
   if (similar) {
     return {
       ...byName,
