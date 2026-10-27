@@ -11,33 +11,30 @@ const mockOllamaModels = {
 };
 
 const mockChatResponse = {
-  choices: [
-    {
-      message: {
-        content: JSON.stringify({
-          biomarkers: [
-            {
-              name: 'Glucose',
-              value: 95,
-              unit: 'mg/dL',
-              confidence: 0.95,
-              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
-            },
-            {
-              name: 'Hemoglobin',
-              value: 14.5,
-              unit: 'g/dL',
-              confidence: 0.9,
-            },
-          ],
-          labDate: '2024-01-15',
-          labName: 'Test Laboratory',
-          warnings: [],
-        }),
-      },
-      finish_reason: 'stop',
-    },
-  ],
+  message: {
+    content: JSON.stringify({
+      biomarkers: [
+        {
+          name: 'Glucose',
+          value: 95,
+          unit: 'mg/dL',
+          confidence: 0.95,
+          referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+        },
+        {
+          name: 'Hemoglobin',
+          value: 14.5,
+          unit: 'g/dL',
+          confidence: 0.9,
+        },
+      ],
+      labDate: '2024-01-15',
+      labName: 'Test Laboratory',
+      warnings: [],
+    }),
+  },
+  done: true,
+  done_reason: 'stop',
   model: 'llama3.2:8b',
 };
 
@@ -87,7 +84,7 @@ async function setupOllamaMocks(
       return;
     }
 
-    if (url.includes('/v1/chat/completions')) {
+    if (url.includes('/api/chat')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

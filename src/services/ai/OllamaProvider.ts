@@ -30,39 +30,26 @@ import {
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withBiomarkerKey } from './biomarkerKey';
+import { ollamaContextSize } from './ollamaContext';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 
 /**
- * OpenAI-compatible chat message type
+ * Ollama native chat message: text, and images for vision models
  */
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string | ChatContent[];
+  content: string;
+  /** Base64 images, without the data URL prefix */
+  images?: string[];
 }
 
 /**
- * Multimodal content for vision messages
+ * Ollama native chat response (POST /api/chat, stream: false)
  */
-type ChatContent =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
-
-/**
- * OpenAI-compatible response type
- */
-interface ChatCompletionResponse {
-  choices: Array<{
-    message: {
-      content: string;
-    };
-    finish_reason: string;
-  }>;
-  model: string;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
+interface ChatResponse {
+  message?: { content?: string };
+  done_reason?: string;
+  model?: string;
 }
 
 /**
@@ -116,7 +103,7 @@ export class OllamaProvider implements AIProvider {
 
     try {
       const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
-      const content = response.choices[0]?.message?.content;
+      const content = response.message?.content;
 
       if (!content) {
         throw new AIAnalysisError('Empty response from Ollama', 'ollama');
@@ -155,6 +142,8 @@ export class OllamaProvider implements AIProvider {
     mimeType: string,
     options: AnalysisOptions = {}
   ): Promise<LabReportAnalysisResult> {
+    // Ollama's native API reads the image type from the image itself
+    void mimeType;
     const startTime = performance.now();
 
     if (!imageBase64) {
@@ -171,28 +160,15 @@ export class OllamaProvider implements AIProvider {
       );
     }
 
-    // Build multimodal message with image
-    const userContent: ChatContent[] = [
-      {
-        type: 'text',
-        text: this.createVisionPrompt(options),
-      },
-      {
-        type: 'image_url',
-        image_url: {
-          url: `data:${mimeType};base64,${imageBase64}`,
-        },
-      },
-    ];
-
+    // The image goes with the prompt, as Ollama's native API takes it
     const messages: ChatMessage[] = [
       { role: 'system', content: ENHANCED_SYSTEM_PROMPT },
-      { role: 'user', content: userContent },
+      { role: 'user', content: this.createVisionPrompt(options), images: [imageBase64] },
     ];
 
     try {
       const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
-      const content = response.choices[0]?.message?.content;
+      const content = response.message?.content;
 
       if (!content) {
         throw new AIAnalysisError('Empty response from Ollama vision model', 'ollama');
@@ -382,14 +358,14 @@ export class OllamaProvider implements AIProvider {
   }
 
   /**
-   * Make a chat completion request to Ollama's OpenAI-compatible API
+   * Make a chat request to Ollama's native API
    */
   private async makeChatRequest(
     messages: ChatMessage[],
     model: string,
     rateLimit?: RateLimitOptions,
     signal?: AbortSignal
-  ): Promise<ChatCompletionResponse> {
+  ): Promise<ChatResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     // The caller can cancel too, e.g. when the user leaves the analysis
@@ -397,7 +373,8 @@ export class OllamaProvider implements AIProvider {
     signal?.addEventListener('abort', () => controller.abort(), { once: true });
 
     try {
-      const url = `${this.baseUrl}/v1/chat/completions`;
+      // The native API: the OpenAI-compatible one cannot set the context size
+      const url = `${this.baseUrl}/api/chat`;
 
       // The timeout covers the whole call, rate-limit waits included
       const response = await fetchWithRateLimitRetry('ollama', url, {
@@ -408,9 +385,16 @@ export class OllamaProvider implements AIProvider {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: this.maxTokens,
-          temperature: this.temperature,
           stream: false,
+          format: 'json',
+          options: {
+            temperature: this.temperature,
+            num_predict: this.maxTokens,
+            num_ctx: ollamaContextSize(
+              messages.reduce((sum, m) => sum + m.content.length, 0),
+              this.maxTokens
+            ),
+          },
         }),
         signal: controller.signal,
       }, rateLimit);
@@ -425,7 +409,7 @@ export class OllamaProvider implements AIProvider {
         );
       }
 
-      return response.json() as Promise<ChatCompletionResponse>;
+      return response.json() as Promise<ChatResponse>;
     } catch (error) {
       clearTimeout(timeoutId);
 

@@ -11,7 +11,7 @@ import { expect, type Page, type Route } from '@playwright/test';
 import { DEFAULT_EXTRACTION, MOCK_OLLAMA_MODELS } from './ai.steps';
 import { writeTempFile } from './tempFiles';
 
-const OLLAMA_CHAT_URL = '**/localhost:11434/v1/chat/completions';
+const OLLAMA_CHAT_URL = '**/localhost:11434/api/chat';
 
 /**
  * How the mocked AI answers one analysis request
@@ -92,10 +92,10 @@ export async function scriptOllamaChat(
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            choices: [
-              { message: { content: JSON.stringify(reply.extraction) }, finish_reason: 'stop' },
-            ],
             model: MOCK_OLLAMA_MODELS[0],
+            message: { role: 'assistant', content: JSON.stringify(reply.extraction) },
+            done: true,
+            done_reason: 'stop',
           }),
         });
       }

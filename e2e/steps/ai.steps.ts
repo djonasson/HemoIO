@@ -58,14 +58,16 @@ export async function mockOllama(
       return;
     }
 
-    if (url.includes('/v1/chat/completions')) {
+    if (url.includes('/api/chat')) {
       mock.chatRequests++;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          choices: [{ message: { content: JSON.stringify(extraction) }, finish_reason: 'stop' }],
           model: MOCK_OLLAMA_MODELS[0],
+          message: { role: 'assistant', content: JSON.stringify(extraction) },
+          done: true,
+          done_reason: 'stop',
         }),
       });
       return;

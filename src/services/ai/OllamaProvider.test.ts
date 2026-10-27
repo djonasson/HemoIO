@@ -60,33 +60,29 @@ describe('OllamaProvider', () => {
 
   describe('analyzeLabReport', () => {
     const mockSuccessResponse = {
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              biomarkers: [
-                {
-                  name: 'Glucose',
-                  value: 95,
-                  unit: 'mg/dL',
-                  confidence: 0.95,
-                  referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
-                },
-                {
-                  name: 'Hemoglobin',
-                  value: 14.5,
-                  unit: 'g/dL',
-                  confidence: 0.9,
-                },
-              ],
-              labDate: '2024-01-15',
-              labName: 'Test Laboratory',
-              warnings: [],
-            }),
-          },
-          finish_reason: 'stop',
-        },
-      ],
+      message: {
+        content: JSON.stringify({
+          biomarkers: [
+            {
+              name: 'Glucose',
+              value: 95,
+              unit: 'mg/dL',
+              confidence: 0.95,
+              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+            },
+            {
+              name: 'Hemoglobin',
+              value: 14.5,
+              unit: 'g/dL',
+              confidence: 0.9,
+            },
+          ],
+          labDate: '2024-01-15',
+          labName: 'Test Laboratory',
+          warnings: [],
+        }),
+      },
+      done_reason: 'stop',
       model: 'llama3.2:8b',
     };
 
@@ -145,7 +141,7 @@ describe('OllamaProvider', () => {
     it('should throw error when response has no content', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ choices: [{ message: { content: '' } }] }),
+        json: () => Promise.resolve({ message: { content: '' } }),
       } as Response);
 
       const provider = new OllamaProvider();
@@ -159,7 +155,7 @@ describe('OllamaProvider', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          choices: [{ message: { content: 'This is not valid JSON' } }],
+          message: { content: 'This is not valid JSON' },
         }),
       } as Response);
 
@@ -192,20 +188,16 @@ describe('OllamaProvider', () => {
 
   describe('analyzeImage', () => {
     const mockVisionResponse = {
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              biomarkers: [
-                { name: 'Cholesterol', value: 200, unit: 'mg/dL', confidence: 0.85 },
-              ],
-              labDate: '2024-02-01',
-              warnings: ['Some text was difficult to read'],
-            }),
-          },
-          finish_reason: 'stop',
-        },
-      ],
+      message: {
+        content: JSON.stringify({
+          biomarkers: [
+            { name: 'Cholesterol', value: 200, unit: 'mg/dL', confidence: 0.85 },
+          ],
+          labDate: '2024-02-01',
+          warnings: ['Some text was difficult to read'],
+        }),
+      },
+      done_reason: 'stop',
       model: 'llava:13b',
     };
 
@@ -255,9 +247,9 @@ describe('OllamaProvider', () => {
 
       const callBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
       const userMessage = callBody.messages[1];
-      expect(Array.isArray(userMessage.content)).toBe(true);
-      expect(userMessage.content[1].type).toBe('image_url');
-      expect(userMessage.content[1].image_url.url).toContain('data:image/jpeg;base64,');
+      // Ollama's native API takes images beside the text, base64 without a data URL
+      expect(typeof userMessage.content).toBe('string');
+      expect(userMessage.images).toEqual(['dGVzdGltYWdl']);
     });
   });
 
@@ -410,21 +402,17 @@ describe('OllamaProvider', () => {
   describe('response parsing', () => {
     it('should normalize biomarker confidence values', async () => {
       const responseWithInvalidConfidence = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                biomarkers: [
-                  { name: 'Test1', value: 100, unit: 'mg/dL', confidence: 1.5 },
-                  { name: 'Test2', value: 200, unit: 'mg/dL', confidence: -0.5 },
-                  { name: 'Test3', value: 300, unit: 'mg/dL' },
-                ],
-                warnings: [],
-              }),
-            },
-            finish_reason: 'stop',
-          },
-        ],
+        message: {
+          content: JSON.stringify({
+            biomarkers: [
+              { name: 'Test1', value: 100, unit: 'mg/dL', confidence: 1.5 },
+              { name: 'Test2', value: 200, unit: 'mg/dL', confidence: -0.5 },
+              { name: 'Test3', value: 300, unit: 'mg/dL' },
+            ],
+            warnings: [],
+          }),
+        },
+        done_reason: 'stop',
         model: 'llama3.2:8b',
       };
 
@@ -443,21 +431,17 @@ describe('OllamaProvider', () => {
 
     it('should calculate overall confidence as average', async () => {
       const responseWithMultipleBiomarkers = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                biomarkers: [
-                  { name: 'Test1', value: 100, unit: 'mg/dL', confidence: 0.8 },
-                  { name: 'Test2', value: 200, unit: 'mg/dL', confidence: 0.9 },
-                  { name: 'Test3', value: 300, unit: 'mg/dL', confidence: 1.0 },
-                ],
-                warnings: [],
-              }),
-            },
-            finish_reason: 'stop',
-          },
-        ],
+        message: {
+          content: JSON.stringify({
+            biomarkers: [
+              { name: 'Test1', value: 100, unit: 'mg/dL', confidence: 0.8 },
+              { name: 'Test2', value: 200, unit: 'mg/dL', confidence: 0.9 },
+              { name: 'Test3', value: 300, unit: 'mg/dL', confidence: 1.0 },
+            ],
+            warnings: [],
+          }),
+        },
+        done_reason: 'stop',
         model: 'llama3.2:8b',
       };
 
@@ -474,17 +458,13 @@ describe('OllamaProvider', () => {
 
     it('should return 0 overall confidence for empty biomarkers', async () => {
       const responseWithNoBiomarkers = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                biomarkers: [],
-                warnings: ['No biomarkers found'],
-              }),
-            },
-            finish_reason: 'stop',
-          },
-        ],
+        message: {
+          content: JSON.stringify({
+            biomarkers: [],
+            warnings: ['No biomarkers found'],
+          }),
+        },
+        done_reason: 'stop',
         model: 'llama3.2:8b',
       };
 
@@ -503,17 +483,13 @@ describe('OllamaProvider', () => {
 });
 describe('OllamaProvider rate limiting', () => {
   const successBody = {
-    choices: [
-      {
-        message: {
-          content: JSON.stringify({
-            biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 }],
-            warnings: [],
-          }),
-        },
-        finish_reason: 'stop',
-      },
-    ],
+    message: {
+      content: JSON.stringify({
+        biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 }],
+        warnings: [],
+      }),
+    },
+    done_reason: 'stop',
     model: 'llama3.2:8b',
   };
   const rateLimited = () =>
@@ -577,11 +553,48 @@ describe('OllamaProvider rate limiting', () => {
   it('passes on the test key the model gave', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, finish_reason: 'stop' }] }),
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, done_reason: 'stop' }),
     } as Response);
 
     const result = await new OllamaProvider().analyzeLabReport('Glicemia 95 mg/dL');
 
     expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
+  });
+  it('passes on the test key the model gave', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, done_reason: 'stop' }),
+    } as Response);
+
+    const result = await new OllamaProvider().analyzeLabReport('Glicemia 95 mg/dL');
+
+    expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
+  });
+});
+
+describe('OllamaProvider native chat API', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    vi.mocked(isOllamaRunning).mockResolvedValue(true);
+    vi.mocked(getModelNames).mockResolvedValue(['llama3.2:8b']);
+  });
+
+  it('sends the chat to the native API with a context that fits the prompt', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          message: { role: 'assistant', content: '{"biomarkers":[],"warnings":[]}' },
+          done_reason: 'stop',
+        }),
+    } as Response);
+
+    await new OllamaProvider().analyzeLabReport('x'.repeat(35_000));
+
+    const [url, init] = vi.mocked(fetch).mock.calls.at(-1)!;
+    expect(String(url)).toMatch(/\/api\/chat$/);
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body).toMatchObject({ stream: false, format: 'json' });
+    expect(body.options.num_ctx).toBeGreaterThan(10_000);
   });
 });
