@@ -6,14 +6,14 @@ import {
   type BiomarkerDefinition,
 } from '@data/biomarkers/dictionary';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
+import { proposedTest } from '@/utils/biomarkerSuggestions';
 import { IdentificationLabels } from './IdentificationLabels';
 
 /** The test a value is saved as; one the AI proposed but whose unit does not fit, as such */
 function savedAsText(biomarker: MatchedBiomarker): string {
   if (biomarker.dictionaryMatch) return biomarker.dictionaryMatch.name;
-  if (biomarker.suggestedMatch && biomarker.identificationFlags?.includes('unit-mismatch')) {
-    return `Proposed: ${biomarker.suggestedMatch.name}`;
-  }
+  const proposed = proposedTest(biomarker);
+  if (proposed) return `Proposed: ${proposed.name}`;
   return 'Not in dictionary';
 }
 

@@ -76,28 +76,44 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     mapsRef.current = maps;
   }, [maps]);
 
-  const setEntry = useCallback(
-    async <F extends MapField>(field: F, key: string, value: Maps[F][string] | null) => {
-      type Entry = Maps[F][string];
-      const entries = (m: Maps) => m[field] as Record<string, Entry>;
-      const previous = entries(mapsRef.current)[key];
-      setMaps((current) => ({ ...current, [field]: withEntry(entries(current), key, value) }));
+  /**
+   * Change one map: shown at once, then saved. A failed save puts back each
+   * entry it changed, unless a later change replaced that entry already.
+   */
+  const updateField = useCallback(
+    async <F extends MapField>(field: F, update: (map: Maps[F]) => Maps[F]) => {
+      const before = mapsRef.current[field] as Record<string, unknown>;
+      const after = update(mapsRef.current[field]) as Record<string, unknown>;
+      setMaps((current) => ({ ...current, [field]: update(current[field]) }));
       try {
         if (!db || !isReady) throw new Error('Database not available');
-        await db.updatePreferences((stored) => ({
-          [field]: withEntry(entries(fromStored(stored)), key, value),
-        }));
+        await db.updatePreferences((stored) => ({ [field]: update(fromStored(stored)[field]) }));
       } catch (err) {
-        // Put back what was there, unless a later change replaced it already
-        setMaps((current) =>
-          entries(current)[key] === (value ?? undefined)
-            ? { ...current, [field]: withEntry(entries(current), key, previous ?? null) }
-            : current
+        const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
+          (key) => before[key] !== after[key]
         );
+        setMaps((current) => {
+          const map = { ...(current[field] as Record<string, unknown>) };
+          for (const key of changed) {
+            if (map[key] !== after[key]) continue;
+            if (before[key] === undefined) delete map[key];
+            else map[key] = before[key];
+          }
+          return { ...current, [field]: map };
+        });
         throw err;
       }
     },
     [db, isReady]
+  );
+
+  const setEntry = useCallback(
+    <F extends MapField>(field: F, key: string, value: Maps[F][string] | null) =>
+      updateField(
+        field,
+        (map) => withEntry(map as Record<string, Maps[F][string]>, key, value) as Maps[F]
+      ),
+    [updateField]
   );
 
   const setPreferredUnit = useCallback(
@@ -115,23 +131,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     [setEntry]
   );
   const learnAliases = useCallback(
-    async (values: ReadonlyArray<SavedName>) => {
-      const previous = mapsRef.current.learnedAliases;
-      setMaps((current) => ({
-        ...current,
-        learnedAliases: learnFromSaved(current.learnedAliases, values),
-      }));
-      try {
-        if (!db || !isReady) throw new Error('Database not available');
-        await db.updatePreferences((stored) => ({
-          learnedAliases: learnFromSaved(stored?.learnedAliases ?? {}, values),
-        }));
-      } catch (err) {
-        setMaps((current) => ({ ...current, learnedAliases: previous }));
-        throw err;
-      }
-    },
-    [db, isReady]
+    (values: ReadonlyArray<SavedName>) =>
+      updateField('learnedAliases', (map) => learnFromSaved(map, values)),
+    [updateField]
   );
 
   const value = useMemo<PreferencesState>(

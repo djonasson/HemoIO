@@ -29,19 +29,44 @@ export function createSimilarNameMatcher(
   );
   let vectors: Promise<number[][]> | undefined;
 
-  return {
-    async similar(name) {
+  const rank = (query: number[], dictionary: number[][]): BiomarkerDefinition[] => {
+    const best = new Map<string, { definition: BiomarkerDefinition; score: number }>();
+    dictionary.forEach((vector, i) => {
+      const score = dot(query, vector);
+      const { definition } = entries[i];
+      if (score >= threshold && score > (best.get(definition.key)?.score ?? -Infinity)) {
+        best.set(definition.key, { definition, score });
+      }
+    });
+    return [...best.values()].sort((a, b) => b.score - a.score).map((b) => b.definition);
+  };
+
+  // Names asked for at the same time (one report's values) are embedded in
+  // one call: the model runs one inference at a time
+  let pending: Array<{
+    name: string;
+    resolve: (tests: BiomarkerDefinition[]) => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  const flush = async () => {
+    const batch = pending;
+    pending = [];
+    try {
       vectors ??= embedder.embed(entries.map((e) => e.text));
-      const [query] = await embedder.embed([name]);
-      const best = new Map<string, { definition: BiomarkerDefinition; score: number }>();
-      (await vectors).forEach((vector, i) => {
-        const score = dot(query, vector);
-        const { definition } = entries[i];
-        if (score >= threshold && score > (best.get(definition.key)?.score ?? -Infinity)) {
-          best.set(definition.key, { definition, score });
-        }
+      const dictionary = await vectors;
+      const queries = await embedder.embed(batch.map((b) => b.name));
+      batch.forEach((b, i) => b.resolve(rank(queries[i], dictionary)));
+    } catch (error) {
+      batch.forEach((b) => b.reject(error));
+    }
+  };
+
+  return {
+    similar(name) {
+      return new Promise((resolve, reject) => {
+        pending.push({ name, resolve, reject });
+        if (pending.length === 1) queueMicrotask(() => void flush());
       });
-      return [...best.values()].sort((a, b) => b.score - a.score).map((b) => b.definition);
     },
   };
 }

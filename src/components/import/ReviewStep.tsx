@@ -42,7 +42,9 @@ import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import {
   applyBiomarkerName,
+  applyBiomarkerUnit,
   chooseTest,
+  proposedTest,
   suggestBiomarkerNames,
   unitFitsBiomarker,
   unitOptionsFor,
@@ -53,26 +55,6 @@ import type { SpecimenType } from '../../types';
 
 /** Every dictionary name, the options of the name autocomplete */
 const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
-
-/**
- * A value with a changed unit. A test the AI proposed but whose unit did not
- * fit becomes the value's test once the unit fits it.
- */
-function withUnit(biomarker: MatchedBiomarker, unit: string): Partial<MatchedBiomarker> {
-  const proposed = biomarker.identificationFlags?.includes('unit-mismatch')
-    ? biomarker.suggestedMatch
-    : undefined;
-  if (proposed && unitFitsBiomarker(proposed, unit)) {
-    return {
-      unit,
-      dictionaryMatch: proposed,
-      suggestedMatch: undefined,
-      identifiedBy: 'ai',
-      identificationFlags: [],
-    };
-  }
-  return { unit };
-}
 
 /**
  * Human-readable labels for specimen types
@@ -371,10 +353,7 @@ export function ReviewStep({
 
         // A value is saved under its test only in a unit of that test: the
         // one the AI proposed, or the one it is saved as (renamed or not)
-        const test = b.savedAsUnknown
-          ? undefined
-          : (b.dictionaryMatch ??
-            (b.identificationFlags?.includes('unit-mismatch') ? b.suggestedMatch : undefined));
+        const test = b.savedAsUnknown ? undefined : (b.dictionaryMatch ?? proposedTest(b));
         if (missing.length === 0 && test && !unitFitsBiomarker(test, b.unit)) {
           invalidBiomarkers.push(
             `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
@@ -728,7 +707,7 @@ export function ReviewStep({
                                 size="xs"
                                 value={biomarker.unit}
                                 onChange={(unit) =>
-                                  updateBiomarker(resultIndex, bioIndex, withUnit(biomarker, unit))
+                                  updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit))
                                 }
                                 data={unitOptionsFor(
                                   biomarker.dictionaryMatch?.name ??

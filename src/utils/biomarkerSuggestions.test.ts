@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   applyBiomarkerName,
+  applyBiomarkerUnit,
   chooseTest,
+  proposedTest,
   suggestBiomarkerNames,
   unitFitsBiomarker,
   unitOptionsFor,
@@ -132,5 +134,28 @@ describe('applyBiomarkerName with a test the AI or the user chose', () => {
   it('still re-matches a value matched by name', () => {
     const value = { ...base, identifiedBy: 'name' as const };
     expect(applyBiomarkerName(value, 'Hematocrit').dictionaryMatch?.name).toBe('Hematocrit');
+  });
+});
+
+describe('applyBiomarkerUnit', () => {
+  const proposal: MatchedBiomarker = {
+    ...base,
+    name: 'Glicemia',
+    unit: 'mmol/24h',
+    dictionaryMatch: undefined,
+    suggestedMatch: findBiomarker('Glucose'),
+    identificationFlags: ['unit-mismatch'],
+  };
+
+  it("makes the AI's proposed test the value's test once its unit fits", () => {
+    const next = applyBiomarkerUnit(proposal, 'mg/dL');
+    expect(next).toMatchObject({ unit: 'mg/dL', identifiedBy: 'ai', identificationFlags: [] });
+    expect(next.dictionaryMatch?.key).toBe('glucose');
+    expect(proposedTest(next)).toBeUndefined();
+  });
+
+  it('only changes the unit otherwise', () => {
+    expect(applyBiomarkerUnit(proposal, 'U/L')).toEqual({ ...proposal, unit: 'U/L' });
+    expect(proposedTest(proposal)?.key).toBe('glucose');
   });
 });

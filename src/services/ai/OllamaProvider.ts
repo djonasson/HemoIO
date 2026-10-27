@@ -139,11 +139,10 @@ export class OllamaProvider implements AIProvider {
    */
   async analyzeImage(
     imageBase64: string,
-    mimeType: string,
+    // Ollama's native API reads the image type from the image itself
+    _mimeType: string,
     options: AnalysisOptions = {}
   ): Promise<LabReportAnalysisResult> {
-    // Ollama's native API reads the image type from the image itself
-    void mimeType;
     const startTime = performance.now();
 
     if (!imageBase64) {

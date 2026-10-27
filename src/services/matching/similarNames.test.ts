@@ -46,4 +46,16 @@ describe('createSimilarNameMatcher', () => {
     await matcher.similar('b');
     expect(embedder.calls.filter((c) => c.length > 1)).toHaveLength(1);
   });
+
+  it('embeds names asked for at the same time in one call', async () => {
+    const embedder = tableEmbedder({ 'urine urea': 0, 'urea urinaria': 0 });
+    const matcher = createSimilarNameMatcher(embedder, [urea], 0.8);
+
+    const results = await Promise.all([matcher.similar('Urea urinaria'), matcher.similar('Zorb')]);
+
+    expect(results).toEqual([[urea], []]);
+    // The dictionary once, then both names together
+    expect(embedder.calls).toHaveLength(2);
+    expect(embedder.calls[1]).toEqual(['Urea urinaria', 'Zorb']);
+  });
 });

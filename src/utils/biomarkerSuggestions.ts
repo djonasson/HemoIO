@@ -84,3 +84,29 @@ export function chooseTest<T extends MatchedBiomarker>(
     savedAsUnknown: definition === null,
   };
 }
+
+/** The test the AI proposed for a value whose unit does not fit it */
+export function proposedTest(biomarker: MatchedBiomarker): BiomarkerDefinition | undefined {
+  return biomarker.identificationFlags?.includes('unit-mismatch')
+    ? biomarker.suggestedMatch
+    : undefined;
+}
+
+/**
+ * Change a value's unit. A test the AI proposed but whose unit did not fit
+ * becomes the value's test once the unit fits it.
+ */
+export function applyBiomarkerUnit<T extends MatchedBiomarker>(biomarker: T, unit: string): T {
+  const proposed = proposedTest(biomarker);
+  if (proposed && unitFitsBiomarker(proposed, unit)) {
+    return {
+      ...biomarker,
+      unit,
+      dictionaryMatch: proposed,
+      suggestedMatch: undefined,
+      identifiedBy: 'ai',
+      identificationFlags: [],
+    };
+  }
+  return { ...biomarker, unit };
+}

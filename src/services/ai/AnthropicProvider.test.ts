@@ -432,3 +432,29 @@ describe('AnthropicProvider rate limiting', () => {
     expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
   });
 });
+
+describe('AnthropicProvider prompt caching', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  it('marks the system prompt, with its test list, cacheable across files', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          content: [{ type: 'text', text: '{"biomarkers":[],"warnings":[]}' }],
+          stop_reason: 'end_turn',
+        }),
+    } as Response);
+
+    await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport(
+      'Glucose 95 mg/dL'
+    );
+
+    const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body));
+    expect(body.system).toEqual([
+      { type: 'text', text: expect.stringContaining('KNOWN TESTS'), cache_control: { type: 'ephemeral' } },
+    ]);
+  });
+});

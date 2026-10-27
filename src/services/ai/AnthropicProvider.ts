@@ -228,7 +228,8 @@ export class AnthropicProvider implements AIProvider {
       },
       body: JSON.stringify({
         model: this.config.model,
-        system: systemPrompt,
+        // Cached: the same instructions and test list open every file's request
+        system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages,
         max_tokens: this.config.maxTokens,
       }),
