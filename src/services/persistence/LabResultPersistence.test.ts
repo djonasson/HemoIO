@@ -202,6 +202,21 @@ describe('LabResultPersistence', () => {
       expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
     });
 
+    it('saves an analyzed value without a test under its own name, as review showed it', async () => {
+      // Review shows "Not in dictionary": the name alone must not pick a test
+      const mockDb = createMockDb();
+      const biomarkers = [
+        createMockBiomarker('Glucose', 95, 'mmol/24h', {
+          dictionaryMatch: undefined,
+          identificationFlags: ['not-identified'],
+        }),
+      ];
+
+      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
+
+      expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
+    });
+
     it('should handle empty biomarkers list', async () => {
       const mockDb = createMockDb();
       const reviewed = createMockReviewedResult('test.pdf', []);

@@ -8,6 +8,15 @@ import {
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import { IdentificationLabels } from './IdentificationLabels';
 
+/** The test a value is saved as; one the AI proposed but whose unit does not fit, as such */
+function savedAsText(biomarker: MatchedBiomarker): string {
+  if (biomarker.dictionaryMatch) return biomarker.dictionaryMatch.name;
+  if (biomarker.suggestedMatch && biomarker.identificationFlags?.includes('unit-mismatch')) {
+    return `Proposed: ${biomarker.suggestedMatch.name}`;
+  }
+  return 'Not in dictionary';
+}
+
 interface SavedAsCellProps {
   biomarker: MatchedBiomarker;
   /** A dictionary test, or null for "Not in dictionary" */
@@ -32,7 +41,7 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
     <Stack gap={4}>
       <Group gap="xs" wrap="nowrap">
         <Text size="sm" data-testid="saved-as">
-          {biomarker.dictionaryMatch?.name ?? 'Not in dictionary'}
+          {savedAsText(biomarker)}
         </Text>
         <Button
           size="compact-xs"

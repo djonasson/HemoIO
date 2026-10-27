@@ -6,7 +6,11 @@
 import { ONNX_ASSET_DIR } from './onnxAssets';
 import type { Embedder } from './similarNames';
 
-export async function loadTransformersEmbedder(model: string): Promise<Embedder> {
+/**
+ * @param revision - The model repository's commit: pinned, so a later push
+ *   to the repository never reaches users unreviewed
+ */
+export async function loadTransformersEmbedder(model: string, revision: string): Promise<Embedder> {
   const { pipeline, env } = await import('@huggingface/transformers');
   env.allowLocalModels = false;
   // Kept in the browser's cache for offline use (Node caches on disk)
@@ -14,7 +18,7 @@ export async function loadTransformersEmbedder(model: string): Promise<Embedder>
   // In the browser the runtime comes from the app's own files (Node has its own)
   const wasm = env.backends.onnx.wasm;
   if (wasm) wasm.wasmPaths = `${import.meta.env.BASE_URL}${ONNX_ASSET_DIR}/`;
-  const extract = await pipeline('feature-extraction', model, { dtype: 'q8' });
+  const extract = await pipeline('feature-extraction', model, { dtype: 'q8', revision });
   return {
     async embed(texts) {
       const output = await extract(texts, { pooling: 'mean', normalize: true });

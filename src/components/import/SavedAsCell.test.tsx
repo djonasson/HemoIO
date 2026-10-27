@@ -45,3 +45,20 @@ it('chooses "Not in dictionary"', () => {
   fireEvent.click(screen.getByRole('option', { name: 'Not in dictionary' }));
   expect(onChoose).toHaveBeenCalledWith(null);
 });
+
+it("shows the test the AI proposed when the unit does not fit it", () => {
+  render(
+    <MantineProvider env="test">
+      <SavedAsCell
+        biomarker={{
+          ...value,
+          dictionaryMatch: undefined,
+          suggestedMatch: getBiomarkerByKey('glucose'),
+          identificationFlags: ['unit-mismatch'],
+        }}
+        onChoose={vi.fn()}
+      />
+    </MantineProvider>
+  );
+  expect(screen.getByTestId('saved-as')).toHaveTextContent('Proposed: Glucose');
+});

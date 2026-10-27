@@ -73,10 +73,11 @@ describe('analyzeLabReport: identifying each value', () => {
   });
 
   it("only proposes the AI's key when the unit does not fit it", async () => {
-    const [value] = (await analyze([extracted('Creatinina', 1.55, 'g/24h', 'urine-creatinine')]))
+    // Glucose has no 24-hour pair: nothing the unit fits
+    const [value] = (await analyze([extracted('Glicemia', 5, 'mmol/24h', 'glucose')]))
       .matchedBiomarkers;
     expect(value.dictionaryMatch).toBeUndefined();
-    expect(value.suggestedMatch?.key).toBe('urine-creatinine');
+    expect(value.suggestedMatch?.key).toBe('glucose');
     expect(value.identificationFlags).toEqual(['unit-mismatch']);
   });
 
@@ -184,5 +185,41 @@ describe('analyzeLabReport: identifying each value', () => {
       ['not-identified'],
     ]);
     expect(result.warnings.filter((w) => w === MODEL_LOAD_NOTE)).toHaveLength(1);
+  });
+
+  it("takes the AI's test's pair when the unit fits that, not a conflict", async () => {
+    // The AI gave the concentration's key to the 24-hour amount too
+    const result = await analyze([
+      extracted('Creatinina urine', 120, 'mg/dL', 'urine-creatinine'),
+      extracted('Creatinina urine', 1.55, 'g/24h', 'urine-creatinine'),
+      extracted('Neutrofili', 55, '%', 'neutrophils'),
+    ]);
+
+    expect(result.duplicateConflicts).toEqual([]);
+    expect(result.matchedBiomarkers.map((b) => [b.dictionaryMatch?.key, b.identifiedBy])).toEqual([
+      ['urine-creatinine', 'ai'],
+      ['24-hour-urine-creatinine', 'ai'],
+      ['neutrophils-percentage', 'ai'],
+    ]);
+  });
+
+  it('never groups a proposal whose unit does not fit with a confirmed value', async () => {
+    const result = await analyze([
+      extracted('Creatinina urine', 120, 'mg/dL', 'urine-creatinine'),
+      extracted('Creatinina urine', 3, 'U/L', 'urine-creatinine'),
+    ]);
+
+    expect(result.duplicateConflicts).toEqual([]);
+    expect(result.matchedBiomarkers).toHaveLength(2);
+  });
+
+  it('says not identified when the closest test by meaning does not fit the unit', async () => {
+    // A runner-up is no safer: the nearest test was rejected
+    const similar = async () => [getBiomarkerByKey('glucose')!, getBiomarkerByKey('urine-urea')!];
+    const [value] = (await analyze([extracted('Zorb urinaria', 7, 'g/L')], { similar }))
+      .matchedBiomarkers;
+
+    expect(value.dictionaryMatch).toBeUndefined();
+    expect(value.identificationFlags).toEqual(['not-identified']);
   });
 });

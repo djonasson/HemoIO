@@ -502,6 +502,23 @@ const UNIT_PAIRS: Record<string, string> = Object.fromEntries(
 );
 
 /**
+ * The test reported alike with `definition` that the unit fits: a count's
+ * percentage, or a 24-hour urine collection's concentration or amount
+ */
+function alikeFitting(
+  definition: BiomarkerDefinition,
+  unit: string,
+  normalizedUnit: string
+): BiomarkerDefinition | undefined {
+  return [
+    SHARE_UNIT.test(normalizedUnit.trim()) && `${definition.key}-percentage`,
+    UNIT_PAIRS[definition.key],
+  ]
+    .map((key) => (key ? getBiomarkerByKey(key) : undefined))
+    .find((alike) => alike && unitFits(alike, unit, normalizedUnit));
+}
+
+/**
  * Choose an extracted value's test, first that applies: the AI's key when
  * the dictionary has it and the unit fits (only proposed when the unit does
  * not fit); else the printed name, a learned alias, then the matching model,
@@ -515,7 +532,10 @@ async function matchBiomarkerToDictionary(
   const normalizedUnit = normalizeUnit(biomarker.unit);
   const fits = (definition: BiomarkerDefinition) =>
     unitFits(definition, biomarker.unit, normalizedUnit);
-  const aiChoice = biomarker.biomarkerKey ? getBiomarkerByKey(biomarker.biomarkerKey) : undefined;
+  const aiKey = biomarker.biomarkerKey ? getBiomarkerByKey(biomarker.biomarkerKey) : undefined;
+  // The AI's test, or the one reported alike that the unit fits (its
+  // percentage, its 24-hour pair), as for names
+  const aiChoice = aiKey && !fits(aiKey) ? (alikeFitting(aiKey, biomarker.unit, normalizedUnit) ?? aiKey) : aiKey;
 
   if (aiChoice) {
     if (!fits(aiChoice)) {
@@ -557,7 +577,9 @@ async function matchBiomarkerToDictionary(
   }
   let similar: BiomarkerDefinition | undefined;
   try {
-    similar = (await fallback.similar?.(biomarker.name))?.find(fits);
+    // Only the closest test: one rejected by its unit is a reason to doubt the match
+    const [closest] = (await fallback.similar?.(biomarker.name)) ?? [];
+    similar = closest && fits(closest) ? closest : undefined;
   } catch {
     // The matching model could not load: the value is not identified, the notes say why
     model.failed = true;
@@ -592,13 +614,7 @@ function matchByName(
   // "Neutrophils" in %), or a 24-hour urine collection's concentration,
   // which reports name after the collection
   if (candidate && !unitFits(candidate, biomarker.unit, normalizedUnit)) {
-    const alike = [
-      SHARE_UNIT.test(normalizedUnit.trim()) && `${candidate.key}-percentage`,
-      UNIT_PAIRS[candidate.key],
-    ]
-      .map((key) => (key ? getBiomarkerByKey(key) : undefined))
-      .find((definition) => definition && unitFits(definition, biomarker.unit, normalizedUnit));
-    candidate = alike ?? candidate;
+    candidate = alikeFitting(candidate, biomarker.unit, normalizedUnit) ?? candidate;
   }
 
   if (candidate) {
@@ -730,9 +746,12 @@ function deduplicateBiomarkers(
   // Group biomarkers by their dictionary entry, else by the name as reported
   const groups = new Map<string, MatchedBiomarker[]>();
   for (const biomarker of biomarkers) {
+    // A proposal whose unit does not fit is not the same measurement as a
+    // confirmed value of that test: it is reviewed on its own
+    const proposal = biomarker.identificationFlags?.includes('unit-mismatch');
     const groupKey =
       biomarker.dictionaryMatch?.name ||
-      biomarker.suggestedMatch?.name ||
+      (biomarker.suggestedMatch && `${biomarker.suggestedMatch.name}${proposal ? ' (proposed)' : ''}`) ||
       biomarker.name.toLowerCase().trim();
     if (!groups.has(groupKey)) groups.set(groupKey, []);
     groups.get(groupKey)!.push(biomarker);

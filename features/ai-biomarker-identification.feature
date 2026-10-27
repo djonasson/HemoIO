@@ -14,7 +14,7 @@ Feature: AI biomarker identification
     And it should carry no label that asks for a check
 
   Scenario: The unit does not fit the test the AI chose
-    Given the AI identifies a value in g/24h as Urine Creatinine
+    Given the AI identifies a value in mmol/24h as Glucose
     When the report is analyzed
     Then the row should be labelled "Unit doesn't fit"
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
@@ -32,6 +32,12 @@ Feature: AI biomarker identification
     And values matched by their name should be labelled "Matched by name only"
     And values with no match should be labelled "Not identified"
 
+  Scenario: The AI's test is reported alike with another the unit fits
+    Given the AI identifies both a creatinine concentration in mg/dL and a 24-hour amount in g/24h as Urine Creatinine
+    When the report is analyzed
+    Then the concentration should be saved as Urine Creatinine and the 24-hour amount as 24-Hour Urine Creatinine
+    And no duplicate conflict warning should be shown
+
   Scenario: Change the test a value is saved as
     Given a value is saved as Urine Creatinine
     When I change its test to 24-Hour Urine Creatinine
@@ -43,19 +49,23 @@ Feature: AI biomarker identification
     When I edit its printed name
     Then it should still be saved as Urine Urea
 
+  Scenario: A test the AI chose is not learned
+    Given the AI identified "Zorblatina (urine)" as Urine Urea and I saved it
+    Then "Zorblatina (urine)" should not be among the learned names
+
   Scenario: A confirmed name is learned
-    Given I saved "Zorblatina (urine)" as Urine Urea
+    Given I picked Urine Urea for "Zorblatina (urine)" in review and saved it
     When I import a report where the AI gives no test for "Zorblatina (urine)"
     Then the value should be saved as Urine Urea
     And the row should be labelled "Matched by name only"
 
   Scenario: Remove a learned name
-    Given I saved "Zorblatina (urine)" as Urine Urea
+    Given I picked Urine Urea for "Zorblatina (urine)" in review and saved it
     When I remove it from the learned names in Settings
     Then a later import of "Zorblatina (urine)" should not be identified by it
 
   Scenario: Saving as "Not in dictionary" forgets a learned name
-    Given I saved "Zorblatina (urine)" as Urine Urea
+    Given I picked Urine Urea for "Zorblatina (urine)" in review and saved it
     When I save it as "Not in dictionary" in a later import
     Then the learned name should be removed
 

@@ -3,17 +3,13 @@
  * within a PreferencesProvider so a change in one view shows in all.
  */
 import { createContext, useContext } from 'react';
+import type { SavedName } from '@data/biomarkers/learnedAliases';
+
+export type { SavedName };
 
 export interface PersonalTargetRange {
   low?: number;
   high?: number;
-}
-
-/** A saved value's printed name and the test it was saved under */
-export interface SavedName {
-  name: string;
-  key?: string;
-  savedAsUnknown?: boolean;
 }
 
 export interface PreferencesState {

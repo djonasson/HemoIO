@@ -2,6 +2,7 @@
  * E2E: AI biomarker identification (features/ai-biomarker-identification.feature)
  */
 import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
 import {
@@ -39,15 +40,9 @@ test.describe('AI biomarker identification', () => {
   test("flags a unit that does not fit the AI's test and blocks Continue", async ({ page }) => {
     // Scenario: The unit does not fit the test the AI chose
     await analyzeReport(page, [
-      {
-        name: 'Creatinina',
-        value: 1.55,
-        unit: 'g/24h',
-        confidence: 0.95,
-        biomarkerKey: 'urine-creatinine',
-      },
+      { name: 'Glicemia', value: 5, unit: 'mmol/24h', confidence: 0.95, biomarkerKey: 'glucose' },
     ]);
-    await expect(rowFor(page, '1.55').getByText("Unit doesn't fit")).toBeVisible();
+    await expect(rowFor(page, '5').getByText("Unit doesn't fit")).toBeVisible();
     await page.getByRole('button', { name: 'Continue to Confirm' }).click();
     await expect(
       page.getByText(/Choose a fitting unit, another test, or "Not in dictionary"/)
@@ -86,15 +81,40 @@ test.describe('AI biomarker identification', () => {
     await analyzeReport(page, [
       {
         name: 'Creatinina',
+        value: 4582,
+        unit: 'µmol/L',
+        confidence: 0.95,
+        biomarkerKey: 'urine-creatinine',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '4582'))).toHaveText(/^Urine Creatinine/);
+    await changeTest(page, rowFor(page, '4582'), '24-Hour Urine Creatinine');
+    await expect(savedAsCell(rowFor(page, '4582'))).toHaveText(/24-Hour Urine Creatinine/);
+  });
+
+  test("files a 24-hour amount the AI gave the concentration's test under the 24-hour test", async ({
+    page,
+  }) => {
+    // Scenario: The AI's test is reported alike with another the unit fits
+    await analyzeReport(page, [
+      {
+        name: 'Creatinina',
+        value: 120,
+        unit: 'mg/dL',
+        confidence: 0.95,
+        biomarkerKey: 'urine-creatinine',
+      },
+      {
+        name: 'Creatinina',
         value: 1.55,
         unit: 'g/24h',
         confidence: 0.95,
         biomarkerKey: 'urine-creatinine',
       },
     ]);
-    await changeTest(page, rowFor(page, '1.55'), '24-Hour Urine Creatinine');
     await expect(savedAsCell(rowFor(page, '1.55'))).toHaveText(/24-Hour Urine Creatinine/);
-    await expect(rowFor(page, '1.55').getByText("Unit doesn't fit")).toHaveCount(0);
+    await expect(savedAsCell(rowFor(page, '120'))).toHaveText(/^Urine Creatinine/);
+    await expect(page.getByText('Duplicate Biomarkers Detected')).toHaveCount(0);
   });
 
   test('keeps the test when the printed name is edited', async ({ page }) => {
@@ -115,8 +135,15 @@ test.describe('AI biomarker identification', () => {
     await expect(savedAsCell(rowFor(page, '7'))).toHaveText(/Urine Urea/);
   });
 
-  test('learns a name saved under a test', async ({ page }) => {
-    // Scenario: A confirmed name is learned
+  /** Given I picked `test` for `name` in review and saved it */
+  async function learnName(page: Page, name: string, test: string): Promise<void> {
+    await analyzeReport(page, [{ name, value: 7, unit: 'g/L', confidence: 0.95 }]);
+    await changeTest(page, rowFor(page, '7'), test);
+    await saveReviewed(page);
+  }
+
+  test('does not learn a test the AI chose', async ({ page }) => {
+    // Scenario: A test the AI chose is not learned
     await analyzeReport(page, [
       {
         name: 'Zorblatina (urine)',
@@ -127,6 +154,12 @@ test.describe('AI biomarker identification', () => {
       },
     ]);
     await saveReviewed(page);
+    await expectNotLearned(page, 'zorblatina (urine)');
+  });
+
+  test('learns a name saved under a test', async ({ page }) => {
+    // Scenario: A confirmed name is learned
+    await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await analyzeReport(page, [
       { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
     ]);
@@ -136,16 +169,7 @@ test.describe('AI biomarker identification', () => {
 
   test('forgets a learned name removed in Settings', async ({ page }) => {
     // Scenario: Remove a learned name
-    await analyzeReport(page, [
-      {
-        name: 'Zorblatina (urine)',
-        value: 7,
-        unit: 'g/L',
-        confidence: 0.95,
-        biomarkerKey: 'urine-urea',
-      },
-    ]);
-    await saveReviewed(page);
+    await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await removeLearnedName(page, 'zorblatina (urine)');
     await analyzeReport(page, [
       { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
@@ -155,16 +179,7 @@ test.describe('AI biomarker identification', () => {
 
   test('forgets a learned name saved as not in the dictionary', async ({ page }) => {
     // Scenario: Saving as "Not in dictionary" forgets a learned name
-    await analyzeReport(page, [
-      {
-        name: 'Zorblatina (urine)',
-        value: 7,
-        unit: 'g/L',
-        confidence: 0.95,
-        biomarkerKey: 'urine-urea',
-      },
-    ]);
-    await saveReviewed(page);
+    await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await analyzeReport(page, [
       { name: 'Zorblatina (urine)', value: 6, unit: 'g/L', confidence: 0.95 },
     ]);

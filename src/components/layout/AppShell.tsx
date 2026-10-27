@@ -206,6 +206,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             r.editedBiomarkers.map((b) => ({
               name: b.name,
               key: b.dictionaryMatch?.key,
+              pickedByUser: b.identifiedBy === 'user',
               savedAsUnknown: b.savedAsUnknown,
             }))
           )

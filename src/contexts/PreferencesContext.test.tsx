@@ -71,7 +71,7 @@ describe('PreferencesProvider', () => {
 
   it('learns the names saved under a test, and forgets a removed one', async () => {
     const { result } = await renderLoaded();
-    await act(() => result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea' }]));
+    await act(() => result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea', pickedByUser: true }]));
 
     expect(result.current.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
     expect(stored?.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
@@ -88,7 +88,7 @@ describe('PreferencesProvider', () => {
 
     await act(async () => {
       await expect(
-        result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea' }])
+        result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea', pickedByUser: true }])
       ).rejects.toThrow('disk full');
     });
     expect(result.current.learnedAliases).toEqual({});

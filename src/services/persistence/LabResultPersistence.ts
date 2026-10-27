@@ -50,12 +50,17 @@ function parseLabDate(dateStr: string | undefined): Date {
 }
 
 /**
- * Resolve the stored biomarker key: the dictionary match, else a dictionary
- * lookup by name, else a stable key for the unknown name.
+ * Resolve the stored biomarker key: the dictionary match, else a stable key
+ * for the unknown name. A value the analyzer identified (it has
+ * identification flags) is saved as review showed it: without a match it
+ * is not in the dictionary, whatever its name. Only values from elsewhere
+ * (manual entry) are still looked up by name.
  */
 function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
-  // The user chose "Not in dictionary"
-  if (biomarker.savedAsUnknown) return unknownBiomarkerKey(biomarker.name);
+  // The user chose "Not in dictionary", or review showed it
+  if (biomarker.savedAsUnknown || (biomarker.identificationFlags && !biomarker.dictionaryMatch)) {
+    return unknownBiomarkerKey(biomarker.name);
+  }
   const definition = biomarker.dictionaryMatch ?? findBiomarker(biomarker.name);
   return definition?.key ?? unknownBiomarkerKey(biomarker.name);
 }
