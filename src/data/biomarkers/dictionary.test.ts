@@ -317,6 +317,10 @@ describe('Italian names', () => {
     ['Creatinina 24h (urine)', '24-hour-urine-creatinine'],
     ['Urea/L (urine 24h)', 'urine-urea'],
     ['Urea 24h (urine)', '24-hour-urine-urea'],
+    // As the report itself prints them, under its timed urine collections
+    ['U-Creatinina/L', 'urine-creatinine'],
+    ['U-Urea/L', 'urine-urea'],
+    ['U-Proteine totali/L', 'urine-protein'],
     ['Emoglobina (urine)', 'urine-blood'],
     ['Eritrociti (urine)', 'urine-red-blood-cells'],
   ])('%s is %s', (name, key) => {

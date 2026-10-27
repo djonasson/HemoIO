@@ -11,6 +11,13 @@ import type { RateLimitOptions } from './rateLimitedFetch';
  */
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama';
 
+/** Each provider's name as shown to the user */
+export const AI_PROVIDER_NAMES: Record<AIProviderType, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  ollama: 'Ollama',
+};
+
 /**
  * Configuration for AI providers
  */

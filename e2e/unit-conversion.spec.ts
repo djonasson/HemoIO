@@ -552,6 +552,44 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test("should keep an English report's white cell counts and percentages apart", async ({
+    page,
+  }) => {
+    // Scenario: Keep an English report's white cell counts and percentages apart
+    await openApp(page);
+    const cells = ['Neutrophils', 'Lymphocytes', 'Monocytes', 'Eosinophils', 'Basophils'];
+    await analyzeReport(
+      page,
+      cells.flatMap((name) => [
+        { name, value: 10, unit: '%', confidence: 0.95 },
+        { name, value: 0.5, unit: '10^9/L', confidence: 0.95 },
+      ])
+    );
+
+    await expect(reviewRows(page)).toHaveCount(10);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should tell a 24-hour collection named once from its concentration', async ({ page }) => {
+    // Scenario: Tell a 24-hour collection named once from its concentration
+    await openApp(page);
+    const name = 'Creatinina (urine, 24h)';
+    await analyzeReport(page, [
+      { name, value: 4582, unit: 'µmol/L', confidence: 0.95 },
+      { name, value: 0.51, unit: 'g/L', confidence: 0.95 },
+      { name, value: 13746, unit: 'µmol/24h', confidence: 0.95 },
+      { name, value: 1.55, unit: 'g/24h', confidence: 0.95 },
+    ]);
+
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(2);
+    const row = (value: string) =>
+      rows.filter({ has: page.getByRole('cell', { name: value, exact: true }) });
+    await expect(row('4582').getByRole('cell', { name: 'Urine', exact: true })).toBeVisible();
+    await expect(row('1.55').getByRole('cell', { name: '24h Urine', exact: true })).toBeVisible();
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
   test("should tell a 24-hour collection's concentration from its 24-hour amount", async ({
     page,
   }) => {

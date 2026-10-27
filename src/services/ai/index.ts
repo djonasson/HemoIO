@@ -16,8 +16,8 @@ export type {
   ExtractedBiomarker,
 } from './types';
 
-// Error classes
-export { AIAnalysisError, AIConfigurationError } from './types';
+// Error classes and provider names
+export { AIAnalysisError, AIConfigurationError, AI_PROVIDER_NAMES } from './types';
 
 // Provider Factory
 export {

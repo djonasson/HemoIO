@@ -337,8 +337,28 @@ describe('LabReportAnalyzer', () => {
       await analyzeLabReport(file, { ...defaultOptions, onProgress: (stage) => stages.push(stage) });
 
       const waiting = stages.indexOf('Waiting for the AI provider (rate limited)');
-      expect(waiting).toBeGreaterThan(stages.indexOf('Analyzing with AI'));
-      expect(stages.lastIndexOf('Analyzing with AI')).toBeGreaterThan(waiting);
+      expect(waiting).toBeGreaterThan(stages.indexOf('Analyzing with OpenAI'));
+      expect(stages.lastIndexOf('Analyzing with OpenAI')).toBeGreaterThan(waiting);
+    });
+
+    it('names the provider and model it analyzes with', async () => {
+      const stagesWith = async (options: Parameters<typeof analyzeLabReport>[1]) => {
+        const stages: string[] = [];
+        const file = createMockFile('report.pdf', 'application/pdf');
+        await analyzeLabReport(file, { ...options, onProgress: (stage) => stages.push(stage) });
+        return stages;
+      };
+
+      expect(
+        await stagesWith({ ...defaultOptions, aiConfig: { apiKey: 'sk', model: 'gpt-4o-mini' } })
+      ).toContain('Analyzing with OpenAI gpt-4o-mini');
+      // Without a chosen model, the provider's default: named by the provider alone
+      expect(await stagesWith({ aiProvider: 'anthropic', aiConfig: { apiKey: 'sk' } })).toContain(
+        'Analyzing with Anthropic'
+      );
+      expect(await stagesWith({ aiProvider: 'ollama', aiConfig: { model: 'llama3.2' } })).toContain(
+        'Analyzing with Ollama llama3.2'
+      );
     });
 
     it('handles AI analysis failure', async () => {

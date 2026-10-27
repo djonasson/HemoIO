@@ -18,13 +18,18 @@ import {
 } from '../ocr';
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
+import { AI_PROVIDER_NAMES } from '../ai/types';
 import type {
   AIProviderConfig,
   AIProviderType,
   LabReportAnalysisResult,
   ExtractedBiomarker,
 } from '../ai';
-import { findBiomarker, matchBiomarkerName } from '../../data/biomarkers/dictionary';
+import {
+  findBiomarker,
+  getBiomarkerByKey,
+  matchBiomarkerName,
+} from '../../data/biomarkers/dictionary';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
 import { normalizeUnit, canConvert, convertValue } from '../units';
 
@@ -310,7 +315,8 @@ export async function analyzeLabReport(
   // Stage 3: AI Analysis
   const aiStage = createStage('AI Analysis');
   stages.push(aiStage);
-  options.onProgress?.('Analyzing with AI', 0.6);
+  const analyzing = analyzingLabel(options.aiProvider, options.aiConfig.model);
+  options.onProgress?.(analyzing, 0.6);
 
   let aiAnalysis: LabReportAnalysisResult;
 
@@ -324,7 +330,7 @@ export async function analyzeLabReport(
       signal: options.signal,
       rateLimit: {
         onWait: () => options.onProgress?.(RATE_LIMIT_STAGE, 0.6),
-        onResume: () => options.onProgress?.('Analyzing with AI', 0.6),
+        onResume: () => options.onProgress?.(analyzing, 0.6),
       },
     });
 
@@ -437,6 +443,25 @@ function unitFits(definition: BiomarkerDefinition, unit: string, normalizedUnit:
  */
 const SHARE_UNIT = /^(%|‰|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
 
+/** "Analyzing with OpenAI gpt-4o-mini": the provider, and the model when one was chosen */
+function analyzingLabel(provider: AIProviderType, model: string | undefined): string {
+  return `Analyzing with ${AI_PROVIDER_NAMES[provider]}${model ? ` ${model}` : ''}`;
+}
+
+/**
+ * A 24-hour urine collection's amount per day and its concentration, which
+ * reports name alike ("Creatinina (urine, 24h)" in g/24h and in µmol/L)
+ */
+const UNIT_PAIRS: Record<string, string> = Object.fromEntries(
+  [
+    ['24-hour-urine-creatinine', 'urine-creatinine'],
+    ['24-hour-urine-urea', 'urine-urea'],
+  ].flatMap(([perDay, concentration]) => [
+    [perDay, concentration],
+    [concentration, perDay],
+  ])
+);
+
 /**
  * Match an extracted biomarker to the dictionary
  */
@@ -449,15 +474,19 @@ function matchBiomarkerToDictionary(
   const exactMatch = findBiomarker(biomarker.name);
   let candidate = exactMatch ?? matchBiomarkerName(biomarker.name);
 
-  // Reports often name a share and an absolute count alike ("Eritroblasti"
-  // in % and in 10^9/L): a share in a count's name is the share entry
-  if (
-    candidate &&
-    !unitFits(candidate, biomarker.unit, normalizedUnit) &&
-    SHARE_UNIT.test(normalizedUnit.trim())
-  ) {
-    const share = matchBiomarkerName(`${biomarker.name} (%)`);
-    if (share && unitFits(share, biomarker.unit, normalizedUnit)) candidate = share;
+  // Reports name some tests alike and tell them apart by the unit. Only
+  // when the unit does not fit the entry the name matched, and only to an
+  // entry of that one the unit fits: a count's percentage ("Eritroblasti",
+  // "Neutrophils" in %), or a 24-hour urine collection's concentration,
+  // which reports name after the collection
+  if (candidate && !unitFits(candidate, biomarker.unit, normalizedUnit)) {
+    const alike = [
+      SHARE_UNIT.test(normalizedUnit.trim()) && `${candidate.key}-percentage`,
+      UNIT_PAIRS[candidate.key],
+    ]
+      .map((key) => (key ? getBiomarkerByKey(key) : undefined))
+      .find((definition) => definition && unitFits(definition, biomarker.unit, normalizedUnit));
+    candidate = alike ?? candidate;
   }
 
   if (candidate) {
@@ -466,7 +495,9 @@ function matchBiomarkerToDictionary(
       ? {
           ...biomarker,
           dictionaryMatch: candidate,
-          isExactMatch: candidate === exactMatch,
+          // Exact when the name matched exactly, also when the unit then
+          // chose the entry reported alike
+          isExactMatch: exactMatch !== undefined,
           normalizedUnit,
         }
       : { ...biomarker, suggestedMatch: candidate, isExactMatch: false, normalizedUnit };

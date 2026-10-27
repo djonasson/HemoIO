@@ -154,6 +154,72 @@ describe('analyzeLabReport: values reported in two units', () => {
     ).toEqual(['reticulocytes: 75 10^9/L', 'reticulocytes-percentage: 1.5 %']);
   });
 
+  it('keeps English counts and percentages of the white cells apart', async () => {
+    const cells = ['Neutrophils', 'Lymphocytes', 'Monocytes', 'Eosinophils', 'Basophils'];
+    const result = await kept(
+      cells.flatMap((name) => [extracted(name, 10, '%'), extracted(name, 0.5, '10^9/L')])
+    );
+
+    expect(result).toEqual(
+      ['neutrophils', 'lymphocytes', 'monocytes', 'eosinophils', 'basophils'].flatMap((key) => [
+        `${key}-percentage: 10 %`,
+        `${key}: 0.5 10^9/L`,
+      ])
+    );
+  });
+
+  it('gives a count reported under any of its names in % to its percentage, exactly', async () => {
+    const matches = async (biomarkers: ExtractedBiomarker[]) =>
+      (await analyze(biomarkers)).matchedBiomarkers.map((b) => [
+        b.dictionaryMatch?.key,
+        b.isExactMatch,
+      ]);
+
+    expect(
+      await matches([
+        extracted('Granulociti Neutrofili', 55, '%'),
+        extracted('Neutrofili (assoluti)', 3, '10^9/L'),
+      ])
+    ).toEqual([
+      ['neutrophils-percentage', true],
+      ['neutrophils', true],
+    ]);
+    expect(await matches([extracted('Neutrophils', 10, '%')])).toEqual([
+      ['neutrophils-percentage', true],
+    ]);
+  });
+
+  it('tells a 24-hour collection named once from its concentration, by the unit', async () => {
+    // The same name for the collection's concentration and its 24-hour amount
+    expect(
+      await kept([
+        extracted('Creatinina (urine, 24h)', 4582, 'µmol/L'),
+        extracted('Creatinina (urine, 24h)', 0.51, 'g/L'),
+        extracted('Creatinina (urine, 24h)', 13746, 'µmol/24h'),
+        extracted('Creatinina (urine, 24h)', 1.55, 'g/24h'),
+        extracted('Urea (urine, 24h)', 7, 'g/L'),
+        extracted('Urea (urine, 24h)', 21, 'g/24h'),
+      ])
+    ).toEqual([
+      'urine-creatinine: 4582 µmol/L',
+      '24-hour-urine-creatinine: 1.55 g/24h',
+      'urine-urea: 7 g/L',
+      '24-hour-urine-urea: 21 g/24h',
+    ]);
+  });
+
+  it('never takes a % name for the count, or a count name in an unrelated unit for anything', async () => {
+    const result = await analyze([
+      extracted('Neutrofili (%)', 55.2, '10^9/L'),
+      extracted('Neutrophils', 3, 'mg/dL'),
+    ]);
+
+    expect(result.matchedBiomarkers.map((b) => b.dictionaryMatch?.key)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
   it('merges reticulocytes reported in ‰ and %, and in 10^9/L and K/µL', async () => {
     expect(
       await kept([

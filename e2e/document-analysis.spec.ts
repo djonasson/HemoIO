@@ -357,20 +357,22 @@ test.describe('Document Analysis - AI Processing', () => {
   });
 
   test('should show AI analysis progress', async ({ page }) => {
+    // Scenario: Show which AI analyzes the report
     const ai = await loginWithOllama(page, undefined, { hold: true });
     await goToImport(page);
     await uploadFiles(page, track(createTextLabReportPdf()));
     await startAnalysis(page);
 
     const item = analysisItem(page, 'lab-report.pdf');
-    await expect(item.getByText('Analyzing with AI')).toBeVisible();
+    // Names the provider and the model chosen in Settings
+    await expect(item.getByText('Analyzing with Ollama llama3.2:8b')).toBeVisible();
     await expect(item.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
     await expect(main(page).getByText('Processing 1 file(s)...')).toBeVisible();
 
     ai.release();
 
     await expect(main(page).getByText('Processing complete')).toBeVisible();
-    await expect(item.getByText('Analyzing with AI')).toBeHidden();
+    await expect(item.getByText(/^Analyzing with /)).toBeHidden();
   });
 
   test('should display extracted biomarker values', async ({ page }) => {
@@ -657,7 +659,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await expectAnalysisFinished(page);
 
     // Progress was shown and requests were queued, never sent concurrently
-    await expectStageShown(page, 'Analyzing with AI');
+    await expectStageShown(page, /^Analyzing with Ollama/);
     await expectStageShown(page, 'Waiting for the AI provider (rate limited)');
     expect(ai.maxInFlight).toBe(1);
 
@@ -769,7 +771,7 @@ test.describe('Document Analysis - Performance', () => {
     for (const name of names) {
       await expect(analysisItem(page, name)).toBeVisible();
     }
-    await expect(analysisItem(page, 'batch-1.pdf').getByText('Analyzing with AI')).toBeVisible();
+    await expect(analysisItem(page, 'batch-1.pdf').getByText(/^Analyzing with Ollama/)).toBeVisible();
     await expect(analysisItem(page, 'batch-1.pdf').getByRole('progressbar')).toBeVisible();
 
     ai.release();

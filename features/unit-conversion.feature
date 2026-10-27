@@ -133,6 +133,18 @@ Feature: Unit Conversion
     Then one value should be kept for the 24-hour amount and one for the spot sample
     And no duplicate conflict warning should be shown
 
+  Scenario: Keep an English report's white cell counts and percentages apart
+    Given an English lab report names both the count and the percentage of each white cell type alike, as "Neutrophils" in 10^9/L and in %
+    When the values are analyzed
+    Then each count and each percentage should be kept, as two different tests
+    And no duplicate conflict warning should be shown
+
+  Scenario: Tell a 24-hour collection named once from its concentration
+    Given a lab report names the creatinine of a 24-hour urine collection "Creatinina (urine, 24h)" for its concentration, 4582 µmol/L and 0.51 g/L, and for its 24-hour amount, 13746 µmol/24h and 1.55 g/24h
+    When the values are analyzed
+    Then one value should be kept for the concentration and one for the 24-hour amount
+    And no duplicate conflict warning should be shown
+
   Scenario: Tell a 24-hour collection's concentration from its 24-hour amount
     Given a lab report gives, for one 24-hour urine collection, "Creatinina/L (urine 24h)" as 4582 µmol/L and 0.51 g/L, and "Creatinina 24h (urine)" as 13746 µmol/24h and 1.55 g/24h
     When the values are analyzed

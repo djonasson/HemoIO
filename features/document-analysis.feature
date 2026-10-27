@@ -60,6 +60,11 @@ Feature: Document Analysis
     And OCR should be used for extraction
 
   # AI Analysis
+  Scenario: Show which AI analyzes the report
+    Given an AI provider and model are chosen in Settings
+    When a document is being analyzed
+    Then its progress should name the provider and the model, as "Analyzing with Ollama llama3.2:8b"
+
   Scenario: AI extracts biomarker values
     Given the document text has been extracted
     When the AI analyzes the text

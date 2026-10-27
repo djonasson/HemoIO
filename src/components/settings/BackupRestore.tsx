@@ -54,6 +54,7 @@ import {
   type ParsedBackupData,
   type ParsedEncryptedBackupData,
 } from '@services/import';
+import { AI_PROVIDER_NAMES } from '@services/ai';
 import type { BackupType } from '@/types/backup';
 import { BackupPasswordInput } from './BackupPasswordInput';
 
@@ -90,8 +91,6 @@ export interface RestoreOptions {
   /** Also apply the backup's AI provider, model and API key */
   restoreAISettings: boolean;
 }
-
-const AI_PROVIDER_LABELS = { openai: 'OpenAI', anthropic: 'Anthropic', ollama: 'Ollama' } as const;
 
 /**
  * BackupRestore component for the settings page
@@ -640,7 +639,7 @@ export function BackupRestore({
               onChange={(event) => setRestoreAIConfig(event.currentTarget.checked)}
               label="Also restore AI configuration"
               description={
-                `Sets the AI provider to ${AI_PROVIDER_LABELS[aiSummary.provider]}` +
+                `Sets the AI provider to ${AI_PROVIDER_NAMES[aiSummary.provider]}` +
                 (aiSummary.model ? ` (${aiSummary.model})` : '') +
                 (aiSummary.apiKeyLastFour
                   ? ` and the API key to one ending in ${aiSummary.apiKeyLastFour}`

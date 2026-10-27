@@ -170,7 +170,7 @@ test.describe('Import Wizard', () => {
       // While the AI is working: overall progress, current file and its stage
       await expect(main(page).getByText('Processing 1 file(s)...')).toBeVisible();
       const item = analysisItem(page, 'lab-report.pdf');
-      await expect(item.getByText('Analyzing with AI')).toBeVisible();
+      await expect(item.getByText(/^Analyzing with Ollama/)).toBeVisible();
       await expect(item.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
       await expect(main(page).getByRole('progressbar')).toHaveCount(2);
       await expect(main(page).getByRole('button', { name: /^Review Results/ })).toBeDisabled();
