@@ -221,6 +221,10 @@ describe('unit spellings', () => {
     });
   });
 
+  it('converts a creatinine ratio written without spaces or a dot', () => {
+    expect(getConversion('Protein Creatinine Ratio', 'mg/mmolcreat', 'mg/g')).toBeDefined();
+  });
+
   it('reads a unit with spaces run together or around it', () => {
     expect(normalizeUnitForLookup('  mmol/mol   Hb ')).toBe('mmol/mol');
   });

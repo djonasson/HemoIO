@@ -11,7 +11,7 @@ import {
   matchBiomarkerName,
   unknownBiomarkerKey,
 } from '@data/biomarkers/dictionary';
-import { unitsMatch } from '../../services/units/definitions';
+import { unitsMatch } from '../../utils/unitSpelling';
 import { LEGACY_UNKNOWN_PREFIX, legacyIdToKey } from './legacyBiomarkerIds';
 
 export interface LegacyKeyed {

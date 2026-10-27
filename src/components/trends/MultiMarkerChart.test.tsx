@@ -152,6 +152,7 @@ describe('MultiMarkerChart', () => {
       expect(new Set(axes).size).toBe(3);
       expect(screen.getAllByTestId('y-axis')).toHaveLength(3);
       expect(screen.getByText('Own scale: mIU/L')).toBeInTheDocument();
+      expect(screen.getByText(/draws each unit to its own scale/)).toBeInTheDocument();
     });
 
     it('does not show dual axis note when markers have same unit', () => {

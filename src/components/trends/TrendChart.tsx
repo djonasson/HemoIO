@@ -59,12 +59,12 @@ export interface TrendChartProps {
   onPointSelect?: (point: TrendDataPoint) => void;
 }
 
-/**
- * Format date for chart display
- */
 /** Axis text in the theme's dimmed color, readable in both schemes */
 const AXIS_TICK = { fontSize: 12, fill: 'var(--mantine-color-dimmed)' };
 
+/**
+ * Format date for chart display
+ */
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',

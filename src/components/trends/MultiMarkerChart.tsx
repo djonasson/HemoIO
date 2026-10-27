@@ -60,9 +60,6 @@ const CHART_COLORS = [
   '#e64980', // pink
 ];
 
-/**
- * Format date for chart display
- */
 /** Axis text in the theme's dimmed color, readable in both schemes */
 const AXIS_TICK = { fontSize: 12, fill: 'var(--mantine-color-dimmed)' };
 
@@ -71,6 +68,9 @@ function legendText(value: string): React.ReactNode {
   return <span style={{ color: 'var(--mantine-color-text)' }}>{value}</span>;
 }
 
+/**
+ * Format date for chart display
+ */
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -290,9 +290,9 @@ export function MultiMarkerChart({
         <Paper p="sm" withBorder bg="var(--mantine-color-gray-light)">
           <Group gap="lg">
             <Text size="sm" c="dimmed">
-              Note: Chart uses dual axes due to different units.
-              {uniqueUnits.length > 2 &&
-                ' Further units are drawn to their own scale; the tooltip gives their values.'}
+              {uniqueUnits.length > 2
+                ? 'Note: Chart draws each unit to its own scale; the tooltip gives the values of units without an axis.'
+                : 'Note: Chart uses dual axes due to different units.'}
             </Text>
             <Group gap="md">
               <Badge variant="outline">Left: {uniqueUnits[0]}</Badge>

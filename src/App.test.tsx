@@ -70,4 +70,13 @@ describe('App', () => {
       await screen.findByText('Enter your password to unlock your lab data')
     ).toBeInTheDocument();
   });
+
+  it("gives dimmed text the theme's readable shade", async () => {
+    render(<App />);
+    await screen.findByText('Welcome to HemoIO');
+
+    const styles = [...document.querySelectorAll('style')].map((style) => style.textContent).join('');
+    expect(styles).toContain('--mantine-color-dimmed: #495057');
+    expect(styles).toContain('--mantine-color-dimmed: #b8b8b8');
+  });
 });
