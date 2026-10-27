@@ -282,6 +282,29 @@ test.describe('Trend Charts with Data', () => {
     await expect(xAxisTicks(page)).toHaveText(['Feb 15, 24', 'May 20, 24']);
   });
 
+  // Scenario: Trend statistics follow dark mode
+  test('shows the reference range box dark in dark mode', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('mantine-color-scheme-value', 'dark'));
+    await page.reload();
+    await setupOrUnlock(page);
+    await goToTrends(page);
+    await selectBiomarker(page, 'Glucose');
+
+    const box = page
+      .getByRole('main')
+      .locator('div.mantine-Paper-root', { has: page.getByText('Reference Range:', { exact: true }) })
+      .last();
+    await expect(box).toBeVisible();
+    // The box's color blended over the page's, averaged: a light box would be near 255
+    const brightness = await box.evaluate((el) => {
+      const channels = (color: string) => color.match(/[\d.]+/g)!.map(Number);
+      const [r, g, b, alpha = 1] = channels(getComputedStyle(el).backgroundColor);
+      const page = channels(getComputedStyle(document.body).backgroundColor);
+      return [r, g, b].reduce((sum, c, i) => sum + c * alpha + page[i] * (1 - alpha), 0) / 3;
+    });
+    expect(brightness).toBeLessThan(100);
+  });
+
   // Scenarios: View trend statistics summary, View rate of change statistic
   test('should display statistics summary', async ({ page }) => {
     await selectBiomarker(page, 'Glucose');

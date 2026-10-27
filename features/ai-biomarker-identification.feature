@@ -42,6 +42,11 @@ Feature: AI biomarker identification
     Then the value should be saved as "Not in dictionary", labelled "No unit in report"
     And I should be able to continue without giving it a unit
 
+  Scenario: Review fits a phone screen
+    Given I review the values on a phone-sized screen
+    Then the table should scroll on its own, not the page
+    And the test each value is saved as should be shown in full
+
   Scenario: The model identifies no tests
     Given the AI returns no test for any value
     When the report is analyzed

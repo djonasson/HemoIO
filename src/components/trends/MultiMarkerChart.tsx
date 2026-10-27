@@ -63,6 +63,14 @@ const CHART_COLORS = [
 /**
  * Format date for chart display
  */
+/** Axis text in the theme's dimmed color, readable in both schemes */
+const AXIS_TICK = { fontSize: 12, fill: 'var(--mantine-color-dimmed)' };
+
+/** Legend names in the text color; the line's swatch beside each carries its color */
+function legendText(value: string): React.ReactNode {
+  return <span style={{ color: 'var(--mantine-color-text)' }}>{value}</span>;
+}
+
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -149,7 +157,8 @@ export function MultiMarkerChart({
     return Array.from(units);
   }, [markers]);
 
-  const useDualAxis = uniqueUnits.length === 2;
+  const useDualAxis = uniqueUnits.length >= 2;
+  const axisIdFor = (unit: string) => `unit-${uniqueUnits.indexOf(unit)}`;
 
   // Calculate Y-axis domains
   const yDomains = useMemo(() => {
@@ -229,41 +238,29 @@ export function MultiMarkerChart({
 
           <XAxis
             dataKey="formattedDate"
-            tick={{ fontSize: 12 }}
+            tick={AXIS_TICK}
             tickMargin={8}
           />
 
-          {/* Primary Y-axis (left) */}
-          <YAxis
-            yAxisId="left"
-            orientation="left"
-            domain={yDomains[uniqueUnits[0]] || [0, 100]}
-            tick={{ fontSize: 12 }}
-            tickMargin={8}
-            label={{
-              value: uniqueUnits[0] || '',
-              angle: -90,
-              position: 'insideLeft',
-              style: { textAnchor: 'middle', fontSize: 12 },
-            }}
-          />
-
-          {/* Secondary Y-axis (right) for different units */}
-          {useDualAxis && (
+          {/* One axis per unit: the first two shown left and right, any
+              further unit on its own hidden scale, so no line goes flat */}
+          {uniqueUnits.map((unit, index) => (
             <YAxis
-              yAxisId="right"
-              orientation="right"
-              domain={yDomains[uniqueUnits[1]] || [0, 100]}
-              tick={{ fontSize: 12 }}
+              key={unit}
+              yAxisId={axisIdFor(unit)}
+              orientation={index === 1 ? 'right' : 'left'}
+              hide={index > 1}
+              domain={yDomains[unit] || [0, 100]}
+              tick={AXIS_TICK}
               tickMargin={8}
               label={{
-                value: uniqueUnits[1] || '',
-                angle: 90,
-                position: 'insideRight',
-                style: { textAnchor: 'middle', fontSize: 12 },
+                value: unit,
+                angle: index === 1 ? 90 : -90,
+                position: index === 1 ? 'insideRight' : 'insideLeft',
+                style: { textAnchor: 'middle', fontSize: 12, fill: 'var(--mantine-color-dimmed)' },
               }}
             />
-          )}
+          ))}
 
           <Tooltip
             content={(props) => (
@@ -271,7 +268,7 @@ export function MultiMarkerChart({
             )}
           />
 
-          <Legend />
+          <Legend formatter={legendText} />
 
           {markersWithColors.map((marker) => (
             <Line
@@ -282,9 +279,7 @@ export function MultiMarkerChart({
               strokeWidth={2}
               dot={{ r: 4, fill: marker.color }}
               activeDot={{ r: 6, stroke: marker.color, strokeWidth: 2, fill: 'var(--mantine-color-body)' }}
-              yAxisId={
-                useDualAxis && marker.unit === uniqueUnits[1] ? 'right' : 'left'
-              }
+              yAxisId={axisIdFor(marker.unit)}
               connectNulls
             />
           ))}
@@ -296,10 +291,17 @@ export function MultiMarkerChart({
           <Group gap="lg">
             <Text size="sm" c="dimmed">
               Note: Chart uses dual axes due to different units.
+              {uniqueUnits.length > 2 &&
+                ' Further units are drawn to their own scale; the tooltip gives their values.'}
             </Text>
             <Group gap="md">
               <Badge variant="outline">Left: {uniqueUnits[0]}</Badge>
               <Badge variant="outline">Right: {uniqueUnits[1]}</Badge>
+              {uniqueUnits.slice(2).map((unit) => (
+                <Badge key={unit} variant="outline">
+                  Own scale: {unit}
+                </Badge>
+              ))}
             </Group>
           </Group>
         </Paper>

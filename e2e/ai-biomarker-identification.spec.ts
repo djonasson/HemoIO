@@ -99,6 +99,27 @@ test.describe('AI biomarker identification', () => {
     await expect(page.getByText('Values to Import')).toBeVisible();
   });
 
+  test('fits review on a phone screen and shows the test in full', async ({ page }) => {
+    // Scenario: Review fits a phone screen
+    await analyzeReport(page, [
+      {
+        name: 'Creatinina',
+        value: 1.55,
+        unit: 'g/24h',
+        confidence: 0.95,
+        biomarkerKey: '24-hour-urine-creatinine',
+      },
+    ]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const savedAs = savedAsCell(rowFor(page, '1.55'));
+    await expect(savedAs).toHaveText('24-Hour Urine Creatinine');
+    expect(await savedAs.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    // Once the navigation has slid away for the narrow screen
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
+  });
+
   test('notes and labels values when the model gives no tests', async ({ page }) => {
     // Scenario: The model identifies no tests
     await analyzeReport(page, [

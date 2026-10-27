@@ -21,6 +21,7 @@ import {
 import { Paper, Text, Stack, Group, Badge, Center, Loader, Box } from '@mantine/core';
 import { IconTrendingUp, IconTrendingDown, IconMinus, IconAlertCircle } from '@tabler/icons-react';
 import type { TrendDataPoint, TrendDirectionResult } from '@services/statistics/trendAnalysis';
+import { statusColor } from '@/utils/statusColor';
 import { CustomTooltip } from './TrendChartTooltip';
 import {
   TrendChartFocusOverlay,
@@ -61,6 +62,9 @@ export interface TrendChartProps {
 /**
  * Format date for chart display
  */
+/** Axis text in the theme's dimmed color, readable in both schemes */
+const AXIS_TICK = { fontSize: 12, fill: 'var(--mantine-color-dimmed)' };
+
 function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -147,7 +151,7 @@ export function TrendChart({
       value: unit,
       angle: -90,
       position: 'insideLeft' as const,
-      style: { textAnchor: 'middle' as const, fontSize: 12 },
+      style: { textAnchor: 'middle' as const, fontSize: 12, fill: 'var(--mantine-color-dimmed)' },
     }),
     [unit]
   );
@@ -214,15 +218,7 @@ export function TrendChart({
             <Text size="sm" c="dimmed">
               {chartData[0].formattedDate}
             </Text>
-            <Badge
-              color={
-                chartData[0].status === 'high'
-                  ? 'red'
-                  : chartData[0].status === 'low'
-                    ? 'orange'
-                    : 'green'
-              }
-            >
+            <Badge color={statusColor(chartData[0].status)}>
               {chartData[0].status || 'unknown'}
             </Badge>
             <Text size="sm" c="dimmed" ta="center">
@@ -245,14 +241,15 @@ export function TrendChart({
 
       <Box pos="relative">
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+          {/* Room on the right for the "High: …" and "Low: …" range labels */}
+          <LineChart data={chartData} margin={{ top: 10, right: 70, left: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
 
-            <XAxis dataKey="formattedDate" tick={{ fontSize: 12 }} tickMargin={8} />
+            <XAxis dataKey="formattedDate" tick={AXIS_TICK} tickMargin={8} />
 
             <YAxis
               domain={yDomain}
-              tick={{ fontSize: 12 }}
+              tick={AXIS_TICK}
               tickMargin={8}
               label={yAxisLabel}
             />
@@ -280,7 +277,7 @@ export function TrendChart({
                   value: `Low: ${referenceRange.low}`,
                   position: 'right',
                   fontSize: 10,
-                  fill: 'orange',
+                  fill: 'var(--mantine-color-dimmed)',
                 }}
               />
             )}
@@ -294,7 +291,7 @@ export function TrendChart({
                   value: `High: ${referenceRange.high}`,
                   position: 'right',
                   fontSize: 10,
-                  fill: 'red',
+                  fill: 'var(--mantine-color-dimmed)',
                 }}
               />
             )}

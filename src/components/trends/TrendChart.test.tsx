@@ -200,6 +200,15 @@ describe('TrendChart', () => {
     expect(screen.getByText('normal')).toBeInTheDocument();
   });
 
+  it('shows a lone value without a range in gray, never as normal', () => {
+    const dataPoints = [createDataPoint('2024-01-15', 95, 'unknown')];
+
+    renderWithProviders(<TrendChart dataPoints={dataPoints} biomarkerName="Glucose" unit="mg/dL" />);
+
+    const badge = screen.getByText('unknown').closest('.mantine-Badge-root') as HTMLElement;
+    expect(badge.getAttribute('style')).toContain('gray');
+  });
+
   it('should show high status badge for single abnormal data point', () => {
     const dataPoints = [createDataPoint('2024-01-15', 150, 'high')];
 

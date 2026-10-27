@@ -120,6 +120,11 @@ Feature: Trend Charts
       | Latest value  |
       | Trend direction |
 
+  Scenario: Trend statistics follow dark mode
+    Given the app is in dark mode
+    When I view the trend statistics for "Glucose"
+    Then the reference range box should be dark, not a light box
+
   Scenario: Responsive chart sizing
     Given I am viewing a trend chart
     When I resize the browser window

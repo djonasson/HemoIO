@@ -6,9 +6,11 @@ import { MultiMarkerChart, type MarkerData } from './MultiMarkerChart';
 // Mock recharts to avoid rendering issues in tests
 vi.mock('recharts', () => ({
   LineChart: ({ children }: { children: React.ReactNode }) => <div data-testid="line-chart">{children}</div>,
-  Line: () => null,
+  Line: ({ dataKey, yAxisId }: { dataKey: string; yAxisId: string }) => (
+    <div data-testid="line" data-name={dataKey} data-axis={yAxisId} />
+  ),
   XAxis: () => null,
-  YAxis: () => null,
+  YAxis: ({ yAxisId }: { yAxisId: string }) => <div data-testid="y-axis" data-axis={yAxisId} />,
   CartesianGrid: () => null,
   Tooltip: () => null,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -132,6 +134,24 @@ describe('MultiMarkerChart', () => {
 
       expect(screen.getByText('Left: mg/dL')).toBeInTheDocument();
       expect(screen.getByText('Right: g/dL')).toBeInTheDocument();
+    });
+
+    it('draws each of three or more units to its own scale', () => {
+      const tsh: MarkerData = {
+        name: 'TSH',
+        unit: 'mIU/L',
+        color: '#fab005',
+        dataPoints: [
+          { date: new Date('2024-01-01'), value: 2.1, unit: 'mIU/L' },
+          { date: new Date('2024-01-15'), value: 1.8, unit: 'mIU/L' },
+        ],
+      };
+      renderMultiMarkerChart({ markers: [...mockMarkerData, tsh] });
+
+      const axes = screen.getAllByTestId('line').map((line) => line.dataset.axis);
+      expect(new Set(axes).size).toBe(3);
+      expect(screen.getAllByTestId('y-axis')).toHaveLength(3);
+      expect(screen.getByText('Own scale: mIU/L')).toBeInTheDocument();
     });
 
     it('does not show dual axis note when markers have same unit', () => {

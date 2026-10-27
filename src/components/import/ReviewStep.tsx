@@ -536,325 +536,327 @@ export function ReviewStep({
                   </Alert>
                 )}
 
-                {/* Biomarker table */}
-                <Table striped highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Biomarker</Table.Th>
-                      <Table.Th miw={180}>Saved as</Table.Th>
-                      <Table.Th>Specimen</Table.Th>
-                      <Table.Th>Value</Table.Th>
-                      <Table.Th>Unit</Table.Th>
-                      <Table.Th>Reference Range</Table.Th>
-                      <Table.Th>Method</Table.Th>
-                      <Table.Th>Confidence</Table.Th>
-                      <Table.Th w={100}>Actions</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {result.editedBiomarkers.map((biomarker, bioIndex) => {
-                      const isEditing =
-                        editingBiomarker?.resultIndex === resultIndex &&
-                        editingBiomarker?.biomarkerIndex === bioIndex;
+                {/* Biomarker table: scrolls on its own on narrow screens, never the page */}
+                <Table.ScrollContainer minWidth={900}>
+                  <Table striped highlightOnHover withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Biomarker</Table.Th>
+                        <Table.Th miw={180}>Saved as</Table.Th>
+                        <Table.Th>Specimen</Table.Th>
+                        <Table.Th>Value</Table.Th>
+                        <Table.Th>Unit</Table.Th>
+                        <Table.Th>Reference Range</Table.Th>
+                        <Table.Th>Method</Table.Th>
+                        <Table.Th>Confidence</Table.Th>
+                        <Table.Th w={100}>Actions</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {result.editedBiomarkers.map((biomarker, bioIndex) => {
+                        const isEditing =
+                          editingBiomarker?.resultIndex === resultIndex &&
+                          editingBiomarker?.biomarkerIndex === bioIndex;
 
-                      // Determine row background color based on issues
-                      let rowBg: string | undefined;
-                      if (biomarker.hasDuplicateConflict) {
-                        rowBg = 'var(--mantine-color-orange-light)';
-                      } else if (biomarker.confidence < 0.7) {
-                        rowBg = 'var(--mantine-color-yellow-light)';
-                      }
+                        // Determine row background color based on issues
+                        let rowBg: string | undefined;
+                        if (biomarker.hasDuplicateConflict) {
+                          rowBg = 'var(--mantine-color-orange-light)';
+                        } else if (biomarker.confidence < 0.7) {
+                          rowBg = 'var(--mantine-color-yellow-light)';
+                        }
 
-                      const tooltipContent = getBiomarkerTooltipContent(biomarker);
+                        const tooltipContent = getBiomarkerTooltipContent(biomarker);
 
-                      return (
-                        <Table.Tr key={bioIndex} bg={rowBg}>
-                          <Table.Td>
-                            {isEditing ? (
-                              <Autocomplete
-                                size="xs"
-                                value={biomarker.name}
-                                onChange={(name) =>
-                                  // Its dictionary match follows the new name
-                                  updateBiomarker(
-                                    resultIndex,
-                                    bioIndex,
-                                    applyBiomarkerName(biomarker, name)
-                                  )
+                        return (
+                          <Table.Tr key={bioIndex} bg={rowBg}>
+                            <Table.Td>
+                              {isEditing ? (
+                                <Autocomplete
+                                  size="xs"
+                                  value={biomarker.name}
+                                  onChange={(name) =>
+                                    // Its dictionary match follows the new name
+                                    updateBiomarker(
+                                      resultIndex,
+                                      bioIndex,
+                                      applyBiomarkerName(biomarker, name)
+                                    )
+                                  }
+                                  data={BIOMARKER_NAMES}
+                                  // Searches names and aliases; options are dictionary names
+                                  filter={({ search }) =>
+                                    suggestBiomarkerNames(search).map((value) => ({
+                                      value,
+                                      label: value,
+                                    }))
+                                  }
+                                  placeholder="Biomarker name"
+                                  aria-label="Biomarker name"
+                                />
+                              ) : (
+                                <Group gap="xs">
+                                  {tooltipContent ? (
+                                    <Tooltip
+                                      label={tooltipContent}
+                                      multiline
+                                      w={300}
+                                      withArrow
+                                    >
+                                      <Text size="sm" style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                        {getDisplayName(biomarker)}
+                                      </Text>
+                                    </Tooltip>
+                                  ) : (
+                                    <Text size="sm">{getDisplayName(biomarker)}</Text>
+                                  )}
+                                  {biomarker.hasDuplicateConflict && (
+                                    <Tooltip label="Duplicate with conflicting value - please review">
+                                      <ThemeIcon
+                                        size="xs"
+                                        color="orange"
+                                        variant="light"
+                                      >
+                                        <IconCopy size={10} />
+                                      </ThemeIcon>
+                                    </Tooltip>
+                                  )}
+                                  {biomarker.dictionaryMatch && !biomarker.hasDuplicateConflict && (
+                                    <Tooltip label="Matched to dictionary">
+                                      <ThemeIcon
+                                        size="xs"
+                                        color="green"
+                                        variant="light"
+                                      >
+                                        <IconCheck size={10} />
+                                      </ThemeIcon>
+                                    </Tooltip>
+                                  )}
+                                </Group>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              <SavedAsCell
+                                biomarker={biomarker}
+                                onChoose={(definition) =>
+                                  updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
                                 }
-                                data={BIOMARKER_NAMES}
-                                // Searches names and aliases; options are dictionary names
-                                filter={({ search }) =>
-                                  suggestBiomarkerNames(search).map((value) => ({
-                                    value,
-                                    label: value,
-                                  }))
-                                }
-                                placeholder="Biomarker name"
-                                aria-label="Biomarker name"
                               />
-                            ) : (
-                              <Group gap="xs">
-                                {tooltipContent ? (
-                                  <Tooltip
-                                    label={tooltipContent}
-                                    multiline
-                                    w={300}
-                                    withArrow
-                                  >
-                                    <Text size="sm" style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                                      {getDisplayName(biomarker)}
-                                    </Text>
-                                  </Tooltip>
-                                ) : (
-                                  <Text size="sm">{getDisplayName(biomarker)}</Text>
-                                )}
-                                {biomarker.hasDuplicateConflict && (
-                                  <Tooltip label="Duplicate with conflicting value - please review">
-                                    <ThemeIcon
-                                      size="xs"
-                                      color="orange"
-                                      variant="light"
-                                    >
-                                      <IconCopy size={10} />
-                                    </ThemeIcon>
-                                  </Tooltip>
-                                )}
-                                {biomarker.dictionaryMatch && !biomarker.hasDuplicateConflict && (
-                                  <Tooltip label="Matched to dictionary">
-                                    <ThemeIcon
-                                      size="xs"
-                                      color="green"
-                                      variant="light"
-                                    >
-                                      <IconCheck size={10} />
-                                    </ThemeIcon>
-                                  </Tooltip>
-                                )}
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap={4}>
+                                <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                                <Text size="sm" c="dimmed">
+                                  {getSpecimenLabel(getEffectiveSpecimen(biomarker))}
+                                </Text>
                               </Group>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            <SavedAsCell
-                              biomarker={biomarker}
-                              onChoose={(definition) =>
-                                updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
-                              }
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap={4}>
-                              <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
-                              <Text size="sm" c="dimmed">
-                                {getSpecimenLabel(getEffectiveSpecimen(biomarker))}
-                              </Text>
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            {isEditing ? (
-                              biomarker.isInterval ? (
+                            </Table.Td>
+                            <Table.Td>
+                              {isEditing ? (
+                                biomarker.isInterval ? (
+                                  <Group gap="xs" wrap="nowrap">
+                                    <NumberInput
+                                      size="xs"
+                                      value={biomarker.intervalLow ?? ''}
+                                      onChange={(value) =>
+                                        updateBiomarker(resultIndex, bioIndex, {
+                                          intervalLow: value === '' ? undefined : Number(value),
+                                          // Update the midpoint value as well
+                                          value: value === '' || biomarker.intervalHigh === undefined
+                                            ? biomarker.value
+                                            : (Number(value) + biomarker.intervalHigh) / 2,
+                                        })
+                                      }
+                                      decimalScale={2}
+                                      placeholder="Low"
+                                      w={60}
+                                    />
+                                    <Text size="xs">-</Text>
+                                    <NumberInput
+                                      size="xs"
+                                      value={biomarker.intervalHigh ?? ''}
+                                      onChange={(value) =>
+                                        updateBiomarker(resultIndex, bioIndex, {
+                                          intervalHigh: value === '' ? undefined : Number(value),
+                                          // Update the midpoint value as well
+                                          value: value === '' || biomarker.intervalLow === undefined
+                                            ? biomarker.value
+                                            : (biomarker.intervalLow + Number(value)) / 2,
+                                        })
+                                      }
+                                      decimalScale={2}
+                                      placeholder="High"
+                                      w={60}
+                                    />
+                                  </Group>
+                                ) : (
+                                  <NumberInput
+                                    size="xs"
+                                    value={biomarker.value}
+                                    onChange={(value) =>
+                                      updateBiomarker(resultIndex, bioIndex, {
+                                        value: Number(value) || 0,
+                                      })
+                                    }
+                                    decimalScale={2}
+                                    placeholder="Value"
+                                  />
+                                )
+                              ) : (
+                                <Text size="sm">
+                                  {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
+                                    ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
+                                    : biomarker.value}
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              {isEditing ? (
+                                <Autocomplete
+                                  size="xs"
+                                  value={biomarker.unit}
+                                  onChange={(unit) =>
+                                    updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit))
+                                  }
+                                  data={unitOptionsFor(
+                                    biomarker.dictionaryMatch?.name ??
+                                      biomarker.suggestedMatch?.name ??
+                                      biomarker.name
+                                  )}
+                                  placeholder="Unit"
+                                  w={80}
+                                />
+                              ) : (
+                                <Text size="sm">{biomarker.unit}</Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              {isEditing ? (
                                 <Group gap="xs" wrap="nowrap">
                                   <NumberInput
                                     size="xs"
-                                    value={biomarker.intervalLow ?? ''}
+                                    value={biomarker.referenceRange?.low ?? ''}
                                     onChange={(value) =>
                                       updateBiomarker(resultIndex, bioIndex, {
-                                        intervalLow: value === '' ? undefined : Number(value),
-                                        // Update the midpoint value as well
-                                        value: value === '' || biomarker.intervalHigh === undefined
-                                          ? biomarker.value
-                                          : (Number(value) + biomarker.intervalHigh) / 2,
+                                        referenceRange: {
+                                          ...biomarker.referenceRange,
+                                          low: value === '' ? undefined : Number(value),
+                                          high: biomarker.referenceRange?.high,
+                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
+                                        },
                                       })
                                     }
                                     decimalScale={2}
                                     placeholder="Low"
-                                    w={60}
+                                    w={70}
+                                    allowNegative={false}
                                   />
                                   <Text size="xs">-</Text>
                                   <NumberInput
                                     size="xs"
-                                    value={biomarker.intervalHigh ?? ''}
+                                    value={biomarker.referenceRange?.high ?? ''}
                                     onChange={(value) =>
                                       updateBiomarker(resultIndex, bioIndex, {
-                                        intervalHigh: value === '' ? undefined : Number(value),
-                                        // Update the midpoint value as well
-                                        value: value === '' || biomarker.intervalLow === undefined
-                                          ? biomarker.value
-                                          : (biomarker.intervalLow + Number(value)) / 2,
+                                        referenceRange: {
+                                          ...biomarker.referenceRange,
+                                          low: biomarker.referenceRange?.low,
+                                          high: value === '' ? undefined : Number(value),
+                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
+                                        },
                                       })
                                     }
                                     decimalScale={2}
                                     placeholder="High"
-                                    w={60}
+                                    w={70}
+                                    allowNegative={false}
                                   />
                                 </Group>
+                              ) : biomarker.referenceRange ? (
+                                <Text size="sm">
+                                  {biomarker.referenceRange.low ?? '?'} -{' '}
+                                  {biomarker.referenceRange.high ?? '?'}
+                                </Text>
                               ) : (
-                                <NumberInput
-                                  size="xs"
-                                  value={biomarker.value}
-                                  onChange={(value) =>
-                                    updateBiomarker(resultIndex, bioIndex, {
-                                      value: Number(value) || 0,
-                                    })
-                                  }
-                                  decimalScale={2}
-                                  placeholder="Value"
-                                />
-                              )
-                            ) : (
-                              <Text size="sm">
-                                {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
-                                  ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
-                                  : biomarker.value}
-                              </Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            {isEditing ? (
-                              <Autocomplete
-                                size="xs"
-                                value={biomarker.unit}
-                                onChange={(unit) =>
-                                  updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit))
-                                }
-                                data={unitOptionsFor(
-                                  biomarker.dictionaryMatch?.name ??
-                                    biomarker.suggestedMatch?.name ??
-                                    biomarker.name
-                                )}
-                                placeholder="Unit"
-                                w={80}
-                              />
-                            ) : (
-                              <Text size="sm">{biomarker.unit}</Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            {isEditing ? (
-                              <Group gap="xs" wrap="nowrap">
-                                <NumberInput
-                                  size="xs"
-                                  value={biomarker.referenceRange?.low ?? ''}
-                                  onChange={(value) =>
-                                    updateBiomarker(resultIndex, bioIndex, {
-                                      referenceRange: {
-                                        ...biomarker.referenceRange,
-                                        low: value === '' ? undefined : Number(value),
-                                        high: biomarker.referenceRange?.high,
-                                        unit: biomarker.referenceRange?.unit || biomarker.unit,
-                                      },
-                                    })
-                                  }
-                                  decimalScale={2}
-                                  placeholder="Low"
-                                  w={70}
-                                  allowNegative={false}
-                                />
-                                <Text size="xs">-</Text>
-                                <NumberInput
-                                  size="xs"
-                                  value={biomarker.referenceRange?.high ?? ''}
-                                  onChange={(value) =>
-                                    updateBiomarker(resultIndex, bioIndex, {
-                                      referenceRange: {
-                                        ...biomarker.referenceRange,
-                                        low: biomarker.referenceRange?.low,
-                                        high: value === '' ? undefined : Number(value),
-                                        unit: biomarker.referenceRange?.unit || biomarker.unit,
-                                      },
-                                    })
-                                  }
-                                  decimalScale={2}
-                                  placeholder="High"
-                                  w={70}
-                                  allowNegative={false}
-                                />
-                              </Group>
-                            ) : biomarker.referenceRange ? (
-                              <Text size="sm">
-                                {biomarker.referenceRange.low ?? '?'} -{' '}
-                                {biomarker.referenceRange.high ?? '?'}
-                              </Text>
-                            ) : (
-                              <Text size="sm" c="dimmed">
-                                —
-                              </Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            {isEditing ? (
-                              <TextInput
-                                size="xs"
-                                value={biomarker.method || ''}
-                                onChange={(e) =>
-                                  updateBiomarker(resultIndex, bioIndex, {
-                                    method: e.target.value || undefined,
-                                  })
-                                }
-                                placeholder="Method"
-                                w={100}
-                              />
-                            ) : biomarker.method ? (
-                              <Text size="sm">{biomarker.method}</Text>
-                            ) : (
-                              <Text size="sm" c="dimmed">
-                                —
-                              </Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge
-                              size="sm"
-                              color={getConfidenceColor(biomarker.confidence)}
-                            >
-                              {Math.round(biomarker.confidence * 100)}%
-                            </Badge>
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
+                                <Text size="sm" c="dimmed">
+                                  —
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
                               {isEditing ? (
-                                <ActionIcon
-                                  size="sm"
-                                  color="green"
-                                  variant="subtle"
-                                  onClick={() => setEditingBiomarker(null)}
-                                  aria-label="Save changes"
-                                >
-                                  <IconCheck size={14} />
-                                </ActionIcon>
+                                <TextInput
+                                  size="xs"
+                                  value={biomarker.method || ''}
+                                  onChange={(e) =>
+                                    updateBiomarker(resultIndex, bioIndex, {
+                                      method: e.target.value || undefined,
+                                    })
+                                  }
+                                  placeholder="Method"
+                                  w={100}
+                                />
+                              ) : biomarker.method ? (
+                                <Text size="sm">{biomarker.method}</Text>
                               ) : (
+                                <Text size="sm" c="dimmed">
+                                  —
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              <Badge
+                                size="sm"
+                                color={getConfidenceColor(biomarker.confidence)}
+                              >
+                                {Math.round(biomarker.confidence * 100)}%
+                              </Badge>
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs">
+                                {isEditing ? (
+                                  <ActionIcon
+                                    size="sm"
+                                    color="green"
+                                    variant="subtle"
+                                    onClick={() => setEditingBiomarker(null)}
+                                    aria-label="Save changes"
+                                  >
+                                    <IconCheck size={14} />
+                                  </ActionIcon>
+                                ) : (
+                                  <ActionIcon
+                                    size="sm"
+                                    variant="subtle"
+                                    onClick={() =>
+                                      setEditingBiomarker({
+                                        resultIndex,
+                                        biomarkerIndex: bioIndex,
+                                      })
+                                    }
+                                    aria-label="Edit biomarker"
+                                  >
+                                    <IconEdit size={14} />
+                                  </ActionIcon>
+                                )}
                                 <ActionIcon
                                   size="sm"
+                                  color="red"
                                   variant="subtle"
                                   onClick={() =>
-                                    setEditingBiomarker({
-                                      resultIndex,
-                                      biomarkerIndex: bioIndex,
-                                    })
+                                    removeBiomarker(resultIndex, bioIndex)
                                   }
-                                  aria-label="Edit biomarker"
+                                  aria-label="Remove biomarker"
                                 >
-                                  <IconEdit size={14} />
+                                  <IconTrash size={14} />
                                 </ActionIcon>
-                              )}
-                              <ActionIcon
-                                size="sm"
-                                color="red"
-                                variant="subtle"
-                                onClick={() =>
-                                  removeBiomarker(resultIndex, bioIndex)
-                                }
-                                aria-label="Remove biomarker"
-                              >
-                                <IconTrash size={14} />
-                              </ActionIcon>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
+                              </Group>
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
 
                 {/* Add biomarker button */}
                 <Button

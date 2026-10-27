@@ -16,6 +16,7 @@ import { SetupWizard } from '@components/setup';
 import { LoginScreen } from '@components/auth';
 import { AppShell } from '@components/layout';
 import { PWAUpdatePrompt, PWAInstallPrompt } from '@components/common';
+import { cssVariablesResolver, theme } from './theme/theme';
 
 function AppContent(): React.ReactNode {
   const { status } = useAuth();
@@ -49,7 +50,7 @@ function AppContent(): React.ReactNode {
 
 function App(): React.ReactNode {
   return (
-    <MantineProvider>
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver}>
       <Notifications position="top-right" />
       <AuthProvider>
         <EncryptedApiKeyProvider>
