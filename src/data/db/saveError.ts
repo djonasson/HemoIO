@@ -66,9 +66,10 @@ export function toSaveError(err: unknown): SaveError {
 }
 
 /**
- * What to tell the user about a failed save: why, for a SaveError, and a
- * general message otherwise, never the text of the error itself
+ * What to tell the user about a failed save: why, read from the error's kind
+ * (or, for a storage error not yet a SaveError, its name), never the text of
+ * the error itself
  */
 export function saveErrorMessage(err: unknown): string {
-  return err instanceof SaveError ? err.message : MESSAGES.failed;
+  return toSaveError(err).message;
 }

@@ -35,4 +35,4 @@ export {
   type AISettingsTarget,
   type BackupAISettingsSummary,
 } from './restoreAISettings';
-export { runAfterRestore, type AfterRestoreStep } from './afterRestore';
+export { afterRestoreAdvice, runAfterRestore, type AfterRestoreStep } from './afterRestore';

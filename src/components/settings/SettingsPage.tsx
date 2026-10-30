@@ -4,10 +4,8 @@
  * Main settings page containing all application settings sections.
  */
 
-import { useState, useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
-import { Stack, Title, Tabs } from '@mantine/core';
-import { useMantineColorScheme } from '@mantine/core';
-import { notifySaveFailed } from '@components/common/notifySaveFailed';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Stack, Title, Tabs, useMantineColorScheme } from '@mantine/core';
 import {
   IconDatabase,
   IconLock,
@@ -16,6 +14,7 @@ import {
   IconTarget,
   IconBook,
 } from '@tabler/icons-react';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { BackupRestore } from './BackupRestore';
 import { ChangePassword } from './ChangePassword';
 import { DisplaySettings } from './DisplaySettings';
@@ -35,7 +34,6 @@ import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import { modelForProvider, testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from './BackupRestore';
-import type { UserPreferences } from '@/types';
 
 /**
  * Theme options
@@ -46,6 +44,11 @@ type ThemeOption = 'light' | 'dark' | 'system';
  * Date format options
  */
 type DateFormatOption = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+
+interface DisplayValues {
+  theme: ThemeOption;
+  dateFormat: DateFormatOption;
+}
 
 /**
  * Props for SettingsPage component
@@ -75,7 +78,7 @@ function reportAISave<T>(save: (value: T) => Promise<void>): (value: T) => Promi
 export function SettingsPage({ onRestore, isRestoring = false }: SettingsPageProps): React.ReactNode {
   const { dataSources, isLoading, refresh: loadDataSources } = useExportData();
   const { db, isReady } = useEncryptedDb();
-  const { colorScheme } = useMantineColorScheme();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const {
     hasApiKey,
     apiKeyLastFour,
@@ -107,8 +110,13 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
 
   // Display Settings state
-  const [theme, setTheme] = useState<ThemeOption>('system');
+  // Until the stored theme is read, the one in use (the stored one when it cannot be read)
+  const [theme, setTheme] = useState<ThemeOption>(colorScheme === 'auto' ? 'system' : colorScheme);
   const [dateFormat, setDateFormat] = useState<DateFormatOption>('MM/DD/YYYY');
+  // The display settings shown, and those stored: a failed save shows the
+  // stored one again, as the one shown before it may not have been saved either
+  const shownDisplay = useRef<DisplayValues>({ theme, dateFormat });
+  const storedDisplay = useRef<DisplayValues>({ theme, dateFormat });
 
   // Personal Targets state
   const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
@@ -139,6 +147,8 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
         setDateFormat(savedDateFormat);
         setTheme(savedTheme);
+        shownDisplay.current = { theme: savedTheme, dateFormat: savedDateFormat };
+        storedDisplay.current = shownDisplay.current;
 
         // Migrate localStorage to IndexedDB if needed
         if (lsDateFormat || lsTheme) {
@@ -149,25 +159,24 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         }
       } catch (err) {
         console.error('Failed to load display settings:', err);
-        // Fall back to Mantine's color scheme
-        if (colorScheme === 'auto') {
-          setTheme('system');
-        } else {
-          setTheme(colorScheme);
-        }
       }
     }
 
     loadDisplaySettings();
-  }, [db, isReady, colorScheme]);
+  }, [db, isReady]);
 
   // Handle API key change (async because of encryption)
   const handleApiKeyChange = useCallback(
     async (apiKey: string) => {
-      if (apiKey) {
-        await saveEncryptedApiKey(apiKey);
-      } else {
-        removeApiKey();
+      try {
+        if (apiKey) {
+          await saveEncryptedApiKey(apiKey);
+        } else {
+          removeApiKey();
+        }
+      } catch (err) {
+        notifySaveFailed('API key not saved', err);
+        throw err;
       }
     },
     [saveEncryptedApiKey, removeApiKey]
@@ -195,24 +204,28 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   }, [aiProvider, getApiKey, ollamaModel, openaiModel, anthropicModel]);
 
   /**
-   * Save a display setting shown already. One that is not saved goes back
-   * (unless a newer change replaced it), the user is told why, and the
-   * rejection tells DisplaySettings not to confirm it.
+   * Show a display setting at once, then save it. One that is not saved goes
+   * back to the stored one (unless a newer change replaced it), the user is
+   * told why, and the rejection tells DisplaySettings not to confirm it.
    */
   const saveDisplaySetting = useCallback(
-    async <T,>(
+    async <K extends keyof DisplayValues>(
       what: string,
-      value: T,
-      previous: T,
-      setValue: Dispatch<SetStateAction<T>>,
-      changes: Partial<Pick<UserPreferences, 'theme' | 'dateFormat'>>
+      field: K,
+      value: DisplayValues[K],
+      show: (value: DisplayValues[K]) => void
     ): Promise<void> => {
-      setValue(value);
-      if (!db || !isReady) return;
+      shownDisplay.current = { ...shownDisplay.current, [field]: value };
+      show(value);
       try {
-        await db.updatePreferences(() => changes);
+        if (db && isReady) await db.updatePreferences(() => ({ [field]: value }));
+        storedDisplay.current = { ...storedDisplay.current, [field]: value };
       } catch (err) {
-        setValue((current) => (current === value ? previous : current));
+        if (shownDisplay.current[field] === value) {
+          const before = storedDisplay.current[field];
+          shownDisplay.current = { ...shownDisplay.current, [field]: before };
+          show(before);
+        }
         notifySaveFailed(`${what} not saved`, err);
         throw err;
       }
@@ -220,18 +233,23 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     [db, isReady]
   );
 
+  const showTheme = useCallback(
+    (value: ThemeOption) => {
+      setTheme(value);
+      setColorScheme(value === 'system' ? 'auto' : value);
+    },
+    [setColorScheme]
+  );
+
   const handleThemeChange = useCallback(
-    (newTheme: ThemeOption) =>
-      saveDisplaySetting('Theme', newTheme, theme, setTheme, { theme: newTheme }),
-    [saveDisplaySetting, theme]
+    (newTheme: ThemeOption) => saveDisplaySetting('Theme', 'theme', newTheme, showTheme),
+    [saveDisplaySetting, showTheme]
   );
 
   const handleDateFormatChange = useCallback(
     (newFormat: DateFormatOption) =>
-      saveDisplaySetting('Date format', newFormat, dateFormat, setDateFormat, {
-        dateFormat: newFormat,
-      }),
-    [saveDisplaySetting, dateFormat]
+      saveDisplaySetting('Date format', 'dateFormat', newFormat, setDateFormat),
+    [saveDisplaySetting]
   );
 
   const saveTarget = useCallback(

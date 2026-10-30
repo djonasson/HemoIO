@@ -4,7 +4,7 @@
  * Settings section for AI provider configuration.
  */
 
-import { useState, useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Stack,
   Paper,
@@ -117,30 +117,42 @@ export function AISettings({
   const [anthropicModels, setAnthropicModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingAnthropicModels, setIsLoadingAnthropicModels] = useState(false);
   const autoSelected = useRef(false);
+  // What the owner holds, which a failed save shows again
+  const given = useRef({ provider, ollamaModel, openaiModel, anthropicModel });
+
+  useEffect(() => {
+    given.current = { provider, ollamaModel, openaiModel, anthropicModel };
+  }, [provider, ollamaModel, openaiModel, anthropicModel]);
 
   // Sync local state with props
   useEffect(() => {
     setLocalProvider(provider);
   }, [provider]);
 
-  // Sync Ollama model with props
   useEffect(() => {
     setLocalOllamaModel(ollamaModel);
   }, [ollamaModel]);
 
-  // Sync OpenAI model with props
   useEffect(() => {
-    if (openaiModel) {
-      setLocalOpenaiModel(openaiModel);
-    }
+    setLocalOpenaiModel(openaiModel || '');
   }, [openaiModel]);
 
-  // Sync Anthropic model with props
   useEffect(() => {
-    if (anthropicModel) {
-      setLocalAnthropicModel(anthropicModel);
-    }
+    setLocalAnthropicModel(anthropicModel || '');
   }, [anthropicModel]);
+
+  /**
+   * A change shows at once and is confirmed once saved. A failed save shows
+   * what the owner holds: it puts the stored value back, and says why. Read
+   * after the failure, as the owner's change may come in the same render as
+   * the choice and never reach the props.
+   */
+  const saveChange = useCallback(
+    (saving: void | Promise<void>, showGiven: () => void) => {
+      Promise.resolve(saving).then(showSaved, showGiven);
+    },
+    [showSaved]
+  );
 
   // Fetch OpenAI models when provider is OpenAI and API key is available
   useEffect(() => {
@@ -214,6 +226,11 @@ export function AISettings({
     };
   }, [localProvider, hasApiKey, getApiKey]);
 
+  const showGivenOllamaModel = useCallback(
+    () => setLocalOllamaModel(given.current.ollamaModel),
+    []
+  );
+
   /**
    * Pick the first model when none is chosen. Once only: a save that fails
    * is put back, and picking again would retry it in a loop. The caller
@@ -224,9 +241,9 @@ export function AISettings({
       if (models.length === 0 || localOllamaModel || autoSelected.current) return;
       autoSelected.current = true;
       setLocalOllamaModel(models[0]);
-      Promise.resolve(onOllamaModelChange?.(models[0])).catch(() => {});
+      saveChange(onOllamaModelChange?.(models[0]), showGivenOllamaModel);
     },
-    [localOllamaModel, onOllamaModelChange]
+    [localOllamaModel, onOllamaModelChange, saveChange, showGivenOllamaModel]
   );
 
   // Check Ollama status when provider is Ollama
@@ -289,20 +306,6 @@ export function AISettings({
     }
   }, [autoSelectFirstModel]);
 
-  /**
-   * A change shows at once and is confirmed once saved. A failed save puts
-   * the previous value back, unless a newer change replaced it already; the
-   * caller says why.
-   */
-  const saveChange = useCallback(
-    <T,>(saving: void | Promise<void>, setLocal: Dispatch<SetStateAction<T>>, value: T, previous: T) => {
-      Promise.resolve(saving).then(showSaved, () =>
-        setLocal((current) => (current === value ? previous : current))
-      );
-    },
-    [showSaved]
-  );
-
   // Handle provider change
   const handleProviderChange = useCallback(
     (value: string | null) => {
@@ -310,9 +313,9 @@ export function AISettings({
       const newProvider = value as AIProviderType;
       setLocalProvider(newProvider);
       setTestResult(null);
-      saveChange(onProviderChange?.(newProvider), setLocalProvider, newProvider, localProvider);
+      saveChange(onProviderChange?.(newProvider), () => setLocalProvider(given.current.provider));
     },
-    [onProviderChange, saveChange, localProvider]
+    [onProviderChange, saveChange]
   );
 
   // Handle Ollama model change
@@ -320,9 +323,9 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalOllamaModel(value);
-      saveChange(onOllamaModelChange?.(value), setLocalOllamaModel, value, localOllamaModel);
+      saveChange(onOllamaModelChange?.(value), showGivenOllamaModel);
     },
-    [onOllamaModelChange, saveChange, localOllamaModel]
+    [onOllamaModelChange, saveChange, showGivenOllamaModel]
   );
 
   // Handle OpenAI model change
@@ -330,9 +333,11 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalOpenaiModel(value);
-      saveChange(onOpenaiModelChange?.(value), setLocalOpenaiModel, value, localOpenaiModel);
+      saveChange(onOpenaiModelChange?.(value), () =>
+        setLocalOpenaiModel(given.current.openaiModel || '')
+      );
     },
-    [onOpenaiModelChange, saveChange, localOpenaiModel]
+    [onOpenaiModelChange, saveChange]
   );
 
   // Handle Anthropic model change
@@ -340,19 +345,25 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalAnthropicModel(value);
-      saveChange(onAnthropicModelChange?.(value), setLocalAnthropicModel, value, localAnthropicModel);
+      saveChange(onAnthropicModelChange?.(value), () =>
+        setLocalAnthropicModel(given.current.anthropicModel || '')
+      );
     },
-    [onAnthropicModelChange, saveChange, localAnthropicModel]
+    [onAnthropicModelChange, saveChange]
   );
 
   // Handle save API key
-  const handleSaveApiKey = useCallback(() => {
+  // Confirmed once saved; a key that is not saved stays typed in, to try
+  // again, and the caller says why
+  const handleSaveApiKey = useCallback(async () => {
     if (!newApiKey.trim()) return;
-
-    onApiKeyChange?.(newApiKey.trim());
+    try {
+      await onApiKeyChange?.(newApiKey.trim());
+    } catch {
+      return;
+    }
     setNewApiKey('');
     setIsEditing(false);
-
     showSaved();
   }, [newApiKey, onApiKeyChange, showSaved]);
 

@@ -26,6 +26,7 @@ import {
   IconPlus,
   IconSearch,
 } from '@tabler/icons-react';
+import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 import { formatRange } from '@/utils/formatRange';
 import { hasTargetRange, type PersonalTarget } from './personalTarget';
 import { PersonalTargetModal } from './PersonalTargetModal';
@@ -63,7 +64,7 @@ export function PersonalTargets({
 }: PersonalTargetsProps): React.ReactNode {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingTarget, setEditingTarget] = useState<PersonalTarget | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
 
   // Filter targets by search term
   const filteredTargets = targets.filter((target) =>
@@ -79,15 +80,12 @@ export function PersonalTargets({
   }, []);
 
   // Confirm briefly, only once the change is saved; whoever saves reports a failure
-  const confirmWhenSaved = useCallback((save: void | Promise<void>) => {
-    Promise.resolve(save).then(
-      () => {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 2000);
-      },
-      () => {}
-    );
-  }, []);
+  const confirmWhenSaved = useCallback(
+    (save: void | Promise<void>) => {
+      Promise.resolve(save).then(showSaved, () => {});
+    },
+    [showSaved]
+  );
 
   // Handle save target
   const handleSaveTarget = useCallback(

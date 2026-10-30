@@ -329,5 +329,37 @@ describe('NoteDisplay', () => {
       expect(alert).toHaveTextContent(/Reload the page/);
       expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
     });
+
+    it('keeps the dialog open while deleting, so a failure is seen where it happened', async () => {
+      let refuse!: (err: unknown) => void;
+      const onDelete = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onDelete={onDelete} />);
+
+      await user.click(screen.getByRole('button', { name: /delete note/i }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
+      await user.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent === 'Delete')!);
+      await user.keyboard('{Escape}');
+      refuse(new SaveError('failed'));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Note not deleted');
+      expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
+    });
+
+    it('opens the editor and the dialog without an earlier failure', async () => {
+      const onDelete = vi.fn().mockRejectedValue(new SaveError('failed'));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onDelete={onDelete} />);
+
+      await user.click(screen.getByRole('button', { name: /delete note/i }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
+      await user.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent === 'Delete')!);
+      await screen.findByRole('alert');
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 });

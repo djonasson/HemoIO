@@ -39,6 +39,7 @@ vi.mock('@mantine/notifications', () => ({
 // Per-test overrides for the AI hooks
 const mockAI = vi.hoisted(() => ({
   setAiProvider: vi.fn(),
+  setApiKey: vi.fn(),
   hasApiKey: false,
   apiKey: null as string | null,
   aiProvider: 'openai' as 'openai' | 'anthropic' | 'ollama',
@@ -79,7 +80,7 @@ vi.mock('@hooks', () => ({
     apiKeyLastFour: mockAI.apiKey?.slice(-4),
     isLoading: false,
     getApiKey: () => Promise.resolve(mockAI.apiKey),
-    setApiKey: vi.fn().mockResolvedValue(undefined),
+    setApiKey: mockAI.setApiKey,
     removeApiKey: vi.fn(),
   }),
   useAISettings: () => ({
@@ -429,6 +430,56 @@ describe('SettingsPage', () => {
       );
     });
 
+    it('puts the stored colors back when the theme is not saved', async () => {
+      mockDb.updatePreferences.mockRejectedValueOnce(new SaveError('quota'));
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /display/i }));
+
+      await user.click(screen.getByText('Dark'));
+
+      await waitFor(() => expect(mockShowNotification).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(localStorage.getItem('mantine-color-scheme-value')).toBe('auto')
+      );
+      expect(screen.getByRole('radio', { name: /system/i })).toBeChecked();
+    });
+
+    it('applies a saved theme without reading the stored one again', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /display/i }));
+
+      await user.click(screen.getByText('Dark'));
+
+      await waitFor(() => expect(localStorage.getItem('mantine-color-scheme-value')).toBe('dark'));
+      expect(screen.getByRole('radio', { name: /dark/i })).toBeChecked();
+      expect(mockDb.getPreferences).toHaveBeenCalledTimes(1);
+    });
+
+    it('goes back to the stored date format when overlapping changes all fail', async () => {
+      const fails: Array<(err: unknown) => void> = [];
+      mockDb.updatePreferences.mockImplementation(
+        () => new Promise((_, reject) => fails.push(reject))
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /display/i }));
+      const select = screen.getByRole('textbox', { name: 'Select date format' });
+
+      await user.click(select);
+      await user.click(await screen.findByRole('option', { name: /DD\/MM\/YYYY/ }));
+      await user.click(select);
+      await user.click(await screen.findByRole('option', { name: /YYYY-MM-DD/ }));
+      await waitFor(() => expect(fails).toHaveLength(2));
+      act(() => fails.forEach((fail) => fail(new SaveError('timeout'))));
+
+      await waitFor(() => expect(select).toHaveValue('MM/DD/YYYY (US)'));
+    });
+
     it('says why an AI setting was not saved', async () => {
       mockAI.setAiProvider.mockRejectedValueOnce(new SaveError('closed'));
       const user = userEvent.setup();
@@ -444,6 +495,27 @@ describe('SettingsPage', () => {
           expect.objectContaining({
             title: 'AI setting not saved',
             message: expect.stringMatching(/Reload the page/),
+            color: 'red',
+          })
+        )
+      );
+    });
+
+    it('says why the API key was not saved', async () => {
+      mockAI.setApiKey.mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'));
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /ai configuration/i }));
+
+      await user.type(screen.getByPlaceholderText(/enter your.*api key/i), 'sk-test-key');
+      await user.click(screen.getByRole('button', { name: /save api key/i }));
+
+      await waitFor(() =>
+        expect(mockShowNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'API key not saved',
+            message: expect.stringMatching(/no room left/),
             color: 'red',
           })
         )

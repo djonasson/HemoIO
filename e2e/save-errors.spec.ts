@@ -14,7 +14,14 @@ import { readStoredRows } from './steps/dataAtRest.steps';
 import { continueToConfirm, saveResults } from './steps/importWizard.steps';
 import { goToTimeline, labResultCard, labResultCards } from './steps/timeline.steps';
 import { analyzeReport, openTrend, preferredUnitControl } from './steps/unitConversion.steps';
-import { JAN_DAY, noteEditor, noteSeed, openLabResultNotes, seedNotesData } from './steps/userNotes.steps';
+import {
+  JAN_DAY,
+  noteEditor,
+  noteSeed,
+  openLabResultNotes,
+  seedNotesData,
+  viewTrendsFor,
+} from './steps/userNotes.steps';
 import { alertCard, viewAlerts } from './steps/alerts.steps';
 import { seedVisits, GLUCOSE } from './steps/trends.steps';
 import {
@@ -23,6 +30,8 @@ import {
   lockAndUnlock,
   notification,
   repairStorage,
+  resumeStorage,
+  stallStorage,
   startRestore,
 } from './steps/saveErrors.steps';
 
@@ -93,6 +102,54 @@ test.describe('Save errors', () => {
       expect(stored.labResults).toHaveLength(0);
       expect(stored.testValues).toHaveLength(0);
     });
+
+    test('saving an import cannot be started twice, or left half-way', async ({ page }) => {
+      await start(page);
+      await analyzeReport(page, REPORT);
+      await continueToConfirm(page);
+      await stallStorage(page, 'encrypt');
+
+      await saveResults(page);
+
+      const main = page.getByRole('main');
+      await expect(main.getByRole('button', { name: 'Save Results', exact: true })).toBeDisabled();
+      await expect(main.getByRole('button', { name: 'Back to Review' })).toBeDisabled();
+      const timeline = page.locator('nav').getByRole('button', { name: /^Timeline/ });
+      await expect(timeline).toHaveAttribute('aria-disabled', 'true');
+      await timeline.focus();
+      await page.keyboard.press('Enter');
+      await main.getByRole('button', { name: /^Review/ }).first().click();
+      await expect(main.getByText('Values to Import')).toBeVisible();
+
+      await resumeStorage(page);
+
+      await expect(notification(page, 'Import Complete')).toBeVisible();
+      await expect(labResultCards(page)).toHaveCount(1);
+      expect((await readStoredRows(page)).labResults).toHaveLength(1);
+    });
+
+    test('an import saves all of its files or none of them', async ({ page }) => {
+      await start(page);
+      await analyzeReport(page, REPORT, 2);
+      await continueToConfirm(page);
+      // Room for the first lab result only
+      await breakStorage(page, 'full', { fromWrite: 2 });
+
+      await saveResults(page);
+
+      await expect(notification(page, 'Import not saved')).toBeVisible();
+      let stored = await readStoredRows(page);
+      expect(stored.labResults).toHaveLength(0);
+      expect(stored.testValues).toHaveLength(0);
+
+      await repairStorage(page);
+      await saveResults(page);
+
+      await expect(notification(page, 'Import Complete')).toBeVisible();
+      stored = await readStoredRows(page);
+      expect(stored.labResults).toHaveLength(2);
+      expect(stored.testValues).toHaveLength(2);
+    });
   });
 
   test.describe('Notes', () => {
@@ -117,6 +174,63 @@ test.describe('Save errors', () => {
       const reloaded = await openLabResultNotes(page, JAN_DAY);
       await expect(reloaded.getByText('Felt tired before the test')).toHaveCount(0);
       expect((await readStoredRows(page)).userNotes).toHaveLength(0);
+    });
+
+    test('a note on a measurement that cannot be saved stays in the editor', async ({ page }) => {
+      await start(page);
+      await seedNotesData(page);
+      const main = await viewTrendsFor(page, 'Glucose');
+      await main.locator('circle[aria-label*=": 125 mg/dL"]').click();
+      const measurement = page.getByRole('dialog').filter({ hasText: '125 mg/dL' });
+      await measurement.getByRole('button', { name: 'Add Note' }).click();
+      await noteEditor(measurement).fill('Big dinner the night before');
+      await breakStorage(page, 'cancel');
+
+      await measurement.getByRole('button', { name: 'Save Note' }).click();
+
+      const error = measurement.getByRole('alert').filter({ hasText: 'Note not saved' });
+      await expect(error).toBeVisible();
+      await expect(error).not.toContainText('Big dinner');
+      await expect(noteEditor(measurement)).toHaveValue('Big dinner the night before');
+    });
+
+    test('a note that cannot be saved for a lost connection asks for a reload', async ({ page }) => {
+      await start(page);
+      await seedNotesData(page);
+      const card = await openLabResultNotes(page, JAN_DAY);
+      await breakStorage(page, 'closed');
+
+      await card.getByRole('button', { name: 'Add Note' }).click();
+      await noteEditor(card).fill('Felt tired');
+      await card.getByRole('button', { name: 'Save Note' }).click();
+
+      const error = card.getByRole('alert').filter({ hasText: 'Note not saved' });
+      await expect(error).toContainText('Reload the page');
+    });
+
+    test('an edit the storage never answers is stopped, and not saved later', async ({ page }) => {
+      // Waits for the 30-second deadline on writes
+      test.slow();
+      await start(page);
+      await seedNotesData(page, [noteSeed(1, { labResultId: 1 }, 'Original note')]);
+      const card = await openLabResultNotes(page, JAN_DAY);
+      await card.getByRole('button', { name: 'Edit note' }).click();
+      const editor = card.getByRole('textbox', { name: 'Edit note content' });
+      await editor.fill('Changed note');
+      await stallStorage(page, 'decrypt');
+
+      await card.getByRole('button', { name: 'Save Changes' }).click();
+
+      const error = card.getByRole('alert').filter({ hasText: 'Note not saved' });
+      await expect(error).toContainText('did not respond', { timeout: 45_000 });
+      await expect(editor).toHaveValue('Changed note');
+
+      await resumeStorage(page);
+      await lockAndUnlock(page);
+      await goToTimeline(page);
+      const reloaded = await openLabResultNotes(page, JAN_DAY);
+      await expect(reloaded.getByText('Original note', { exact: true })).toBeVisible();
+      await expect(reloaded.getByText('Changed note')).toHaveCount(0);
     });
 
     test('an edit to a note that cannot be saved keeps the note as it was', async ({ page }) => {
@@ -206,6 +320,20 @@ test.describe('Save errors', () => {
       await expect(page.getByText('Preferences saved')).toHaveCount(0);
     });
 
+    test('a theme that cannot be saved puts the colors back', async ({ page }) => {
+      await start(page);
+      await openSettingsTab(page, 'Display');
+      const html = page.locator('html');
+      const before = await html.getAttribute('data-mantine-color-scheme');
+      await breakStorage(page, 'cancel');
+
+      await page.getByText('Dark', { exact: true }).click();
+
+      await expect(notification(page, 'Theme not saved')).toBeVisible();
+      await expect(html).toHaveAttribute('data-mantine-color-scheme', before ?? 'light');
+      await expect(page.getByRole('radio', { name: 'System' })).toBeChecked();
+    });
+
     test('an AI setting that cannot be saved goes back', async ({ page }) => {
       await start(page);
       await openSettingsTab(page, 'AI Configuration');
@@ -259,5 +387,11 @@ test.describe('Save errors', () => {
     await expect(error).not.toContainText(PRIVATE_TEXT);
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(2);
+
+    await repairStorage(page);
+    await lockAndUnlock(page);
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(2);
+    expect((await readStoredRows(page)).labResults).toHaveLength(2);
   });
 });

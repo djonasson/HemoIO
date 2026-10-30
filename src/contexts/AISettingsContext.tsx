@@ -39,13 +39,16 @@ function useAISettingsState(): UseAISettingsResult {
   const [openaiModel, setOpenaiModelState] = useState<string | undefined>();
   const [anthropicModel, setAnthropicModelState] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(true);
-  // The values shown, for putting one back when its save fails
+  // The values shown, and the values stored: a failed save shows the stored
+  // one again, as the value shown before it may not have been saved either
   const shown = useRef<Partial<AIFields>>({ aiProvider: 'openai' });
+  const stored = useRef<Partial<AIFields>>({ aiProvider: 'openai' });
 
   // Load settings from IndexedDB with localStorage migration
   useEffect(() => {
     const show = (fields: Partial<AIFields>) => {
       shown.current = { ...fields, aiProvider: fields.aiProvider ?? shown.current.aiProvider };
+      stored.current = shown.current;
       if (fields.aiProvider) setAiProviderState(fields.aiProvider);
       setOllamaModelState(fields.ollamaModel);
       setOpenaiModelState(fields.openaiModel);
@@ -87,7 +90,7 @@ function useAISettingsState(): UseAISettingsResult {
   }, [db, isReady]);
 
   /**
-   * Show a change at once, then save it. A failed save puts the previous
+   * Show a change at once, then save it. A failed save puts the stored
    * value back, unless a newer change replaced it already, and rejects so
    * the caller can tell the user.
    */
@@ -97,16 +100,17 @@ function useAISettingsState(): UseAISettingsResult {
       value: AIFields[F],
       setState: (value: AIFields[F]) => void
     ): Promise<void> => {
-      const previous = shown.current[field] as AIFields[F];
       shown.current = { ...shown.current, [field]: value };
       setState(value);
-      if (!db || !isReady) return;
       try {
-        await db.updateSettings({ [field]: value });
+        // Before unlock there is nowhere to save it: what is shown is all there is
+        if (db && isReady) await db.updateSettings({ [field]: value });
+        stored.current = { ...stored.current, [field]: value };
       } catch (err) {
         if (shown.current[field] === value) {
-          shown.current = { ...shown.current, [field]: previous };
-          setState(previous);
+          const before = stored.current[field] as AIFields[F];
+          shown.current = { ...shown.current, [field]: before };
+          setState(before);
         }
         throw err;
       }

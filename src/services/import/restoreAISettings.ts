@@ -49,6 +49,10 @@ export function describeBackupAISettings(
   };
 }
 
+/**
+ * Apply each AI setting in the backup. One that is not saved does not stop
+ * the others; the first failure is passed on once all were tried.
+ */
 export async function restoreAISettings(
   data: ParsedBackupData | ParsedEncryptedBackupData,
   target: AISettingsTarget
@@ -56,9 +60,18 @@ export async function restoreAISettings(
   const { settings, apiKey } = aiSettingsOf(data);
   if (!settings) return;
 
-  if (settings.aiProvider) await target.setAiProvider(settings.aiProvider);
-  if (settings.openaiModel) await target.setOpenaiModel(settings.openaiModel);
-  if (settings.anthropicModel) await target.setAnthropicModel(settings.anthropicModel);
-  if (settings.ollamaModel) await target.setOllamaModel(settings.ollamaModel);
-  if (apiKey) await target.setApiKey(apiKey);
+  const saves: Array<() => Promise<void>> = [];
+  const { aiProvider, openaiModel, anthropicModel, ollamaModel } = settings;
+  if (aiProvider) saves.push(() => target.setAiProvider(aiProvider));
+  if (openaiModel) saves.push(() => target.setOpenaiModel(openaiModel));
+  if (anthropicModel) saves.push(() => target.setAnthropicModel(anthropicModel));
+  if (ollamaModel) saves.push(() => target.setOllamaModel(ollamaModel));
+  if (apiKey) saves.push(() => target.setApiKey(apiKey));
+
+  // One after another, as before: each is a write of its own
+  const failures: unknown[] = [];
+  for (const save of saves) {
+    await save().catch((err: unknown) => failures.push(err));
+  }
+  if (failures.length > 0) throw failures[0];
 }

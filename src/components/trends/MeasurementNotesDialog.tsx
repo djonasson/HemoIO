@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
+import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
 import type { UserNote } from '@/types';
@@ -37,21 +38,30 @@ export function MeasurementNotesDialog({
 }: MeasurementNotesDialogProps): React.ReactNode {
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Why the last save failed; the editor keeps the note so it can be saved again
+  const [saveError, setSaveError] = useState<unknown>(null);
 
   // The modal stays mounted and opens and closes through `opened`, so it can
   // return focus to the point that opened it
   const what = measurement
     ? `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`
     : '';
-  const close = () => {
+  const stopAdding = () => {
     setAdding(false);
+    setSaveError(null);
+  };
+  const close = () => {
+    stopAdding();
     onClose();
   };
   const save = async (content: string, tags: string[]) => {
     setSaving(true);
+    setSaveError(null);
     try {
       await onCreateNote(content, tags);
       setAdding(false);
+    } catch (err) {
+      setSaveError(err);
     } finally {
       setSaving(false);
     }
@@ -83,12 +93,15 @@ export function MeasurementNotesDialog({
             />
           ))}
           {adding ? (
-            <NoteEditor
-              onSave={save}
-              onCancel={() => setAdding(false)}
-              isSaving={saving}
-              placeholder="Add a note about this measurement..."
-            />
+            <>
+              {saveError !== null && <SaveFailedAlert title="Note not saved" error={saveError} />}
+              <NoteEditor
+                onSave={save}
+                onCancel={stopAdding}
+                isSaving={saving}
+                placeholder="Add a note about this measurement..."
+              />
+            </>
           ) : (
             <Button
               variant="light"

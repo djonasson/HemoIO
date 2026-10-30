@@ -163,13 +163,14 @@ export function NoteEditor({
         applyFormat(event.key === 'b' ? 'bold' : 'italic');
         return;
       }
-      // Escape to cancel
+      // Escape to cancel, unless saving: like the cancel button, so a save
+      // that fails is not reported to an editor that has gone
       if (event.key === 'Escape') {
         event.preventDefault();
-        onCancel();
+        if (!isSaving) onCancel();
       }
     },
-    [handleSave, onCancel, applyFormat]
+    [handleSave, onCancel, applyFormat, isSaving]
   );
 
   const canSave = content.trim().length > 0 && !isSaving;

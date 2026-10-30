@@ -197,6 +197,15 @@ describe('NoteEditor', () => {
       const cancelButton = screen.getByRole('button', { name: /cancel/i });
       expect(cancelButton).toBeDisabled();
     });
+
+    it('does not cancel on Escape while saving, as the cancel button cannot either', () => {
+      const onCancel = vi.fn();
+      renderWithProviders(<NoteEditor {...defaultProps} onCancel={onCancel} isSaving />);
+
+      fireEvent.keyDown(screen.getByRole('textbox', { name: /note content/i }), { key: 'Escape' });
+
+      expect(onCancel).not.toHaveBeenCalled();
+    });
   });
 
   describe('keyboard shortcuts', () => {

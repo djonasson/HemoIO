@@ -5,7 +5,6 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 import {
   Stack,
   Paper,
@@ -22,7 +21,7 @@ import {
   IconDeviceDesktop,
   IconCheck,
 } from '@tabler/icons-react';
-import { useMantineColorScheme } from '@mantine/core';
+import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 
 /**
  * Theme options
@@ -42,7 +41,7 @@ export interface DisplaySettingsProps {
   theme?: ThemeOption;
   /** Current date format setting */
   dateFormat?: DateFormatOption;
-  /** Called when theme changes; a rejected promise means it was not saved */
+  /** Called when theme changes, to apply and save it; a rejected promise means it was not saved */
   onThemeChange?: (theme: ThemeOption) => void | Promise<void>;
   /** Called when date format changes; a rejected promise means it was not saved */
   onDateFormatChange?: (format: DateFormatOption) => void | Promise<void>;
@@ -69,17 +68,19 @@ export function DisplaySettings({
   onDateFormatChange,
   isSaving = false,
 }: DisplaySettingsProps): React.ReactNode {
-  const { setColorScheme } = useMantineColorScheme();
   const [localTheme, setLocalTheme] = useState<ThemeOption>(theme);
   const [localDateFormat, setLocalDateFormat] = useState<DateFormatOption>(dateFormat);
   const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
 
-  // The theme last chosen, which a failed save of an older choice must not undo
-  const chosenTheme = useRef(theme);
+  // What the owner holds, which a failed save shows again
+  const given = useRef({ theme, dateFormat });
+
+  useEffect(() => {
+    given.current = { theme, dateFormat };
+  }, [theme, dateFormat]);
 
   // Sync local state with props
   useEffect(() => {
-    chosenTheme.current = theme;
     setLocalTheme(theme);
   }, [theme]);
 
@@ -87,41 +88,31 @@ export function DisplaySettings({
     setLocalDateFormat(dateFormat);
   }, [dateFormat]);
 
-  const applyTheme = useCallback(
-    (value: ThemeOption) => setColorScheme(value === 'system' ? 'auto' : value),
-    [setColorScheme]
-  );
-
-  // Each change shows at once, is confirmed once saved, and goes back when
-  // the save fails (unless a newer change replaced it); the parent says why
+  // Each change shows at once and is confirmed once saved. A failed save
+  // shows what the owner holds: it puts the stored value back, and says why.
+  // Read after the failure, as the owner's change may come in the same
+  // render as the choice and never reach the props.
   const handleThemeChange = useCallback(
     (value: string) => {
       const newTheme = value as ThemeOption;
-      const previous = localTheme;
-      chosenTheme.current = newTheme;
       setLocalTheme(newTheme);
-      applyTheme(newTheme);
-      Promise.resolve(onThemeChange?.(newTheme)).then(showSaved, () => {
-        if (chosenTheme.current !== newTheme) return;
-        chosenTheme.current = previous;
-        setLocalTheme(previous);
-        applyTheme(previous);
-      });
+      Promise.resolve(onThemeChange?.(newTheme)).then(showSaved, () =>
+        setLocalTheme(given.current.theme)
+      );
     },
-    [localTheme, onThemeChange, applyTheme, showSaved]
+    [onThemeChange, showSaved]
   );
 
   const handleDateFormatChange = useCallback(
     (value: string | null) => {
       if (!value) return;
       const newFormat = value as DateFormatOption;
-      const previous = localDateFormat;
       setLocalDateFormat(newFormat);
-      Promise.resolve(onDateFormatChange?.(newFormat)).then(showSaved, () => {
-        setLocalDateFormat((current) => (current === newFormat ? previous : current));
-      });
+      Promise.resolve(onDateFormatChange?.(newFormat)).then(showSaved, () =>
+        setLocalDateFormat(given.current.dateFormat)
+      );
     },
-    [localDateFormat, onDateFormatChange, showSaved]
+    [onDateFormatChange, showSaved]
   );
 
   return (

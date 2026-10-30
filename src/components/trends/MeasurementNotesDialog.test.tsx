@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { SaveError } from '@data/db/saveError';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import type { UserNote } from '@/types';
 
@@ -51,6 +52,32 @@ describe('MeasurementNotesDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
 
     expect(onCreateNote).toHaveBeenCalledWith('Big dinner', []);
+  });
+
+  it('says why a note was not saved, and keeps it in the editor to try again', async () => {
+    renderDialog({ onCreateNote: vi.fn().mockRejectedValue(new SaveError('quota')) });
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'Big dinner');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Note not saved');
+    expect(alert).toHaveTextContent(/no room left/);
+    expect(alert).not.toHaveTextContent('Big dinner');
+    expect(screen.getByRole('textbox', { name: 'Note content' })).toHaveValue('Big dinner');
+  });
+
+  it('forgets a failed save once the editor is closed', async () => {
+    renderDialog({ onCreateNote: vi.fn().mockRejectedValue(new SaveError('failed')) });
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
+    await screen.findByRole('alert');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('lists the notes on the measurement', () => {

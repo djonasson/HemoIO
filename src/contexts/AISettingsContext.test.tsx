@@ -229,6 +229,26 @@ describe('useAISettings', () => {
       expect(result.current.ollamaModel).toBe('llava');
     });
 
+    it('goes back to the stored setting when overlapping changes all fail', async () => {
+      const fails: Array<(err: unknown) => void> = [];
+      mockUpdateSettings.mockImplementation(() => new Promise((_, reject) => fails.push(reject)));
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.aiProvider).toBe('openai');
+
+      const saves: Promise<void>[] = [];
+      act(() => {
+        saves.push(result.current.setAiProvider('anthropic'));
+        saves.push(result.current.setAiProvider('ollama'));
+      });
+      await act(async () => {
+        for (const fail of fails) fail(new SaveError('timeout'));
+        await Promise.allSettled(saves);
+      });
+
+      expect(result.current.aiProvider).toBe('openai');
+    });
+
     it('should handle getSettings errors gracefully', async () => {
       mockGetSettings.mockRejectedValue(new Error('Database error'));
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

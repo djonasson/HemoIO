@@ -6,7 +6,11 @@ export interface AfterRestoreStep {
   /** What the step does, for the message to the user */
   name: string;
   run: () => Promise<unknown>;
+  /** What the user can do when it fails; by default, reload the page */
+  remedy?: string;
 }
+
+const RELOAD = 'Reload the page to see everything restored.';
 
 /** Run every step, in order, and return the names of those that failed */
 export async function runAfterRestore(steps: AfterRestoreStep[]): Promise<string[]> {
@@ -21,4 +25,12 @@ export async function runAfterRestore(steps: AfterRestoreStep[]): Promise<string
     }
   }
   return failed;
+}
+
+/** What the user can do about the steps that failed, each said once */
+export function afterRestoreAdvice(steps: AfterRestoreStep[], failed: string[]): string {
+  const remedies = steps
+    .filter((step) => failed.includes(step.name))
+    .map((step) => step.remedy ?? RELOAD);
+  return [...new Set(remedies)].join(' ');
 }

@@ -56,6 +56,10 @@ describe('saveErrorMessage', () => {
     expect(saveErrorMessage(new SaveError('failed'))).toMatch(/did not keep the change/);
   });
 
+  it('says why for a storage error that is not a SaveError yet', () => {
+    expect(saveErrorMessage(domError('QuotaExceededError'))).toMatch(/no room left/);
+  });
+
   it('does not show the text of other errors, which can hold health data', () => {
     expect(saveErrorMessage(new Error('Glucose 125 mg/dL'))).not.toMatch(/Glucose/);
   });

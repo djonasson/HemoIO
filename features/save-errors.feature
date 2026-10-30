@@ -34,16 +34,24 @@ Feature: Save Errors
     And the timeline should show no lab results
     And after I lock and unlock the app there are still no lab results
 
-  Scenario: Saving an import cannot be started twice
+  Scenario: Saving an import cannot be started twice, or left half-way
     Given I have reviewed an imported lab report
+    And the browser's storage is slow
     When I click "Save Results"
     Then the button shows that it is saving until the save finishes
+    And I cannot go back, or to another step or page, while it saves
+    When the save finishes
+    Then the lab result is saved once
 
   Scenario: An import saves all of its files or none of them
-    Given I import two lab reports at once
-    When the browser refuses to store the second one
-    Then neither lab report is saved
-    And saving again later does not create duplicates
+    Given I have reviewed two lab reports imported at once
+    And the browser's storage has room for only one of them
+    When I click "Save Results"
+    Then I should see "Import not saved"
+    And neither lab report is saved
+    When the browser's storage has room again
+    And I click "Save Results" again
+    Then both lab reports are saved, once each
 
   # Notes
 
@@ -55,6 +63,13 @@ Feature: Save Errors
     And the note editor should still hold what I wrote
     And the note should not be listed
     And after I lock and unlock the app the lab result has no notes
+
+  Scenario: A note on a measurement that cannot be saved stays in the editor
+    Given I have lab results imported
+    And the browser cancels every change before keeping it
+    When I add a note to a measurement on the trend chart
+    Then I should see "Note not saved" in the editor
+    And the note editor should still hold what I wrote
 
   Scenario: An edit to a note that cannot be saved keeps the note as it was
     Given I have a lab result with a note
@@ -125,16 +140,19 @@ Feature: Save Errors
   # Errors that are not storage errors
 
   Scenario: A save that never finishes is stopped
-    Given the browser's storage stops responding
-    When I save a change
-    Then after a while I should see that the browser's storage did not respond
-    And the change should not be shown as saved
-    And the change is not saved later
+    Given I have a lab result with a note
+    And the browser's storage stops responding
+    When I edit the note and save it
+    Then after a while I should see "Note not saved" saying the storage did not respond
+    And the note editor should still hold my edit
+    When the browser's storage responds again
+    Then after I lock and unlock the app the note is as it was
 
   Scenario: A lost connection to the storage asks for a reload
-    Given the connection to the browser's storage was lost
-    When I save a change
-    Then I should see that the connection was lost and that I should reload the page
+    Given I have lab results imported
+    And the connection to the browser's storage was lost
+    When I add a note to a lab result
+    Then I should see "Note not saved" saying I should reload the page
 
   Scenario: Save errors never show my health data
     Given a save fails for any reason

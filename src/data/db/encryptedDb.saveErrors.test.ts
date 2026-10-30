@@ -4,6 +4,7 @@
  */
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import Dexie from 'dexie';
 import { IDBObjectStore } from 'fake-indexeddb';
 import { EncryptedDb } from './encryptedDb';
 import { SaveError } from './saveError';
@@ -233,5 +234,52 @@ describe('EncryptedDb: a write that does not finish in time', () => {
 
     vi.restoreAllMocks();
     expect((await test.db.getNote(id))?.content).toBe('Original');
+  });
+
+  it('reports a commit that fails after the deadline found it committing', async () => {
+    const test = await openTestDb();
+    const db = withDeadline(test);
+    // Dexie stops listening once its own abort() is refused, so its promise
+    // never settles: only the browser's event says how the commit ended
+    const idbtrans = Object.assign(new EventTarget(), {
+      error: null as DOMException | null,
+      abort(): void {
+        throw new DOMException('The transaction is committing', 'InvalidStateError');
+      },
+    });
+    vi.spyOn(test.database, 'transaction').mockImplementation(((...args: unknown[]) => {
+      const scope = args.at(-1) as (tx: unknown) => unknown;
+      void scope({ active: true, idbtrans, abort: idbtrans.abort });
+      return new Promise(() => {});
+    }) as never);
+    setTimeout(() => {
+      idbtrans.error = new DOMException('Quota exceeded', 'QuotaExceededError');
+      idbtrans.dispatchEvent(new Event('abort'));
+    }, 100);
+
+    expect((await rejection(db.addNote(note('Late')))).kind).toBe('quota');
+  });
+
+  it('reports a transaction the browser aborts while the write is encrypting', async () => {
+    const test = await openTestDb();
+    const db = withDeadline(test);
+    const id = await db.addNote(note('Original'));
+    const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, 'decrypt').mockImplementation((...args) => {
+      // Inside Dexie.waitFor, which never returns once the transaction is gone
+      const trans = Dexie.currentTransaction as unknown as { idbtrans: { _abort(name: string): void } };
+      setTimeout(() => trans.idbtrans._abort('AbortError'), 10);
+      return new Promise((resolve) => setTimeout(() => resolve(decrypt(...args)), 30));
+    });
+
+    const outcome = await Promise.race([
+      db.updateNote(id, { content: 'Changed' }).then(
+        () => 'saved',
+        (err: unknown) => (err instanceof SaveError ? 'refused' : 'other error')
+      ),
+      new Promise((resolve) => setTimeout(() => resolve('never settled'), 1000)),
+    ]);
+
+    expect(outcome).toBe('refused');
   });
 });

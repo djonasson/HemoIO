@@ -183,7 +183,8 @@ export function ImportWizard({
               label={step.label}
               description={step.description}
               icon={<step.icon size={18} />}
-              allowStepSelect={index < activeStep}
+              // Not while saving: the confirm step must stay to report the outcome
+              allowStepSelect={!isSaving && index < activeStep}
             />
           ))}
         </Stepper>

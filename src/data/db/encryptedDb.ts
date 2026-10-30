@@ -263,49 +263,53 @@ export class EncryptedDb {
    * abort at commit, where browsers often report a full storage, rejects).
    * Failures become a SaveError.
    *
+   * The transaction's own abort event is watched too: Dexie does not settle
+   * after an abort that lands while the body waits in Dexie.waitFor, nor
+   * after its abort() was refused because the transaction was committing.
+   *
    * A write still unsettled at the deadline is stopped so that what it
    * reports stays true: one not started yet cancels itself when it starts,
    * one under way is aborted. One already committing cannot be aborted, and
-   * is waited for instead, as it reports its own outcome.
+   * is waited for instead: its complete or abort event says how it ended.
    */
   private write<T>(tables: Table | Table[], body: () => Promise<T>): Promise<T> {
-    let transaction: Transaction | undefined;
-    let cancelled = false;
-    const done: Promise<T> = this.db.transaction('rw', ([] as Table[]).concat(tables), (tx) => {
-      if (cancelled) throw new SaveError('timeout');
-      transaction = tx;
-      return body();
-    });
     return new Promise<T>((resolve, reject) => {
+      let transaction: Transaction | undefined;
+      let settled = false;
+      const finish = (outcome: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        outcome();
+      };
+      const fail = (err: unknown): void => finish(() => reject(toSaveError(err)));
+
       const timer = setTimeout(() => {
-        if (!transaction) {
-          cancelled = true;
-          reject(new SaveError('timeout'));
-          return;
+        if (transaction) {
+          try {
+            // The browser's abort, not Dexie's: Dexie's stops listening first
+            transaction.idbtrans.abort();
+          } catch {
+            // Committing or finished already: its outcome is on its way
+            return;
+          }
         }
-        // Finished already: its outcome is on its way
-        if (!transaction.active) return;
-        try {
-          transaction.abort();
-        } catch {
-          // Committing already: its outcome is on its way
-          return;
-        }
-        // Aborted, so it never commits. Not left to the transaction to
-        // report: the part of the write that hangs may never return.
-        reject(new SaveError('timeout'));
+        // Not left to the transaction to report: the part of the write that
+        // hangs may never return
+        fail(new SaveError('timeout'));
       }, this.writeTimeoutMs);
-      done.then(
-        (result) => {
-          clearTimeout(timer);
-          resolve(result);
-        },
-        (err: unknown) => {
-          clearTimeout(timer);
-          // After a timeout this has no effect: the write was rejected already
-          reject(toSaveError(err));
-        }
-      );
+
+      this.db
+        .transaction('rw', ([] as Table[]).concat(tables), (tx) => {
+          if (settled) throw new SaveError('timeout');
+          transaction = tx;
+          const idbtrans = tx.idbtrans;
+          idbtrans.addEventListener('abort', () =>
+            fail(idbtrans.error ?? new DOMException('The write was aborted', 'AbortError'))
+          );
+          return body();
+        })
+        .then((result) => finish(() => resolve(result)), fail);
     });
   }
 
