@@ -4,10 +4,11 @@
  * Main settings page containing all application settings sections.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { Stack, Title, Tabs } from '@mantine/core';
 import { useMantineColorScheme } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { saveErrorMessage } from '@data/db/saveError';
 import {
   IconDatabase,
   IconLock,
@@ -35,6 +36,7 @@ import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
 import { modelForProvider, testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from './BackupRestore';
+import type { UserPreferences } from '@/types';
 
 /**
  * Theme options
@@ -54,6 +56,18 @@ export interface SettingsPageProps {
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   /** Whether restore is in progress */
   isRestoring?: boolean;
+}
+
+/**
+ * An AI setting's save that tells the user when it was not saved, and
+ * still rejects, so the control showing it goes back
+ */
+function reportAISave<T>(save: (value: T) => Promise<void>): (value: T) => Promise<void> {
+  return (value) =>
+    save(value).catch((err: unknown) => {
+      notifications.show({ title: 'AI setting not saved', message: saveErrorMessage(err), color: 'red' });
+      throw err;
+    });
 }
 
 /**
@@ -78,11 +92,19 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     ollamaModel,
     openaiModel,
     anthropicModel,
-    setAiProvider: handleAiProviderChange,
-    setOllamaModel: handleOllamaModelChange,
-    setOpenaiModel: handleOpenaiModelChange,
-    setAnthropicModel: handleAnthropicModelChange,
+    setAiProvider,
+    setOllamaModel,
+    setOpenaiModel,
+    setAnthropicModel,
   } = useAISettings();
+  // Each AI setting shows at once; one that is not saved goes back, and the user is told why
+  const handleAiProviderChange = useMemo(() => reportAISave(setAiProvider), [setAiProvider]);
+  const handleOllamaModelChange = useMemo(() => reportAISave(setOllamaModel), [setOllamaModel]);
+  const handleOpenaiModelChange = useMemo(() => reportAISave(setOpenaiModel), [setOpenaiModel]);
+  const handleAnthropicModelChange = useMemo(
+    () => reportAISave(setAnthropicModel),
+    [setAnthropicModel]
+  );
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
 
   // Display Settings state
@@ -173,34 +195,44 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     }
   }, [aiProvider, getApiKey, ollamaModel, openaiModel, anthropicModel]);
 
-  // Handle theme change
-  const handleThemeChange = useCallback(
-    async (newTheme: ThemeOption) => {
-      setTheme(newTheme);
-      if (db && isReady) {
-        try {
-          await db.updatePreferences(() => ({ theme: newTheme }));
-        } catch (err) {
-          console.error('Failed to save theme:', err);
-        }
+  /**
+   * Save a display setting shown already. One that is not saved goes back
+   * (unless a newer change replaced it), the user is told why, and the
+   * rejection tells DisplaySettings not to confirm it.
+   */
+  const saveDisplaySetting = useCallback(
+    async <T,>(
+      what: string,
+      value: T,
+      previous: T,
+      setValue: Dispatch<SetStateAction<T>>,
+      changes: Partial<Pick<UserPreferences, 'theme' | 'dateFormat'>>
+    ): Promise<void> => {
+      setValue(value);
+      if (!db || !isReady) return;
+      try {
+        await db.updatePreferences(() => changes);
+      } catch (err) {
+        setValue((current) => (current === value ? previous : current));
+        notifications.show({ title: `${what} not saved`, message: saveErrorMessage(err), color: 'red' });
+        throw err;
       }
     },
     [db, isReady]
   );
 
-  // Handle date format change
+  const handleThemeChange = useCallback(
+    (newTheme: ThemeOption) =>
+      saveDisplaySetting('Theme', newTheme, theme, setTheme, { theme: newTheme }),
+    [saveDisplaySetting, theme]
+  );
+
   const handleDateFormatChange = useCallback(
-    async (newFormat: DateFormatOption) => {
-      setDateFormat(newFormat);
-      if (db && isReady) {
-        try {
-          await db.updatePreferences(() => ({ dateFormat: newFormat }));
-        } catch (err) {
-          console.error('Failed to save date format:', err);
-        }
-      }
-    },
-    [db, isReady]
+    (newFormat: DateFormatOption) =>
+      saveDisplaySetting('Date format', newFormat, dateFormat, setDateFormat, {
+        dateFormat: newFormat,
+      }),
+    [saveDisplaySetting, dateFormat]
   );
 
   const saveTarget = useCallback(
@@ -211,7 +243,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       } catch (err) {
         notifications.show({
           title: 'Personal target not saved',
-          message: 'Your target could not be saved. Try again.',
+          message: saveErrorMessage(err),
           color: 'red',
         });
         // Passed on so the targets list does not confirm the save

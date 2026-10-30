@@ -11,8 +11,9 @@
  * were done, when, or with what results. Settings encrypt the API key only.
  */
 
-import Dexie, { type Table } from 'dexie';
+import Dexie, { type Table, type Transaction } from 'dexie';
 import { db, HemoIODatabase, MIGRATE_RECORDS } from './index';
+import { SaveError, toSaveError } from './saveError';
 import { encryptString, decryptString } from '@data/encryption';
 import {
   legacyUnknownKeyMapping,
@@ -221,15 +222,92 @@ function newestFirst<T extends { id?: number }>(date: (record: T) => Date) {
 }
 
 /**
+ * How long a write may take, from the call to its commit, before it is
+ * cancelled. Generous: a write waits for the database to open, and a large
+ * restore commits many records.
+ */
+export const WRITE_TIMEOUT_MS = 30_000;
+
+export interface EncryptedDbOptions {
+  /** See WRITE_TIMEOUT_MS */
+  writeTimeoutMs?: number;
+}
+
+/** A lab result and its values, stored together */
+export interface LabResultWithValues {
+  labResult: Omit<LabResult, 'id'>;
+  testValues: Array<Omit<TestValue, 'id' | 'labResultId'>>;
+}
+
+/**
  * Encrypted database operations wrapper
  */
 export class EncryptedDb {
   private key: CryptoKey;
   private db: HemoIODatabase;
+  private writeTimeoutMs: number;
 
-  constructor(encryptionKey: CryptoKey, database: HemoIODatabase = db) {
+  constructor(
+    encryptionKey: CryptoKey,
+    database: HemoIODatabase = db,
+    { writeTimeoutMs = WRITE_TIMEOUT_MS }: EncryptedDbOptions = {}
+  ) {
     this.key = encryptionKey;
     this.db = database;
+    this.writeTimeoutMs = writeTimeoutMs;
+  }
+
+  /**
+   * Every write: one transaction, so it is kept whole or not at all, and
+   * resolved only once committed (Dexie waits for the complete event, so an
+   * abort at commit, where browsers often report a full storage, rejects).
+   * Failures become a SaveError.
+   *
+   * A write still unsettled at the deadline is stopped so that what it
+   * reports stays true: one not started yet cancels itself when it starts,
+   * one under way is aborted. One already committing cannot be aborted, and
+   * is waited for instead, as it reports its own outcome.
+   */
+  private write<T>(tables: Table | Table[], body: () => Promise<T>): Promise<T> {
+    let transaction: Transaction | undefined;
+    let cancelled = false;
+    const done: Promise<T> = this.db.transaction('rw', ([] as Table[]).concat(tables), (tx) => {
+      if (cancelled) throw new SaveError('timeout');
+      transaction = tx;
+      return body();
+    });
+    return new Promise<T>((resolve, reject) => {
+      let stopped = false;
+      const timer = setTimeout(() => {
+        if (!transaction) {
+          cancelled = stopped = true;
+          reject(new SaveError('timeout'));
+          return;
+        }
+        // Finished already: its outcome is on its way
+        if (!transaction.active) return;
+        try {
+          transaction.abort();
+        } catch {
+          // Committing already: its outcome is on its way
+          return;
+        }
+        stopped = true;
+        // Aborted, so it never commits. Not left to the transaction to
+        // report: the part of the write that hangs may never return.
+        reject(new SaveError('timeout'));
+      }, this.writeTimeoutMs);
+      done.then(
+        (result) => {
+          clearTimeout(timer);
+          resolve(result);
+        },
+        (err: unknown) => {
+          clearTimeout(timer);
+          reject(stopped ? new SaveError('timeout') : toSaveError(err));
+        }
+      );
+    });
   }
 
   private table(name: SealedTable): Table<SealedRecord, number> {
@@ -264,7 +342,15 @@ export class EncryptedDb {
   }
 
   private async add(name: SealedTable, record: object): Promise<number> {
-    return (await this.table(name).add(await this.seal(name, record))) as number;
+    // Sealed first: a transaction ends at the first await outside IndexedDB
+    const sealed = await this.seal(name, record);
+    const table = this.table(name);
+    return this.write(table, async () => (await table.add(sealed)) as number);
+  }
+
+  private delete(name: SealedTable, id: number): Promise<void> {
+    const table = this.table(name);
+    return this.write(table, () => table.delete(id));
   }
 
   private async get<T>(name: SealedTable, id: number): Promise<T | undefined> {
@@ -285,7 +371,7 @@ export class EncryptedDb {
    */
   private update(name: SealedTable, id: number, changes: object): Promise<number> {
     const table = this.table(name);
-    return this.db.transaction('rw', table, async () => {
+    return this.write(table, async () => {
       const stored = await table.get(id);
       if (!stored) return 0;
       const current = await Dexie.waitFor(unseal<object>(stored, name, this.key));
@@ -380,10 +466,42 @@ export class EncryptedDb {
     return this.update('labResults', id, changes);
   }
 
+  /** The lab result and its values, together */
   async deleteLabResult(id: number): Promise<void> {
-    // Also delete associated test values
-    await this.db.testValues.where('labResultId').equals(id).delete();
-    await this.db.labResults.delete(id);
+    await this.write([this.db.labResults, this.db.testValues], async () => {
+      await this.db.testValues.where('labResultId').equals(id).delete();
+      await this.db.labResults.delete(id);
+    });
+  }
+
+  /**
+   * Store lab results with their values, all of them or none: an import
+   * kept in part could not be retried without duplicating what was kept
+   *
+   * @returns Each lab result's new ID, in order
+   */
+  async addLabResultsWithValues(entries: LabResultWithValues[]): Promise<number[]> {
+    // Sealed up front: a transaction ends at the first await outside
+    // IndexedDB. The link to the result is readable, so it is set sealed.
+    const sealed = await Promise.all(
+      entries.map(async ({ labResult, testValues }) => ({
+        labResult: await this.seal('labResults', labResult),
+        testValues: await Promise.all(testValues.map((tv) => this.seal('testValues', tv))),
+      }))
+    );
+    const results = this.table('labResults');
+    const values = this.table('testValues');
+    return this.write([results, values], async () => {
+      const ids: number[] = [];
+      for (const entry of sealed) {
+        const labResultId = (await results.add(entry.labResult)) as number;
+        if (entry.testValues.length > 0) {
+          await values.bulkAdd(entry.testValues.map((tv) => ({ ...tv, labResultId })));
+        }
+        ids.push(labResultId);
+      }
+      return ids;
+    });
   }
 
   // ============ Test Values ============
@@ -394,7 +512,8 @@ export class EncryptedDb {
 
   async addTestValues(testValues: Omit<TestValue, 'id'>[]): Promise<number[]> {
     const sealed = await Promise.all(testValues.map((tv) => this.seal('testValues', tv)));
-    const keys = await this.table('testValues').bulkAdd(sealed, { allKeys: true });
+    const table = this.table('testValues');
+    const keys = await this.write(table, () => table.bulkAdd(sealed, { allKeys: true }));
     return keys.filter((k): k is number => k !== undefined);
   }
 
@@ -423,7 +542,7 @@ export class EncryptedDb {
   }
 
   async deleteTestValue(id: number): Promise<void> {
-    await this.db.testValues.delete(id);
+    await this.delete('testValues', id);
   }
 
   // ============ Settings ============
@@ -437,15 +556,14 @@ export class EncryptedDb {
   async saveSettings(settings: Omit<Settings, 'id'>): Promise<number> {
     const encrypted = await encryptFields(settings, SETTINGS_ENCRYPTED_FIELDS, this.key);
 
-    // Check if settings already exist
-    const existing = await this.db.settings.toCollection().first();
-    if (existing?.id !== undefined) {
-      await this.db.settings.update(existing.id, encrypted);
-      return existing.id;
-    }
-
-    const id = await this.db.settings.add(encrypted as Settings);
-    return id!;
+    return this.write(this.db.settings, async () => {
+      const existing = await this.db.settings.toCollection().first();
+      if (existing?.id !== undefined) {
+        await this.db.settings.update(existing.id, encrypted);
+        return existing.id;
+      }
+      return (await this.db.settings.add(encrypted as Settings))!;
+    });
   }
 
   /**
@@ -458,7 +576,7 @@ export class EncryptedDb {
       encryptFields(changes, SETTINGS_ENCRYPTED_FIELDS, this.key),
       encryptFields({ ...DEFAULT_SETTINGS, ...changes }, SETTINGS_ENCRYPTED_FIELDS, this.key),
     ]);
-    await this.db.transaction('rw', this.db.settings, async () => {
+    await this.write(this.db.settings, async () => {
       const existing = await this.db.settings.toCollection().first();
       if (existing?.id !== undefined) {
         await this.db.settings.update(existing.id, encryptedChanges);
@@ -495,19 +613,21 @@ export class EncryptedDb {
   private writePreferences(
     update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
   ): Promise<number> {
+    return this.write(this.table('userPreferences'), () => this.putPreferences(update));
+  }
+
+  /** Read, change and write the preferences, inside the caller's transaction */
+  private async putPreferences(
+    update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
+  ): Promise<number> {
     const table = this.table('userPreferences');
-    return this.db.transaction('rw', table, async () => {
-      const stored = await table.toCollection().first();
-      // Dexie.waitFor keeps the transaction open across the decryption and
-      // encryption, which are not IndexedDB requests
-      // Unreadable preferences are replaced
-      const current = await Dexie.waitFor(
-        this.unsealOne<UserPreferences>('userPreferences', stored)
-      );
-      // Under the stored record's ID, so unreadable preferences are replaced
-      const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current), id: stored?.id };
-      return (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
-    });
+    const stored = await table.toCollection().first();
+    // Dexie.waitFor keeps the transaction open across the decryption and
+    // encryption, which are not IndexedDB requests
+    const current = await Dexie.waitFor(this.unsealOne<UserPreferences>('userPreferences', stored));
+    // Under the stored record's ID, so unreadable preferences are replaced
+    const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current), id: stored?.id };
+    return (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
   }
 
   // ============ Biomarkers ============
@@ -568,7 +688,7 @@ export class EncryptedDb {
   }
 
   async deleteNote(id: number): Promise<void> {
-    await this.db.userNotes.delete(id);
+    await this.delete('userNotes', id);
   }
 
   // ============ Bulk Operations ============
@@ -634,7 +754,7 @@ export class EncryptedDb {
       );
 
     const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, this.db.userPreferences];
-    return this.db.transaction('rw', tables, async () => {
+    return this.write(tables, async () => {
       await Promise.all([
         this.db.labResults.clear(),
         this.db.testValues.clear(),
@@ -677,7 +797,7 @@ export class EncryptedDb {
       if (data.userPreferences) {
         // As savePreferences: fields the backup lacks keep their current values
         const preferences = definedFields(data.userPreferences);
-        await this.writePreferences(() => preferences);
+        await this.putPreferences(() => preferences);
       }
 
       return {

@@ -38,6 +38,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
 import { indicatorColor } from '@services/alerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
+import { saveErrorMessage } from '@data/db/saveError';
 import { RelativeTime } from '@components/common/RelativeTime';
 import type { BiomarkerCategory } from '@/types';
 
@@ -307,8 +308,8 @@ export function OutOfRangeAlerts({
   const handleAcknowledge = useCallback(
     (alertId: string) => {
       setSaveError(null);
-      acknowledgeAlert(alertId).catch(() => {
-        setSaveError('Could not save the acknowledgement. Please try again.');
+      acknowledgeAlert(alertId).catch((err: unknown) => {
+        setSaveError(`Could not save the acknowledgement. ${saveErrorMessage(err)}`);
       });
     },
     [acknowledgeAlert]

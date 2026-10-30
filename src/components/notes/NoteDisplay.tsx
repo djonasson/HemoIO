@@ -18,6 +18,7 @@ import {
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconNote } from '@tabler/icons-react';
 import { RelativeTime } from '@components/common/RelativeTime';
+import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
 import type { UserNote } from '@/types';
 import { NoteEditor } from './NoteEditor';
 import { NoteContent } from './NoteContent';
@@ -49,6 +50,8 @@ export function NoteDisplay({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // Why the last edit or deletion failed; the note is still as stored
+  const [saveError, setSaveError] = useState<unknown>(null);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -56,14 +59,18 @@ export function NoteDisplay({
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    setSaveError(null);
   };
 
   const handleSaveEdit = async (content: string, tags: string[]) => {
     if (!note.id) return;
     setIsSaving(true);
+    setSaveError(null);
     try {
       await onUpdate(note.id, content, tags);
       setIsEditing(false);
+    } catch (err) {
+      setSaveError(err);
     } finally {
       setIsSaving(false);
     }
@@ -76,9 +83,12 @@ export function NoteDisplay({
   const handleConfirmDelete = async () => {
     if (!note.id) return;
     setIsDeleting(true);
+    setSaveError(null);
     try {
       await onDelete(note.id);
       setDeleteConfirmOpen(false);
+    } catch (err) {
+      setSaveError(err);
     } finally {
       setIsDeleting(false);
     }
@@ -86,18 +96,22 @@ export function NoteDisplay({
 
   const handleCancelDelete = () => {
     setDeleteConfirmOpen(false);
+    setSaveError(null);
   };
 
   if (isEditing) {
     return (
-      <NoteEditor
-        initialContent={note.content}
-        initialTags={note.tags}
-        onSave={handleSaveEdit}
-        onCancel={handleCancelEdit}
-        isEditing
-        isSaving={isSaving}
-      />
+      <Stack gap="xs">
+        {saveError !== null && <SaveFailedAlert title="Note not saved" error={saveError} />}
+        <NoteEditor
+          initialContent={note.content}
+          initialTags={note.tags}
+          onSave={handleSaveEdit}
+          onCancel={handleCancelEdit}
+          isEditing
+          isSaving={isSaving}
+        />
+      </Stack>
     );
   }
 
@@ -175,6 +189,7 @@ export function NoteDisplay({
             Are you sure you want to delete this note? This action cannot be
             undone.
           </Text>
+          {saveError !== null && <SaveFailedAlert title="Note not deleted" error={saveError} />}
           <Group justify="flex-end" gap="sm">
             <Button
               variant="subtle"

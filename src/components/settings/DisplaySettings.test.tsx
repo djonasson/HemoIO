@@ -143,4 +143,55 @@ describe('DisplaySettings', () => {
       expect(screen.getByRole('textbox', { name: /select date format/i })).toBeInTheDocument();
     });
   });
+
+  describe('a change that is not saved', () => {
+    it('confirms a change only once it is saved', async () => {
+      const user = userEvent.setup();
+      let finish: () => void = () => {};
+      const onThemeChange = vi.fn(
+        () => new Promise<void>((resolve) => (finish = resolve))
+      );
+      renderWithProviders(<DisplaySettings {...defaultProps} onThemeChange={onThemeChange} />);
+
+      await user.click(screen.getByText('Dark'));
+      expect(screen.queryByText('Preferences saved')).not.toBeInTheDocument();
+
+      finish();
+      expect(await screen.findByText('Preferences saved')).toBeInTheDocument();
+    });
+
+    it('goes back to the previous date format', async () => {
+      const user = userEvent.setup();
+      const onDateFormatChange = vi.fn().mockRejectedValue(new Error('not saved'));
+      renderWithProviders(
+        <DisplaySettings {...defaultProps} onDateFormatChange={onDateFormatChange} />
+      );
+
+      await user.click(screen.getByRole('textbox', { name: 'Select date format' }));
+      await user.click(await screen.findByRole('option', { name: /YYYY-MM-DD \(ISO\)/ }));
+
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: 'Select date format' })).toHaveValue(
+          'MM/DD/YYYY (US)'
+        )
+      );
+      expect(screen.getByText(/01\/15\/2024/)).toBeInTheDocument();
+      expect(screen.queryByText('Preferences saved')).not.toBeInTheDocument();
+    });
+
+    it('goes back to the previous theme', async () => {
+      const user = userEvent.setup();
+      const onThemeChange = vi.fn().mockRejectedValue(new Error('not saved'));
+      renderWithProviders(
+        <DisplaySettings {...defaultProps} theme="light" onThemeChange={onThemeChange} />
+      );
+
+      await user.click(screen.getByText('Dark'));
+
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /light/i })).toBeChecked()
+      );
+      expect(screen.queryByText('Preferences saved')).not.toBeInTheDocument();
+    });
+  });
 });

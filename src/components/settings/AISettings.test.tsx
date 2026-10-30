@@ -196,4 +196,34 @@ describe('AISettings', () => {
       expect(screen.getByLabelText(/api key/i)).toBeInTheDocument();
     });
   });
+
+  describe('a change that is not saved', () => {
+    it('goes back to the previous provider and does not say it was saved', async () => {
+      const user = userEvent.setup();
+      const onProviderChange = vi.fn().mockRejectedValue(new Error('not saved'));
+      renderWithProviders(<AISettings {...defaultProps} onProviderChange={onProviderChange} />);
+
+      await user.click(screen.getByRole('textbox', { name: /select ai provider/i }));
+      await user.click(await screen.findByRole('option', { name: /Anthropic/ }));
+
+      expect(onProviderChange).toHaveBeenCalledWith('anthropic');
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /select ai provider/i })).toHaveValue(
+          'OpenAI (GPT-5)'
+        )
+      );
+      expect(screen.queryByText('Settings saved')).not.toBeInTheDocument();
+    });
+
+    it('says it was saved once it is', async () => {
+      const user = userEvent.setup();
+      const onProviderChange = vi.fn().mockResolvedValue(undefined);
+      renderWithProviders(<AISettings {...defaultProps} onProviderChange={onProviderChange} />);
+
+      await user.click(screen.getByRole('textbox', { name: /select ai provider/i }));
+      await user.click(await screen.findByRole('option', { name: /Anthropic/ }));
+
+      expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    });
+  });
 });

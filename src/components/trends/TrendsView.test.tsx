@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { TrendsView } from './TrendsView';
+import { SaveError } from '@data/db/saveError';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
@@ -654,14 +655,18 @@ describe('TrendsView preferred unit', () => {
   });
 
   it('tells the user when the unit could not be saved', async () => {
-    mockSetPreferredUnit.mockRejectedValueOnce(new Error('disk full'));
+    mockSetPreferredUnit.mockRejectedValueOnce(new SaveError('quota'));
     renderWithGlucose();
     await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
     await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
 
     await waitFor(() =>
       expect(mockShowNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Preferred unit not saved', color: 'red' })
+        expect.objectContaining({
+          title: 'Preferred unit not saved',
+          message: expect.stringMatching(/no room left/),
+          color: 'red',
+        })
       )
     );
   });

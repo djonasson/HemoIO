@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { SaveError } from '@data/db/saveError';
 import { NotesSection } from './NotesSection';
 import type { UserNote } from '@/types';
 
@@ -266,6 +267,42 @@ describe('NotesSection', () => {
       renderWithProviders(<NotesSection {...defaultProps} isProcessing />);
 
       expect(screen.getByRole('button', { name: /add note/i })).toBeDisabled();
+    });
+  });
+
+  describe('a note that cannot be saved', () => {
+    it('stays in the editor and says why, without quoting the note', async () => {
+      const onCreateNote = vi.fn().mockRejectedValue(new SaveError('quota'));
+      const user = userEvent.setup();
+      renderWithProviders(<NotesSection {...defaultProps} onCreateNote={onCreateNote} />);
+
+      await user.click(screen.getByRole('button', { name: /add note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Felt tired');
+      await user.click(screen.getByRole('button', { name: /save note/i }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Note not saved');
+      expect(alert).toHaveTextContent(/no room left/);
+      expect(alert).not.toHaveTextContent('Felt tired');
+      expect(screen.getByRole('textbox', { name: /note content/i })).toHaveValue('Felt tired');
+    });
+
+    it('clears the error once the note is saved, or the editor is closed', async () => {
+      const onCreateNote = vi
+        .fn()
+        .mockRejectedValueOnce(new SaveError('failed'))
+        .mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderWithProviders(<NotesSection {...defaultProps} onCreateNote={onCreateNote} />);
+
+      await user.click(screen.getByRole('button', { name: /add note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Note');
+      await user.click(screen.getByRole('button', { name: /save note/i }));
+      await screen.findByRole('alert');
+      await user.click(screen.getByRole('button', { name: /save note/i }));
+
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+      expect(screen.queryByRole('textbox', { name: /note content/i })).not.toBeInTheDocument();
     });
   });
 });

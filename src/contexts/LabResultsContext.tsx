@@ -75,15 +75,12 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
         throw new Error('Database not available');
       }
 
-      try {
-        await db.deleteLabResult(id);
-        // Remove from the shared state at once, so every view updates
-        setAllResults((prev) => prev.filter((r) => r.id !== id));
-      } catch (err) {
-        // Reported to the caller only: the results are still there, so the
-        // views showing them must not turn into an error
-        throw new Error(err instanceof Error ? err.message : 'Failed to delete lab result');
-      }
+      // A failure is reported to the caller only, as it was thrown: the
+      // deletion rolled back, so the results shown are still the stored ones
+      // and the views showing them must not turn into an error
+      await db.deleteLabResult(id);
+      // Committed: remove it from the shared state at once, so every view updates
+      setAllResults((prev) => prev.filter((r) => r.id !== id));
     },
     [db]
   );

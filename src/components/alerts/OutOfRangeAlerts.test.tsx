@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { SaveError } from '@data/db/saveError';
 import { OutOfRangeAlerts } from './OutOfRangeAlerts';
 import { useAlerts } from '@hooks/useAlerts';
 import type { BiomarkerAlert } from '@hooks/useAlerts';
@@ -620,13 +621,15 @@ describe('OutOfRangeAlerts', () => {
     mockAlerts([alert()]);
     vi.mocked(useAlerts).mockReturnValue({
       ...vi.mocked(useAlerts)(),
-      acknowledgeAlert: vi.fn().mockRejectedValue(new Error('quota')),
+      acknowledgeAlert: vi.fn().mockRejectedValue(new SaveError('quota')),
     });
     renderAlerts();
 
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge alert' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
+    const shown = await screen.findByRole('alert');
+    expect(shown).toHaveTextContent(/could not save the acknowledgement/i);
+    expect(shown).toHaveTextContent(/no room left/);
   });
 
   it('drops a category filter once that category has no alerts left', async () => {

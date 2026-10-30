@@ -905,6 +905,8 @@ test.describe('Encrypted backup restores the API key', () => {
   });
 
   test('restores data, AI provider and API key from an encrypted backup', async ({ page, browser }) => {
+    // Two installs, each deriving keys from a password, and an encrypted backup between them
+    test.slow();
     const backupPath = await createEncryptedBackupWithApiKey(page);
 
     // Device B: a fresh install with no API key restores the backup

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
+import { SaveError } from '@data/db/saveError';
 import { TimelineView } from './TimelineView';
 import { notifications } from '@mantine/notifications';
 import type { LabResultWithDetails } from '@hooks/useLabResults';
@@ -342,18 +343,22 @@ describe('TimelineView', () => {
       expect(deleteResult).toHaveBeenCalledWith(1);
     });
 
-    it('shows an error notification when deleting fails', async () => {
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const deleteResult = vi.fn().mockRejectedValue(new Error('Database error'));
+    it('says why a lab result could not be deleted, without naming it', async () => {
+      const deleteResult = vi.fn().mockRejectedValue(new SaveError('quota'));
 
       await deleteFirstResult(deleteResult);
 
       await waitFor(() => {
         expect(notifications.show).toHaveBeenCalledWith(
-          expect.objectContaining({ title: 'Could not delete lab result', color: 'red' })
+          expect.objectContaining({
+            title: 'Lab result not deleted',
+            message: expect.stringMatching(/no room left/),
+            color: 'red',
+          })
         );
       });
-      expect(consoleError).toHaveBeenCalledWith('Failed to delete result:', expect.any(Error));
+      const shown = JSON.stringify(vi.mocked(notifications.show).mock.calls);
+      expect(shown).not.toMatch(/Quest/);
     });
   });
 

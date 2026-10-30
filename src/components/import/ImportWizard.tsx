@@ -29,8 +29,11 @@ import { resultsToSave } from './resultsToSave';
  * Props for ImportWizard
  */
 export interface ImportWizardProps {
-  /** Callback when import is complete */
-  onComplete: (results: ReviewedResult[]) => void;
+  /**
+   * Saves the reviewed results. The wizard shows it is saving until this
+   * settles, and stays on the confirm step: on failure, to try again.
+   */
+  onComplete: (results: ReviewedResult[]) => void | Promise<unknown>;
   /** Callback when wizard is cancelled */
   onCancel?: () => void;
   /** AI provider type */
@@ -65,6 +68,7 @@ export function ImportWizard({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [reviewedResults, setReviewedResults] = useState<ReviewedResult[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Step navigation
   const nextStep = useCallback(() => {
@@ -103,8 +107,13 @@ export function ImportWizard({
   const toSave = useMemo(() => resultsToSave(reviewedResults), [reviewedResults]);
 
   // Handler for final confirmation
-  const handleConfirm = useCallback(() => {
-    onComplete(toSave);
+  const handleConfirm = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await onComplete(toSave);
+    } finally {
+      setIsSaving(false);
+    }
   }, [onComplete, toSave]);
 
   // Render current step content
@@ -144,6 +153,7 @@ export function ImportWizard({
             results={toSave}
             onConfirm={handleConfirm}
             onBack={prevStep}
+            isSaving={isSaving}
           />
         );
       default:

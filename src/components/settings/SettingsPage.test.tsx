@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { testProviderConnection } from '@/services/ai';
 import { SettingsPage } from './SettingsPage';
+import { SaveError } from '@data/db/saveError';
 
 // The db mock must be stable across renders, as the real hook memoizes it;
 // a new object per render would re-run SettingsPage's loading effects forever.
@@ -37,6 +38,7 @@ vi.mock('@mantine/notifications', () => ({
 
 // Per-test overrides for the AI hooks
 const mockAI = vi.hoisted(() => ({
+  setAiProvider: vi.fn(),
   hasApiKey: false,
   apiKey: null as string | null,
   aiProvider: 'openai' as 'openai' | 'anthropic' | 'ollama',
@@ -86,7 +88,7 @@ vi.mock('@hooks', () => ({
     openaiModel: undefined,
     anthropicModel: mockAI.anthropicModel,
     isLoading: false,
-    setAiProvider: vi.fn(),
+    setAiProvider: mockAI.setAiProvider,
     setOllamaModel: vi.fn(),
     setOpenaiModel: vi.fn(),
     setAnthropicModel: vi.fn(),
@@ -146,6 +148,7 @@ describe('SettingsPage', () => {
     mockDb.updatePreferences.mockResolvedValue(undefined);
     mockPreferences.setPersonalTarget.mockResolvedValue(undefined);
     mockShowNotification.mockReset();
+    mockAI.setAiProvider.mockResolvedValue(undefined);
     Object.assign(mockAI, {
       hasApiKey: false,
       apiKey: null,
@@ -337,7 +340,7 @@ describe('SettingsPage', () => {
     });
 
     it('tells the user a personal target was not saved, and does not claim it was', async () => {
-      mockPreferences.setPersonalTarget.mockRejectedValueOnce(new Error('quota'));
+      mockPreferences.setPersonalTarget.mockRejectedValueOnce(new SaveError('quota'));
       const user = userEvent.setup();
       renderWithProviders(<SettingsPage {...defaultProps} />);
       await waitForSettingsToLoad();
@@ -349,7 +352,11 @@ describe('SettingsPage', () => {
 
       await waitFor(() =>
         expect(mockShowNotification).toHaveBeenCalledWith(
-          expect.objectContaining({ title: 'Personal target not saved', color: 'red' })
+          expect.objectContaining({
+            title: 'Personal target not saved',
+            message: expect.stringMatching(/no room left/),
+            color: 'red',
+          })
         )
       );
       expect(screen.queryByText('Personal target saved')).not.toBeInTheDocument();
@@ -387,6 +394,60 @@ describe('SettingsPage', () => {
       await waitFor(() => expect(mockDb.updatePreferences).toHaveBeenCalled());
       expect(lastUpdate()).toEqual({ theme: 'dark' });
       expect(mockDb.savePreferences).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['Theme', async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByText('Dark'))],
+      [
+        'Date format',
+        async (user: ReturnType<typeof userEvent.setup>) => {
+          await user.click(screen.getByRole('textbox', { name: 'Select date format' }));
+          await user.click(await screen.findByRole('option', { name: /YYYY-MM-DD \(ISO\)/ }));
+        },
+      ],
+    ])('says why the %s was not saved, and shows the one stored', async (what, change) => {
+      mockDb.updatePreferences.mockRejectedValueOnce(new SaveError('quota'));
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /display/i }));
+
+      await change(user);
+
+      await waitFor(() =>
+        expect(mockShowNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: `${what} not saved`,
+            message: expect.stringMatching(/no room left/),
+            color: 'red',
+          })
+        )
+      );
+      expect(screen.getByRole('radio', { name: /system/i })).toBeChecked();
+      expect(screen.getByRole('textbox', { name: 'Select date format' })).toHaveValue(
+        'MM/DD/YYYY (US)'
+      );
+    });
+
+    it('says why an AI setting was not saved', async () => {
+      mockAI.setAiProvider.mockRejectedValueOnce(new SaveError('closed'));
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: /ai configuration/i }));
+
+      await user.click(screen.getByRole('textbox', { name: /select ai provider/i }));
+      await user.click(await screen.findByRole('option', { name: /Anthropic/ }));
+
+      await waitFor(() =>
+        expect(mockShowNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'AI setting not saved',
+            message: expect.stringMatching(/Reload the page/),
+            color: 'red',
+          })
+        )
+      );
     });
 
     it('moves display settings left in local storage into the database', async () => {

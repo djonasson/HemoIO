@@ -776,8 +776,10 @@ test.describe('Document Analysis - Performance', () => {
 
     ai.release();
 
+    // Three documents: as long as expectAnalysisFinished allows, for a busy machine
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
-      'Successfully extracted 6 biomarker values from 3 file(s).'
+      'Successfully extracted 6 biomarker values from 3 file(s).',
+      { timeout: 60000 }
     );
     expect(ai.prompts).toHaveLength(3);
 

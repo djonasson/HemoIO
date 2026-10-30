@@ -39,6 +39,7 @@ import {
   useAlertState,
   useLabResults,
   usePreferences,
+  useSaveImport,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -48,8 +49,8 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { saveImportResults } from '@services/persistence';
 import { modelForProvider } from '@services/ai';
+import { saveErrorMessage } from '@data/db/saveError';
 import { restoreAISettings, restoreBackup, runAfterRestore } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -136,7 +137,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
   const { refresh: refreshLabResults } = useLabResults();
-  const { reload: reloadPreferences, learnAliases } = usePreferences();
+  const { reload: reloadPreferences } = usePreferences();
   const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
@@ -167,70 +168,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     lock();
   }, [lock]);
 
+  const saveImport = useSaveImport(syncNow);
   const handleImportComplete = useCallback(
     async (results: ReviewedResult[]) => {
-      if (!db || !isReady) {
-        notifications.show({
-          title: 'Error',
-          message: 'Database not available. Please try again.',
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
-        return;
-      }
-
-      try {
-        const output = await saveImportResults(results, db);
-
-        if (output.errors.length > 0) {
-          // Partial success
-          notifications.show({
-            title: 'Import Partially Complete',
-            message: `Saved ${output.totalLabResults} lab result(s) with ${output.totalTestValues} test value(s). ${output.errors.length} file(s) failed.`,
-            color: 'yellow',
-            icon: <IconCheck size={16} />,
-          });
-        } else {
-          // Full success
-          notifications.show({
-            title: 'Import Complete',
-            message: `Successfully saved ${output.totalLabResults} lab result(s) with ${output.totalTestValues} test value(s).`,
-            color: 'green',
-            icon: <IconCheck size={16} />,
-          });
-        }
-
-        // Names saved under a test are this user's aliases from now on
-        await learnAliases(
-          results.flatMap((r) =>
-            r.editedBiomarkers.map((b) => ({
-              name: b.name,
-              key: b.dictionaryMatch?.key,
-              pickedByUser: b.identifiedBy === 'user',
-              savedAsUnknown: b.savedAsUnknown,
-            }))
-          )
-        ).catch(() => console.error('Failed to save learned names'));
-
-        // Every view, the alerts badge included, shows the new results
-        await refreshLabResults();
-
-        // Sync to filesystem if enabled
-        await syncNow();
-
-        // Navigate to timeline to show the imported results
-        setActiveView('timeline');
-      } catch (err) {
-        console.error('Import save error:', err);
-        notifications.show({
-          title: 'Import Failed',
-          message: err instanceof Error ? err.message : 'Failed to save import results.',
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
-      }
+      // Not saved: the wizard stays on its confirm step to try again
+      if (await saveImport(results)) setActiveView('timeline');
     },
-    [db, isReady, syncNow, refreshLabResults, learnAliases]
+    [saveImport]
   );
 
   const handleNavigateToImport = useCallback(() => {
@@ -299,10 +243,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         // Navigate to timeline to show restored data
         setActiveView('timeline');
       } catch (err) {
-        console.error('Restore error:', err);
         notifications.show({
-          title: 'Restore Failed',
-          message: err instanceof Error ? err.message : 'Failed to restore data.',
+          title: 'Restore failed',
+          message: `Your data was not changed. ${saveErrorMessage(err)}`,
           color: 'red',
           icon: <IconX size={16} />,
         });

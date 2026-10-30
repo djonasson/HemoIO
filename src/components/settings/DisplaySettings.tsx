@@ -4,7 +4,7 @@
  * Settings section for display preferences including theme and date format.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Stack,
   Paper,
@@ -41,10 +41,10 @@ export interface DisplaySettingsProps {
   theme?: ThemeOption;
   /** Current date format setting */
   dateFormat?: DateFormatOption;
-  /** Called when theme changes */
-  onThemeChange?: (theme: ThemeOption) => void;
-  /** Called when date format changes */
-  onDateFormatChange?: (format: DateFormatOption) => void;
+  /** Called when theme changes; a rejected promise means it was not saved */
+  onThemeChange?: (theme: ThemeOption) => void | Promise<void>;
+  /** Called when date format changes; a rejected promise means it was not saved */
+  onDateFormatChange?: (format: DateFormatOption) => void | Promise<void>;
   /** Whether settings are being saved */
   isSaving?: boolean;
 }
@@ -73,8 +73,12 @@ export function DisplaySettings({
   const [localDateFormat, setLocalDateFormat] = useState<DateFormatOption>(dateFormat);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // The theme last chosen, which a failed save of an older choice must not undo
+  const chosenTheme = useRef(theme);
+
   // Sync local state with props
   useEffect(() => {
+    chosenTheme.current = theme;
     setLocalTheme(theme);
   }, [theme]);
 
@@ -82,42 +86,46 @@ export function DisplaySettings({
     setLocalDateFormat(dateFormat);
   }, [dateFormat]);
 
-  // Handle theme change
+  const applyTheme = useCallback(
+    (value: ThemeOption) => setColorScheme(value === 'system' ? 'auto' : value),
+    [setColorScheme]
+  );
+
+  const showSaved = useCallback(() => {
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  }, []);
+
+  // Each change shows at once, is confirmed once saved, and goes back when
+  // the save fails (unless a newer change replaced it); the parent says why
   const handleThemeChange = useCallback(
     (value: string) => {
       const newTheme = value as ThemeOption;
+      const previous = localTheme;
+      chosenTheme.current = newTheme;
       setLocalTheme(newTheme);
-
-      // Apply theme immediately
-      if (newTheme === 'system') {
-        setColorScheme('auto');
-      } else {
-        setColorScheme(newTheme);
-      }
-
-      // Notify parent
-      onThemeChange?.(newTheme);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      applyTheme(newTheme);
+      Promise.resolve(onThemeChange?.(newTheme)).then(showSaved, () => {
+        if (chosenTheme.current !== newTheme) return;
+        chosenTheme.current = previous;
+        setLocalTheme(previous);
+        applyTheme(previous);
+      });
     },
-    [onThemeChange, setColorScheme]
+    [localTheme, onThemeChange, applyTheme, showSaved]
   );
 
-  // Handle date format change
   const handleDateFormatChange = useCallback(
     (value: string | null) => {
       if (!value) return;
       const newFormat = value as DateFormatOption;
+      const previous = localDateFormat;
       setLocalDateFormat(newFormat);
-      onDateFormatChange?.(newFormat);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      Promise.resolve(onDateFormatChange?.(newFormat)).then(showSaved, () => {
+        setLocalDateFormat((current) => (current === newFormat ? previous : current));
+      });
     },
-    [onDateFormatChange]
+    [localDateFormat, onDateFormatChange, showSaved]
   );
 
   return (
