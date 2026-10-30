@@ -114,21 +114,13 @@ export type FolderCopyAssessment =
   | { kind: 'unreadable'; reason: FolderCopyProblem };
 
 /**
- * Whether sync may write to the folder, or the user must first decide what
- * happens to the copy there. Only a browser without lab data is at risk of
- * writing over a copy that has some.
+ * For a browser without lab data: whether sync may write over the folder
+ * copy, or the user must first decide what happens to it
  */
-export async function assessFolderCopy({
-  browserHasData,
-  folder,
-  key,
-}: {
-  browserHasData: boolean;
-  folder: FolderCopySource;
-  key: CryptoKey;
-}): Promise<FolderCopyAssessment> {
-  if (browserHasData) return { kind: 'sync' };
-
+export async function assessFolderCopy(
+  folder: FolderCopySource,
+  key: CryptoKey
+): Promise<FolderCopyAssessment> {
   let bytes: ArrayBuffer | null;
   try {
     bytes = await folder.readDataFile();

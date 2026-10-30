@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { formatDateTime } from '@/utils/formatDateTime';
 import { FolderRestoreModal } from './FolderRestoreModal';
 import type { FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
@@ -52,7 +53,7 @@ describe('FolderRestoreModal', () => {
     expect(dialog).toHaveTextContent('2 lab results');
     expect(dialog).toHaveTextContent('3 test values');
     expect(dialog).toHaveTextContent('1 note');
-    expect(dialog).toHaveTextContent(`Saved ${SAVED_AT.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}`);
+    expect(dialog).toHaveTextContent(`Saved ${formatDateTime(SAVED_AT)}`);
     expect(dialog).toHaveTextContent('Nothing is written to the folder until you choose');
     expect(dialog).toHaveTextContent('This browser has no lab data');
   });

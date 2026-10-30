@@ -41,13 +41,13 @@ export interface UseFolderRestoreResult {
   decide: (decision: FolderRestoreDecision) => void;
 }
 
-type Phase = 'checking' | 'asking' | 'sync' | 'held';
+/** Checking, sync allowed, held after "Not now", or asking the user */
+type Status = 'checking' | 'sync' | 'held' | FolderRestorePrompt;
 
 export function useFolderRestore(): UseFolderRestoreResult {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
-  const [phase, setPhase] = useState<Phase>('checking');
-  const [prompt, setPrompt] = useState<FolderRestorePrompt | null>(null);
+  const [status, setStatus] = useState<Status>('checking');
   // Bumped when folder access changes, to check the folder again
   const [generation, setGeneration] = useState(0);
   // Whether this session's database was empty when first checked
@@ -56,8 +56,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
   useEffect(
     () =>
       onFolderAccessChanged(() => {
-        setPhase('checking');
-        setPrompt(null);
+        setStatus('checking');
         setGeneration((g) => g + 1);
       }),
     []
@@ -79,11 +78,13 @@ export function useFolderRestore(): UseFolderRestoreResult {
       // Data added while folder access waited (an import, say) is not what the
       // folder copy was meant to back up: the browser counts as empty until
       // the user has decided
-      const unlock = emptyAtUnlock.current;
-      if (unlock.db !== database) {
+      if (emptyAtUnlock.current.db !== database) {
         emptyAtUnlock.current = { db: database, empty: !browserHasData };
       }
-      const atRisk = emptyAtUnlock.current.empty || !browserHasData;
+      if (!emptyAtUnlock.current.empty && browserHasData) {
+        if (!cancelled) setStatus('sync');
+        return;
+      }
 
       const folder = new FileSystemStorageProvider();
       let assessment: FolderCopyAssessment;
@@ -91,23 +92,20 @@ export function useFolderRestore(): UseFolderRestoreResult {
       try {
         // Without access nothing can be written either: wait to be told it was granted
         if ((await folder.getPermissionState()) !== 'granted') return;
-        assessment = await assessFolderCopy({ browserHasData: !atRisk, folder, key });
+        assessment = await assessFolderCopy(folder, key);
         if (assessment.kind !== 'sync') folderName = await folder.getDirectoryName();
       } catch {
         assessment = { kind: 'unreadable', reason: 'read-failed' };
       }
 
       if (cancelled) return;
-      if (assessment.kind === 'sync') {
-        setPhase('sync');
-        return;
-      }
-      setPrompt(
-        assessment.kind === 'offer'
-          ? { kind: 'offer', data: assessment.data, folderName, replacesBrowserData: browserHasData }
-          : { kind: 'unreadable', reason: assessment.reason, folderName }
+      setStatus(
+        assessment.kind === 'sync'
+          ? 'sync'
+          : assessment.kind === 'offer'
+            ? { kind: 'offer', data: assessment.data, folderName, replacesBrowserData: browserHasData }
+            : { kind: 'unreadable', reason: assessment.reason, folderName }
       );
-      setPhase('asking');
     }
 
     void check(db, encryptionKey);
@@ -121,13 +119,12 @@ export function useFolderRestore(): UseFolderRestoreResult {
       // Decided: from now on the browser's own data is what counts
       emptyAtUnlock.current = { ...emptyAtUnlock.current, empty: false };
     }
-    setPrompt(null);
-    setPhase(decision === 'sync' ? 'sync' : 'held');
+    setStatus(decision === 'sync' ? 'sync' : 'held');
   }, []);
 
   return {
-    syncAllowed: !isFolderStorageOn() || phase === 'sync',
-    prompt: phase === 'asking' ? prompt : null,
+    syncAllowed: !isFolderStorageOn() || status === 'sync',
+    prompt: typeof status === 'object' ? status : null,
     decide,
   };
 }

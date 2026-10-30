@@ -251,8 +251,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   }, []);
 
   const handleRestore = useCallback(
-    // A caller that shows its own failure passes reportFailure false, so it is told once
-    async (data: ParsedBackupData, options: RestoreOptions, reportFailure = true) => {
+    // Callers show a failure themselves, where the restore was asked for
+    async (data: ParsedBackupData, options: RestoreOptions) => {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
@@ -306,14 +306,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         setActiveView('timeline');
       } catch (err) {
         console.error('Restore error:', err);
-        if (reportFailure) {
-          notifications.show({
-            title: 'Restore Failed',
-            message: err instanceof Error ? err.message : 'Failed to restore data.',
-            color: 'red',
-            icon: <IconX size={16} />,
-          });
-        }
         throw err;
       } finally {
         setIsRestoring(false);
@@ -336,8 +328,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   const handleFolderRestore = useCallback(
     // The folder copy has no AI configuration to restore
-    // The dialog reports a failure itself
-    (data: ParsedBackupData) => handleRestore(data, { restoreAISettings: false }, false),
+    (data: ParsedBackupData) => handleRestore(data, { restoreAISettings: false }),
     [handleRestore]
   );
 

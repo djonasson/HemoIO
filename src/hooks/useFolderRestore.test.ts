@@ -77,19 +77,16 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(false);
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
     expect(result.current.prompt).toBeNull();
-    expect(assessFolderCopy).toHaveBeenCalledWith(
-      expect.objectContaining({ browserHasData: false, key: KEY })
-    );
+    expect(assessFolderCopy).toHaveBeenCalledWith(expect.anything(), KEY);
   });
 
-  it('tells the check whether the browser has data', async () => {
+  it('allows sync without reading the folder when the browser has data', async () => {
     hasLabData.mockResolvedValue(true);
-    assessAs({ kind: 'sync' });
 
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
-    expect(assessFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ browserHasData: true }));
+    expect(assessFolderCopy).not.toHaveBeenCalled();
   });
 
   it('offers the copy, with the folder name, and holds sync until the user decides', async () => {
@@ -189,7 +186,6 @@ describe('useFolderRestore', () => {
     act(() => notifyFolderAccessChanged());
 
     await waitFor(() => expect(result.current.prompt?.kind).toBe('offer'));
-    expect(assessFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ browserHasData: false }));
     expect(result.current.prompt).toMatchObject({ replacesBrowserData: true });
   });
 
@@ -203,8 +199,9 @@ describe('useFolderRestore', () => {
     assessAs({ kind: 'sync' });
     act(() => notifyFolderAccessChanged());
 
+    await waitFor(() => expect(hasLabData).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
-    expect(assessFolderCopy).toHaveBeenLastCalledWith(expect.objectContaining({ browserHasData: true }));
+    expect(assessFolderCopy).toHaveBeenCalledTimes(1);
   });
 
   it('reports a folder it cannot check, rather than holding sync without a word', async () => {

@@ -3,12 +3,8 @@
  * The time element is focusable so keyboard and touch users reach the date too.
  */
 import { Text, Tooltip } from '@mantine/core';
+import { formatDateTime } from '@/utils/formatDateTime';
 import { formatRelativeDateTime, formatRelativeTime } from '@/utils/relativeTime';
-
-const FULL_DATE_TIME = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
 export interface RelativeTimeProps {
   date: Date;
@@ -33,7 +29,7 @@ export function RelativeTime({
   }
 
   const relative = precision === 'day' ? formatRelativeTime(date) : formatRelativeDateTime(date);
-  const full = precision === 'day' ? date.toLocaleDateString() : FULL_DATE_TIME.format(date);
+  const full = precision === 'day' ? date.toLocaleDateString() : formatDateTime(date);
 
   return (
     <Tooltip label={full} events={{ hover: true, focus: true, touch: true }}>

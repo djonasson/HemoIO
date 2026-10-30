@@ -34,7 +34,6 @@ import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
 import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
 
-
 interface SetupWizardProps {
   onComplete: () => void;
 }

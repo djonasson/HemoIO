@@ -6,10 +6,8 @@
 
 export {
   SYNC_FILE_VERSION,
-  readFolderCopy,
   assessFolderCopy,
   type FolderCopyProblem,
-  type FolderCopyReading,
   type FolderCopySource,
   type FolderCopyAssessment,
 } from './folderCopy';

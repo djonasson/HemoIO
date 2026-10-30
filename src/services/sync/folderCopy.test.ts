@@ -159,21 +159,8 @@ describe('assessFolderCopy', () => {
     };
   }
 
-  it('lets sync go ahead without reading the folder when the browser has data', async () => {
-    const folder = source(new ArrayBuffer(8));
-
-    const assessment = await assessFolderCopy({ browserHasData: true, folder, key: await newKey() });
-
-    expect(assessment).toEqual({ kind: 'sync' });
-    expect(folder.readDataFile).not.toHaveBeenCalled();
-  });
-
   it('lets sync go ahead when the folder has no copy', async () => {
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(null),
-      key: await newKey(),
-    });
+    const assessment = await assessFolderCopy(source(null), await newKey());
 
     expect(assessment).toEqual({ kind: 'sync' });
   });
@@ -181,11 +168,7 @@ describe('assessFolderCopy', () => {
   it('offers a copy that has lab results', async () => {
     const key = await newKey();
 
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(await sealed(copy(), key)),
-      key,
-    });
+    const assessment = await assessFolderCopy(source(await sealed(copy(), key)), key);
 
     expect(assessment.kind).toBe('offer');
     if (assessment.kind !== 'offer') return;
@@ -209,11 +192,7 @@ describe('assessFolderCopy', () => {
       ],
     };
 
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(await sealed(copy(notesOnly), key)),
-      key,
-    });
+    const assessment = await assessFolderCopy(source(await sealed(copy(notesOnly), key)), key);
 
     expect(assessment.kind).toBe('offer');
   });
@@ -222,21 +201,13 @@ describe('assessFolderCopy', () => {
     const key = await newKey();
     const empty = { ...STORED, labResults: [], testValues: [], userNotes: [] };
 
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(await sealed(copy(empty), key)),
-      key,
-    });
+    const assessment = await assessFolderCopy(source(await sealed(copy(empty), key)), key);
 
     expect(assessment).toEqual({ kind: 'sync' });
   });
 
   it('reports a copy it cannot open', async () => {
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(await sealed(copy(), await newKey())),
-      key: await newKey(),
-    });
+    const assessment = await assessFolderCopy(source(await sealed(copy(), await newKey())), await newKey());
 
     expect(assessment).toEqual({ kind: 'unreadable', reason: 'cannot-decrypt' });
   });
@@ -244,11 +215,7 @@ describe('assessFolderCopy', () => {
   it('reports a copy that cannot be read from the folder, without logging why', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const assessment = await assessFolderCopy({
-      browserHasData: false,
-      folder: source(new Error('disk on fire: /home/someone/Health')),
-      key: await newKey(),
-    });
+    const assessment = await assessFolderCopy(source(new Error('disk on fire: /home/someone/Health')), await newKey());
 
     expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed' });
     expect(error).not.toHaveBeenCalled();

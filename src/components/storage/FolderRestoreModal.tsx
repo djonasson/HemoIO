@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { Alert, Button, Group, List, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
+import { formatDateTime } from '@/utils/formatDateTime';
 import type { FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
 import type { FolderCopyProblem } from '@services/sync';
@@ -156,7 +157,7 @@ export function FolderRestoreModal({
           <List.Item>{count(userNotes.length, 'note')}</List.Item>
         </List>
         <Text size="sm">
-          Saved {exportedAt.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}
+          Saved {formatDateTime(exportedAt)}
         </Text>
         {prompt.replacesBrowserData && (
           <Text size="sm" fw={500}>

@@ -37,7 +37,6 @@ import {
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
 
-
 export interface StorageSettingsProps {
   /** Whether the settings are being saved */
   isSaving?: boolean;

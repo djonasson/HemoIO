@@ -59,18 +59,7 @@ export class FileSystemStorageProvider implements StorageProvider {
    * Load data from the selected directory
    */
   async load(): Promise<ArrayBuffer> {
-    const handle = await this.getDirectoryHandle();
-    if (!handle) {
-      throw new Error('No directory selected. Please select a folder first.');
-    }
-
-    // Verify we have permission
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
-      throw new Error('Permission denied. Please grant folder access to continue.');
-    }
-
-    const data = await this.readFrom(handle);
+    const data = await this.readDataFile();
     if (!data) {
       throw new Error('No backup data found');
     }
@@ -87,13 +76,13 @@ export class FileSystemStorageProvider implements StorageProvider {
     if (!handle) {
       throw new Error('No directory selected. Please select a folder first.');
     }
-    if ((await this.checkPermission(handle)) !== 'granted') {
+
+    // Verify we have permission
+    const permission = await this.checkPermission(handle);
+    if (permission !== 'granted') {
       throw new Error('Permission denied. Please grant folder access to continue.');
     }
-    return this.readFrom(handle);
-  }
 
-  private async readFrom(handle: FileSystemDirectoryHandle): Promise<ArrayBuffer | null> {
     try {
       const fileHandle = await handle.getFileHandle(DATA_FILE_NAME);
       const file = await fileHandle.getFile();
