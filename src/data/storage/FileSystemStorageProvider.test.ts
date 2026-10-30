@@ -90,6 +90,7 @@ describe('FileSystemStorageProvider', () => {
     name: 'TestFolder',
     kind: 'directory' as const,
     getFileHandle: vi.fn(),
+    keys: vi.fn(),
     queryPermission: vi.fn(),
     requestPermission: vi.fn(),
     isSameEntry: vi.fn(),
@@ -127,6 +128,7 @@ describe('FileSystemStorageProvider', () => {
     mockDirectoryHandle.queryPermission.mockResolvedValue('granted');
     mockDirectoryHandle.requestPermission.mockResolvedValue('granted');
     mockDirectoryHandle.getFileHandle.mockResolvedValue(mockFileHandle);
+    mockDirectoryHandle.keys.mockReturnValue({ next: vi.fn().mockResolvedValue({ done: true }) });
     mockFileHandle.createWritable.mockResolvedValue(mockWritable);
     mockFileHandle.getFile.mockResolvedValue({
       arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
@@ -237,6 +239,15 @@ describe('FileSystemStorageProvider', () => {
       mockDirectoryHandle.getFileHandle.mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
 
       expect(await provider.readDataFile()).toBeNull();
+    });
+
+    it('fails, rather than reporting no file, when the folder itself is gone', async () => {
+      // Chrome says NotFoundError for a missing folder (unmounted, moved) too
+      const gone = new DOMException('Folder gone', 'NotFoundError');
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
+      mockDirectoryHandle.keys.mockReturnValue({ next: vi.fn().mockRejectedValue(gone) });
+
+      await expect(provider.readDataFile()).rejects.toThrow('Folder gone');
     });
 
     it('fails, rather than reporting no file, when the file cannot be read', async () => {

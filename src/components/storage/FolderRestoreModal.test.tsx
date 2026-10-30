@@ -152,6 +152,35 @@ describe('FolderRestoreModal', () => {
     expect(onDecide).not.toHaveBeenCalled();
   });
 
+  it('keeps its title while it closes', () => {
+    const onDecide = vi.fn();
+    const ui = (prompt: FolderRestorePrompt | null) => (
+      <MantineProvider env="test">
+        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onDecide={onDecide} />
+      </MantineProvider>
+    );
+    const { rerender } = render(ui(OFFER));
+
+    rerender(ui(null));
+
+    expect(screen.queryByText("The folder copy can't be read")).not.toBeInTheDocument();
+  });
+
+  it('starts a new prompt afresh, not on the step the last one was left at', async () => {
+    const onDecide = vi.fn();
+    const ui = (prompt: FolderRestorePrompt | null) => (
+      <MantineProvider env="test">
+        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onDecide={onDecide} />
+      </MantineProvider>
+    );
+    const { rerender } = render(ui(OFFER));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+    rerender(ui({ ...OFFER, folderName: 'Other' } as FolderRestorePrompt));
+
+    expect(screen.getByRole('dialog', { name: 'Restore your data from the folder?' })).toBeInTheDocument();
+  });
+
   it.each([
     ['cannot-decrypt', /can't be opened with your password.*different password.*damaged/],
     ['not-a-copy', /isn't a folder copy HemoIO can read.*damaged/],

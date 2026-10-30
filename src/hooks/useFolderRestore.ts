@@ -38,6 +38,8 @@ export interface UseFolderRestoreResult {
   syncAllowed: boolean;
   /** What to ask the user, while sync waits for an answer */
   prompt: FolderRestorePrompt | null;
+  /** Folder storage is on but nothing reaches the folder: no access yet, or "Not now" */
+  syncHeld: boolean;
   decide: (decision: FolderRestoreDecision) => void;
 }
 
@@ -99,6 +101,10 @@ export function useFolderRestore(): UseFolderRestoreResult {
       }
 
       if (cancelled) return;
+      if (assessment.kind === 'sync') {
+        // Nothing at risk: from now on the browser's own data is what counts
+        emptyAtUnlock.current = { ...emptyAtUnlock.current, empty: false };
+      }
       setStatus(
         assessment.kind === 'sync'
           ? 'sync'
@@ -125,6 +131,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
   return {
     syncAllowed: !isFolderStorageOn() || status === 'sync',
     prompt: typeof status === 'object' ? status : null,
+    syncHeld: isFolderStorageOn() && (status === 'checking' || status === 'held'),
     decide,
   };
 }

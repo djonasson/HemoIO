@@ -25,7 +25,13 @@ export async function installFolderPicker(page: Page): Promise<void> {
         value: folder,
       });
       const proto = FileSystemHandle.prototype as unknown as Record<string, unknown>;
-      proto.queryPermission = async () => localStorage.getItem(permissionKey) ?? 'granted';
+      // Counted: every folder sync starts by asking, so a sync that began shows here
+      const counter = window as unknown as { __e2ePermissionQueries: number };
+      counter.__e2ePermissionQueries = 0;
+      proto.queryPermission = async () => {
+        counter.__e2ePermissionQueries += 1;
+        return localStorage.getItem(permissionKey) ?? 'granted';
+      };
       proto.requestPermission = async () => {
         localStorage.removeItem(permissionKey);
         return 'granted';
@@ -57,6 +63,13 @@ export async function switchToFolderStorage(page: Page): Promise<void> {
 export async function grantFolderAccess(page: Page): Promise<void> {
   await openDataSettings(page);
   await page.getByRole('button', { name: 'Grant Access' }).click();
+}
+
+/** How often the app has asked about folder permission, as each sync does first */
+export function folderPermissionQueries(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { __e2ePermissionQueries: number }).__e2ePermissionQueries
+  );
 }
 
 /** A fingerprint of the folder copy, or null when there is none */

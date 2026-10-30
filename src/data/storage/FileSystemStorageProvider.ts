@@ -89,6 +89,9 @@ export class FileSystemStorageProvider implements StorageProvider {
       return await file.arrayBuffer();
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotFoundError') {
+        // The same error for a folder that is gone (moved, an unmounted drive):
+        // only a folder that can be listed has no file
+        await handle.keys().next();
         return null;
       }
       throw error;

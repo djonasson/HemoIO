@@ -7,6 +7,7 @@
  */
 
 import { decrypt } from '@data/encryption';
+import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { parseBackupData, type ParsedBackupData } from '@services/import';
 
 /**
@@ -15,7 +16,7 @@ import { parseBackupData, type ParsedBackupData } from '@services/import';
  * migrations: 1 named biomarkers by dictionary position, 2 by key, and 3
  * has urea and urine red cells filed apart from BUN and urine blood.
  */
-export const SYNC_FILE_VERSION = 3;
+export const SYNC_FILE_VERSION = BACKUP_SCHEMA_VERSION;
 
 export type FolderCopyProblem =
   /** Another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
@@ -47,6 +48,8 @@ function isEnvelope(value: unknown): value is FolderCopyEnvelope {
   return (
     typeof envelope.version === 'number' &&
     typeof envelope.exportedAt === 'string' &&
+    // Shown to the user as the copy's date
+    !Number.isNaN(new Date(envelope.exportedAt).getTime()) &&
     typeof envelope.data === 'object' &&
     envelope.data !== null
   );

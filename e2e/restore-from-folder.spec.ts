@@ -13,6 +13,7 @@ import {
   FOLDER_NAME,
   FolderRestoreDialog,
   folderCopyHash,
+  folderPermissionQueries,
   forgetFolderPermission,
   grantFolderAccess,
   installFolderPicker,
@@ -55,9 +56,10 @@ async function folderWithCopy(page: Page): Promise<string> {
  * periodic sync, which a held sync must skip too
  */
 async function expectFolderCopyUnchanged(page: Page, hash: string | null): Promise<void> {
+  const queries = await folderPermissionQueries(page);
   await page.clock.fastForward('00:31');
-  // Asserting that nothing happens: give a sync the timer started time to write
-  await page.waitForTimeout(500);
+  // A sync the timer started would have asked about permission by now
+  expect(await folderPermissionQueries(page)).toBe(queries);
   expect(await folderCopyHash(page)).toBe(hash);
 }
 

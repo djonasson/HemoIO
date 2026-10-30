@@ -147,6 +147,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
   const { syncNow } = useFilesystemSync({ enabled: folderRestore.syncAllowed });
+  const folderSyncHeld = folderRestore.syncHeld;
 
   const handleNavClick = useCallback(
     (view: View) => {
@@ -286,7 +287,10 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           { name: 'syncing to your folder', run: syncNow },
         ]);
 
-        const summary = `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).`;
+        const summary =
+          `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).` +
+          // The sync step "succeeds" without writing while sync is held
+          (folderSyncHeld ? ' Folder sync is paused, so your folder was not updated.' : '');
         notifications.show(
           failed.length === 0
             ? {
@@ -318,6 +322,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       reloadAlertState,
       refreshLabResults,
       syncNow,
+      folderSyncHeld,
       setAiProvider,
       setOpenaiModel,
       setAnthropicModel,
@@ -340,7 +345,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         notifications.show({
           title: 'Folder Sync Paused',
           message:
-            'Nothing is saved to your folder until you unlock HemoIO again. The copy there is unchanged.',
+            'Nothing is saved to your folder for now, and the copy there is unchanged. HemoIO asks again when you next unlock, or when you grant folder access or choose a folder in Settings.',
           color: 'yellow',
         });
       }

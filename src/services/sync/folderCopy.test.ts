@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { encrypt } from '@data/encryption';
+import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { assessFolderCopy, readFolderCopy, SYNC_FILE_VERSION, type FolderCopySource } from './folderCopy';
 
 async function newKey(): Promise<CryptoKey> {
@@ -97,6 +98,16 @@ describe('readFolderCopy', () => {
     }
   });
 
+  it('reports a copy without a readable save date as not a copy', async () => {
+    const key = await newKey();
+    const undated = { version: SYNC_FILE_VERSION, exportedAt: 'yesterday-ish', data: STORED };
+
+    expect(await readFolderCopy(await sealed(undated, key), key)).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
+  });
+
   it('reports a copy from a newer version of HemoIO', async () => {
     const key = await newKey();
 
@@ -107,8 +118,8 @@ describe('readFolderCopy', () => {
 });
 
 describe('readFolderCopy, earlier formats', () => {
-  it('writes format 3, whose records match the current backup schema', () => {
-    expect(SYNC_FILE_VERSION).toBe(3);
+  it('writes the format of the current backup schema, whose records it holds', () => {
+    expect(SYNC_FILE_VERSION).toBe(BACKUP_SCHEMA_VERSION);
   });
 
   it('reads a format 1 copy, whose values name biomarkers by dictionary position', async () => {

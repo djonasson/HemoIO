@@ -56,12 +56,14 @@ export function FolderRestoreModal({
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
-
-  const decide = (decision: FolderRestoreDecision): void => {
+  // The last prompt stays on screen while the dialog closes; a new one starts afresh
+  const [shown, setShown] = useState(prompt);
+  if (prompt !== null && prompt !== shown) {
+    setShown(prompt);
     setConfirmingReplace(false);
     setRestoreFailed(false);
-    onDecide(decision);
-  };
+  }
+  const decide = onDecide;
 
   const handleRestore = async (data: ParsedBackupData): Promise<void> => {
     setIsRestoring(true);
@@ -78,15 +80,15 @@ export function FolderRestoreModal({
     decide('sync');
   };
 
-  const folder = prompt?.folderName ? `“${prompt.folderName}”` : 'your folder';
+  const folder = shown?.folderName ? `“${shown.folderName}”` : 'your folder';
   const title = confirmingReplace
     ? REPLACE_TITLE
-    : prompt?.kind === 'offer'
+    : shown?.kind === 'offer'
       ? OFFER_TITLE
       : UNREADABLE_TITLE;
 
   const body = (): React.ReactNode => {
-    if (!prompt) return null;
+    if (!shown) return null;
 
     if (confirmingReplace) {
       return (
@@ -117,12 +119,12 @@ export function FolderRestoreModal({
           variant="default"
           onClick={() => decide('hold')}
           disabled={isRestoring}
-          data-autofocus={prompt.kind === 'unreadable' || undefined}
+          data-autofocus={shown.kind === 'unreadable' || undefined}
         >
           Not now
         </Button>
-        {prompt.kind === 'offer' && (
-          <Button onClick={() => handleRestore(prompt.data)} loading={isRestoring} data-autofocus>
+        {shown.kind === 'offer' && (
+          <Button onClick={() => handleRestore(shown.data)} loading={isRestoring} data-autofocus>
             Restore
           </Button>
         )}
@@ -130,10 +132,10 @@ export function FolderRestoreModal({
     );
     const until = 'Nothing is written to the folder until you choose.';
 
-    if (prompt.kind === 'unreadable') {
+    if (shown.kind === 'unreadable') {
       return (
         <>
-          <Text size="sm">{problemMessage(prompt.reason, folder)}</Text>
+          <Text size="sm">{problemMessage(shown.reason, folder)}</Text>
           <Text size="sm">
             The file has not been changed. {until} To keep it and sync somewhere else, choose
             another folder in Settings, on the Data tab.
@@ -143,11 +145,11 @@ export function FolderRestoreModal({
       );
     }
 
-    const { labResults, testValues, userNotes, exportedAt } = prompt.data;
+    const { labResults, testValues, userNotes, exportedAt } = shown.data;
     return (
       <>
         <Text size="sm">
-          {prompt.replacesBrowserData
+          {shown.replacesBrowserData
             ? `This browser had no lab data when you unlocked HemoIO, and ${folder} has a copy:`
             : `This browser has no lab data, but ${folder} has a copy:`}
         </Text>
@@ -159,7 +161,7 @@ export function FolderRestoreModal({
         <Text size="sm">
           Saved {formatDateTime(exportedAt)}
         </Text>
-        {prompt.replacesBrowserData && (
+        {shown.replacesBrowserData && (
           <Text size="sm" fw={500}>
             Restoring replaces the lab data added to this browser since you unlocked HemoIO.
           </Text>

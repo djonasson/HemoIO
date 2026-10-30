@@ -46,8 +46,9 @@ access is granted, a folder is chosen, or storage is switched to a folder.
    access waited) does not count until the user has decided; the offer then
    says a restore replaces it.
 2. No folder file → **sync** (nothing to lose). The provider's new
-   `readDataFile()` returns null only for a missing file; any other failure
-   is `read-failed`, never "no file".
+   `readDataFile()` returns null only for a missing file in a folder that
+   can be listed (Chrome reports a gone folder with the same NotFoundError);
+   any other failure is `read-failed`, never "no file".
 3. Read the file, decrypt it with the session key (the data key, so a changed
    app password still opens it), parse it:
    - readable with lab results or notes → **offer** a restore;
@@ -78,6 +79,8 @@ same deserialization as a backup restore (`parseBackupData`).
 - Escape on that confirmation goes back.
 - *Not now* (and Escape) keeps sync held for the rest of the session; HemoIO
   asks again at the next unlock or when folder access changes.
+  A backup restored from Settings while sync is held says the folder was
+  not updated.
 - *Restore* runs the existing restore path (`handleRestore` in `AppShell`,
   without AI settings: the folder copy has none) and only then allows sync, so
   the first write after a restore carries the restored data. A failed restore

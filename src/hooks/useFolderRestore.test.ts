@@ -204,6 +204,33 @@ describe('useFolderRestore', () => {
     expect(assessFolderCopy).toHaveBeenCalledTimes(1);
   });
 
+  it('once the check finds nothing at risk, later checks go by what the browser has', async () => {
+    // Empty at unlock, but the folder has no copy: nothing to decide
+    assessAs({ kind: 'sync' });
+    const { result } = renderHook(() => useFolderRestore());
+    await waitFor(() => expect(result.current.syncAllowed).toBe(true));
+
+    // Results imported and synced; then another folder, with an older copy
+    hasLabData.mockResolvedValue(true);
+    assessAs({ kind: 'offer', data: COPY });
+    act(() => notifyFolderAccessChanged());
+
+    await waitFor(() => expect(result.current.syncAllowed).toBe(true));
+    expect(assessFolderCopy).toHaveBeenCalledTimes(1);
+  });
+
+  it('says whether sync is held, which a held restore elsewhere should mention', async () => {
+    assessAs({ kind: 'offer', data: COPY });
+    const { result } = renderHook(() => useFolderRestore());
+    await waitFor(() => expect(result.current.prompt).not.toBeNull());
+    // Asking is not held: the answer decides
+    expect(result.current.syncHeld).toBe(false);
+
+    act(() => result.current.decide('hold'));
+
+    expect(result.current.syncHeld).toBe(true);
+  });
+
   it('reports a folder it cannot check, rather than holding sync without a word', async () => {
     permission.mockRejectedValue(new Error('handle store blocked'));
 

@@ -27,8 +27,8 @@ Feature: Restore From the Folder Copy
     And I unlock HemoIO
     When I choose "Not now"
     Then the dialog should close
-    And nothing should be written to the folder until I unlock again
-    And I should be asked again the next time I unlock
+    And nothing should be written to the folder for now
+    And I should be asked again the next time I unlock, or when I change folder access in Settings
 
   Scenario: Start over and replace the folder copy
     Given this browser no longer has any of my lab data
