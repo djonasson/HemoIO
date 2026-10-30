@@ -14,6 +14,7 @@ import {
   FOLDER_COPY,
   PREVIOUS_FOLDER_COPY,
   TestFolder,
+  changeFolder,
   loseBrowserData,
   skippedSyncNotice,
   storeDataInFolder,
@@ -30,6 +31,22 @@ const MORE_LAB_RESULTS = [
     updatedAt: '2024-03-12T09:00:00.000Z',
   },
 ];
+
+const NEW_LAB_RESULT = {
+  id: 1,
+  date: '2024-05-06T09:00:00.000Z',
+  labName: 'New Clinic',
+  createdAt: '2024-05-06T09:00:00.000Z',
+  updatedAt: '2024-05-06T09:00:00.000Z',
+};
+
+const LATER_LAB_RESULT = {
+  ...NEW_LAB_RESULT,
+  id: 2,
+  date: '2024-06-06T09:00:00.000Z',
+  createdAt: '2024-06-06T09:00:00.000Z',
+  updatedAt: '2024-06-06T09:00:00.000Z',
+};
 
 const EVEN_MORE_LAB_RESULTS = [
   ...MORE_LAB_RESULTS,
@@ -73,6 +90,8 @@ test.describe('Folder Sync Safety', () => {
   });
 
   test('sync starts again once the results are back', async ({ page }) => {
+    // Setup, a reload or relock and three restores: each unlock derives the key again
+    test.slow();
     const synced = await syncResults(page);
     await loseBrowserData(page);
     await unlockApp(page);
@@ -95,7 +114,23 @@ test.describe('Folder Sync Safety', () => {
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(synced);
   });
 
+  test('a full copy is not pushed out by smaller ones', async ({ page }) => {
+    // Setup, a reload or relock and three restores: each unlock derives the key again
+    test.slow();
+    const full = await syncResults(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+    await expect(skippedSyncNotice(page)).toBeVisible();
+
+    await seedLabData(page, { labResults: [NEW_LAB_RESULT], testValues: [] });
+    await seedLabData(page, { labResults: [NEW_LAB_RESULT, LATER_LAB_RESULT], testValues: [] });
+
+    expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(full);
+  });
+
   test('opening the app without changes keeps the previous copy', async ({ page }) => {
+    // Setup, a reload or relock and three restores: each unlock derives the key again
+    test.slow();
     await syncResults(page);
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
     const beforeLastChange = await folder.read(FOLDER_COPY);
@@ -115,8 +150,23 @@ test.describe('Folder Sync Safety', () => {
     await seedLabData(page);
 
     await expect(skippedSyncNotice(page)).toBeVisible();
-    await expect(skippedSyncNotice(page)).toContainText('cannot be opened');
+    await expect(skippedSyncNotice(page)).toContainText('cannot be read');
     await expect(skippedSyncNotice(page)).toContainText('choose a different folder');
+    expect(await folder.read(FOLDER_COPY)).toBe(foreign);
+  });
+
+  test('choosing a different folder lets the sync start again', async ({ page }) => {
+    await folder.write(FOLDER_COPY, 'sealed with a different password');
+    const foreign = await folder.read(FOLDER_COPY);
+    await seedLabData(page);
+    await expect(skippedSyncNotice(page)).toBeVisible();
+
+    const otherFolder = new TestFolder(page, 'Other Folder');
+    await changeFolder(page, otherFolder);
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    expect(await otherFolder.read(FOLDER_COPY)).not.toBeNull();
     expect(await folder.read(FOLDER_COPY)).toBe(foreign);
   });
 

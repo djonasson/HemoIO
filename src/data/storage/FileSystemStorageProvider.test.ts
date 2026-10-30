@@ -260,57 +260,63 @@ describe('FileSystemStorageProvider', () => {
       expect(FOLDER_PREVIOUS_FILE_NAME).toBe('hemoio-data.previous.encrypted');
     });
 
-    it('writes only the copy when the folder holds none yet', async () => {
-      const folder = createFakeFolder();
+    it('reads no copy and no previous copy from an empty folder', async () => {
+      const store = await providerFor(createFakeFolder());
 
-      await (await providerFor(folder)).save(bytes(1, 2, 3));
-
-      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
-      expect(folder.files.has(FOLDER_PREVIOUS_FILE_NAME)).toBe(false);
+      expect(await store.loadCurrent()).toBeNull();
+      expect(await store.loadPrevious()).toBeNull();
     });
 
-    it('keeps the replaced bytes, unchanged, as the previous copy', async () => {
-      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9, 9)]]));
-
-      await (await providerFor(folder)).save(bytes(1, 2, 3));
-
-      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
-      expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([9, 9]);
-    });
-
-    it('replaces an older previous copy with the one just replaced', async () => {
+    it('reads the copy and the previous copy as they are', async () => {
       const folder = createFakeFolder(
         new Map([
           [FOLDER_DATA_FILE_NAME, bytes(2)],
           [FOLDER_PREVIOUS_FILE_NAME, bytes(1)],
         ])
       );
+      const store = await providerFor(folder);
 
-      await (await providerFor(folder)).save(bytes(3));
-
-      expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([2]);
+      expect(read((await store.loadCurrent())!)).toEqual([2]);
+      expect(read((await store.loadPrevious())!)).toEqual([1]);
     });
 
-    it('does not keep an empty file as the previous copy', async () => {
+    it('writes only the copy when not told what to keep', async () => {
       const folder = createFakeFolder(
         new Map([
-          [FOLDER_DATA_FILE_NAME, new ArrayBuffer(0)],
+          [FOLDER_DATA_FILE_NAME, bytes(9, 9)],
           [FOLDER_PREVIOUS_FILE_NAME, bytes(7)],
         ])
       );
 
-      await (await providerFor(folder)).save(bytes(3));
+      await (await providerFor(folder)).save(bytes(1, 2, 3));
 
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
       expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([7]);
+    });
+
+    it('keeps the given bytes as the previous copy before writing the copy', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9, 9)]]));
+
+      await (await providerFor(folder)).save(bytes(1, 2, 3), bytes(9, 9));
+
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
+      expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([9, 9]);
     });
 
     it('leaves the copy alone when the previous copy cannot be written', async () => {
       const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9, 9)]]));
       folder.failingWrites.add(FOLDER_PREVIOUS_FILE_NAME);
 
-      await expect((await providerFor(folder)).save(bytes(1))).rejects.toThrow();
+      await expect((await providerFor(folder)).save(bytes(1), bytes(9, 9))).rejects.toThrow();
 
       expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([9, 9]);
+    });
+
+    it('reads nothing without folder access', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(2)]]));
+      folder.handle.queryPermission = async () => 'prompt';
+
+      await expect((await providerFor(folder)).loadCurrent()).rejects.toThrow('Permission denied');
     });
   });
 

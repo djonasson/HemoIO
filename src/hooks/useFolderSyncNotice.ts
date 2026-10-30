@@ -14,9 +14,12 @@ const MESSAGES: Record<FolderProtectionReason, string> = {
     'HemoIO left your folder copy as it is. ' +
     'Syncing starts again once you add or restore results.',
   unreadable:
-    'The copy in your folder cannot be opened with your current password, ' +
-    'so HemoIO left it as it is. ' +
+    'The copy in your folder cannot be read: it was saved with another password, ' +
+    'or it is damaged. HemoIO left it as it is. ' +
     'To keep syncing, choose a different folder in Settings > Data.',
+  newer:
+    'The copy in your folder was saved by a newer version of HemoIO, ' +
+    'so this version left it as it is. Reload HemoIO to update it and keep syncing.',
 };
 
 /**

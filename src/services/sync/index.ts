@@ -6,6 +6,7 @@
 
 export {
   writeFolderCopy,
+  type FolderCopyStore,
   type FolderProtectionReason,
   type FolderSyncOutcome,
 } from './folderSync';

@@ -36,8 +36,17 @@ describe('useFolderSyncNotice', () => {
     renderHook(() => useFolderSyncNotice('unreadable'));
 
     const notice = vi.mocked(notifications.show).mock.calls[0][0];
-    expect(notice.message).toMatch(/cannot be opened with your current password/);
+    expect(notice.message).toMatch(/cannot be read/);
+    expect(notice.message).toMatch(/another password, or it is damaged/);
     expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
+  });
+
+  it('asks for an update when a newer version saved the copy', () => {
+    renderHook(() => useFolderSyncNotice('newer'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.message).toMatch(/saved by a newer version of HemoIO/);
+    expect(notice.message).toMatch(/left it as it is/);
   });
 
   it('shows the notice once, not again on every sync that holds back', () => {

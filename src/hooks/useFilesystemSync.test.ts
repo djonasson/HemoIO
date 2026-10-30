@@ -21,10 +21,14 @@ vi.mock('@services/sync', () => ({
 
 // Storage provider mock
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
+const mockProviderCreated = vi.fn();
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class MockFileSystemStorageProvider {
     getPermissionState = mockGetPermissionState;
+    constructor() {
+      mockProviderCreated();
+    }
   },
 }));
 
@@ -58,6 +62,7 @@ describe('useFilesystemSync', () => {
     vi.clearAllMocks();
     localStorage.clear();
     vi.mocked(writeFolderCopy).mockResolvedValue(WRITTEN);
+    mockGetPermissionState.mockResolvedValue('granted');
   });
 
   afterEach(() => {
@@ -142,6 +147,59 @@ describe('useFilesystemSync', () => {
       await act(() => result.current.syncNow());
 
       expect(result.current.protection).toBe('empty');
+    });
+
+    it('stops reporting once the folder can no longer be written', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'unreadable' });
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(result.current.protection).toBe('unreadable'));
+      mockGetPermissionState.mockResolvedValue('prompt');
+
+      await act(() => result.current.syncNow());
+
+      expect(result.current.protection).toBeNull();
+    });
+
+    it('stops reporting once folder storage is switched off', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'unreadable' });
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(result.current.protection).toBe('unreadable'));
+      localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
+
+      await act(() => result.current.syncNow());
+
+      expect(result.current.protection).toBeNull();
+    });
+
+    it('reads the chosen folder afresh for every sync, so a changed folder is used', async () => {
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      await act(() => result.current.syncNow());
+
+      expect(mockProviderCreated).toHaveBeenCalledTimes(2);
+      const [first, second] = vi.mocked(writeFolderCopy).mock.calls.map(([store]) => store);
+      expect(second).not.toBe(first);
+    });
+
+    it('runs one more sync for any number asked for during another', async () => {
+      let finishFirst!: (outcome: FolderSyncOutcome) => void;
+      vi.mocked(writeFolderCopy).mockImplementationOnce(
+        () => new Promise((resolve) => (finishFirst = resolve))
+      );
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      let asked!: Promise<void>[];
+      act(() => {
+        asked = [result.current.syncNow(), result.current.syncNow(), result.current.syncNow()];
+      });
+      await act(async () => {
+        finishFirst(WRITTEN);
+        await Promise.all(asked);
+      });
+
+      expect(writeFolderCopy).toHaveBeenCalledTimes(2);
     });
 
     it('runs a sync asked for during another one after it, not never', async () => {

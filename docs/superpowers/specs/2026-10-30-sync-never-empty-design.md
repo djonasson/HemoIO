@@ -40,7 +40,8 @@ looks at it:
 | readable, has data   | no                      | `protected` (reason `empty`)    |
 | readable, no data    | any                     | write                           |
 | readable, has data   | yes                     | write                           |
-| cannot be decrypted  | any                     | `protected` (reason `unreadable`) |
+| written by a newer version | any               | `protected` (reason `newer`)    |
+| cannot be decrypted, or not a sync file | any  | `protected` (reason `unreadable`) |
 
 A copy the session key cannot open was saved with another password (or is
 damaged). Replacing it could destroy data the user can still open elsewhere, so
@@ -52,15 +53,23 @@ the good copy out of the previous-file slot.
 
 ## Previous file
 
-`FileSystemStorageProvider.save()` copies the current file's bytes, unchanged,
-to `FOLDER_PREVIOUS_FILE_NAME` (`hemoio-data.previous.encrypted`) before it
-replaces the current file. The previous file has the same format and encryption
-as the main file (`FOLDER_DATA_FILE_NAME`, `hemoio-data.encrypted`): an encrypted
-JSON `{ version, exportedAt, data }`. Both constants are exported from
-`src/data/storage/FileSystemStorageProvider.ts` and documented there. If keeping
-the previous copy fails, the main file is not touched.
+`FileSystemStorageProvider.save(data, previous?)` writes `previous` (the bytes
+of the copy being replaced, unchanged) to `FOLDER_PREVIOUS_FILE_NAME`
+(`hemoio-data.previous.encrypted`) before it replaces `FOLDER_DATA_FILE_NAME`
+(`hemoio-data.encrypted`). If keeping the previous copy fails, the main file is
+not touched. `loadCurrent()` and `loadPrevious()` return the bytes or `null`.
+Both files have the same format and encryption: an encrypted JSON
+`{ version, exportedAt, data }`. The constants are exported from
+`src/data/storage/FileSystemStorageProvider.ts` and documented there.
 
-One level of history is kept: enough to undo one bad write, without filling a
+The sync decides what is kept, because only it can read the copies: the
+replaced copy becomes the previous copy only if it holds health records and at
+least as many (lab results + test values + notes) as the previous copy already
+there; a previous copy that cannot be read is never replaced. So a browser that
+lost its data and then gains a result or two cannot push the full history out
+of the folder with its second write; the previous copy is the largest recent copy.
+
+One level of history is kept: enough to undo a bad write, without filling a
 synced folder with copies of health data.
 
 ## Layers
@@ -71,6 +80,9 @@ synced folder with copies of health data.
   decides `written | unchanged | protected` (with a reason) and encrypts.
 - **Application** — `useFilesystemSync` calls the service and exposes
   `protection` (React state: `null` or the reason).
+- **Application** also creates the provider afresh for each sync, so a folder
+  just chosen in Settings is the one written, and runs syncs one after another
+  (any number asked for during a sync share one more run).
 - **UI** — `AppShell` shows one persistent notification while sync is held back
   (not repeated every 30 s), and hides it once a sync writes again.
 
@@ -79,13 +91,18 @@ synced folder with copies of health data.
 - *empty*: "Folder sync skipped. This browser has no lab results right now, but
   your folder copy does. HemoIO left your folder copy as it is. Syncing starts
   again once you add or restore results."
-- *unreadable*: "Folder sync skipped. The copy in your folder cannot be opened
-  with your current password, so HemoIO left it as it is. To keep syncing,
-  choose a different folder in Settings > Data."
+- *unreadable*: "Folder sync skipped. The copy in your folder cannot be read: it
+  was saved with another password, or it is damaged. HemoIO left it as it is.
+  To keep syncing, choose a different folder in Settings > Data."
+- *newer*: "Folder sync skipped. The copy in your folder was saved by a newer
+  version of HemoIO, so this version left it as it is. Reload HemoIO to update
+  it and keep syncing." (Unit-tested only: E2E cannot seal a file with the
+  session key.)
 
 ## Decisions
 
 - Deleting every result on purpose also holds sync back; the folder keeps the
   last copy with data. Safer than the reverse; sync resumes when data returns.
-- A partial drop (100 results → 1) is written; the previous file covers undoing it.
+- A partial drop (100 results → 1) is written; the previous file keeps the
+  larger copy until the data grows past it.
 - No migration: the previous file simply appears with the next write.

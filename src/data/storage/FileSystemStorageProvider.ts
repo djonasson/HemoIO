@@ -18,10 +18,12 @@ import type { StorageProvider } from '@/types';
 export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
 
 /**
- * The folder copy as it was before the last write replaced it: the replaced
- * file's bytes, unchanged, so it has the same format and encryption as
- * FOLDER_DATA_FILE_NAME. One bad write can be undone from it. Only one level
- * is kept, so a synced folder does not fill up with copies of health data.
+ * An earlier folder copy, to undo a bad write from: the bytes of a copy a
+ * write replaced, unchanged, so it has the same format and encryption as
+ * FOLDER_DATA_FILE_NAME. The sync decides which replaced copy is kept here
+ * (never one holding less than the copy already here, see
+ * `services/sync/folderSync.ts`). Only one is kept, so a synced folder does
+ * not fill up with copies of health data.
  */
 export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
 
@@ -43,29 +45,71 @@ export class FileSystemStorageProvider implements StorageProvider {
   private directoryHandle: FileSystemDirectoryHandle | null = null;
 
   /**
-   * Save data to the selected directory, keeping the copy it replaces as
-   * FOLDER_PREVIOUS_FILE_NAME. If that cannot be kept, nothing is replaced.
-   * Every save moves the previous copy on, so callers save only real changes
-   * (writeFolderCopy skips unchanged data) or the copy to undo to is lost.
+   * Save data to the selected directory. Given `previous`, those bytes are
+   * written as FOLDER_PREVIOUS_FILE_NAME first; if that fails, nothing is replaced.
    */
-  async save(data: ArrayBuffer): Promise<void> {
+  async save(data: ArrayBuffer, previous?: ArrayBuffer): Promise<void> {
+    const handle = await this.getGrantedHandle();
+    if (previous) {
+      await this.writeFile(handle, FOLDER_PREVIOUS_FILE_NAME, previous);
+    }
+    await this.writeFile(handle, FOLDER_DATA_FILE_NAME, data);
+  }
+
+  /** The folder copy's bytes, or null when the folder holds none */
+  async loadCurrent(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_DATA_FILE_NAME);
+  }
+
+  /** The previous copy's bytes, or null when the folder holds none */
+  async loadPrevious(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_PREVIOUS_FILE_NAME);
+  }
+
+  /**
+   * Load data from the selected directory
+   */
+  async load(): Promise<ArrayBuffer> {
+    const data = await this.loadCurrent();
+    if (!data) {
+      throw new Error('No backup data found');
+    }
+    return data;
+  }
+
+  /**
+   * Check if the data file exists in the selected directory
+   */
+  async exists(): Promise<boolean> {
+    const handle = await this.getDirectoryHandle();
+    if (!handle) {
+      return false;
+    }
+
+    // Check permission first
+    const permission = await this.checkPermission(handle);
+    if (permission !== 'granted') {
+      return false;
+    }
+
+    try {
+      await handle.getFileHandle(FOLDER_DATA_FILE_NAME);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The selected directory, once it may be read and written */
+  private async getGrantedHandle(): Promise<FileSystemDirectoryHandle> {
     const handle = await this.getDirectoryHandle();
     if (!handle) {
       throw new Error('No directory selected. Please select a folder first.');
     }
-
-    // Verify we have permission
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
+    if ((await this.checkPermission(handle)) !== 'granted') {
       throw new Error('Permission denied. Please grant folder access to continue.');
     }
-
-    const current = await this.readFile(handle, FOLDER_DATA_FILE_NAME);
-    // An empty file holds nothing to undo to, and would replace a previous copy that does
-    if (current && current.byteLength > 0) {
-      await this.writeFile(handle, FOLDER_PREVIOUS_FILE_NAME, current);
-    }
-    await this.writeFile(handle, FOLDER_DATA_FILE_NAME, data);
+    return handle;
   }
 
   /** A file's bytes, or null when the directory does not hold it */
@@ -100,51 +144,6 @@ export class FileSystemStorageProvider implements StorageProvider {
       // Abort can fail on a stream already closing; the write's error is the one to report
       await writable.abort().catch(() => undefined);
       throw error;
-    }
-  }
-
-  /**
-   * Load data from the selected directory
-   */
-  async load(): Promise<ArrayBuffer> {
-    const handle = await this.getDirectoryHandle();
-    if (!handle) {
-      throw new Error('No directory selected. Please select a folder first.');
-    }
-
-    // Verify we have permission
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
-      throw new Error('Permission denied. Please grant folder access to continue.');
-    }
-
-    const data = await this.readFile(handle, FOLDER_DATA_FILE_NAME);
-    if (!data) {
-      throw new Error('No backup data found');
-    }
-    return data;
-  }
-
-  /**
-   * Check if the data file exists in the selected directory
-   */
-  async exists(): Promise<boolean> {
-    const handle = await this.getDirectoryHandle();
-    if (!handle) {
-      return false;
-    }
-
-    // Check permission first
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
-      return false;
-    }
-
-    try {
-      await handle.getFileHandle(FOLDER_DATA_FILE_NAME);
-      return true;
-    } catch {
-      return false;
     }
   }
 

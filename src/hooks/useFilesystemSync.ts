@@ -26,9 +26,10 @@ export function useFilesystemSync(): {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
   // Syncs run one after another: one asked for during another (an import
-  // during the periodic sync) must still write, after it
-  const queueRef = useRef<Promise<void>>(Promise.resolve());
-  const providerRef = useRef<FileSystemStorageProvider | null>(null);
+  // during the periodic sync) must still write, after it. Any number asked
+  // for meanwhile share one: each exports the data as it is when it starts.
+  const lastRef = useRef<Promise<void>>(Promise.resolve());
+  const waitingRef = useRef<Promise<void> | null>(null);
   const [protection, setProtection] = useState<FolderProtectionReason | null>(null);
 
   // Check if filesystem storage is enabled
@@ -38,34 +39,40 @@ export function useFilesystemSync(): {
     return provider === 'filesystem';
   }, []);
 
-  // Get or create the storage provider
-  const getProvider = useCallback(() => {
-    if (!providerRef.current) {
-      providerRef.current = new FileSystemStorageProvider();
-    }
-    return providerRef.current;
-  }, []);
-
   const runSync = useCallback(async () => {
-    if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey) {
+    if (!db || !isReady || !encryptionKey) {
+      return;
+    }
+    // Nothing is held back when nothing is synced, so no notice either
+    if (!isFilesystemEnabled()) {
+      setProtection(null);
       return;
     }
 
     try {
-      const provider = getProvider();
+      // Created afresh, so a folder just chosen in Settings is the one written
+      const provider = new FileSystemStorageProvider();
       // Without permission only a user action can help; Settings asks for it
-      if ((await provider.getPermissionState()) !== 'granted') return;
+      if ((await provider.getPermissionState()) !== 'granted') {
+        setProtection(null);
+        return;
+      }
 
       const outcome = await writeFolderCopy(provider, await db.exportAllData(), encryptionKey);
       setProtection(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       console.error('Failed to sync to filesystem:', error);
     }
-  }, [db, isReady, isFilesystemEnabled, getProvider, encryptionKey]);
+  }, [db, isReady, isFilesystemEnabled, encryptionKey]);
 
   const syncNow = useCallback((): Promise<void> => {
-    const next = queueRef.current.then(runSync);
-    queueRef.current = next;
+    if (waitingRef.current) return waitingRef.current;
+    const next = lastRef.current.then(() => {
+      waitingRef.current = null;
+      return runSync();
+    });
+    waitingRef.current = next;
+    lastRef.current = next;
     return next;
   }, [runSync]);
 

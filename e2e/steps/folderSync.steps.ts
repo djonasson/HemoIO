@@ -10,6 +10,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 export const TEST_FOLDER_NAME = 'Lab Folder';
+/** Where the picker looks for the folder a test chooses next */
+const NEXT_FOLDER_KEY = 'e2e-next-folder';
 /** Mirrors FOLDER_DATA_FILE_NAME in FileSystemStorageProvider */
 export const FOLDER_COPY = 'hemoio-data.encrypted';
 /** Mirrors FOLDER_PREVIOUS_FILE_NAME in FileSystemStorageProvider */
@@ -20,9 +22,13 @@ export const PREVIOUS_FOLDER_COPY = 'hemoio-data.previous.encrypted';
  * page the test opens, reloads included.
  */
 export async function useTestFolder(page: Page): Promise<void> {
-  await page.addInitScript((folderName) => {
+  await page.addInitScript(
+    ({ defaultName, nextFolderKey }) => {
     const folder = async (): Promise<FileSystemDirectoryHandle> =>
-      (await navigator.storage.getDirectory()).getDirectoryHandle(folderName, { create: true });
+      (await navigator.storage.getDirectory()).getDirectoryHandle(
+        sessionStorage.getItem(nextFolderKey) ?? defaultName,
+        { create: true }
+      );
     Object.defineProperty(window, 'showDirectoryPicker', { value: folder, configurable: true });
 
     const handle = FileSystemHandle.prototype as unknown as Record<string, unknown>;
@@ -30,12 +36,17 @@ export async function useTestFolder(page: Page): Promise<void> {
       handle.queryPermission = async () => 'granted';
       handle.requestPermission = async () => 'granted';
     }
-  }, TEST_FOLDER_NAME);
+    },
+    { defaultName: TEST_FOLDER_NAME, nextFolderKey: NEXT_FOLDER_KEY }
+  );
 }
 
 /** The test folder, read and written from the page */
 export class TestFolder {
-  constructor(private readonly page: Page) {}
+  constructor(
+    private readonly page: Page,
+    readonly name: string = TEST_FOLDER_NAME
+  ) {}
 
   /** A file's bytes as base64, or null when the folder does not hold it */
   read(fileName: string): Promise<string | null> {
@@ -51,7 +62,7 @@ export class TestFolder {
           return null;
         }
       },
-      { folderName: TEST_FOLDER_NAME, fileName }
+      { folderName: this.name, fileName }
     );
   }
 
@@ -65,7 +76,7 @@ export class TestFolder {
         await writable.write(text);
         await writable.close();
       },
-      { folderName: TEST_FOLDER_NAME, fileName, text }
+      { folderName: this.name, fileName, text }
     );
   }
 }
@@ -77,6 +88,18 @@ export async function storeDataInFolder(page: Page): Promise<void> {
   await page.getByText('Local Directory', { exact: true }).click();
   await page.getByRole('button', { name: 'Select Folder & Switch' }).click();
   await expect(page.getByText(TEST_FOLDER_NAME)).toBeVisible();
+}
+
+/** When I choose a different folder in Settings — with "Change" next to the folder name */
+export async function changeFolder(page: Page, folder: TestFolder): Promise<void> {
+  await page.evaluate(
+    ({ key, name }) => sessionStorage.setItem(key, name),
+    { key: NEXT_FOLDER_KEY, name: folder.name }
+  );
+  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await page.getByRole('tab', { name: 'Data' }).click();
+  await page.getByRole('button', { name: 'Change', exact: true }).click();
+  await expect(page.getByText(folder.name, { exact: true })).toBeVisible();
 }
 
 /**

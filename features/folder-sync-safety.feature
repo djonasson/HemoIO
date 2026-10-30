@@ -27,6 +27,14 @@ Feature: Folder Sync Safety
     Then my folder should hold a new copy with all of my lab results
     And my folder should keep the copy from before, as the previous copy
 
+  Scenario: A full copy is not pushed out by smaller ones
+    Given my lab results have been synced to my folder
+    And the browser loses all of its stored data
+    And I unlock the app again
+    When I add one new lab result
+    And I change my lab results again
+    Then the previous copy should still be the full copy from before the data was lost
+
   Scenario: Opening the app without changes keeps the previous copy
     Given my lab results have been synced to my folder
     And I have added more lab results since
@@ -37,9 +45,18 @@ Feature: Folder Sync Safety
   Scenario: A folder copy saved with another password is not replaced
     Given my folder holds a copy that my current password cannot open
     When I add lab results
-    Then I should see that the folder sync was skipped because the folder copy cannot be opened
+    Then I should see that the folder sync was skipped because the folder copy cannot be read
     And I should be told to choose a different folder to keep syncing
     And the copy in my folder should be left as it was
+
+  Scenario: Choosing a different folder lets the sync start again
+    Given my folder holds a copy that my current password cannot open
+    And the folder sync was skipped because the folder copy cannot be read
+    When I choose a different, empty folder in Settings
+    And I add lab results
+    Then the message about the skipped folder sync should go away
+    And the new folder should hold a copy of my lab results
+    And the copy in the first folder should be left as it was
 
   Scenario: The first sync to an empty folder writes a copy
     Given my folder holds no copy yet
