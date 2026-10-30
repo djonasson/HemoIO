@@ -34,6 +34,7 @@ import {
   FileSystemStorageProvider,
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
+import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
@@ -93,6 +94,9 @@ export function StorageSettings({
       const provider = new FileSystemStorageProvider();
       const state = await provider.requestPermission();
       setPermissionState(state);
+      if (state === 'granted') {
+        notifyFolderAccessChanged();
+      }
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -130,6 +134,13 @@ export function StorageSettings({
     }
   }, []);
 
+  /** A folder chosen while folder storage is on: sync looks at the new folder */
+  const handleChangeDirectory = useCallback(async () => {
+    if (await handleSelectDirectory()) {
+      notifyFolderAccessChanged();
+    }
+  }, [handleSelectDirectory]);
+
   const handleProviderChange = useCallback((newProvider: StorageProviderType) => {
     if (newProvider === storageProvider) return;
 
@@ -165,6 +176,9 @@ export function StorageSettings({
       if (pendingProvider !== 'filesystem') {
         setDirectoryName(null);
         setPermissionState(null);
+      } else {
+        // Only now, with the choice saved: sync reads it when told
+        notifyFolderAccessChanged();
       }
 
       setShowConfirmModal(false);
@@ -266,7 +280,7 @@ export function StorageSettings({
                 <Button
                   size="xs"
                   variant="subtle"
-                  onClick={handleSelectDirectory}
+                  onClick={handleChangeDirectory}
                   loading={isSelectingDirectory}
                   disabled={isSaving}
                   leftSection={<IconFolderOpen size={14} />}
@@ -305,7 +319,7 @@ export function StorageSettings({
                 <Button
                   size="xs"
                   variant="light"
-                  onClick={handleSelectDirectory}
+                  onClick={handleChangeDirectory}
                   loading={isSelectingDirectory}
                   disabled={isSaving}
                   leftSection={<IconFolderOpen size={14} />}
@@ -321,7 +335,7 @@ export function StorageSettings({
           <Button
             size="sm"
             variant="light"
-            onClick={handleSelectDirectory}
+            onClick={handleChangeDirectory}
             loading={isSelectingDirectory}
             disabled={isSaving}
             leftSection={<IconFolderOpen size={16} />}

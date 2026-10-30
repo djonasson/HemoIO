@@ -9,21 +9,25 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 import { encrypt } from '@data/encryption';
+import { SYNC_FILE_VERSION } from '@services/sync';
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
-/**
- * Format version of the encrypted sync file. Version 2 stores biomarker keys
- * (version 1 stored dictionary positions); a future reader must migrate v1.
- */
-const SYNC_FILE_VERSION = 2;
+export interface UseFilesystemSyncOptions {
+  /**
+   * False holds every write, the first one and the periodic ones, until the
+   * user has decided what happens to the copy in the folder. Default true.
+   */
+  enabled?: boolean;
+}
 
 /**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
  */
-export function useFilesystemSync(): {
+export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions = {}): {
   syncNow: () => Promise<void>;
   isSyncing: boolean;
   lastSyncTime: Date | null;
@@ -35,6 +39,18 @@ export function useFilesystemSync(): {
   const lastSyncTimeRef = useRef<Date | null>(null);
   const syncErrorRef = useRef<string | null>(null);
   const providerRef = useRef<FileSystemStorageProvider | null>(null);
+  // A ref, so a sync asked for before the hold began is held too
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  // The provider keeps the folder it first opened: another folder needs a new one
+  useEffect(
+    () =>
+      onFolderAccessChanged(() => {
+        providerRef.current = null;
+      }),
+    []
+  );
 
   // Check if filesystem storage is enabled
   const isFilesystemEnabled = useCallback(() => {
@@ -53,7 +69,7 @@ export function useFilesystemSync(): {
 
   // Sync data to filesystem
   const syncToFilesystem = useCallback(async () => {
-    if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey) {
+    if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey || !enabledRef.current) {
       return;
     }
 
@@ -90,6 +106,9 @@ export function useFilesystemSync(): {
       // Encrypt the data before saving
       const encryptedData = await encrypt(plainData.buffer, encryptionKey);
 
+      // The hold may have begun while this sync was under way
+      if (!enabledRef.current) return;
+
       // Save encrypted data to filesystem
       await provider.save(encryptedData);
 
@@ -104,7 +123,7 @@ export function useFilesystemSync(): {
 
   // Set up periodic sync when filesystem storage is enabled
   useEffect(() => {
-    if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey) {
+    if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey || !enabled) {
       return;
     }
 
@@ -119,7 +138,7 @@ export function useFilesystemSync(): {
     return () => {
       clearInterval(intervalId);
     };
-  }, [db, isReady, isFilesystemEnabled, syncToFilesystem, encryptionKey]);
+  }, [db, isReady, isFilesystemEnabled, syncToFilesystem, encryptionKey, enabled]);
 
   // Expose sync function for manual triggering
   const syncNow = useCallback(async () => {

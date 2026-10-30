@@ -15,3 +15,4 @@ export { useFilesystemSync, triggerGlobalSync, setGlobalSyncCallback } from './u
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';
+export { useFolderRestore, type UseFolderRestoreResult, type FolderRestorePrompt, type FolderRestoreDecision } from './useFolderRestore';

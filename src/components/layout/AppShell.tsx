@@ -34,6 +34,7 @@ import {
   useExportData,
   useEncryptedApiKey,
   useFilesystemSync,
+  useFolderRestore,
   useAISettings,
   useAlerts,
   useAlertState,
@@ -48,11 +49,13 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
+import { FolderRestoreModal } from '@components/storage';
 import { saveImportResults } from '@services/persistence';
 import { modelForProvider } from '@services/ai';
 import { restoreAISettings, restoreBackup, runAfterRestore } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
+import type { FolderRestoreDecision } from '@hooks';
 
 type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'notes' | 'dictionary' | 'settings';
 
@@ -141,7 +144,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
-  const { syncNow } = useFilesystemSync();
+  // Folder sync waits until the copy in the folder is known to be safe to replace
+  const folderRestore = useFolderRestore();
+  const { syncNow } = useFilesystemSync({ enabled: folderRestore.syncAllowed });
 
   const handleNavClick = useCallback(
     (view: View) => {
@@ -326,8 +331,36 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     ]
   );
 
+  const handleFolderRestore = useCallback(
+    // The folder copy has no AI configuration to restore
+    (data: ParsedBackupData) => handleRestore(data, { restoreAISettings: false }),
+    [handleRestore]
+  );
+
+  const { decide: decideFolderRestore } = folderRestore;
+  const handleFolderDecision = useCallback(
+    (decision: FolderRestoreDecision) => {
+      decideFolderRestore(decision);
+      if (decision === 'hold') {
+        notifications.show({
+          title: 'Folder Sync Paused',
+          message:
+            'Nothing is saved to your folder until you unlock HemoIO again. The copy there is unchanged.',
+          color: 'yellow',
+        });
+      }
+    },
+    [decideFolderRestore]
+  );
+
   return (
     <>
+      <FolderRestoreModal
+        prompt={folderRestore.prompt}
+        onRestore={handleFolderRestore}
+        onDecide={handleFolderDecision}
+      />
+
       <MantineAppShell
         header={{ height: 60 }}
         navbar={{

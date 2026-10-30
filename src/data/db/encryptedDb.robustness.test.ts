@@ -144,3 +144,27 @@ describe('EncryptedDb: records an older version wrote', () => {
     expect((await test.db.getTestValue(id))?.biomarkerKey).toBe('glucose');
   });
 });
+
+describe('EncryptedDb.hasLabData', () => {
+  const at = new Date('2024-01-15T10:00:00Z');
+
+  it('is false for an empty database, settings and preferences aside', async () => {
+    const { db } = await openTestDb();
+    await db.savePreferences({ unitPreferences: {}, personalTargets: {}, theme: 'dark', dateFormat: 'MM/DD/YYYY' });
+
+    expect(await db.hasLabData()).toBe(false);
+  });
+
+  it('is true with a lab result, a test value or a note', async () => {
+    const withResult = await openTestDb();
+    await withResult.db.addLabResult({ date: at, labName: 'Lab', createdAt: at, updatedAt: at });
+    const withValue = await openTestDb();
+    await withValue.db.addTestValue(value());
+    const withNote = await openTestDb();
+    await withNote.db.addNote({ content: 'Tired', tags: [], createdAt: at, updatedAt: at });
+
+    expect(await withResult.db.hasLabData()).toBe(true);
+    expect(await withValue.db.hasLabData()).toBe(true);
+    expect(await withNote.db.hasLabData()).toBe(true);
+  });
+});

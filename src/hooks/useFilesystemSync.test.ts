@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { encrypt } from '@data/encryption';
+import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { useFilesystemSync } from './useFilesystemSync';
 
 // Mock file system support
@@ -23,10 +24,15 @@ vi.mock('@data/encryption', () => ({
 const mockSave = vi.fn().mockResolvedValue(undefined);
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
 
+const providerCreated = vi.fn();
+
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class MockFileSystemStorageProvider {
     save = mockSave;
     getPermissionState = mockGetPermissionState;
+    constructor() {
+      providerCreated();
+    }
   },
 }));
 
@@ -130,5 +136,56 @@ describe('useFilesystemSync', () => {
       const file = JSON.parse(new TextDecoder().decode(plain));
       expect(file.version).toBe(2);
     });
+  });
+
+  describe('held until allowed', () => {
+    beforeEach(() => {
+      localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    });
+
+    it('writes nothing, at start or when asked, while not enabled', async () => {
+      const { result } = renderHook(() => useFilesystemSync({ enabled: false }));
+
+      await act(() => result.current.syncNow());
+
+      expect(mockExportAllData).not.toHaveBeenCalled();
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('syncs as soon as it is enabled', async () => {
+      const { rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: false },
+      });
+      expect(mockSave).not.toHaveBeenCalled();
+
+      rerender({ enabled: true });
+
+      await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    });
+
+    it('a sync already asked for does not write once it is no longer enabled', async () => {
+      const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: true },
+      });
+      await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+      const syncNow = result.current.syncNow;
+
+      rerender({ enabled: false });
+      await act(() => syncNow());
+
+      expect(mockSave).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('writes to the folder chosen since, not the one it first opened', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    const { result } = renderHook(() => useFilesystemSync());
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    const before = providerCreated.mock.calls.length;
+
+    act(() => notifyFolderAccessChanged());
+    await act(() => result.current.syncNow());
+
+    expect(providerCreated.mock.calls.length).toBe(before + 1);
   });
 });

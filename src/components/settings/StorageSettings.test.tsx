@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { StorageSettings } from './StorageSettings';
 
 // Mock the fileSystemSupport module
@@ -16,6 +20,10 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
     requestPermission: vi.fn().mockResolvedValue('granted'),
     selectDirectory: vi.fn().mockResolvedValue({ name: 'TestFolder' }),
   })),
+}));
+
+vi.mock('@data/storage/folderAccessEvents', () => ({
+  notifyFolderAccessChanged: vi.fn(),
 }));
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
@@ -92,5 +100,64 @@ describe('StorageSettings', () => {
 
       expect(screen.getByText('Storage Location')).toBeInTheDocument();
     });
+  });
+});
+
+describe('StorageSettings tells folder sync when folder access changes', () => {
+  function folderProvider(permission: 'granted' | 'prompt'): void {
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn().mockResolvedValue('Health');
+        getPermissionState = vi.fn().mockResolvedValue(permission);
+        requestPermission = vi.fn().mockResolvedValue('granted');
+        selectDirectory = vi.fn().mockResolvedValue({ name: 'Other' });
+      } as unknown as typeof FileSystemStorageProvider
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(false);
+    vi.clearAllMocks();
+  });
+
+  it('after access is granted again', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    folderProvider('prompt');
+    renderWithProviders(<StorageSettings />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Grant Access' }));
+
+    await waitFor(() => expect(notifyFolderAccessChanged).toHaveBeenCalledTimes(1));
+  });
+
+  it('after another folder is chosen', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    folderProvider('granted');
+    renderWithProviders(<StorageSettings />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Change' }));
+
+    await waitFor(() => expect(screen.getByText('Other')).toBeInTheDocument());
+    expect(notifyFolderAccessChanged).toHaveBeenCalled();
+  });
+
+  it('after switching to folder storage, once the folder is the storage', async () => {
+    folderProvider('granted');
+    vi.mocked(notifyFolderAccessChanged).mockImplementation(() => {
+      // Sync reads the storage choice when told, so it must be saved by then
+      expect(localStorage.getItem(STORAGE_PROVIDER_KEY)).toBe('filesystem');
+    });
+    renderWithProviders(<StorageSettings />);
+
+    await userEvent.click(screen.getByRole('radio', { name: /Local Directory/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Select Folder & Switch' }));
+
+    await waitFor(() => expect(notifyFolderAccessChanged).toHaveBeenCalled());
   });
 });
