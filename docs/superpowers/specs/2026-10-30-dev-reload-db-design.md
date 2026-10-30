@@ -109,7 +109,8 @@ is unchanged.
     the reload for the edited file. Vite also reloads on its own, for example
     when it optimises a dependency late.
   - An in-place update needs Vite's "hot updated" log, no invalidation or
-    failed update afterwards, and a marker on `window` that is still set.
+    failed update afterwards, and no new `load` event. The edit is made only
+    after the app has rendered: an edit made earlier is not hot-updated.
   - A first visit in `beforeAll` warms up the copy's fresh dependency cache. The copy keeps the
   real files and the shared E2E dev server untouched. Reloading that shared
   server would break tests running in parallel.

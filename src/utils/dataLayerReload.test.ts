@@ -159,7 +159,6 @@ describe('dataLayerReload plugin', () => {
     const send = vi.fn();
     const info = vi.fn();
     const hook = plugin.hotUpdate as {
-      order: string;
       handler: (this: unknown, options: { file: string; modules: HotModule[] }) => unknown;
     };
     const file = modules[0]?.file ?? `${ROOT}/src/other.ts`;
@@ -167,7 +166,7 @@ describe('dataLayerReload plugin', () => {
       { environment: { config: { consumer }, hot: { send }, logger: { info } } },
       { file, modules }
     );
-    return { result, send, info, order: hook.order };
+    return { result, send, info };
   }
 
   it('runs on the development server only, so production builds are unchanged', () => {
@@ -194,7 +193,7 @@ describe('dataLayerReload plugin', () => {
   });
 
   it('decides after the other plugins, on the final list of changed modules', () => {
-    expect(hotUpdate([]).order).toBe('post');
+    expect((dataLayerReload().hotUpdate as { order: string }).order).toBe('post');
   });
 
   it('leaves other changes to the normal hot update', () => {

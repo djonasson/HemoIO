@@ -76,7 +76,7 @@ export class DevServerCopy {
         logLevel: 'error',
         clearScreen: false,
       });
-      copy.recordReloads(copy.server);
+      copy.recordReloads();
       await copy.server.listen();
     } catch (error) {
       await copy.stop();
@@ -96,8 +96,8 @@ export class DevServerCopy {
    * update nobody accepts): the reload under test must be the one sent for
    * the edited file.
    */
-  private recordReloads(server: ViteDevServer): void {
-    const hot = server.environments.client.hot;
+  private recordReloads(): void {
+    const hot = this.server!.environments.client.hot;
     const send = hot.send.bind(hot);
     hot.send = ((...args: Parameters<typeof hot.send>) => {
       const [payload] = args;
@@ -126,13 +126,6 @@ export class DevServerCopy {
   }
 }
 
-declare global {
-  interface Window {
-    /** Set by the test on the open page; a full reload clears it */
-    __hemoioReloadMarker?: boolean;
-  }
-}
-
 /** Watches one tab of the app for full reloads and hot updates */
 export class ReloadWatcherPage {
   private loads = 0;
@@ -147,13 +140,14 @@ export class ReloadWatcherPage {
     });
   }
 
-  /** Open the app and wait until the dev server can send it updates */
+  /**
+   * Open the app and wait until it has rendered and the dev server can send
+   * it updates: an edit made between the two is not hot-updated
+   */
   async open(url: string): Promise<void> {
     await this.page.goto(url);
     await expect.poll(() => this.logs.includes('[vite] connected.')).toBe(true);
-    await this.page.evaluate(() => {
-      window.__hemoioReloadMarker = true;
-    });
+    await expect(this.page.locator('#root')).not.toBeEmpty();
   }
 
   /** Edit `relativePath` and wait for the page to load again because of it */
@@ -162,7 +156,6 @@ export class ReloadWatcherPage {
     devServer.editFile(relativePath);
     await expect.poll(() => this.loads, { timeout: CHANGE_TIMEOUT }).toBeGreaterThan(loadsBefore);
     expect(devServer.sentReloadFor(relativePath)).toBe(true);
-    expect(await this.page.evaluate(() => window.__hemoioReloadMarker)).toBeUndefined();
   }
 
   /** Edit `relativePath` and wait for it to be updated in place */
@@ -178,6 +171,5 @@ export class ReloadWatcherPage {
     expect(logged.filter((log) => /\[vite\] invalidate|\[hmr\] Failed/.test(log))).toEqual([]);
     expect(devServer.sentReloadFor(relativePath)).toBe(false);
     expect(this.loads).toBe(loadsBefore);
-    expect(await this.page.evaluate(() => window.__hemoioReloadMarker)).toBe(true);
   }
 }
