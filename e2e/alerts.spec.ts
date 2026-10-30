@@ -2,19 +2,25 @@
  * E2E Tests for Alerts
  *
  * Implements features/alerts.feature: the alerts summary for abnormal values,
- * severity indicators, grouping and ordering, trend and improvement alerts,
- * dismiss/acknowledge actions, category filtering, the navigation badge,
- * timestamps and accessibility.
+ * one card per test with its earlier results, severity indicators, ordering,
+ * trend and improvement alerts, dismiss/acknowledge actions per test, category
+ * filtering, the navigation badge, timestamps and accessibility.
  */
 
 import { test, expect } from './fixtures';
 import { setupOrUnlock } from './steps/app.steps';
+import { seedLabData } from './steps/data.steps';
 import {
   ORANGE_INDICATOR,
   RED_INDICATOR,
+  acknowledgeButton,
   alertCard,
   alertCards,
   alertsHeader,
+  dismissButton,
+  earlierResults,
+  earlierResultsToggle,
+  expandEarlierResults,
   reloadAndViewAlerts,
   seedAlertData,
   viewAlerts,
@@ -24,6 +30,7 @@ import {
   HDL,
   HEMOGLOBIN,
   biomarkerSelect,
+  buildLabData,
   goToTrends,
   selectBiomarker,
   type LabVisit,
@@ -134,19 +141,67 @@ test.describe('Alerts with Data', () => {
     await expect(card).toHaveCSS('border-left-color', ORANGE_INDICATOR);
   });
 
-  // Scenario: Group alerts by biomarker
-  test('should group alerts by biomarker', async ({ page }) => {
+  // Scenario: One alert card per test
+  test('shows one card per test with its latest value and counts', async ({ page }) => {
     await seedAlertData(page, [
       { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }, { biomarker: HEMOGLOBIN, value: 14 }] },
       { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }, { biomarker: HEMOGLOBIN, value: 10 }] },
     ]);
     await viewAlerts(page);
 
-    const main = page.getByRole('main');
-    await expect(main.getByText('By Biomarker', { exact: true })).toBeVisible();
-    await expect(main.getByRole('button', { name: 'Glucose: 2 alerts' })).toBeVisible();
-    await expect(main.getByRole('button', { name: 'Hemoglobin: 1 alerts' })).toBeVisible();
-    await expect(main.getByRole('button', { name: 'Glucose: 2 alerts' })).toContainText('2 alerts');
+    await expect(alertCards(page)).toHaveCount(2);
+    const glucose = alertCard(page, 'Glucose');
+    await expect(glucose).toContainText('130 mg/dL');
+    await expect(glucose.getByText('2 results · 2 new', { exact: true })).toBeVisible();
+    await expect(alertCard(page, 'Hemoglobin').getByText('1 result · 1 new', { exact: true })).toBeVisible();
+    // The flat list's separate summary is gone
+    await expect(page.getByRole('main').getByText('By Biomarker', { exact: true })).toHaveCount(0);
+  });
+
+  // Scenario: Expand an alert card to see earlier results
+  test('expands a card to show its earlier results, most recent first', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', labName: 'January Lab', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', labName: 'March Lab', values: [{ biomarker: GLUCOSE, value: 140 }] },
+      { date: '2024-05-20', labName: 'May Lab', values: [{ biomarker: GLUCOSE, value: 130 }] },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    await expect(card.getByText('3 results · 3 new', { exact: true })).toBeVisible();
+    await expect(earlierResults(card, 'Glucose')).toHaveCount(0);
+
+    await expandEarlierResults(card);
+
+    const rows = earlierResults(card, 'Glucose');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Mar 10, 2024');
+    await expect(rows.nth(0)).toContainText('140 mg/dL');
+    await expect(rows.nth(0)).toContainText('March Lab');
+    await expect(rows.nth(1)).toContainText('Jan 15, 2024');
+    await expect(rows.nth(1)).toContainText('150 mg/dL');
+    await expect(rows.nth(1)).toContainText('January Lab');
+  });
+
+  // Scenario: Open an earlier result in Trends
+  test('opens an earlier result in Trends at its date', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }] },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    await expandEarlierResults(card);
+    await earlierResults(card, 'Glucose').first().click();
+
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Trends/ })
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
+    await expect(
+      page.getByRole('main').locator('[aria-label="Jan 15, 24: 150 mg/dL (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
   });
 
   // Scenario: Most recent values shown first
@@ -263,7 +318,7 @@ test.describe('Alerts with Data', () => {
 
     const glucose = alertCard(page, 'Glucose');
     await expect(glucose).toBeVisible();
-    await glucose.getByRole('button', { name: 'Dismiss alert' }).click();
+    await dismissButton(glucose, 'Glucose').click();
 
     await expect(glucose).toBeHidden();
     await expect(alertCard(page, 'Hemoglobin')).toBeVisible();
@@ -278,16 +333,78 @@ test.describe('Alerts with Data', () => {
     await viewAlerts(page);
 
     const glucose = alertCard(page, 'Glucose');
-    await glucose.getByRole('button', { name: 'Acknowledge alert' }).click();
+    await acknowledgeButton(glucose, 'Glucose').click();
 
     // Marked as acknowledged: no longer offers to be acknowledged, no longer counted as new
-    await expect(glucose.getByRole('button', { name: 'Acknowledge alert' })).toHaveCount(0);
+    await expect(acknowledgeButton(glucose, 'Glucose')).toHaveCount(0);
     await expect(page.getByRole('main').getByText('2 new', { exact: true })).toBeVisible();
 
     // Survives a new page load, unlike dismiss
     await reloadAndViewAlerts(page);
     await expect(alertCard(page, 'Hemoglobin')).toBeVisible();
     await expect(alertCard(page, 'Glucose')).toBeHidden();
+  });
+
+  // Scenario: Dismissing a card hides every result of that test
+  test('dismissing a card hides every result of its test', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }, { biomarker: HEMOGLOBIN, value: 10 }] },
+    ]);
+    await viewAlerts(page);
+    await expect(page.getByRole('main').getByText('3 new', { exact: true })).toBeVisible();
+
+    await dismissButton(alertCard(page, 'Glucose'), 'Glucose').click();
+
+    await expect(alertCard(page, 'Glucose')).toHaveCount(0);
+    await expect(page.getByRole('main').getByText('1 new', { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Alerts/ }).locator('.mantine-Badge-root')
+    ).toHaveText('1');
+  });
+
+  // Scenario: Acknowledging a card acknowledges every result of that test
+  test('acknowledging a card acknowledges every result of its test', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }, { biomarker: HEMOGLOBIN, value: 10 }] },
+    ]);
+    await viewAlerts(page);
+
+    await acknowledgeButton(alertCard(page, 'Glucose'), 'Glucose').click();
+    await expect(alertCard(page, 'Glucose')).toHaveCount(0);
+    await expect(page.getByRole('main').getByText('1 new', { exact: true })).toBeVisible();
+
+    await reloadAndViewAlerts(page);
+    await expect(alertCard(page, 'Hemoglobin')).toBeVisible();
+    await expect(alertCard(page, 'Glucose')).toHaveCount(0);
+  });
+
+  // Scenario: A later abnormal result makes an acknowledged test new again
+  test('a later abnormal result makes an acknowledged test new again', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // Glucose (legacy ID 22) acknowledged through the second visit
+    await seedLabData(page, {
+      ...buildLabData([
+        { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+        { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 140 }] },
+        { date: '2024-05-20', values: [{ biomarker: GLUCOSE, value: 130 }] },
+      ]),
+      userPreferences: { acknowledgedAlerts: { 22: '2024-03-10T10:00:00.000Z' } },
+    });
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    await expect(card).toContainText('130 mg/dL');
+    await expect(card.getByText('3 results · 1 new', { exact: true })).toBeVisible();
+
+    await expandEarlierResults(card);
+    const rows = earlierResults(card, 'Glucose');
+    await expect(rows).toHaveCount(2);
+    for (const row of await rows.all()) {
+      await expect(row.getByText('New', { exact: true })).toHaveCount(0);
+    }
   });
 
   // Scenario: No new alerts after acknowledging every alert
@@ -297,7 +414,7 @@ test.describe('Alerts with Data', () => {
     ]);
     await viewAlerts(page);
 
-    await alertCard(page, 'Glucose').getByRole('button', { name: 'Acknowledge alert' }).click();
+    await acknowledgeButton(alertCard(page, 'Glucose'), 'Glucose').click();
 
     const main = page.getByRole('main');
     await expect(main.getByText('No new alerts')).toBeVisible();
@@ -381,7 +498,7 @@ test.describe('Alerts with Data', () => {
     await seedAlertData(page, ABNORMAL_VISITS);
     await viewAlerts(page);
 
-    const dismiss = alertCard(page, 'Glucose').getByRole('button', { name: 'Dismiss alert' });
+    const dismiss = dismissButton(alertCard(page, 'Glucose'), 'Glucose');
     await dismiss.focus();
     await expect(dismiss).toBeFocused();
 
@@ -394,7 +511,7 @@ test.describe('Alerts with Data', () => {
     await seedAlertData(page, ABNORMAL_VISITS);
     await viewAlerts(page);
 
-    const acknowledge = alertCard(page, 'Glucose').getByRole('button', { name: 'Acknowledge alert' });
+    const acknowledge = acknowledgeButton(alertCard(page, 'Glucose'), 'Glucose');
     await acknowledge.focus();
     await expect(acknowledge).toBeFocused();
 
@@ -405,6 +522,50 @@ test.describe('Alerts with Data', () => {
 
     await page.keyboard.press('Enter');
     await expect(acknowledge).toHaveCount(0);
+  });
+
+  // Scenario: Alert accessibility — earlier results by keyboard
+  test('earlier results can be expanded and opened via keyboard', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }] },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    const toggle = earlierResultsToggle(card);
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    // Enter on the toggle expands the card; it does not also open the trend
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Alerts/ })
+    ).toHaveAttribute('aria-current', 'page');
+
+    const earlier = earlierResults(card, 'Glucose').first();
+    await expect(earlier).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(earlier).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expect(
+      page.getByRole('main').locator('[aria-label="Jan 15, 24: 150 mg/dL (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
+  });
+
+  // Scenario: Alert badge counts new results, not tests
+  test('the navigation badge counts new results, not tests', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }, { biomarker: HEMOGLOBIN, value: 10 }] },
+    ]);
+    await goToTrends(page);
+
+    const badge = page
+      .getByRole('navigation')
+      .getByRole('button', { name: /^Alerts/ })
+      .locator('.mantine-Badge-root');
+    await expect(badge).toHaveText('3');
   });
 
   // Scenario: Alert badge in navigation

@@ -14,10 +14,12 @@ import { usePreferences } from './usePreferences';
 import {
   SEVERITY_ORDER,
   detectConsistentDirection,
+  groupAlerts,
   improvementMessage,
   outOfRangeMessage,
   outOfRangeSeverity,
   trendMessage,
+  type AlertGroup,
   type AlertSeverity,
   type ReferenceRange,
   type TrendDirection,
@@ -72,36 +74,21 @@ export interface BiomarkerAlert {
 }
 
 /**
- * Grouped alerts by biomarker
+ * One test's alert card
  */
-export interface GroupedAlert {
-  /** Biomarker ID */
-  biomarkerKey: string;
-  /** Biomarker name */
-  biomarkerName: string;
-  /** Biomarker category */
-  category?: string;
-  /** All alerts for this biomarker */
-  alerts: BiomarkerAlert[];
-  /** Most recent alert */
-  latestAlert: BiomarkerAlert;
-  /** Count of the group's unacknowledged out-of-range values */
-  unacknowledgedCount: number;
-  /** Overall severity (highest among alerts) */
-  severity: AlertSeverity;
-}
+export type GroupedAlert = AlertGroup<BiomarkerAlert>;
 
 /**
  * Result of useAlerts hook
  */
 export interface UseAlertsResult {
-  /** All alerts sorted by date (most recent first) */
+  /** Every alert the lab results raise, acknowledged and dismissed ones included */
   alerts: BiomarkerAlert[];
-  /** Alerts grouped by biomarker */
-  groupedAlerts: GroupedAlert[];
-  /** Count of unacknowledged out-of-range values (the nav badge) */
+  /** One card per test with something new, most pressing first */
+  groups: GroupedAlert[];
+  /** New out-of-range results on the shown cards (the nav badge) */
   unacknowledgedCount: number;
-  /** Alerts hidden by an acknowledgement or a dismissal */
+  /** Tests whose card an acknowledgement or a dismissal hides */
   hiddenCount: number;
   /** Values checked against a reference range: none, and there is nothing to call normal */
   assessedCount: number;
@@ -109,14 +96,12 @@ export interface UseAlertsResult {
   isLoading: boolean;
   /** Error message if any */
   error: string | null;
-  /** Dismiss an alert temporarily (until page reload) */
-  dismissAlert: (alertId: string) => void;
-  /** Acknowledge an alert's biomarker through the alert's date, persistently */
-  acknowledgeAlert: (alertId: string) => Promise<void>;
+  /** Hide a test's card until the next page load or a later alert */
+  dismissGroup: (biomarkerKey: string) => void;
+  /** Acknowledge every alert of a test persistently, until a later alert */
+  acknowledgeGroup: (biomarkerKey: string) => Promise<void>;
   /** Reload the lab results alerts are derived from */
   refresh: () => Promise<void>;
-  /** Filter alerts by category */
-  filterByCategory: (category: string | null) => BiomarkerAlert[];
 }
 
 /**
@@ -135,16 +120,16 @@ function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType)
  * @example
  * ```tsx
  * function AlertsPanel() {
- *   const { alerts, unacknowledgedCount, dismissAlert } = useAlerts();
+ *   const { groups, unacknowledgedCount, dismissGroup } = useAlerts();
  *
  *   return (
  *     <Stack>
- *       <Badge>{unacknowledgedCount} alerts</Badge>
- *       {alerts.map(alert => (
- *         <AlertCard
- *           key={alert.id}
- *           alert={alert}
- *           onDismiss={() => dismissAlert(alert.id)}
+ *       <Badge>{unacknowledgedCount} new</Badge>
+ *       {groups.map((group) => (
+ *         <AlertGroupCard
+ *           key={group.biomarkerKey}
+ *           group={group}
+ *           onDismiss={() => dismissGroup(group.biomarkerKey)}
  *         />
  *       ))}
  *     </Stack>
@@ -154,7 +139,7 @@ function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType)
  */
 export function useAlerts(): UseAlertsResult {
   const { results, isLoading, error, refresh } = useLabResults();
-  const { acknowledgedThrough, dismissedIds, acknowledge, dismiss } = useAlertState();
+  const { acknowledgedThrough, dismissedThrough, acknowledge, dismiss } = useAlertState();
   const { unitPreferences } = usePreferences();
 
   const assessedCount = useMemo(
@@ -309,108 +294,50 @@ export function useAlerts(): UseAlertsResult {
   }, [results, unitPreferences]);
 
   /**
-   * Alerts not yet acknowledged or dismissed: a cheap filter, so acknowledging
-   * or dismissing does not rebuild every alert
+   * The cards: a cheap step, so acknowledging or dismissing does not rebuild
+   * every alert
    */
-  const alerts = useMemo(
-    () =>
-      allAlerts.filter((alert) => {
-        const through = acknowledgedThrough[alert.biomarkerKey];
-        const acknowledged = through !== undefined && alert.date.getTime() <= through.getTime();
-        return !acknowledged && !dismissedIds.has(alert.id);
-      }),
-    [allAlerts, acknowledgedThrough, dismissedIds]
+  const { groups, hiddenCount } = useMemo(
+    () => groupAlerts(allAlerts, acknowledgedThrough, dismissedThrough),
+    [allAlerts, acknowledgedThrough, dismissedThrough]
   );
 
-  /**
-   * Group alerts by biomarker
-   */
-  const groupedAlerts = useMemo(() => {
-    const groups = new Map<string, BiomarkerAlert[]>();
-
-    for (const alert of alerts) {
-      if (!groups.has(alert.biomarkerKey)) {
-        groups.set(alert.biomarkerKey, []);
-      }
-      groups.get(alert.biomarkerKey)!.push(alert);
-    }
-
-    const result: GroupedAlert[] = [];
-
-    for (const [biomarkerKey, biomarkerAlerts] of groups.entries()) {
-      // Alerts are sorted by severity first, so find the latest by date
-      const latestAlert = biomarkerAlerts.reduce((latest, alert) =>
-        alert.date.getTime() > latest.date.getTime() ? alert : latest
-      );
-      const unacknowledgedCount = biomarkerAlerts.filter((a) => a.type === 'out_of_range').length;
-
-      // Get highest severity
-      const severity = biomarkerAlerts.reduce<AlertSeverity>(
-        (highest, alert) =>
-          SEVERITY_ORDER[alert.severity] < SEVERITY_ORDER[highest] ? alert.severity : highest,
-        'positive'
-      );
-
-      result.push({
-        biomarkerKey,
-        biomarkerName: latestAlert.biomarkerName,
-        category: latestAlert.category,
-        alerts: biomarkerAlerts,
-        latestAlert,
-        unacknowledgedCount,
-        severity,
-      });
-    }
-
-    // Sort groups by severity then by unacknowledged count
-    return result.sort((a, b) => {
-      const severityDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
-      if (severityDiff !== 0) return severityDiff;
-      return b.unacknowledgedCount - a.unacknowledgedCount;
-    });
-  }, [alerts]);
-
-  /**
-   * Count of unacknowledged alerts
-   */
   const unacknowledgedCount = useMemo(
-    () => alerts.filter((alert) => alert.type === 'out_of_range').length,
-    [alerts]
+    () => groups.reduce((sum, group) => sum + group.newCount, 0),
+    [groups]
   );
 
-  /**
-   * Acknowledge an alert persistently: hides its biomarker's alerts up to its date
-   */
-  const acknowledgeAlert = useCallback(
-    async (alertId: string) => {
-      const alert = alerts.find((a) => a.id === alertId);
-      if (alert) await acknowledge(alert.biomarkerKey, alert.date);
-    },
-    [alerts, acknowledge]
+  const latestDateOf = useCallback(
+    (biomarkerKey: string) => groups.find((g) => g.biomarkerKey === biomarkerKey)?.latestDate,
+    [groups]
   );
 
-  /**
-   * Filter alerts by category
-   */
-  const filterByCategory = useCallback(
-    (category: string | null) => {
-      if (!category) return alerts;
-      return alerts.filter((alert) => alert.category === category);
+  const acknowledgeGroup = useCallback(
+    async (biomarkerKey: string) => {
+      const through = latestDateOf(biomarkerKey);
+      if (through) await acknowledge(biomarkerKey, through);
     },
-    [alerts]
+    [latestDateOf, acknowledge]
+  );
+
+  const dismissGroup = useCallback(
+    (biomarkerKey: string) => {
+      const through = latestDateOf(biomarkerKey);
+      if (through) dismiss(biomarkerKey, through);
+    },
+    [latestDateOf, dismiss]
   );
 
   return {
-    alerts,
-    groupedAlerts,
+    alerts: allAlerts,
+    groups,
     unacknowledgedCount,
-    hiddenCount: allAlerts.length - alerts.length,
+    hiddenCount,
     assessedCount,
     isLoading,
     error,
-    dismissAlert: dismiss,
-    acknowledgeAlert,
+    dismissGroup,
+    acknowledgeGroup,
     refresh,
-    filterByCategory,
   };
 }

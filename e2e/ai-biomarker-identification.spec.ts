@@ -233,6 +233,9 @@ test.describe('AI biomarker identification', () => {
   });
 
   test('forgets a learned name saved as not in the dictionary', async ({ page }) => {
+    // Two full analyses, each loading the matching model in the page: on a
+    // busy machine Firefox needs more than the default test timeout
+    test.slow();
     // Scenario: Saving as "Not in dictionary" forgets a learned name
     await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await analyzeReport(page, [

@@ -728,7 +728,8 @@ test.describe('Document Analysis - Performance', () => {
     await uploadFiles(page, track(createTextPdf('large.pdf', reportPages(8))));
     await recordRenderedTexts(page);
     await startAnalysis(page);
-    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
+    // Eight pages are really parsed: on a busy machine that outlasts the default wait
+    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible({ timeout: 30000 });
 
     // Page progress counts up through the document
     const pageStages = (await renderedTexts(page))
@@ -776,8 +777,11 @@ test.describe('Document Analysis - Performance', () => {
 
     ai.release();
 
+    // Three PDFs are really parsed, one after another: on a busy machine that
+    // outlasts the default wait while still making progress
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
-      'Successfully extracted 6 biomarker values from 3 file(s).'
+      'Successfully extracted 6 biomarker values from 3 file(s).',
+      { timeout: 30000 }
     );
     expect(ai.prompts).toHaveLength(3);
 

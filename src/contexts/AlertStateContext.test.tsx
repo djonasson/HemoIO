@@ -109,12 +109,20 @@ describe('AlertStateProvider', () => {
     });
   });
 
-  it('keeps dismissals in memory only', async () => {
+  it('keeps dismissals in memory only, per test through a date', async () => {
     const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
     await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
-    act(() => result.current.dismiss('out_of_range_glucose_1'));
-    expect(result.current.dismissedIds.has('out_of_range_glucose_1')).toBe(true);
+    act(() => result.current.dismiss('glucose', new Date('2024-03-10T10:00:00Z')));
+    expect(result.current.dismissedThrough.glucose).toEqual(new Date('2024-03-10T10:00:00Z'));
     expect(mockUpdatePreferences).not.toHaveBeenCalled();
+  });
+
+  it('never moves a dismissal back to an earlier date', async () => {
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+    act(() => result.current.dismiss('glucose', new Date('2024-03-10T10:00:00Z')));
+    act(() => result.current.dismiss('glucose', new Date('2024-01-15T10:00:00Z')));
+    expect(result.current.dismissedThrough.glucose).toEqual(new Date('2024-03-10T10:00:00Z'));
   });
 
   it('keeps both of two acknowledgements made in quick succession', async () => {

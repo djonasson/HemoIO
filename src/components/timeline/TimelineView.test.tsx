@@ -52,6 +52,9 @@ vi.mock('@hooks/useNotes', () => ({
 // Mock the biomarker dictionary
 vi.mock('@data/biomarkers/dictionary', () => ({
   findBiomarker: vi.fn(() => null),
+  getBiomarkerByKey: () => undefined,
+  getBiomarkerForTestValue: () => undefined,
+  getBiomarkerDisplayName: (tv: { rawText?: string }) => tv.rawText || 'Unknown biomarker',
 }));
 
 import { useLabResults } from '@hooks/useLabResults';
@@ -118,6 +121,42 @@ describe('TimelineView', () => {
 
     expect(screen.getByText(/database connection failed/i)).toBeInTheDocument();
     expect(screen.getByText(/try again/i)).toBeInTheDocument();
+  });
+
+  it("passes a test's trend link through, with its result's date", () => {
+    const onOpenTrend = vi.fn();
+    const result = {
+      ...createMockResult(1, '2024-01-15T12:00:00Z', 'Quest Diagnostics'),
+      testValues: [
+        {
+          id: 1,
+          labResultId: 1,
+          biomarkerKey: 'glucose',
+          rawText: 'Glucose',
+          value: 125,
+          unit: 'mg/dL',
+          status: 'high' as const,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+    };
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [result],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(
+      <TimelineView onNavigateToImport={() => {}} focusLabResultId={1} onOpenTrend={onOpenTrend} />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
+
+    expect(onOpenTrend).toHaveBeenCalledWith('glucose', new Date('2024-01-15T12:00:00Z'));
   });
 
   it('should call refresh when try again is clicked', () => {

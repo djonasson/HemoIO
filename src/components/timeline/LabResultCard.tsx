@@ -50,6 +50,8 @@ export interface LabResultCardProps {
   onUpdateNote?: (id: number, content: string, tags: string[]) => Promise<void>;
   /** Callback when deleting a note */
   onDeleteNote?: (id: number) => Promise<void>;
+  /** Open a test's trend at this result's date */
+  onOpenTrend?: (biomarkerKey: string, date: Date) => void;
 }
 
 /**
@@ -86,6 +88,7 @@ export function LabResultCard({
   onCreateNote,
   onUpdateNote,
   onDeleteNote,
+  onOpenTrend,
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -264,7 +267,12 @@ export function LabResultCard({
           {/* Expandable content */}
           <Collapse in={expanded}>
             <div id={`lab-result-${result.id}-content`}>
-              <TestValuesList testValues={result.testValues} />
+              <TestValuesList
+                testValues={result.testValues}
+                onOpenTrend={
+                  onOpenTrend ? (biomarkerKey) => onOpenTrend(biomarkerKey, result.date) : undefined
+                }
+              />
 
               {/* Notes section: mounted with the open card, as a collapse that
                   opens inside a closed one measures no height and stays shut */}

@@ -3,7 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
@@ -291,6 +292,53 @@ describe('TestValuesList', () => {
 
       const unknownText = screen.getByText('Unknown');
       expect(unknownText).not.toHaveStyle({ cursor: 'help' });
+    });
+  });
+  describe('Opening a trend', () => {
+    const glucose = (options: Partial<EnrichedTestValue> = {}) =>
+      createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose', value: 125, unit: 'mg/dL', ...options });
+
+    it("opens the test's trend when its name is clicked", async () => {
+      const onOpenTrend = vi.fn();
+      renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={onOpenTrend} />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
+
+      expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+    });
+
+    it('opens the trend with the keyboard', async () => {
+      const onOpenTrend = vi.fn();
+      renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={onOpenTrend} />);
+
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Glucose, open trend' })).toHaveFocus();
+      await userEvent.keyboard('{Enter}');
+
+      expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+    });
+
+    it('keeps the description, on hover and on keyboard focus', async () => {
+      renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={vi.fn()} />);
+
+      act(() => screen.getByRole('button', { name: 'Glucose, open trend' }).focus());
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Blood sugar level');
+    });
+
+    it('offers no link for a value Trends cannot chart', () => {
+      renderWithProviders(
+        <TestValuesList testValues={[glucose({ value: 'Negative', unit: '' })]} onOpenTrend={vi.fn()} />
+      );
+
+      expect(screen.getByText('Glucose')).toBeInTheDocument();
+      expect(screen.queryByRole('button')).toBeNull();
+    });
+
+    it('offers no link without somewhere to open it', () => {
+      renderWithProviders(<TestValuesList testValues={[glucose()]} />);
+
+      expect(screen.queryByRole('button')).toBeNull();
     });
   });
 });

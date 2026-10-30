@@ -13,7 +13,7 @@ function toDates(stored: Record<string, string> | undefined): Record<string, Dat
   return Object.fromEntries(Object.entries(stored ?? {}).map(([key, iso]) => [key, new Date(iso)]));
 }
 
-/** The later of two acknowledgement dates: an acknowledgement never moves back */
+/** The later of two dates: an acknowledgement or dismissal never moves back */
 function later(current: Date | undefined, next: Date): Date {
   return current && current.getTime() > next.getTime() ? current : next;
 }
@@ -30,7 +30,7 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
   });
   const sessionDb = isReady ? db : null;
   const acknowledgedThrough = loaded.db === sessionDb && sessionDb ? loaded.through : NONE;
-  const [dismissedIds, setDismissedIds] = useState<ReadonlySet<string>>(new Set());
+  const [dismissedThrough, setDismissedThrough] = useState<Record<string, Date>>(NONE);
   const acknowledgedRef = useRef(acknowledgedThrough);
 
   useEffect(() => {
@@ -104,13 +104,13 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
     [sessionDb, update]
   );
 
-  const dismiss = useCallback((alertId: string) => {
-    setDismissedIds((prev) => new Set([...prev, alertId]));
+  const dismiss = useCallback((biomarkerKey: string, through: Date) => {
+    setDismissedThrough((prev) => ({ ...prev, [biomarkerKey]: later(prev[biomarkerKey], through) }));
   }, []);
 
   const value = useMemo<AlertState>(
-    () => ({ acknowledgedThrough, dismissedIds, acknowledge, dismiss, reload }),
-    [acknowledgedThrough, dismissedIds, acknowledge, dismiss, reload]
+    () => ({ acknowledgedThrough, dismissedThrough, acknowledge, dismiss, reload }),
+    [acknowledgedThrough, dismissedThrough, acknowledge, dismiss, reload]
   );
 
   return <AlertStateContext.Provider value={value}>{children}</AlertStateContext.Provider>;

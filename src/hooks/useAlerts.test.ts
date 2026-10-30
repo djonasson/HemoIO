@@ -15,7 +15,7 @@ vi.mock('./useLabResults', () => ({
 
 const alertState = {
   acknowledgedThrough: {} as Record<string, Date>,
-  dismissedIds: new Set<string>() as ReadonlySet<string>,
+  dismissedThrough: {} as Record<string, Date>,
   acknowledge: vi.fn(async () => {}),
   dismiss: vi.fn(),
 };
@@ -107,7 +107,7 @@ describe('useAlerts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     alertState.acknowledgedThrough = {};
-    alertState.dismissedIds = new Set();
+    alertState.dismissedThrough = {};
     mockUnitPreferences = {};
   });
 
@@ -359,35 +359,38 @@ describe('useAlerts', () => {
     expect(result.current.alerts[0].severity).toBe('critical');
   });
 
-  it('should dismiss alert through the shared state', () => {
+  it("dismisses a test's card through its latest alert in the shared state", () => {
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 140, status: 'high', referenceRangeHigh: 100 }),
+      ]),
     ]);
 
     const { result } = renderHook(() => useAlerts());
-    const alertId = result.current.alerts[0].id;
 
     act(() => {
-      result.current.dismissAlert(alertId);
+      result.current.dismissGroup('marker-1');
     });
 
-    expect(alertState.dismiss).toHaveBeenCalledWith(alertId);
+    expect(alertState.dismiss).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
   });
 
-  it('should not return dismissed alerts', () => {
+  it('leaves dismissed cards out, and out of the count', () => {
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
-    const { result: before } = renderHook(() => useAlerts());
-    alertState.dismissedIds = new Set([before.current.alerts[0].id]);
+    alertState.dismissedThrough = { 'marker-1': new Date('2024-01-15') };
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(result.current.groups).toHaveLength(0);
+    expect(result.current.unacknowledgedCount).toBe(0);
+    expect(result.current.hiddenCount).toBe(1);
   });
 
   it('should group alerts by biomarker', () => {
@@ -424,12 +427,12 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.groupedAlerts).toHaveLength(1);
-    expect(result.current.groupedAlerts[0].alerts).toHaveLength(2);
-    expect(result.current.groupedAlerts[0].biomarkerName).toBe('Glucose');
+    expect(result.current.groups).toHaveLength(1);
+    expect(result.current.groups[0].resultCount).toBe(2);
+    expect(result.current.groups[0].headline.biomarkerName).toBe('Glucose');
   });
 
-  it('should filter by category', () => {
+  it("gives each card its test's category", () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
@@ -461,13 +464,8 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const metabolicAlerts = result.current.filterByCategory('metabolic');
-    expect(metabolicAlerts).toHaveLength(1);
-    expect(metabolicAlerts[0].category).toBe('metabolic');
-
-    const cbcAlerts = result.current.filterByCategory('cbc');
-    expect(cbcAlerts).toHaveLength(1);
-    expect(cbcAlerts[0].category).toBe('cbc');
+    const categories = result.current.groups.map((g) => g.headline.category).sort();
+    expect(categories).toEqual(['cbc', 'metabolic']);
   });
 
   it('should get alerts for specific biomarker', () => {
@@ -511,10 +509,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const alertsFor = (key: string) =>
-      result.current.groupedAlerts.find((group) => group.biomarkerKey === key)?.alerts;
-    expect(alertsFor('marker-1')).toHaveLength(2);
-    expect(alertsFor('marker-2')).toHaveLength(1);
+    const resultsFor = (key: string) =>
+      result.current.groups.find((group) => group.biomarkerKey === key)?.resultCount;
+    expect(resultsFor('marker-1')).toBe(2);
+    expect(resultsFor('marker-2')).toBe(1);
   });
 
   it('should detect improvement when value returns to normal', () => {
@@ -617,7 +615,7 @@ describe('useAlerts', () => {
     const outOfRangeAlerts = result.current.alerts.filter((a) => a.type === 'out_of_range');
     expect(result.current.unacknowledgedCount).toBe(outOfRangeAlerts.length);
   });
-  it('hides alerts of a biomarker acknowledged through their date, but not newer ones', async () => {
+  it('counts results acknowledged through their date as not new, and newer ones as new', async () => {
     alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
@@ -631,8 +629,9 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const dates = result.current.alerts.map((a) => a.date.toISOString().slice(0, 10));
-    expect(dates).toEqual(['2024-03-10']);
+    expect(result.current.groups[0].resultCount).toBe(2);
+    expect(result.current.groups[0].newCount).toBe(1);
+    expect(result.current.unacknowledgedCount).toBe(1);
   });
 
   it('heads a group with its latest alert, not its most severe', async () => {
@@ -648,12 +647,12 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const group = result.current.groupedAlerts[0];
+    const group = result.current.groups[0];
     expect(group.severity).toBe('critical');
-    expect(group.latestAlert.date.toISOString().slice(0, 10)).toBe('2024-03-10');
+    expect(group.headline.date.toISOString().slice(0, 10)).toBe('2024-03-10');
   });
 
-  it('counts the alerts acknowledgements and dismissals hide', async () => {
+  it('counts the cards acknowledgements hide', async () => {
     alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
@@ -664,7 +663,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.alerts).toEqual([]);
+    expect(result.current.groups).toEqual([]);
     expect(result.current.hiddenCount).toBe(1);
   });
 
@@ -684,19 +683,22 @@ describe('useAlerts', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('acknowledging an alert records its biomarker and date in the shared state', async () => {
+  it("acknowledging a card records its test through the test's latest alert", async () => {
     mockResults([
-      createMockResult(1, '2024-03-10', [
+      createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 140, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
 
     const { result } = renderHook(() => useAlerts());
-    await waitFor(() => expect(result.current.alerts).toHaveLength(1));
+    await waitFor(() => expect(result.current.groups).toHaveLength(1));
 
-    await result.current.acknowledgeAlert(result.current.alerts[0].id);
+    await result.current.acknowledgeGroup('marker-1');
 
-    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', result.current.alerts[0].date);
+    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
   });
 
   it('raises a trend alert for four consecutive decreasing values', async () => {
@@ -844,7 +846,7 @@ describe('useAlerts', () => {
 
     expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(true);
     expect(result.current.unacknowledgedCount).toBe(4);
-    expect(result.current.groupedAlerts[0].unacknowledgedCount).toBe(4);
+    expect(result.current.groups[0].newCount).toBe(4);
   });
 
   it('compares trend values in one unit', () => {

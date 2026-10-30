@@ -7,10 +7,10 @@ import { createContext, useContext } from 'react';
 export interface AlertState {
   /** Per biomarker: alerts dated on or before this are acknowledged */
   acknowledgedThrough: Record<string, Date>;
-  /** Alerts hidden until the next page load */
-  dismissedIds: ReadonlySet<string>;
+  /** Per biomarker: alerts dated on or before this are hidden until the next page load */
+  dismissedThrough: Record<string, Date>;
   acknowledge(biomarkerKey: string, through: Date): Promise<void>;
-  dismiss(alertId: string): void;
+  dismiss(biomarkerKey: string, through: Date): void;
   /** Read the stored acknowledgements again, e.g. after a backup restore */
   reload(): Promise<void>;
 }

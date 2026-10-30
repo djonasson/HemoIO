@@ -167,16 +167,15 @@ describe('TrendsView', () => {
     // Default mock for useAlerts
     vi.mocked(useAlerts).mockReturnValue({
       alerts: [],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
   });
 
@@ -417,16 +416,15 @@ describe('TrendsView', () => {
           message: 'Glucose is elevated',
         },
       ],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 1,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
 
     const onNavigateToAlerts = vi.fn();
@@ -622,16 +620,15 @@ describe('TrendsView preferred unit', () => {
     mockShowNotification.mockReset();
     vi.mocked(useAlerts).mockReturnValue({
       alerts: [],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
   });
 
