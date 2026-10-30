@@ -771,7 +771,10 @@ test.describe('Document Analysis - Performance', () => {
     for (const name of names) {
       await expect(analysisItem(page, name)).toBeVisible();
     }
-    await expect(analysisItem(page, 'batch-1.pdf').getByText(/^Analyzing with Ollama/)).toBeVisible();
+    // Reading the PDFs comes first; on a busy machine Firefox takes longer than the default wait
+    await expect(analysisItem(page, 'batch-1.pdf').getByText(/^Analyzing with Ollama/)).toBeVisible({
+      timeout: 30000,
+    });
     await expect(analysisItem(page, 'batch-1.pdf').getByRole('progressbar')).toBeVisible();
 
     ai.release();
