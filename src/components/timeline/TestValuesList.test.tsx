@@ -298,6 +298,14 @@ describe('TestValuesList', () => {
     const glucose = (options: Partial<EnrichedTestValue> = {}) =>
       createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose', value: 125, unit: 'mg/dL', ...options });
 
+    it("announces the test's description with its link", () => {
+      renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Glucose, open trend' })).toHaveAccessibleDescription(
+        /Blood sugar level/
+      );
+    });
+
     it("opens the test's trend when its name is clicked", async () => {
       const onOpenTrend = vi.fn();
       renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={onOpenTrend} />);
@@ -342,6 +350,7 @@ describe('TestValuesList', () => {
 
       const name = screen.getByText('Glucose');
       expect(name).toHaveAttribute('tabindex', '0');
+      expect(name).toHaveAccessibleDescription(/Blood sugar level/);
       act(() => name.focus());
 
       expect(await screen.findByRole('tooltip')).toHaveTextContent('Blood sugar level');

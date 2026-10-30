@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import { useLabResults, type EnrichedTestValue } from './useLabResults';
+import { useLabResults, type EnrichedTestValue, type TestValueStatus } from './useLabResults';
 import { useAlertState } from './useAlertState';
 import { usePreferences } from './usePreferences';
 import {
@@ -67,8 +67,8 @@ export interface BiomarkerAlert {
   labName: string;
   /** Lab result ID for navigation */
   labResultId: number;
-  /** Whether the test's latest value is within its range, whatever this alert is about */
-  backInRange: boolean;
+  /** The status of the test's latest value, whatever this alert is about */
+  latestStatus: TestValueStatus;
   /** Alert message */
   message: string;
 }
@@ -146,7 +146,7 @@ export function useAlerts(): UseAlertsResult {
         .flatMap((result) => result.testValues)
         .filter(
           (tv) =>
-            typeof tv.value === 'number' &&
+            isTrendable(tv) &&
             (tv.status === 'normal' || tv.status === 'high' || tv.status === 'low')
         ).length,
     [results]
@@ -185,13 +185,18 @@ export function useAlerts(): UseAlertsResult {
       const biomarkerName = getBiomarkerDisplayName(values[0]);
       const dateOf = (tv: EnrichedTestValue) => labInfo.get(tv.labResultId)!.date;
 
-      // Most recent first
-      const sortedValues = [...values].sort((a, b) => dateOf(b).getTime() - dateOf(a).getTime());
+      // Most recent first; on one day an out-of-range value comes first, so a
+      // day with one reads as out of range whatever order its values are in
+      const outOfRange = (tv: EnrichedTestValue) => tv.status === 'high' || tv.status === 'low';
+      const sortedValues = [...values].sort(
+        (a, b) =>
+          dateOf(b).getTime() - dateOf(a).getTime() || Number(outOfRange(b)) - Number(outOfRange(a))
+      );
 
       // Alerts state values in the preferred unit when one is set
       const preferredUnit = preferredUnitFor(biomarkerDef, unitPreferences[biomarkerKey]);
 
-      const backInRange = sortedValues[0].status === 'normal';
+      const latestStatus = sortedValues[0].status;
 
       /** The fields every alert about this test value shares */
       const alertFor = (
@@ -214,7 +219,7 @@ export function useAlerts(): UseAlertsResult {
           date: info.date,
           labName: info.labName,
           labResultId: tv.labResultId,
-          backInRange,
+          latestStatus,
         };
       };
 
@@ -242,7 +247,6 @@ export function useAlerts(): UseAlertsResult {
       // A trend is only worth an alert while it ends out of range, and values
       // are compared in one unit so a lab's unit change is not read as a trend
       const latestValue = sortedValues[0];
-      const latestStatus = latestValue.status;
       const latestOutOfRange =
         latestStatus === 'high' || latestStatus === 'low' ? latestStatus : null;
       const trendUnit =
@@ -308,12 +312,12 @@ export function useAlerts(): UseAlertsResult {
   );
 
   const acknowledgeGroup = useCallback(
-    (group: GroupedAlert) => acknowledge(group.biomarkerKey, group.latestDate),
+    (group: GroupedAlert) => acknowledge(group.biomarkerKey, group.headline.date),
     [acknowledge]
   );
 
   const dismissGroup = useCallback(
-    (group: GroupedAlert) => dismiss(group.biomarkerKey, group.latestDate),
+    (group: GroupedAlert) => dismiss(group.biomarkerKey, group.headline.date),
     [dismiss]
   );
 

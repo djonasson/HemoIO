@@ -31,13 +31,15 @@ in `src/services/alerts/`, builds the cards:
 - **Visible** when the card has something new (an alert dated after the
   acknowledgement) and its latest alert is dated after any dismissal.
 - **Severity and order:** a card's severity is its most severe new alert, so a
-  new critical earlier result keeps the card critical (badge, border, announced
-  severity) even when its latest result is only a warning. Cards are ordered by
-  that severity, then by latest date.
-- **Back in range:** when the test's latest value is within range but no
-  improvement alert is raised (two normal values after an abnormal one), the card
-  says "Latest result within range", so an old result never reads as the current
-  state.
+  new critical earlier result keeps the card critical (badge, border colour and
+  width, announced severity) even when its latest result is only a warning or an
+  improvement; that earlier result carries its own "Critical" badge. Cards are
+  ordered by that severity, then by latest date.
+- **Current state:** when an old out-of-range result heads the card because the
+  test's latest value raised no alert, the card says "Latest result within range"
+  (or "Latest result has no reference range"), so an old result never reads as
+  the current state. On a day with several values for the test, an out-of-range
+  one counts as that day's value.
 
 Acknowledging and dismissing work on dates, so a result imported later but dated
 on or before the acknowledgement or dismissal stays hidden; only a result dated
@@ -46,8 +48,9 @@ later brings the card back.
 Acknowledging a card stores the test's latest alert date, exactly as today's
 per-biomarker `acknowledgedThrough` does, so a later result shows as new again with
 no storage change. Dismissal becomes per test as well: an in-memory
-`dismissedThrough` record (page load only) replaces `dismissedIds`, so a result
-imported after a dismissal brings the card back too.
+`dismissedThrough` record replaces `dismissedIds`, so a later result brings the
+card back too. Dismissals last for the page load and the unlocked session, and a
+backup restore clears them.
 
 The nav badge and the header's "N new" count the new out-of-range results on the
 visible cards (the sum of M), so they keep their meaning.
@@ -76,7 +79,8 @@ passed down from `AppShell` through `TimelineView` and `LabResultCard`. A numeri
 value's test name becomes a link-styled button ("<name>, open trend") that calls it.
 Trends only charts numeric values (`isTrendable`, shared by Trends, alerts and the
 Timeline), so other values keep plain text. The description tooltip stays and also
-opens on keyboard focus; a plain name with a description is focusable for that.
+opens on keyboard focus; a plain name with a description is focusable for that,
+and screen readers get the description through `aria-describedby`.
 
 ## Testing
 

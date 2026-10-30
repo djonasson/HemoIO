@@ -874,7 +874,7 @@ describe('useAlerts', () => {
 
     expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(false);
   });
-  it("says when a test's latest value is back in range, though no improvement alert is raised", () => {
+  it("records the test's latest status, though no improvement alert is raised", () => {
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
@@ -890,7 +890,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
 
     expect(result.current.groups[0].headline.type).toBe('out_of_range');
-    expect(result.current.groups[0].headline.backInRange).toBe(true);
+    expect(result.current.groups[0].headline.latestStatus).toBe('normal');
   });
 
   it('does not call a test back in range while its latest value is out of range', () => {
@@ -902,6 +902,22 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.groups[0].headline.backInRange).toBe(false);
+    expect(result.current.groups[0].headline.latestStatus).toBe('high');
+  });
+  it('reads a day with an out-of-range value as out of range, whatever the order', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-05-20', [
+        createMockTestValue(2, 2, { value: 95, status: 'normal', referenceRangeHigh: 100 }),
+        createMockTestValue(3, 2, { value: 130, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(alertsOf(result.current).some((a) => a.type === 'improvement')).toBe(false);
+    expect(result.current.groups[0].headline.latestStatus).toBe('high');
   });
 });

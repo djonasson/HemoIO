@@ -29,7 +29,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     date: new Date('2024-01-15T10:00:00Z'),
     labName: 'Test Lab',
     labResultId: 1,
-    backInRange: false,
+    latestStatus: 'high',
     message: 'Glucose is high at 150 mg/dL (reference 70 - 100 mg/dL)',
     ...options,
   };
@@ -266,17 +266,61 @@ describe('AlertGroupCard', () => {
     );
 
     const card = screen.getByRole('article');
-    expect(within(card).getByText('Critical')).toBeInTheDocument();
+    // The headline's badge; the critical earlier result has its own, collapsed
+    expect(within(card).getAllByText('Critical')[0]).toBeVisible();
     expect(card).toHaveStyle({ borderLeftWidth: '6px' });
     expect(card).toHaveAccessibleName(/^Alert for Glucose: critical, high\./);
   });
 
   it("says when the test's latest value is back in range", () => {
-    renderCard(groupOf([alert({ backInRange: true })]));
+    renderCard(groupOf([alert({ latestStatus: 'normal' })]));
 
     const card = screen.getByRole('article');
     expect(within(card).getByText('Latest result within range')).toBeInTheDocument();
     expect(card).toHaveAccessibleName(/Latest result within range/);
+  });
+
+  it("says when the test's latest value has no reference range", () => {
+    renderCard(groupOf([alert({ latestStatus: 'unknown' })]));
+
+    expect(screen.getByText('Latest result has no reference range')).toBeInTheDocument();
+  });
+
+  it('colours a critical card by its critical result, not by an improvement heading it', () => {
+    renderCard(
+      groupOf([
+        alert({ id: 'r', severity: 'critical', value: 250 }),
+        alert({
+          id: 'i',
+          type: 'improvement',
+          severity: 'positive',
+          status: 'normal',
+          latestStatus: 'normal',
+          date: new Date('2024-03-10T10:00:00Z'),
+          message: 'Improved: Glucose now within range',
+        }),
+      ])
+    );
+
+    const card = screen.getByRole('article');
+    expect(card).toHaveStyle({ borderLeftColor: 'var(--mantine-color-red-6)' });
+    expect(within(card).getAllByText('Critical')[0]).toBeVisible();
+    expect(within(card).getByText('Improved')).toBeInTheDocument();
+  });
+
+  it('marks a critical earlier result, visibly and for screen readers', async () => {
+    renderCard(
+      groupOf([
+        alert({ id: 'a', severity: 'critical', value: 300 }),
+        alert({ id: 'b', date: new Date('2024-03-10T10:00:00Z') }),
+      ])
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /earlier result$/ }));
+    const row = await screen.findByRole('button', { name: /^Open trend at Jan 15, 2024/ });
+
+    expect(within(row).getByText('Critical')).toBeInTheDocument();
+    expect(row).toHaveAccessibleName('Open trend at Jan 15, 2024: 300 mg/dL, high, critical, Test Lab, new');
   });
 
   it('does not open the latest result for a click between earlier results', async () => {

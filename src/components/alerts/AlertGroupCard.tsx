@@ -65,16 +65,22 @@ export function AlertGroupCard({
 }: AlertGroupCardProps): React.ReactNode {
   const [opened, { toggle }] = useDisclosure(false);
   const listId = useId();
-  const { headline, trend, earlier, resultCount, newCount, severity } = group;
+  const { headline, trend, earlier, resultCount, newCount, severity, mostSevere } = group;
   const name = headline.biomarkerName;
-  const color = indicatorColor(headline);
-  // The card's severity is its most severe new result, which may be an earlier one
+  // The card's severity, border and badge follow its most severe new result,
+  // which may be an earlier one; the status badge follows the headline
+  const color = indicatorColor(mostSevere);
+  const statusColor = indicatorColor(headline);
   const isCritical = severity === 'critical';
   const stateWord =
     headline.type === 'improvement' ? 'improved' : (trend?.direction ?? headline.status);
   // An old result heading the card must not read as the test's current state
   const inRangeNote =
-    headline.type === 'out_of_range' && headline.backInRange ? 'Latest result within range' : null;
+    headline.type !== 'out_of_range' || headline.latestStatus === 'high' || headline.latestStatus === 'low'
+      ? null
+      : headline.latestStatus === 'normal'
+        ? 'Latest result within range'
+        : 'Latest result has no reference range';
   const counts = (separator: string): string =>
     newCount > 0
       ? `${plural(resultCount, 'result')}${separator}${newCount} new`
@@ -124,7 +130,7 @@ export function AlertGroupCard({
                   {isCritical ? 'Critical' : 'Warning'}
                 </Badge>
               )}
-              <Badge size="xs" color={color} variant="light">
+              <Badge size="xs" color={statusColor} variant="light">
                 {headline.status}
               </Badge>
               {trend && (

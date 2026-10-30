@@ -16,7 +16,8 @@ export interface EarlierResultProps {
 
 /** An earlier result's details, as shown and as announced */
 function resultSummary({ alert, isNew }: GroupedResult<BiomarkerAlert>): string {
-  return `${formatShortDate(alert.date)}: ${alert.value} ${alert.unit}, ${alert.status}, ${alert.labName}${isNew ? ', new' : ''}`;
+  const critical = alert.severity === 'critical' ? ', critical' : '';
+  return `${formatShortDate(alert.date)}: ${alert.value} ${alert.unit}, ${alert.status}${critical}, ${alert.labName}${isNew ? ', new' : ''}`;
 }
 
 const ROW_PADDING = { padding: '4px var(--mantine-spacing-xs)' };
@@ -37,6 +38,11 @@ export function EarlierResult({
       <Badge size="xs" color={indicatorColor(alert)} variant="light">
         {alert.status}
       </Badge>
+      {alert.severity === 'critical' && (
+        <Badge size="xs" color={indicatorColor(alert)} variant="filled">
+          Critical
+        </Badge>
+      )}
       <Text size="xs" c="dimmed">
         {alert.labName}
       </Text>

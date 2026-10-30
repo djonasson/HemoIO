@@ -43,7 +43,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     date: new Date('2024-01-15T10:00:00Z'),
     labName: 'Test Lab',
     labResultId: 1,
-    backInRange: false,
+    latestStatus: 'high',
     message: 'Glucose is elevated at 150 mg/dL',
     ...options,
   };

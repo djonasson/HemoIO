@@ -146,13 +146,18 @@ describe('groupAlerts', () => {
     expect(groups[1].severity).toBe('warning');
   });
 
-  it('dates a card by its latest alert, for acknowledging or dismissing it', () => {
+  it("names the card's most severe new alert, the newest of equals", () => {
     const { groups } = groupAlerts(
-      [alert('a', '2024-01-15'), alert('b', '2024-03-10')],
-      {},
+      [
+        alert('old-critical', '2024-01-15', { severity: 'critical' }),
+        alert('acknowledged-critical', '2023-06-01', { severity: 'critical' }),
+        alert('latest', '2024-03-10'),
+      ],
+      { glucose: d('2023-06-01') },
       {}
     );
 
-    expect(groups[0].latestDate).toEqual(d('2024-03-10'));
+    expect(groups[0].mostSevere.id).toBe('old-critical');
+    expect(groups[0].severity).toBe('critical');
   });
 });

@@ -22,7 +22,10 @@ export interface GroupedResult<A extends GroupableAlert> {
 /** One test's card */
 export interface AlertGroup<A extends GroupableAlert> {
   biomarkerKey: string;
-  /** The test's current state: its latest out-of-range result or improvement */
+  /**
+   * The test's latest out-of-range result or improvement. It is the card's
+   * latest alert too, so acknowledging or dismissing covers up to its date.
+   */
   headline: A;
   /** The test's trend, about its latest value */
   trend?: A;
@@ -32,10 +35,10 @@ export interface AlertGroup<A extends GroupableAlert> {
   resultCount: number;
   /** Out-of-range results dated after the test's acknowledgement */
   newCount: number;
-  /** The most severe of the card's new alerts */
+  /** The most severe of the card's new alerts, the newest of equals */
+  mostSevere: A;
+  /** mostSevere's severity: the card's own */
   severity: AlertSeverity;
-  /** The latest alert's date: acknowledging or dismissing the card covers up to it */
-  latestDate: Date;
 }
 
 export interface GroupedAlerts<A extends GroupableAlert> {
@@ -75,16 +78,20 @@ export function groupAlerts<A extends GroupableAlert>(
     const acknowledged = acknowledgedThrough[biomarkerKey];
     const isNew = (alert: A) => after(alert.date, acknowledged);
     const sorted = [...testAlerts].sort(newestFirst);
-    const latestDate = sorted[0].date;
     const newAlerts = sorted.filter(isNew);
 
-    if (newAlerts.length === 0 || !after(latestDate, dismissedThrough[biomarkerKey])) {
+    if (newAlerts.length === 0 || !after(sorted[0].date, dismissedThrough[biomarkerKey])) {
       hiddenCount++;
       continue;
     }
 
     const results = sorted.filter((a) => a.type === 'out_of_range');
-    const headline = sorted.find((a) => a.type !== 'trend') ?? sorted[0];
+    // A trend always shares its date with the out-of-range result it ends on
+    const headline = sorted.find((a) => a.type !== 'trend')!;
+    // Newest first, so the first of the most severe is the newest of them
+    const mostSevere = newAlerts.reduce((worst, a) =>
+      SEVERITY_ORDER[a.severity] < SEVERITY_ORDER[worst.severity] ? a : worst
+    );
 
     groups.push({
       biomarkerKey,
@@ -93,17 +100,14 @@ export function groupAlerts<A extends GroupableAlert>(
       earlier: results.filter((a) => a !== headline).map((alert) => ({ alert, isNew: isNew(alert) })),
       resultCount: results.length,
       newCount: results.filter(isNew).length,
-      severity: newAlerts.reduce<AlertSeverity>(
-        (worst, a) => (SEVERITY_ORDER[a.severity] < SEVERITY_ORDER[worst] ? a.severity : worst),
-        'positive'
-      ),
-      latestDate,
+      mostSevere,
+      severity: mostSevere.severity,
     });
   }
 
   groups.sort((a, b) => {
     const bySeverity = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
-    return bySeverity !== 0 ? bySeverity : b.latestDate.getTime() - a.latestDate.getTime();
+    return bySeverity !== 0 ? bySeverity : b.headline.date.getTime() - a.headline.date.getTime();
   });
 
   return { groups, hiddenCount };

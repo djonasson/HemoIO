@@ -30,7 +30,12 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
   });
   const sessionDb = isReady ? db : null;
   const acknowledgedThrough = loaded.db === sessionDb && sessionDb ? loaded.through : NONE;
-  const [dismissedThrough, setDismissedThrough] = useState<Record<string, Date>>(NONE);
+  // Dismissals belong to the session too, and to the data they were made on
+  const [dismissed, setDismissed] = useState<{ db: typeof db; through: Record<string, Date> }>({
+    db: null,
+    through: NONE,
+  });
+  const dismissedThrough = dismissed.db === sessionDb && sessionDb ? dismissed.through : NONE;
   const acknowledgedRef = useRef(acknowledgedThrough);
 
   useEffect(() => {
@@ -68,6 +73,8 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
     if (!sessionDb) return;
     const prefs = await sessionDb.getPreferences();
     update(() => toDates(prefs?.acknowledgedAlerts));
+    // Restored data is not what was dismissed
+    setDismissed({ db: sessionDb, through: NONE });
   }, [sessionDb, update]);
 
   const acknowledge = useCallback(
@@ -104,9 +111,18 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
     [sessionDb, update]
   );
 
-  const dismiss = useCallback((biomarkerKey: string, through: Date) => {
-    setDismissedThrough((prev) => ({ ...prev, [biomarkerKey]: later(prev[biomarkerKey], through) }));
-  }, []);
+  const dismiss = useCallback(
+    (biomarkerKey: string, through: Date) => {
+      setDismissed((prev) => {
+        const current = prev.db === sessionDb ? prev.through : NONE;
+        return {
+          db: sessionDb,
+          through: { ...current, [biomarkerKey]: later(current[biomarkerKey], through) },
+        };
+      });
+    },
+    [sessionDb]
+  );
 
   const value = useMemo<AlertState>(
     () => ({ acknowledgedThrough, dismissedThrough, acknowledge, dismiss, reload }),

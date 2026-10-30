@@ -167,4 +167,13 @@ describe('AlertStateProvider', () => {
     expect(result.current.acknowledgedThrough.hemoglobin).toBeUndefined();
     expect(result.current.acknowledgedThrough.glucose).toBeDefined();
   });
+  it('forgets dismissals when the stored state is read again, e.g. after a restore', async () => {
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+    act(() => result.current.dismiss('glucose', new Date('2024-03-10T10:00:00Z')));
+
+    await act(() => result.current.reload());
+
+    expect(result.current.dismissedThrough).toEqual({});
+  });
 });

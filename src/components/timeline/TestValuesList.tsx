@@ -4,6 +4,7 @@
  * Displays a table of test values with status indicators.
  */
 
+import { useId } from 'react';
 import { Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
 import {
   IconArrowUp,
@@ -226,6 +227,8 @@ export function TestValuesList({
   onOpenTrend,
 }: TestValuesListProps): React.ReactNode {
   const { unitPreferences } = usePreferences();
+  const idPrefix = useId();
+  const descriptions: Array<{ id: string; text: string }> = [];
 
   if (testValues.length === 0) {
     return (
@@ -235,7 +238,7 @@ export function TestValuesList({
     );
   }
 
-  return (
+  const table = (
     <Table striped highlightOnHover withTableBorder aria-label="Test values">
       <Table.Thead>
         <Table.Tr>
@@ -269,6 +272,8 @@ export function TestValuesList({
             tooltipParts.push(metadata.description);
           }
           const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
+          const descriptionId = `${idPrefix}-description-${testValue.id}`;
+          if (tooltipContent) descriptions.push({ id: descriptionId, text: tooltipContent });
 
           return (
             <Table.Tr
@@ -293,6 +298,7 @@ export function TestValuesList({
                 <BiomarkerName
                   name={metadata.cleanName || biomarkerName}
                   description={tooltipContent}
+                  descriptionId={descriptionId}
                   onOpen={
                     onOpenTrend && isTrendable(recorded)
                       ? () => onOpenTrend(recorded.biomarkerKey)
@@ -338,5 +344,19 @@ export function TestValuesList({
         })}
       </Table.Tbody>
     </Table>
+  );
+
+  return (
+    <>
+      {table}
+      {/* Hidden, yet still read through aria-describedby */}
+      <div hidden>
+        {descriptions.map(({ id, text }) => (
+          <span key={id} id={id}>
+            {text}
+          </span>
+        ))}
+      </div>
+    </>
   );
 }
