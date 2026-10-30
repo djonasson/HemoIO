@@ -60,17 +60,21 @@ export function dataLayerReload(): Plugin {
   return {
     name: 'hemoio:data-layer-reload',
     apply: 'serve',
-    // Before other plugins, so none of them hot-updates what this one reloads
-    enforce: 'pre',
     configResolved(config) {
       root = config.root;
     },
-    hotUpdate({ modules }) {
-      if (this.environment.config.consumer !== 'client') return;
-      if (!needsFullReload(modules, root)) return;
-      this.environment.hot.send({ type: 'full-reload' });
-      // Nothing left for Vite to hot-update
-      return [];
+    hotUpdate: {
+      // After the other plugins, so the decision covers every module they add
+      order: 'post',
+      handler({ file, modules }) {
+        if (this.environment.config.consumer !== 'client') return;
+        if (!needsFullReload(modules, root)) return;
+        // Reloading locks the app: the terminal says why
+        this.environment.logger.info(`data layer changed, page reload ${file}`, { timestamp: true });
+        this.environment.hot.send({ type: 'full-reload', triggeredBy: file });
+        // Nothing left for Vite to hot-update
+        return [];
+      },
     },
   };
 }

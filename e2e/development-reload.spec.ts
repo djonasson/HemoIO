@@ -18,9 +18,14 @@ test.describe('Development reload for data code', () => {
   let devServer: DevServerCopy;
   let watcher: ReloadWatcherPage;
 
-  test.beforeAll(async () => {
-    test.setTimeout(120_000);
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
     devServer = await DevServerCopy.start();
+    // The copy starts with no optimised dependencies: the first visit waits
+    // for them, so the scenarios after it run on a settled server
+    const page = await browser.newPage();
+    await page.goto(devServer.url, { waitUntil: 'networkidle', timeout: 150_000 });
+    await page.close();
   });
 
   test.afterAll(async () => {
@@ -35,24 +40,22 @@ test.describe('Development reload for data code', () => {
   });
 
   test('changing the database code reloads the page', async () => {
-    await watcher.expectFullReload(() => devServer.editFile('src/data/db/encryptedDb.ts'));
+    await watcher.expectFullReload(devServer, 'src/data/db/encryptedDb.ts');
   });
 
   test('changing code that the data layer is built on reloads the page', async () => {
-    await watcher.expectFullReload(() => devServer.editFile('src/utils/unitSpelling.ts'));
+    await watcher.expectFullReload(devServer, 'src/utils/unitSpelling.ts');
   });
 
   test('changing code that uses the data layer reloads the page', async () => {
-    await watcher.expectFullReload(() => devServer.editFile('src/contexts/AuthContext.tsx'));
+    await watcher.expectFullReload(devServer, 'src/contexts/AuthContext.tsx');
   });
 
   test('changing a screen that does not use the data layer updates in place', async () => {
-    const screen = 'src/components/common/RelativeTime.tsx';
-    await watcher.expectHotUpdate(screen, () => devServer.editFile(screen));
+    await watcher.expectHotUpdate(devServer, 'src/components/common/RelativeTime.tsx');
   });
 
   test('changing a screen that shows the test dictionary updates in place', async () => {
-    const screen = 'src/components/dictionary/DictionaryView.tsx';
-    await watcher.expectHotUpdate(screen, () => devServer.editFile(screen));
+    await watcher.expectHotUpdate(devServer, 'src/components/dictionary/BiomarkerDictionary.tsx');
   });
 });

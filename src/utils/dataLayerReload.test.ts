@@ -122,6 +122,14 @@ describe('needsFullReload', () => {
     expect(needsFullReload([dictionary], ROOT)).toBe(false);
   });
 
+  it('updates in place a screen that reads the dictionary', () => {
+    const view = mod('src/components/dictionary/BiomarkerDictionary.tsx', true);
+    const dictionary = mod('src/data/biomarkers/index.ts');
+    link(view, dictionary);
+
+    expect(needsFullReload([view], ROOT)).toBe(false);
+  });
+
   it('reloads for a dictionary change that reaches the data layer', () => {
     const dictionary = mod('src/data/biomarkers/dictionary.ts');
     const migration = mod('src/data/migrations/biomarkerKeyMigration.ts');
@@ -149,12 +157,17 @@ describe('dataLayerReload plugin', () => {
     const plugin = dataLayerReload();
     (plugin.configResolved as (config: { root: string }) => void)({ root: ROOT });
     const send = vi.fn();
-    const handler = plugin.hotUpdate as (
-      this: unknown,
-      options: { modules: HotModule[] }
-    ) => HotModule[] | undefined;
-    const result = handler.call({ environment: { config: { consumer }, hot: { send } } }, { modules });
-    return { result, send };
+    const info = vi.fn();
+    const hook = plugin.hotUpdate as {
+      order: string;
+      handler: (this: unknown, options: { file: string; modules: HotModule[] }) => unknown;
+    };
+    const file = modules[0]?.file ?? `${ROOT}/src/other.ts`;
+    const result = hook.handler.call(
+      { environment: { config: { consumer }, hot: { send }, logger: { info } } },
+      { file, modules }
+    );
+    return { result, send, info, order: hook.order };
   }
 
   it('runs on the development server only, so production builds are unchanged', () => {
@@ -164,8 +177,24 @@ describe('dataLayerReload plugin', () => {
   it('reloads the page instead of updating it when the data layer changes', () => {
     const { result, send } = hotUpdate([mod('src/data/db/index.ts')]);
 
-    expect(send).toHaveBeenCalledWith({ type: 'full-reload' });
+    expect(send).toHaveBeenCalledWith({
+      type: 'full-reload',
+      triggeredBy: `${ROOT}/src/data/db/index.ts`,
+    });
     expect(result).toEqual([]);
+  });
+
+  it('says in the terminal why the page reloaded', () => {
+    const { info } = hotUpdate([mod('src/data/db/index.ts')]);
+
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining('src/data/db/index.ts'),
+      expect.objectContaining({ timestamp: true })
+    );
+  });
+
+  it('decides after the other plugins, on the final list of changed modules', () => {
+    expect(hotUpdate([]).order).toBe('post');
   });
 
   it('leaves other changes to the normal hot update', () => {

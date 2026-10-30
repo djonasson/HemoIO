@@ -67,6 +67,22 @@ whether or not `db.close()` is called first: `close()` cannot finish them. What
 matters is that the new page opens one connection running one version of the
 code, and a full reload guarantees that.
 
+### Cost
+
+A few screens import the data layer only for a pure helper
+(`PasswordStrengthMeter`, `BackupPasswordInput` and `passwordUtils` use
+`checkPasswordStrength`). Editing them reloads and locks the app, although
+re-running them could not re-run data code. The rule stays simple: narrowing
+it per export would make it easy to get wrong.
+
+The plugin logs the file that caused the reload in the terminal, and sends it
+as `triggeredBy`, as Vite does for its own reloads.
+
+### Hook order
+
+`hotUpdate` runs with `order: 'post'`, so it sees the final list of changed
+modules, including any added by other plugins such as `vite:import-glob`.
+
 ### Known limit
 
 When Fast Refresh fails at runtime (the browser "invalidates" a component), Vite
@@ -88,7 +104,12 @@ is unchanged.
   server only.
 - E2E (`e2e/development-reload.spec.ts`, Chromium only): copies the project to a
   temp folder, starts its own dev server on a free port, edits files in the copy
-  and checks for a reload (a new `load` event) or an in-place update (Vite's
-  "hot updated" log, with a marker on `window` still set). The copy keeps the
+  and checks for a reload or an in-place update.
+  - A reload counts only when there is a new `load` event and the server sent
+    the reload for the edited file. Vite also reloads on its own, for example
+    when it optimises a dependency late.
+  - An in-place update needs Vite's "hot updated" log, no invalidation or
+    failed update afterwards, and a marker on `window` that is still set.
+  - A first visit in `beforeAll` warms up the copy's fresh dependency cache. The copy keeps the
   real files and the shared E2E dev server untouched. Reloading that shared
   server would break tests running in parallel.

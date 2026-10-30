@@ -23,7 +23,7 @@ Feature: Development reload for data code
     When a developer changes the code that unlocks the database
     Then the page reloads completely
 
-  Scenario: Changing a screen that does not touch stored data updates in place
+  Scenario: Changing a screen that does not use the data layer updates in place
     When a developer changes a screen that does not use the data layer
     Then the screen updates without a reload
 
@@ -33,8 +33,8 @@ Feature: Development reload for data code
     When a developer changes the screen that lists the dictionary tests
     Then the screen updates without a reload
 
-  # Covered by unit tests: the reload rule belongs to the development server
-  # only and is not part of the production build.
+  # Covered by unit tests: the reload rule is set to run on the development
+  # server only, so building for publishing leaves it out
   Scenario: The published application is unaffected
     Given the application is built for publishing
-    Then the build contains no development reload rule
+    Then the reload rule is not part of the build

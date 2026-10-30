@@ -33,7 +33,10 @@ const PROJECT_FILES = [
 /** How long a change takes to reach the page, at most */
 const CHANGE_TIMEOUT = 15_000;
 
-/** A port no other server is using: the OS picks one from its free range */
+/**
+ * A port in the OS's free range, away from the ports other checkouts' E2E
+ * servers use. Should it be taken by the time Vite binds, Vite tries the next.
+ */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
@@ -48,26 +51,32 @@ async function freePort(): Promise<number> {
 /** A copy of the project with its own development server */
 export class DevServerCopy {
   private server: ViteDevServer | undefined;
+  /** Files the dev server sent a full reload for */
+  private readonly reloadsSentFor: string[] = [];
   private constructor(readonly root: string) {}
 
   static async start(): Promise<DevServerCopy> {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hemoio-dev-reload-'));
+    // The real path: Vite resolves module paths through symlinks (on macOS
+    // the temp folder is one) but not its root, and the two must agree
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hemoio-dev-reload-')));
     const copy = new DevServerCopy(root);
     try {
       for (const file of PROJECT_FILES) {
         fs.cpSync(path.join(PROJECT_ROOT, file), path.join(root, file), { recursive: true });
       }
-      fs.symlinkSync(path.join(PROJECT_ROOT, 'node_modules'), path.join(root, 'node_modules'));
+      // A junction on Windows needs no admin rights; elsewhere the type is ignored
+      fs.symlinkSync(path.join(PROJECT_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
       copy.server = await createServer({
         root,
         configFile: path.join(root, 'vite.config.ts'),
         // Not in the shared node_modules/.vite, which the E2E dev server uses;
         // under a node_modules folder so the React plugin skips the bundles
         cacheDir: path.join(root, 'cache', 'node_modules', '.vite'),
-        server: { port: await freePort(), strictPort: true, host: '127.0.0.1' },
+        server: { port: await freePort(), host: '127.0.0.1' },
         logLevel: 'error',
         clearScreen: false,
       });
+      copy.recordReloads(copy.server);
       await copy.server.listen();
     } catch (error) {
       await copy.stop();
@@ -80,6 +89,28 @@ export class DevServerCopy {
     const url = this.server?.resolvedUrls?.local[0];
     if (!url) throw new Error('The development server is not running');
     return url;
+  }
+
+  /**
+   * Vite also reloads the page on its own (a dependency optimised late, an
+   * update nobody accepts): the reload under test must be the one sent for
+   * the edited file.
+   */
+  private recordReloads(server: ViteDevServer): void {
+    const hot = server.environments.client.hot;
+    const send = hot.send.bind(hot);
+    hot.send = ((...args: Parameters<typeof hot.send>) => {
+      const [payload] = args;
+      if (typeof payload === 'object' && payload.type === 'full-reload' && payload.triggeredBy) {
+        this.reloadsSentFor.push(payload.triggeredBy);
+      }
+      send(...args);
+    }) as typeof hot.send;
+  }
+
+  /** Whether the dev server sent a full reload because of `relativePath` */
+  sentReloadFor(relativePath: string): boolean {
+    return this.reloadsSentFor.includes(path.join(this.root, relativePath).replaceAll(path.sep, '/'));
   }
 
   /** Change a source file the way an editor saves it: new content, same code */
@@ -125,20 +156,27 @@ export class ReloadWatcherPage {
     });
   }
 
-  /** Run a change and wait for the page to load again */
-  async expectFullReload(change: () => void): Promise<void> {
+  /** Edit `relativePath` and wait for the page to load again because of it */
+  async expectFullReload(devServer: DevServerCopy, relativePath: string): Promise<void> {
     const loadsBefore = this.loads;
-    change();
+    devServer.editFile(relativePath);
     await expect.poll(() => this.loads, { timeout: CHANGE_TIMEOUT }).toBeGreaterThan(loadsBefore);
+    expect(devServer.sentReloadFor(relativePath)).toBe(true);
     expect(await this.page.evaluate(() => window.__hemoioReloadMarker)).toBeUndefined();
   }
 
-  /** Run a change to `relativePath` and wait for it to be updated in place */
-  async expectHotUpdate(relativePath: string, change: () => void): Promise<void> {
+  /** Edit `relativePath` and wait for it to be updated in place */
+  async expectHotUpdate(devServer: DevServerCopy, relativePath: string): Promise<void> {
     const loadsBefore = this.loads;
+    const logsBefore = this.logs.length;
+    devServer.editFile(relativePath);
     const updated = `[vite] hot updated: /${relativePath}`;
-    change();
     await expect.poll(() => this.logs.includes(updated), { timeout: CHANGE_TIMEOUT }).toBe(true);
+    // The log comes after the update is applied, but a failed update, or a
+    // Fast Refresh that gives up ("invalidate"), is followed by a reload
+    const logged = this.logs.slice(logsBefore);
+    expect(logged.filter((log) => /\[vite\] invalidate|\[hmr\] Failed/.test(log))).toEqual([]);
+    expect(devServer.sentReloadFor(relativePath)).toBe(false);
     expect(this.loads).toBe(loadsBefore);
     expect(await this.page.evaluate(() => window.__hemoioReloadMarker)).toBe(true);
   }
