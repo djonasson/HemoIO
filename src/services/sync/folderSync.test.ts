@@ -3,15 +3,15 @@ import { decrypt, encrypt } from '@data/encryption';
 import {
   FOLDER_SYNC_FILE_VERSION,
   writeFolderCopy,
-  type FolderCopyStore,
   type FolderSyncData,
 } from './folderSync';
+import type { StorageProvider } from '@/types';
 
 const newKey = (): Promise<CryptoKey> =>
   crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 
 /** A folder holding at most one copy, as the storage provider keeps it */
-class MemoryStore implements FolderCopyStore {
+class MemoryStore implements StorageProvider {
   copy: ArrayBuffer | null = null;
   saves = 0;
 

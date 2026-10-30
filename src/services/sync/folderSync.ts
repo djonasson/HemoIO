@@ -10,6 +10,7 @@
 
 import { decrypt, encrypt } from '@data/encryption';
 import type { EncryptedDb } from '@data/db/encryptedDb';
+import type { StorageProvider } from '@/types';
 
 /**
  * Format version of the encrypted sync file. Version 2 stores biomarker keys
@@ -25,13 +26,6 @@ export interface FolderSyncFile {
   version: number;
   exportedAt: string;
   data: FolderSyncData;
-}
-
-/** The part of the folder storage a sync needs */
-export interface FolderCopyStore {
-  exists(): Promise<boolean>;
-  load(): Promise<ArrayBuffer>;
-  save(data: ArrayBuffer): Promise<void>;
 }
 
 /**
@@ -69,7 +63,7 @@ function isSyncFile(value: unknown): value is FolderSyncFile {
 
 /** The folder copy, `null` when there is none, `'unreadable'` when the key cannot open it */
 async function readFolderCopy(
-  store: FolderCopyStore,
+  store: StorageProvider,
   key: CryptoKey
 ): Promise<FolderSyncFile | null | 'unreadable'> {
   if (!(await store.exists())) return null;
@@ -93,19 +87,21 @@ async function readFolderCopy(
  * from before the last real change as its previous copy.
  */
 export async function writeFolderCopy(
-  store: FolderCopyStore,
+  store: StorageProvider,
   data: FolderSyncData,
   key: CryptoKey
 ): Promise<FolderSyncOutcome> {
   const existing = await readFolderCopy(store, key);
-  // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
-  const dataJson = JSON.stringify(data);
 
   if (existing === 'unreadable') {
     return { status: 'protected', reason: 'unreadable' };
   }
   if (existing) {
-    if (existing.version === FOLDER_SYNC_FILE_VERSION && JSON.stringify(existing.data) === dataJson) {
+    // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
+    const unchanged =
+      existing.version === FOLDER_SYNC_FILE_VERSION &&
+      JSON.stringify(existing.data) === JSON.stringify(data);
+    if (unchanged) {
       return { status: 'unchanged' };
     }
     if (holdsHealthData(existing.data) && !holdsHealthData(data)) {

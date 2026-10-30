@@ -20,20 +20,14 @@ const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
  */
 export function useFilesystemSync(): {
   syncNow: () => Promise<void>;
-  isSyncing: boolean;
-  lastSyncTime: Date | null;
-  syncError: string | null;
   /** Why the last sync left the folder copy alone, or null while syncs write */
   protection: FolderProtectionReason | null;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
-  const isSyncingRef = useRef(false);
   // Syncs run one after another: one asked for during another (an import
   // during the periodic sync) must still write, after it
   const queueRef = useRef<Promise<void>>(Promise.resolve());
-  const lastSyncTimeRef = useRef<Date | null>(null);
-  const syncErrorRef = useRef<string | null>(null);
   const providerRef = useRef<FileSystemStorageProvider | null>(null);
   const [protection, setProtection] = useState<FolderProtectionReason | null>(null);
 
@@ -57,37 +51,19 @@ export function useFilesystemSync(): {
       return;
     }
 
-    isSyncingRef.current = true;
-    syncErrorRef.current = null;
-
     try {
       const provider = getProvider();
-
-      // Check permission
-      const permissionState = await provider.getPermissionState();
-      if (permissionState !== 'granted') {
-        // Can't sync without permission - will need user action
-        syncErrorRef.current = 'Permission required to sync to filesystem';
-        return;
-      }
+      // Without permission only a user action can help; Settings asks for it
+      if ((await provider.getPermissionState()) !== 'granted') return;
 
       const outcome = await writeFolderCopy(provider, await db.exportAllData(), encryptionKey);
-      if (outcome.status === 'protected') {
-        setProtection(outcome.reason);
-        return;
-      }
-
-      setProtection(null);
-      lastSyncTimeRef.current = new Date();
+      setProtection(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       console.error('Failed to sync to filesystem:', error);
-      syncErrorRef.current = error instanceof Error ? error.message : 'Sync failed';
-    } finally {
-      isSyncingRef.current = false;
     }
   }, [db, isReady, isFilesystemEnabled, getProvider, encryptionKey]);
 
-  const syncToFilesystem = useCallback((): Promise<void> => {
+  const syncNow = useCallback((): Promise<void> => {
     const next = queueRef.current.then(runSync);
     queueRef.current = next;
     return next;
@@ -100,28 +76,20 @@ export function useFilesystemSync(): {
     }
 
     // Initial sync when filesystem storage is enabled
-    syncToFilesystem();
+    syncNow();
 
     // Set up an interval to sync periodically (as a backup)
     const intervalId = setInterval(() => {
-      syncToFilesystem();
+      syncNow();
     }, 30000); // Sync every 30 seconds as a backup
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [db, isReady, isFilesystemEnabled, syncToFilesystem, encryptionKey]);
-
-  // Expose sync function for manual triggering
-  const syncNow = useCallback(async () => {
-    await syncToFilesystem();
-  }, [syncToFilesystem]);
+  }, [db, isReady, isFilesystemEnabled, syncNow, encryptionKey]);
 
   return {
     syncNow,
-    isSyncing: isSyncingRef.current,
-    lastSyncTime: lastSyncTimeRef.current,
-    syncError: syncErrorRef.current,
     protection,
   };
 }

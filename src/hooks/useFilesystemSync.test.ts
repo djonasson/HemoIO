@@ -71,25 +71,6 @@ describe('useFilesystemSync', () => {
       expect(result.current.syncNow).toBeDefined();
       expect(typeof result.current.syncNow).toBe('function');
     });
-
-    it('should return isSyncing state', () => {
-      const { result } = renderHook(() => useFilesystemSync());
-
-      expect(result.current.isSyncing).toBeDefined();
-      expect(typeof result.current.isSyncing).toBe('boolean');
-    });
-
-    it('should return lastSyncTime state', () => {
-      const { result } = renderHook(() => useFilesystemSync());
-
-      expect(result.current).toHaveProperty('lastSyncTime');
-    });
-
-    it('should return syncError state', () => {
-      const { result } = renderHook(() => useFilesystemSync());
-
-      expect(result.current).toHaveProperty('syncError');
-    });
   });
 
   describe('filesystem enabled check', () => {

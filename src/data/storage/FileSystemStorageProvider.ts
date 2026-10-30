@@ -45,6 +45,8 @@ export class FileSystemStorageProvider implements StorageProvider {
   /**
    * Save data to the selected directory, keeping the copy it replaces as
    * FOLDER_PREVIOUS_FILE_NAME. If that cannot be kept, nothing is replaced.
+   * Every save moves the previous copy on, so callers save only real changes
+   * (writeFolderCopy skips unchanged data) or the copy to undo to is lost.
    */
   async save(data: ArrayBuffer): Promise<void> {
     const handle = await this.getDirectoryHandle();
