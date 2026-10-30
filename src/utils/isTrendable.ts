@@ -1,6 +1,6 @@
 /**
- * Whether Trends can chart a test value: it plots numbers only. Shared so a
- * link to a trend never leads to an empty chart.
+ * Whether Trends can chart a test value: it plots numbers only. Shared so
+ * the views that link to a trend offer it for the same values Trends shows.
  */
 export function isTrendable<T extends { value: unknown }>(
   testValue: T

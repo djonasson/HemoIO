@@ -34,6 +34,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     date: new Date('2024-01-15'),
     labName: 'Test Lab',
     labResultId: 1,
+    backInRange: false,
     message: 'Glucose is high at 150 mg/dL (reference 70 - 100 mg/dL)',
     ...options,
   };
@@ -41,7 +42,6 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
 
 function mockAlerts(alerts: BiomarkerAlert[]): void {
   vi.mocked(useAlerts).mockReturnValue({
-    alerts,
     groups: groupAlerts(alerts, {}, {}).groups,
     unacknowledgedCount: alerts.length,
     hiddenCount: 0,

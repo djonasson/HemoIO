@@ -4,7 +4,7 @@
  * Displays a table of test values with status indicators.
  */
 
-import { Anchor, Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
+import { Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
 import {
   IconArrowUp,
   IconArrowDown,
@@ -24,6 +24,7 @@ import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
+import { BiomarkerName } from './BiomarkerName';
 
 export interface TestValuesListProps {
   /** Test values to display */
@@ -215,48 +216,6 @@ function formatValue(testValue: EnrichedTestValue): string {
     return formatNumericValue(value);
   }
   return String(value);
-}
-
-/**
- * A test's name: a link to its trend when it has one, with its description
- * in a tooltip that keyboard users reach too
- */
-function BiomarkerName({
-  name,
-  description,
-  onOpen,
-}: {
-  name: string;
-  description: string | null;
-  onOpen?: () => void;
-}): React.ReactNode {
-  const label = onOpen ? (
-    <Anchor
-      component="button"
-      type="button"
-      size="sm"
-      fw={500}
-      onClick={onOpen}
-      aria-label={`${name}, open trend`}
-    >
-      {name}
-    </Anchor>
-  ) : (
-    <Text
-      size="sm"
-      fw={500}
-      style={description ? { cursor: 'help', textDecoration: 'underline dotted' } : undefined}
-    >
-      {name}
-    </Text>
-  );
-
-  if (!description) return label;
-  return (
-    <Tooltip label={description} multiline w={300} withArrow events={{ hover: true, focus: true, touch: false }}>
-      {label}
-    </Tooltip>
-  );
 }
 
 /**

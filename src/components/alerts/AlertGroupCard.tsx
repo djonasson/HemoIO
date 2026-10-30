@@ -27,9 +27,9 @@ import {
   IconTrendingUp,
   IconX,
 } from '@tabler/icons-react';
-import { indicatorColor, type GroupedResult, type TrendDirection } from '@services/alerts';
+import { indicatorColor, type TrendDirection } from '@services/alerts';
 import { RelativeTime } from '@components/common/RelativeTime';
-import { formatShortDate } from '@/utils/formatShortDate';
+import { EarlierResult } from './EarlierResult';
 import type { BiomarkerAlert, GroupedAlert } from '@hooks/useAlerts';
 
 export interface AlertGroupCardProps {
@@ -42,16 +42,12 @@ export interface AlertGroupCardProps {
   onOpen?: (alert: BiomarkerAlert) => void;
 }
 
-function StatusIcon({
-  alert,
-  direction,
-}: {
-  alert: BiomarkerAlert;
-  direction?: TrendDirection;
-}): React.ReactNode {
+function statusIcon(alert: BiomarkerAlert, direction?: TrendDirection): React.ReactNode {
   if (alert.type === 'improvement') return <IconCheck size={16} />;
   // A trend points the way it moves, which may be back toward the range
-  const way = direction ?? (alert.status === 'high' ? 'increasing' : alert.status === 'low' ? 'decreasing' : undefined);
+  const way =
+    direction ??
+    (alert.status === 'high' ? 'increasing' : alert.status === 'low' ? 'decreasing' : undefined);
   if (way === 'increasing') return <IconTrendingUp size={16} />;
   if (way === 'decreasing') return <IconTrendingDown size={16} />;
   return <IconAlertCircle size={16} />;
@@ -59,64 +55,6 @@ function StatusIcon({
 
 function plural(count: number, word: string): string {
   return `${count} ${count === 1 ? word : `${word}s`}`;
-}
-
-/** An earlier result's details, as shown and as announced */
-function resultSummary({ alert, isNew }: GroupedResult<BiomarkerAlert>): string {
-  return `${formatShortDate(alert.date)}: ${alert.value} ${alert.unit}, ${alert.status}, ${alert.labName}${isNew ? ', new' : ''}`;
-}
-
-const ROW_PADDING = { padding: '4px var(--mantine-spacing-xs)' };
-
-function EarlierResult({
-  result,
-  onOpen,
-}: {
-  result: GroupedResult<BiomarkerAlert>;
-  onOpen?: (alert: BiomarkerAlert) => void;
-}): React.ReactNode {
-  const { alert, isNew } = result;
-  const content = (
-    <Group gap="xs" wrap="wrap">
-      <Text size="xs" fw={500}>
-        {formatShortDate(alert.date)}
-      </Text>
-      <Text size="xs">
-        {alert.value} {alert.unit}
-      </Text>
-      <Badge size="xs" color={indicatorColor(alert)} variant="light">
-        {alert.status}
-      </Badge>
-      <Text size="xs" c="dimmed">
-        {alert.labName}
-      </Text>
-      {isNew && (
-        <Badge size="xs" color="red" variant="filled">
-          New
-        </Badge>
-      )}
-    </Group>
-  );
-
-  return (
-    <li style={{ borderLeft: `3px solid var(--mantine-color-${indicatorColor(alert)}-6)` }}>
-      {onOpen ? (
-        <UnstyledButton
-          w="100%"
-          style={ROW_PADDING}
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen(alert);
-          }}
-          aria-label={`Open trend at ${resultSummary(result)}`}
-        >
-          {content}
-        </UnstyledButton>
-      ) : (
-        <div style={ROW_PADDING}>{content}</div>
-      )}
-    </li>
-  );
 }
 
 export function AlertGroupCard({
@@ -127,13 +65,16 @@ export function AlertGroupCard({
 }: AlertGroupCardProps): React.ReactNode {
   const [opened, { toggle }] = useDisclosure(false);
   const listId = useId();
-  const { headline, trend, earlier, resultCount, newCount } = group;
+  const { headline, trend, earlier, resultCount, newCount, severity } = group;
   const name = headline.biomarkerName;
   const color = indicatorColor(headline);
-  const isCritical = headline.severity === 'critical';
+  // The card's severity is its most severe new result, which may be an earlier one
+  const isCritical = severity === 'critical';
   const stateWord =
     headline.type === 'improvement' ? 'improved' : (trend?.direction ?? headline.status);
-  const severityWord = headline.type === 'improvement' ? 'positive' : headline.severity;
+  // An old result heading the card must not read as the test's current state
+  const inRangeNote =
+    headline.type === 'out_of_range' && headline.backInRange ? 'Latest result within range' : null;
   const counts = (separator: string): string =>
     newCount > 0
       ? `${plural(resultCount, 'result')}${separator}${newCount} new`
@@ -166,19 +107,19 @@ export function AlertGroupCard({
       }
       tabIndex={open ? 0 : undefined}
       role="article"
-      aria-label={`Alert for ${name}: ${severityWord}, ${stateWord}. ${headline.message}. ${counts(', ')}`}
+      aria-label={`Alert for ${name}: ${severity}, ${stateWord}. ${headline.message}. ${inRangeNote ? `${inRangeNote}. ` : ''}${counts(', ')}`}
     >
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <Group gap="sm" wrap="nowrap" align="flex-start">
           <ThemeIcon color={color} variant="light" size="md">
-            <StatusIcon alert={headline} direction={trend?.direction} />
+            {statusIcon(headline, trend?.direction)}
           </ThemeIcon>
           <Stack gap={2}>
             <Group gap="xs">
               <Text size="sm" fw={500}>
                 {name}
               </Text>
-              {headline.type !== 'improvement' && (
+              {severity !== 'positive' && (
                 <Badge size="xs" color={color} variant={isCritical ? 'filled' : 'light'}>
                   {isCritical ? 'Critical' : 'Warning'}
                 </Badge>
@@ -203,6 +144,11 @@ export function AlertGroupCard({
             {trend && (
               <Text size="xs" c="dimmed">
                 {trend.message}
+              </Text>
+            )}
+            {inRangeNote && (
+              <Text size="xs" fw={500}>
+                {inRangeNote}
               </Text>
             )}
             <Group gap="xs">
@@ -280,6 +226,8 @@ export function AlertGroupCard({
               p={0}
               style={{ listStyle: 'none' }}
               aria-label={`Earlier ${name} results`}
+              // A click between the rows belongs to no row, and must not open the headline
+              onClick={(event: React.MouseEvent) => event.stopPropagation()}
             >
               {earlier.map((result) => (
                 <EarlierResult key={result.alert.id} result={result} onOpen={onOpen} />

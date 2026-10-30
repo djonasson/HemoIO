@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within, act } from '@testing-library/react';
+import { render, screen, within, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { groupAlerts } from '@services/alerts';
@@ -29,6 +29,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     date: new Date('2024-01-15T10:00:00Z'),
     labName: 'Test Lab',
     labResultId: 1,
+    backInRange: false,
     message: 'Glucose is high at 150 mg/dL (reference 70 - 100 mg/dL)',
     ...options,
   };
@@ -255,5 +256,35 @@ describe('AlertGroupCard', () => {
     );
 
     expect(screen.getByRole('article')).not.toHaveAttribute('tabindex');
+  });
+  it('shows a new critical result on its card even when the latest result is a warning', () => {
+    renderCard(
+      groupOf([
+        alert({ id: 'a', severity: 'critical', value: 300 }),
+        alert({ id: 'b', date: new Date('2024-03-10T10:00:00Z'), message: 'Glucose is high at 110 mg/dL' }),
+      ])
+    );
+
+    const card = screen.getByRole('article');
+    expect(within(card).getByText('Critical')).toBeInTheDocument();
+    expect(card).toHaveStyle({ borderLeftWidth: '6px' });
+    expect(card).toHaveAccessibleName(/^Alert for Glucose: critical, high\./);
+  });
+
+  it("says when the test's latest value is back in range", () => {
+    renderCard(groupOf([alert({ backInRange: true })]));
+
+    const card = screen.getByRole('article');
+    expect(within(card).getByText('Latest result within range')).toBeInTheDocument();
+    expect(card).toHaveAccessibleName(/Latest result within range/);
+  });
+
+  it('does not open the latest result for a click between earlier results', async () => {
+    const { onOpen } = renderCard(groupOf(THREE_GLUCOSE));
+
+    await userEvent.click(screen.getByRole('button', { name: /earlier results$/ }));
+    fireEvent.click(await screen.findByRole('list', { name: 'Earlier Glucose results' }));
+
+    expect(onOpen).not.toHaveBeenCalled();
   });
 });

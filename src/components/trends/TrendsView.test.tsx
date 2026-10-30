@@ -166,7 +166,6 @@ describe('TrendsView', () => {
 
     // Default mock for useAlerts
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [],
       groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,
@@ -400,22 +399,6 @@ describe('TrendsView', () => {
     });
 
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [
-        {
-          id: '1',
-          type: 'out_of_range',
-          severity: 'warning',
-          biomarkerKey: 'marker-1',
-          biomarkerName: 'Glucose',
-          value: 150,
-          unit: 'mg/dL',
-          status: 'high',
-          date: new Date(),
-          labName: 'Test Lab',
-          labResultId: 1,
-          message: 'Glucose is elevated',
-        },
-      ],
       groups: [],
       unacknowledgedCount: 1,
       hiddenCount: 0,
@@ -619,7 +602,6 @@ describe('TrendsView preferred unit', () => {
     mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
     mockShowNotification.mockReset();
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [],
       groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,

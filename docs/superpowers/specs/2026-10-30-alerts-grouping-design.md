@@ -30,8 +30,18 @@ in `src/services/alerts/`, builds the cards:
   headline, each marked "New" when it is.
 - **Visible** when the card has something new (an alert dated after the
   acknowledgement) and its latest alert is dated after any dismissal.
-- **Order:** most severe new alert first (critical, warning, positive), then the
-  latest date.
+- **Severity and order:** a card's severity is its most severe new alert, so a
+  new critical earlier result keeps the card critical (badge, border, announced
+  severity) even when its latest result is only a warning. Cards are ordered by
+  that severity, then by latest date.
+- **Back in range:** when the test's latest value is within range but no
+  improvement alert is raised (two normal values after an abnormal one), the card
+  says "Latest result within range", so an old result never reads as the current
+  state.
+
+Acknowledging and dismissing work on dates, so a result imported later but dated
+on or before the acknowledgement or dismissal stays hidden; only a result dated
+later brings the card back.
 
 Acknowledging a card stores the test's latest alert date, exactly as today's
 per-biomarker `acknowledgedThrough` does, so a later result shows as new again with
@@ -63,9 +73,10 @@ The category filter and "Show N more" now work on cards.
 
 `TestValuesList` gets the lab result's date and an optional `onOpenTrend(key, date)`,
 passed down from `AppShell` through `TimelineView` and `LabResultCard`. A numeric
-value's test name becomes a link-styled button ("<name>, open trend") that calls it;
-Trends only charts numeric values, so other values keep plain text. The description
-tooltip stays and also opens on keyboard focus.
+value's test name becomes a link-styled button ("<name>, open trend") that calls it.
+Trends only charts numeric values (`isTrendable`, shared by Trends, alerts and the
+Timeline), so other values keep plain text. The description tooltip stays and also
+opens on keyboard focus; a plain name with a description is focusable for that.
 
 ## Testing
 

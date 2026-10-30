@@ -335,6 +335,18 @@ describe('TestValuesList', () => {
       expect(screen.queryByRole('button')).toBeNull();
     });
 
+    it("lets keyboard users read a qualitative value's description", async () => {
+      renderWithProviders(
+        <TestValuesList testValues={[glucose({ value: 'Negative', unit: '' })]} onOpenTrend={vi.fn()} />
+      );
+
+      const name = screen.getByText('Glucose');
+      expect(name).toHaveAttribute('tabindex', '0');
+      act(() => name.focus());
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Blood sugar level');
+    });
+
     it('offers no link without somewhere to open it', () => {
       renderWithProviders(<TestValuesList testValues={[glucose()]} />);
 

@@ -43,6 +43,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     date: new Date('2024-01-15T10:00:00Z'),
     labName: 'Test Lab',
     labResultId: 1,
+    backInRange: false,
     message: 'Glucose is elevated at 150 mg/dL',
     ...options,
   };
@@ -52,7 +53,6 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
 function mockAlerts(alerts: BiomarkerAlert[], overrides: Partial<UseAlertsResult> = {}): UseAlertsResult {
   const { groups, hiddenCount } = groupAlerts(alerts, {}, {});
   const result: UseAlertsResult = {
-    alerts,
     groups,
     unacknowledgedCount: groups.reduce((sum, g) => sum + g.newCount, 0),
     hiddenCount,

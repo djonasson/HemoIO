@@ -31,6 +31,7 @@ import {
   preferredUnitFor,
   resolveDisplayUnit,
 } from '@services/units';
+import { isTrendable } from '@/utils/isTrendable';
 
 export type { AlertType };
 
@@ -66,6 +67,8 @@ export interface BiomarkerAlert {
   labName: string;
   /** Lab result ID for navigation */
   labResultId: number;
+  /** Whether the test's latest value is within its range, whatever this alert is about */
+  backInRange: boolean;
   /** Alert message */
   message: string;
 }
@@ -79,8 +82,6 @@ export type GroupedAlert = AlertGroup<BiomarkerAlert>;
  * Result of useAlerts hook
  */
 export interface UseAlertsResult {
-  /** Every alert the lab results raise, acknowledged and dismissed ones included, unordered */
-  alerts: BiomarkerAlert[];
   /** One card per test with something new, most pressing first */
   groups: GroupedAlert[];
   /** New out-of-range results on the shown cards (the nav badge) */
@@ -152,7 +153,8 @@ export function useAlerts(): UseAlertsResult {
   );
 
   /**
-   * Every alert the lab results raise, before acknowledgements and dismissals
+   * Every alert the lab results raise, before acknowledgements and dismissals;
+   * unordered, as the cards set their own order
    */
   const allAlerts = useMemo(() => {
     const alertList: BiomarkerAlert[] = [];
@@ -165,7 +167,8 @@ export function useAlerts(): UseAlertsResult {
 
     for (const result of results) {
       for (const testValue of result.testValues) {
-        if (typeof testValue.value !== 'number') continue;
+        // Only values Trends charts: an alert opens its trend
+        if (!isTrendable(testValue)) continue;
 
         let entry = biomarkerValues.get(testValue.biomarkerKey);
         if (!entry) {
@@ -188,6 +191,8 @@ export function useAlerts(): UseAlertsResult {
       // Alerts state values in the preferred unit when one is set
       const preferredUnit = preferredUnitFor(biomarkerDef, unitPreferences[biomarkerKey]);
 
+      const backInRange = sortedValues[0].status === 'normal';
+
       /** The fields every alert about this test value shares */
       const alertFor = (
         tv: EnrichedTestValue,
@@ -209,6 +214,7 @@ export function useAlerts(): UseAlertsResult {
           date: info.date,
           labName: info.labName,
           labResultId: tv.labResultId,
+          backInRange,
         };
       };
 
@@ -284,7 +290,6 @@ export function useAlerts(): UseAlertsResult {
       }
     }
 
-    // Unordered: the cards set their own order
     return alertList;
   }, [results, unitPreferences]);
 
@@ -313,7 +318,6 @@ export function useAlerts(): UseAlertsResult {
   );
 
   return {
-    alerts: allAlerts,
     groups,
     unacknowledgedCount,
     hiddenCount,
