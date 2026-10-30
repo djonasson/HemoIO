@@ -3,12 +3,12 @@
  * acknowledgements and dismissals.
  */
 
-import { SEVERITY_ORDER, type AlertSeverity } from './alertRules';
+import { SEVERITY_ORDER, type AlertSeverity, type AlertType } from './alertRules';
 
 /** What grouping needs to know about an alert */
 export interface GroupableAlert {
   biomarkerKey: string;
-  type: 'out_of_range' | 'trend' | 'improvement';
+  type: AlertType;
   severity: AlertSeverity;
   date: Date;
 }

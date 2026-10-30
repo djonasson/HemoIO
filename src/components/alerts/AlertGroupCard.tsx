@@ -66,6 +66,8 @@ function resultSummary({ alert, isNew }: GroupedResult<BiomarkerAlert>): string 
   return `${formatShortDate(alert.date)}: ${alert.value} ${alert.unit}, ${alert.status}, ${alert.labName}${isNew ? ', new' : ''}`;
 }
 
+const ROW_PADDING = { padding: '4px var(--mantine-spacing-xs)' };
+
 function EarlierResult({
   result,
   onOpen,
@@ -101,8 +103,7 @@ function EarlierResult({
       {onOpen ? (
         <UnstyledButton
           w="100%"
-          px="xs"
-          py={4}
+          style={ROW_PADDING}
           onClick={(event) => {
             event.stopPropagation();
             onOpen(alert);
@@ -112,7 +113,7 @@ function EarlierResult({
           {content}
         </UnstyledButton>
       ) : (
-        <div style={{ padding: '4px var(--mantine-spacing-xs)' }}>{content}</div>
+        <div style={ROW_PADDING}>{content}</div>
       )}
     </li>
   );
@@ -133,9 +134,10 @@ export function AlertGroupCard({
   const stateWord =
     headline.type === 'improvement' ? 'improved' : (trend?.direction ?? headline.status);
   const severityWord = headline.type === 'improvement' ? 'positive' : headline.severity;
-  const counts = newCount > 0 ? `${plural(resultCount, 'result')} · ${newCount} new` : plural(resultCount, 'result');
-  const spokenCounts =
-    newCount > 0 ? `${plural(resultCount, 'result')}, ${newCount} new` : plural(resultCount, 'result');
+  const counts = (separator: string): string =>
+    newCount > 0
+      ? `${plural(resultCount, 'result')}${separator}${newCount} new`
+      : plural(resultCount, 'result');
   const open = onOpen ? () => onOpen(headline) : undefined;
 
   return (
@@ -164,7 +166,7 @@ export function AlertGroupCard({
       }
       tabIndex={open ? 0 : undefined}
       role="article"
-      aria-label={`Alert for ${name}: ${severityWord}, ${stateWord}. ${headline.message}. ${spokenCounts}`}
+      aria-label={`Alert for ${name}: ${severityWord}, ${stateWord}. ${headline.message}. ${counts(', ')}`}
     >
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <Group gap="sm" wrap="nowrap" align="flex-start">
@@ -210,7 +212,7 @@ export function AlertGroupCard({
               </Text>
             </Group>
             <Text size="xs" fw={500}>
-              {counts}
+              {counts(' · ')}
             </Text>
           </Stack>
         </Group>

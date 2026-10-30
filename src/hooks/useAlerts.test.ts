@@ -322,7 +322,7 @@ describe('useAlerts', () => {
     expect(result.current.alerts).toHaveLength(0);
   });
 
-  it('should sort alerts by severity then date', () => {
+  it('puts the card of a critical value first', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
@@ -355,8 +355,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    // Critical should come first
-    expect(result.current.alerts[0].severity).toBe('critical');
+    expect(result.current.groups[0].severity).toBe('critical');
   });
 
   it("dismisses a test's card through its latest alert in the shared state", () => {
@@ -372,7 +371,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
 
     act(() => {
-      result.current.dismissGroup('marker-1');
+      result.current.dismissGroup(result.current.groups[0]);
     });
 
     expect(alertState.dismiss).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
@@ -696,7 +695,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.groups).toHaveLength(1));
 
-    await result.current.acknowledgeGroup('marker-1');
+    await result.current.acknowledgeGroup(result.current.groups[0]);
 
     expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
   });

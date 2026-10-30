@@ -23,6 +23,7 @@ import {
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
+import { isTrendable } from '@/utils/isTrendable';
 
 export interface TestValuesListProps {
   /** Test values to display */
@@ -333,9 +334,8 @@ export function TestValuesList({
                 <BiomarkerName
                   name={metadata.cleanName || biomarkerName}
                   description={tooltipContent}
-                  // Trends charts numeric values only
                   onOpen={
-                    onOpenTrend && typeof recorded.value === 'number'
+                    onOpenTrend && isTrendable(recorded)
                       ? () => onOpenTrend(recorded.biomarkerKey)
                       : undefined
                   }

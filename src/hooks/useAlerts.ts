@@ -12,7 +12,6 @@ import { useLabResults, type EnrichedTestValue } from './useLabResults';
 import { useAlertState } from './useAlertState';
 import { usePreferences } from './usePreferences';
 import {
-  SEVERITY_ORDER,
   detectConsistentDirection,
   groupAlerts,
   improvementMessage,
@@ -21,6 +20,7 @@ import {
   trendMessage,
   type AlertGroup,
   type AlertSeverity,
+  type AlertType,
   type ReferenceRange,
   type TrendDirection,
 } from '@services/alerts';
@@ -32,10 +32,7 @@ import {
   resolveDisplayUnit,
 } from '@services/units';
 
-/**
- * Alert type
- */
-export type AlertType = 'out_of_range' | 'trend' | 'improvement';
+export type { AlertType };
 
 /**
  * Single alert for a biomarker value
@@ -82,7 +79,7 @@ export type GroupedAlert = AlertGroup<BiomarkerAlert>;
  * Result of useAlerts hook
  */
 export interface UseAlertsResult {
-  /** Every alert the lab results raise, acknowledged and dismissed ones included */
+  /** Every alert the lab results raise, acknowledged and dismissed ones included, unordered */
   alerts: BiomarkerAlert[];
   /** One card per test with something new, most pressing first */
   groups: GroupedAlert[];
@@ -97,9 +94,9 @@ export interface UseAlertsResult {
   /** Error message if any */
   error: string | null;
   /** Hide a test's card until the next page load or a later alert */
-  dismissGroup: (biomarkerKey: string) => void;
+  dismissGroup: (group: GroupedAlert) => void;
   /** Acknowledge every alert of a test persistently, until a later alert */
-  acknowledgeGroup: (biomarkerKey: string) => Promise<void>;
+  acknowledgeGroup: (group: GroupedAlert) => Promise<void>;
   /** Reload the lab results alerts are derived from */
   refresh: () => Promise<void>;
 }
@@ -129,7 +126,7 @@ function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType)
  *         <AlertGroupCard
  *           key={group.biomarkerKey}
  *           group={group}
- *           onDismiss={() => dismissGroup(group.biomarkerKey)}
+ *           onDismiss={() => dismissGroup(group)}
  *         />
  *       ))}
  *     </Stack>
@@ -287,10 +284,8 @@ export function useAlerts(): UseAlertsResult {
       }
     }
 
-    return alertList.sort((a, b) => {
-      const bySeverity = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
-      return bySeverity !== 0 ? bySeverity : b.date.getTime() - a.date.getTime();
-    });
+    // Unordered: the cards set their own order
+    return alertList;
   }, [results, unitPreferences]);
 
   /**
@@ -307,25 +302,14 @@ export function useAlerts(): UseAlertsResult {
     [groups]
   );
 
-  const latestDateOf = useCallback(
-    (biomarkerKey: string) => groups.find((g) => g.biomarkerKey === biomarkerKey)?.latestDate,
-    [groups]
-  );
-
   const acknowledgeGroup = useCallback(
-    async (biomarkerKey: string) => {
-      const through = latestDateOf(biomarkerKey);
-      if (through) await acknowledge(biomarkerKey, through);
-    },
-    [latestDateOf, acknowledge]
+    (group: GroupedAlert) => acknowledge(group.biomarkerKey, group.latestDate),
+    [acknowledge]
   );
 
   const dismissGroup = useCallback(
-    (biomarkerKey: string) => {
-      const through = latestDateOf(biomarkerKey);
-      if (through) dismiss(biomarkerKey, through);
-    },
-    [latestDateOf, dismiss]
+    (group: GroupedAlert) => dismiss(group.biomarkerKey, group.latestDate),
+    [dismiss]
   );
 
   return {

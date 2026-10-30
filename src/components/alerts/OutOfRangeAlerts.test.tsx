@@ -159,8 +159,8 @@ describe('OutOfRangeAlerts', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge all Glucose results' }));
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss Glucose alert' }));
 
-    expect(acknowledgeGroup).toHaveBeenCalledWith('glucose');
-    expect(dismissGroup).toHaveBeenCalledWith('glucose');
+    expect(acknowledgeGroup).toHaveBeenCalledWith(expect.objectContaining({ biomarkerKey: 'glucose' }));
+    expect(dismissGroup).toHaveBeenCalledWith(expect.objectContaining({ biomarkerKey: 'glucose' }));
   });
 
   it('shows an error when an acknowledgement cannot be saved', async () => {

@@ -26,6 +26,7 @@ import { getBiomarkerDisplayName, getBiomarkerForTestValue } from '@data/biomark
 import { convertMeasurement, preferredUnitOptions, resolveDisplayUnit } from '@services/units';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
+import { isTrendable } from '@/utils/isTrendable';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import { PreferredUnitSelect } from './PreferredUnitSelect';
 import type { BiomarkerCategory } from '@/types';
@@ -180,7 +181,7 @@ export function TrendsView({
 
     for (const result of results) {
       for (const testValue of result.testValues) {
-        if (typeof testValue.value !== 'number') continue;
+        if (!isTrendable(testValue)) continue;
 
         const biomarkerKey = testValue.biomarkerKey;
 

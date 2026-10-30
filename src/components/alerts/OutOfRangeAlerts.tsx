@@ -18,8 +18,8 @@ import {
   Title,
 } from '@mantine/core';
 import { IconAlertCircle, IconCheck, IconEye, IconEyeOff, IconFilter } from '@tabler/icons-react';
-import { useState, useMemo, useCallback } from 'react';
-import { useAlerts, type BiomarkerAlert } from '@hooks/useAlerts';
+import { useState, useMemo } from 'react';
+import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
 import { AlertGroupCard } from './AlertGroupCard';
 import type { BiomarkerCategory } from '@/types';
@@ -59,15 +59,12 @@ export function OutOfRangeAlerts({
   const [showAll, setShowAll] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const handleAcknowledge = useCallback(
-    (biomarkerKey: string) => {
-      setSaveError(null);
-      acknowledgeGroup(biomarkerKey).catch(() => {
-        setSaveError('Could not save the acknowledgement. Please try again.');
-      });
-    },
-    [acknowledgeGroup]
-  );
+  const handleAcknowledge = (group: GroupedAlert): void => {
+    setSaveError(null);
+    acknowledgeGroup(group).catch(() => {
+      setSaveError('Could not save the acknowledgement. Please try again.');
+    });
+  };
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -218,8 +215,8 @@ export function OutOfRangeAlerts({
           <AlertGroupCard
             key={group.biomarkerKey}
             group={group}
-            onAcknowledge={() => handleAcknowledge(group.biomarkerKey)}
-            onDismiss={() => dismissGroup(group.biomarkerKey)}
+            onAcknowledge={() => handleAcknowledge(group)}
+            onDismiss={() => dismissGroup(group)}
             onOpen={onAlertClick}
           />
         ))}
