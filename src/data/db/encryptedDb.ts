@@ -277,10 +277,9 @@ export class EncryptedDb {
       return body();
     });
     return new Promise<T>((resolve, reject) => {
-      let stopped = false;
       const timer = setTimeout(() => {
         if (!transaction) {
-          cancelled = stopped = true;
+          cancelled = true;
           reject(new SaveError('timeout'));
           return;
         }
@@ -292,7 +291,6 @@ export class EncryptedDb {
           // Committing already: its outcome is on its way
           return;
         }
-        stopped = true;
         // Aborted, so it never commits. Not left to the transaction to
         // report: the part of the write that hangs may never return.
         reject(new SaveError('timeout'));
@@ -304,7 +302,8 @@ export class EncryptedDb {
         },
         (err: unknown) => {
           clearTimeout(timer);
-          reject(stopped ? new SaveError('timeout') : toSaveError(err));
+          // After a timeout this has no effect: the write was rejected already
+          reject(toSaveError(err));
         }
       );
     });
@@ -468,10 +467,12 @@ export class EncryptedDb {
 
   /** The lab result and its values, together */
   async deleteLabResult(id: number): Promise<void> {
-    await this.write([this.db.labResults, this.db.testValues], async () => {
-      await this.db.testValues.where('labResultId').equals(id).delete();
-      await this.db.labResults.delete(id);
-    });
+    await this.write([this.db.labResults, this.db.testValues], () =>
+      Promise.all([
+        this.db.testValues.where('labResultId').equals(id).delete(),
+        this.db.labResults.delete(id),
+      ])
+    );
   }
 
   /**
@@ -492,14 +493,13 @@ export class EncryptedDb {
     const results = this.table('labResults');
     const values = this.table('testValues');
     return this.write([results, values], async () => {
-      const ids: number[] = [];
-      for (const entry of sealed) {
-        const labResultId = (await results.add(entry.labResult)) as number;
-        if (entry.testValues.length > 0) {
-          await values.bulkAdd(entry.testValues.map((tv) => ({ ...tv, labResultId })));
-        }
-        ids.push(labResultId);
-      }
+      const ids = (await results.bulkAdd(
+        sealed.map((entry) => entry.labResult),
+        { allKeys: true }
+      )) as number[];
+      await values.bulkAdd(
+        sealed.flatMap((entry, i) => entry.testValues.map((tv) => ({ ...tv, labResultId: ids[i] })))
+      );
       return ids;
     });
   }
@@ -539,10 +539,6 @@ export class EncryptedDb {
     changes: Partial<TestValue>
   ): Promise<number> {
     return this.update('testValues', id, changes);
-  }
-
-  async deleteTestValue(id: number): Promise<void> {
-    await this.delete('testValues', id);
   }
 
   // ============ Settings ============

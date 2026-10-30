@@ -109,11 +109,4 @@ export class HemoIODatabase extends Dexie {
 
 export const db = new HemoIODatabase();
 
-export {
-  EncryptedDb,
-  createEncryptedDb,
-  WRITE_TIMEOUT_MS,
-  type EncryptedDbOptions,
-  type LabResultWithValues,
-} from './encryptedDb';
-export { SaveError, saveErrorMessage, toSaveError, type SaveErrorKind } from './saveError';
+export { EncryptedDb, createEncryptedDb } from './encryptedDb';

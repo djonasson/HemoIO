@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 import {
   Stack,
   Paper,
@@ -71,7 +72,7 @@ export function DisplaySettings({
   const { setColorScheme } = useMantineColorScheme();
   const [localTheme, setLocalTheme] = useState<ThemeOption>(theme);
   const [localDateFormat, setLocalDateFormat] = useState<DateFormatOption>(dateFormat);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
 
   // The theme last chosen, which a failed save of an older choice must not undo
   const chosenTheme = useRef(theme);
@@ -90,11 +91,6 @@ export function DisplaySettings({
     (value: ThemeOption) => setColorScheme(value === 'system' ? 'auto' : value),
     [setColorScheme]
   );
-
-  const showSaved = useCallback(() => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, []);
 
   // Each change shows at once, is confirmed once saved, and goes back when
   // the save fails (unless a newer change replaced it); the parent says why

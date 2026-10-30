@@ -3,11 +3,10 @@
  * imports match by. Each can be removed.
  */
 import { ActionIcon, Group, List, Stack, Text, Title } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { IconTrash } from '@tabler/icons-react';
 import { usePreferences } from '@hooks/usePreferences';
 import { getBiomarkerByKey } from '@data/biomarkers/dictionary';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 
 export function LearnedAliases() {
   const { learnedAliases, removeLearnedAlias } = usePreferences();
@@ -37,11 +36,7 @@ export function LearnedAliases() {
                   aria-label={`Remove ${name}`}
                   onClick={() => {
                     removeLearnedAlias(name).catch((err: unknown) =>
-                      notifications.show({
-                        title: 'Learned name not removed',
-                        message: saveErrorMessage(err),
-                        color: 'red',
-                      })
+                      notifySaveFailed('Learned name not removed', err)
                     );
                   }}
                 >

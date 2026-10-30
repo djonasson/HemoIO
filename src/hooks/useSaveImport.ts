@@ -8,16 +8,12 @@
 
 import { useCallback } from 'react';
 import { notifications } from '@mantine/notifications';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { saveImportResults } from '@services/persistence';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useLabResults } from './useLabResults';
 import { usePreferences } from './usePreferences';
 import type { ReviewedResult } from '@components/import';
-
-function notifyNotSaved(reason: string): void {
-  notifications.show({ title: 'Import not saved', message: `Nothing was saved. ${reason}`, color: 'red' });
-}
 
 /**
  * @param syncNow - Copies the saved data to the sync folder, when one is set up
@@ -33,7 +29,11 @@ export function useSaveImport(
   return useCallback(
     async (results: ReviewedResult[]) => {
       if (!db || !isReady) {
-        notifyNotSaved('The database is not available. Unlock the app, then try again.');
+        notifications.show({
+          title: 'Import not saved',
+          message: 'Nothing was saved. The database is not available. Unlock the app, then try again.',
+          color: 'red',
+        });
         return false;
       }
 
@@ -41,7 +41,7 @@ export function useSaveImport(
       try {
         output = await saveImportResults(results, db);
       } catch (err) {
-        notifyNotSaved(saveErrorMessage(err));
+        notifySaveFailed('Import not saved', err, 'Nothing was saved.');
         return false;
       }
 
@@ -51,20 +51,23 @@ export function useSaveImport(
         color: 'green',
       });
 
-      // Names saved under a test are this user's aliases from now on
-      await learnAliases(
-        results.flatMap((r) =>
-          r.editedBiomarkers.map((b) => ({
-            name: b.name,
-            key: b.dictionaryMatch?.key,
-            pickedByUser: b.identifiedBy === 'user',
-            savedAsUnknown: b.savedAsUnknown,
-          }))
-        )
-      ).catch(() => console.error('Failed to save learned names'));
-
-      // Every view, the alerts badge included, shows the new results
-      await refresh();
+      await Promise.all([
+        // Names saved under a test are this user's aliases from now on
+        learnAliases(
+          results.flatMap((r) =>
+            r.editedBiomarkers.map((b) => ({
+              name: b.name,
+              key: b.dictionaryMatch?.key,
+              pickedByUser: b.identifiedBy === 'user',
+              savedAsUnknown: b.savedAsUnknown,
+            }))
+          )
+        ).catch((err: unknown) =>
+          notifySaveFailed('Learned names not saved', err, 'The import was saved.')
+        ),
+        // Every view, the alerts badge included, shows the new results
+        refresh(),
+      ]);
       await syncNow();
       return true;
     },

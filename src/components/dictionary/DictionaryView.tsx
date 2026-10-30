@@ -8,8 +8,7 @@
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { usePreferences } from '@hooks/usePreferences';
 import { resolveDisplayUnit } from '@services/units';
@@ -80,13 +79,9 @@ export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.Reac
   const handleSaveTarget = useCallback(
     (biomarkerKey: string, low: number | undefined, high: number | undefined) => {
       setEditingTarget(false);
-      setPersonalTarget(biomarkerKey, { low, high }).catch((err: unknown) => {
-        notifications.show({
-          title: 'Personal target not saved',
-          message: saveErrorMessage(err),
-          color: 'red',
-        });
-      });
+      setPersonalTarget(biomarkerKey, { low, high }).catch((err: unknown) =>
+        notifySaveFailed('Personal target not saved', err)
+      );
     },
     [setPersonalTarget]
   );

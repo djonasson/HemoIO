@@ -25,7 +25,6 @@ import {
   IconLock,
   IconBook,
   IconCheck,
-  IconX,
   IconDownload,
 } from '@tabler/icons-react';
 import { useAuth } from '@contexts';
@@ -50,7 +49,7 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { modelForProvider } from '@services/ai';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { restoreAISettings, restoreBackup, runAfterRestore } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -243,12 +242,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         // Navigate to timeline to show restored data
         setActiveView('timeline');
       } catch (err) {
-        notifications.show({
-          title: 'Restore failed',
-          message: `Your data was not changed. ${saveErrorMessage(err)}`,
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
+        notifySaveFailed('Restore failed', err, 'Your data was not changed.');
         throw err;
       } finally {
         setIsRestoring(false);

@@ -7,8 +7,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
@@ -305,13 +304,9 @@ export function TrendsView({
   const handlePreferredUnitChange = useCallback(
     (unit: string) => {
       if (!selectedBiomarkerId) return;
-      setPreferredUnit(selectedBiomarkerId, unit).catch((err: unknown) => {
-        notifications.show({
-          title: 'Preferred unit not saved',
-          message: saveErrorMessage(err),
-          color: 'red',
-        });
-      });
+      setPreferredUnit(selectedBiomarkerId, unit).catch((err: unknown) =>
+        notifySaveFailed('Preferred unit not saved', err)
+      );
     },
     [selectedBiomarkerId, setPreferredUnit]
   );

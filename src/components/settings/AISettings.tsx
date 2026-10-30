@@ -37,6 +37,7 @@ import {
   getAnthropicModels,
 } from '@/services/ai';
 import { isLocalhost, getCurrentOrigin } from '@/utils/isLocalhost';
+import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 
 /**
  * Props for AISettings component
@@ -105,7 +106,7 @@ export function AISettings({
   const [isEditing, setIsEditing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [localOllamaModel, setLocalOllamaModel] = useState<string | undefined>(ollamaModel);
@@ -213,6 +214,21 @@ export function AISettings({
     };
   }, [localProvider, hasApiKey, getApiKey]);
 
+  /**
+   * Pick the first model when none is chosen. Once only: a save that fails
+   * is put back, and picking again would retry it in a loop. The caller
+   * tells the user when it is not saved.
+   */
+  const autoSelectFirstModel = useCallback(
+    (models: string[]) => {
+      if (models.length === 0 || localOllamaModel || autoSelected.current) return;
+      autoSelected.current = true;
+      setLocalOllamaModel(models[0]);
+      Promise.resolve(onOllamaModelChange?.(models[0])).catch(() => {});
+    },
+    [localOllamaModel, onOllamaModelChange]
+  );
+
   // Check Ollama status when provider is Ollama
   useEffect(() => {
     if (localProvider !== 'ollama') {
@@ -233,14 +249,7 @@ export function AISettings({
 
           setOllamaModels(models);
           setOllamaStatus('connected');
-          // Auto-select first model if none selected; once, so a save that
-          // fails (and is put back) is not retried in a loop
-          if (models.length > 0 && !localOllamaModel && !autoSelected.current) {
-            autoSelected.current = true;
-            setLocalOllamaModel(models[0]);
-            // The caller tells the user when it is not saved
-            Promise.resolve(onOllamaModelChange?.(models[0])).catch(() => {});
-          }
+          autoSelectFirstModel(models);
         } else {
           setOllamaStatus('disconnected');
           setOllamaModels([]);
@@ -258,7 +267,7 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, localOllamaModel, onOllamaModelChange]);
+  }, [localProvider, autoSelectFirstModel]);
 
   // Manual retry function for connection check
   const checkOllamaStatus = useCallback(async () => {
@@ -269,10 +278,7 @@ export function AISettings({
         const models = await getOllamaModelNames();
         setOllamaModels(models);
         setOllamaStatus('connected');
-        if (models.length > 0 && !localOllamaModel) {
-          setLocalOllamaModel(models[0]);
-          Promise.resolve(onOllamaModelChange?.(models[0])).catch(() => {});
-        }
+        autoSelectFirstModel(models);
       } else {
         setOllamaStatus('disconnected');
         setOllamaModels([]);
@@ -281,12 +287,7 @@ export function AISettings({
       setOllamaStatus('disconnected');
       setOllamaModels([]);
     }
-  }, [localOllamaModel, onOllamaModelChange]);
-
-  const showSaved = useCallback(() => {
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, []);
+  }, [autoSelectFirstModel]);
 
   /**
    * A change shows at once and is confirmed once saved. A failed save puts
@@ -352,10 +353,8 @@ export function AISettings({
     setNewApiKey('');
     setIsEditing(false);
 
-    // Show success briefly
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, [newApiKey, onApiKeyChange]);
+    showSaved();
+  }, [newApiKey, onApiKeyChange, showSaved]);
 
   // Handle test connection
   const handleTestConnection = useCallback(async () => {

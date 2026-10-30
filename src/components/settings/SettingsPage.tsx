@@ -7,8 +7,7 @@
 import { useState, useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { Stack, Title, Tabs } from '@mantine/core';
 import { useMantineColorScheme } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { saveErrorMessage } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import {
   IconDatabase,
   IconLock,
@@ -65,7 +64,7 @@ export interface SettingsPageProps {
 function reportAISave<T>(save: (value: T) => Promise<void>): (value: T) => Promise<void> {
   return (value) =>
     save(value).catch((err: unknown) => {
-      notifications.show({ title: 'AI setting not saved', message: saveErrorMessage(err), color: 'red' });
+      notifySaveFailed('AI setting not saved', err);
       throw err;
     });
 }
@@ -214,7 +213,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         await db.updatePreferences(() => changes);
       } catch (err) {
         setValue((current) => (current === value ? previous : current));
-        notifications.show({ title: `${what} not saved`, message: saveErrorMessage(err), color: 'red' });
+        notifySaveFailed(`${what} not saved`, err);
         throw err;
       }
     },
@@ -241,11 +240,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
       try {
         await setPersonalTarget(biomarkerKey, target);
       } catch (err) {
-        notifications.show({
-          title: 'Personal target not saved',
-          message: saveErrorMessage(err),
-          color: 'red',
-        });
+        notifySaveFailed('Personal target not saved', err);
         // Passed on so the targets list does not confirm the save
         throw err;
       } finally {

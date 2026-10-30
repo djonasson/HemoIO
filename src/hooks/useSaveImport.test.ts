@@ -62,6 +62,27 @@ describe('useSaveImport', () => {
     expect(syncNow).toHaveBeenCalled();
   });
 
+  it('says when the names it learns are not saved, though the import is', async () => {
+    vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
+    learnAliases.mockRejectedValue(new SaveError('quota'));
+    const { result } = renderSave();
+
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await result.current(REVIEWED);
+    });
+
+    expect(saved).toBe(true);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Learned names not saved',
+        message: expect.stringMatching(/^The import was saved\. .*no room left/),
+        color: 'red',
+      })
+    );
+    expect(refresh).toHaveBeenCalled();
+  });
+
   it('says nothing was saved, and why, when the storage does not keep the import', async () => {
     vi.mocked(saveImportResults).mockRejectedValue(new SaveError('quota'));
     const syncNow = vi.fn();
