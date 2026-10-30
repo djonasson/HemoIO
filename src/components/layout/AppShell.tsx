@@ -217,8 +217,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         // Every view, the alerts badge included, shows the new results
         await refreshLabResults();
 
-        // Sync to filesystem if enabled
-        await syncNow();
+        // The results are saved either way; a failed folder sync is retried
+        await syncNow().catch(() =>
+          notifications.show({
+            title: 'Folder Sync Failed',
+            message:
+              'Your results are saved in this browser, but they could not be written to your folder. HemoIO will try again in a moment.',
+            color: 'yellow',
+          })
+        );
 
         // Navigate to timeline to show the imported results
         setActiveView('timeline');

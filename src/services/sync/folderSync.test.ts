@@ -171,6 +171,18 @@ describe('writeFolderCopy', () => {
     expect(store.copy).toBe(before);
   });
 
+  it('reports a newer copy as newer even when its data is laid out differently', async () => {
+    store.copy = await sealed(
+      { version: FOLDER_SYNC_FILE_VERSION + 1, exportedAt: '2030-01-01', records: { all: [] } },
+      key
+    );
+
+    expect(await writeFolderCopy(store, withResults(), key)).toEqual({
+      status: 'protected',
+      reason: 'newer',
+    });
+  });
+
   describe('the previous copy', () => {
     it('is not kept when the folder held no copy', async () => {
       await writeFolderCopy(store, withResults(), key);
@@ -219,14 +231,24 @@ describe('writeFolderCopy', () => {
       expect(store.previous).toBe(previous);
     });
 
-    it('is not replaced when it cannot be read', async () => {
+    it('is replaced when it cannot be read: it is no copy to undo to', async () => {
       await writeFolderCopy(store, withResults(1), key);
+      const replaced = store.copy;
       store.previous = await sealed({ version: 2, exportedAt: 'x', data: withResults() }, await newKey());
-      const foreign = store.previous;
 
       await writeFolderCopy(store, withResults(2), key);
 
-      expect(store.previous).toBe(foreign);
+      expect(store.previous).toBe(replaced);
+    });
+
+    it('moves on after a cleanup that keeps at least half of the records', async () => {
+      await writeFolderCopy(store, withResults(10), key);
+      await writeFolderCopy(store, withResults(8), key);
+      const cleaned = store.copy;
+
+      await writeFolderCopy(store, withResults(9), key);
+
+      expect(store.previous).toBe(cleaned);
     });
   });
 

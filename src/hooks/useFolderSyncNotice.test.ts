@@ -37,7 +37,7 @@ describe('useFolderSyncNotice', () => {
 
     const notice = vi.mocked(notifications.show).mock.calls[0][0];
     expect(notice.message).toMatch(/cannot be read/);
-    expect(notice.message).toMatch(/another password, or it is damaged/);
+    expect(notice.message).toMatch(/saved by a different HemoIO setup, or it is damaged/);
     expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
   });
 

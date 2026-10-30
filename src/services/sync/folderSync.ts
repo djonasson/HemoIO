@@ -71,16 +71,22 @@ function isSyncFile(value: unknown): value is FolderSyncFile {
   );
 }
 
-/** A copy's content, `null` for no copy or an empty file, `'unreadable'` when the key cannot read it */
+/**
+ * A copy's content: `null` for no copy or an empty file, `'unreadable'` when
+ * the key cannot read it, `'newer'` when a newer HemoIO wrote it
+ */
 async function open(
   encrypted: ArrayBuffer | null,
   key: CryptoKey
-): Promise<FolderSyncFile | null | 'unreadable'> {
+): Promise<FolderSyncFile | null | 'unreadable' | 'newer'> {
   // An interrupted first write can leave an empty file; there is nothing to lose
   if (!encrypted || encrypted.byteLength === 0) return null;
 
   try {
     const parsed: unknown = JSON.parse(new TextDecoder().decode(await decrypt(encrypted, key)));
+    // Checked first: a newer HemoIO may lay its data out in a way this one cannot check
+    const version = (parsed as { version?: unknown } | null)?.version;
+    if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return 'newer';
     return isSyncFile(parsed) ? parsed : 'unreadable';
   } catch {
     // Another password, or a damaged file. Not logged: a log would add nothing
@@ -89,10 +95,11 @@ async function open(
 }
 
 /**
- * Whether the copy being replaced should become the previous copy. The
- * previous copy is never one holding less than the one already kept: a
- * browser that lost its data and then gains a result or two must not push the
- * full history out with its second write. One that cannot be read stays too.
+ * Whether the copy being replaced should become the previous copy. It must
+ * hold at least half the records of the one already kept: a browser that lost
+ * its data and then gains a result or two must not push the full history out
+ * with its second write, while a cleanup that removes some records still lets
+ * the previous copy move on. One that cannot be read is no copy to undo to.
  */
 async function keepsAsPrevious(
   store: FolderCopyStore,
@@ -103,8 +110,10 @@ async function keepsAsPrevious(
   if (replacedRecords === 0) return false;
 
   const previous = await open(await store.loadPrevious(), key);
-  if (previous === 'unreadable') return false;
-  return !previous || replacedRecords >= healthRecords(previous.data);
+  // A newer HemoIO's copy cannot be counted, but it is one to undo to
+  if (previous === 'newer') return false;
+  if (!previous || previous === 'unreadable') return true;
+  return replacedRecords * 2 >= healthRecords(previous.data);
 }
 
 /**
@@ -122,13 +131,10 @@ export async function writeFolderCopy(
   // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
   const dataJson = JSON.stringify(data);
 
-  if (existing === 'unreadable') {
-    return { status: 'protected', reason: 'unreadable' };
+  if (existing === 'unreadable' || existing === 'newer') {
+    return { status: 'protected', reason: existing };
   }
   if (existing) {
-    if (existing.version > FOLDER_SYNC_FILE_VERSION) {
-      return { status: 'protected', reason: 'newer' };
-    }
     if (existing.version === FOLDER_SYNC_FILE_VERSION && JSON.stringify(existing.data) === dataJson) {
       return { status: 'unchanged' };
     }
