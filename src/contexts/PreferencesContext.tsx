@@ -48,6 +48,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     learnedAliases: {},
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  // The maps as stored: a failed save puts back the stored entry, as the one
+  // shown before it may not have been saved either
+  const storedRef = useRef<Maps>(maps);
 
   useEffect(() => {
     if (!db || !isReady) return;
@@ -55,7 +58,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     db.getPreferences()
       .then((prefs) => {
         if (cancelled) return;
-        setMaps(fromStored(prefs));
+        storedRef.current = fromStored(prefs);
+        setMaps(storedRef.current);
         setIsLoaded(true);
       })
       .catch(() => console.error('Failed to load preferences'));
@@ -66,7 +70,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
 
   const reload = useCallback(async () => {
     if (!db || !isReady) return;
-    setMaps(fromStored(await db.getPreferences()));
+    storedRef.current = fromStored(await db.getPreferences());
+    setMaps(storedRef.current);
     setIsLoaded(true);
   }, [db, isReady]);
 
@@ -77,8 +82,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
   }, [maps]);
 
   /**
-   * Change one map: shown at once, then saved. A failed save puts back each
-   * entry it changed, unless a later change replaced that entry already.
+   * Change one map: shown at once, then saved. A failed save puts back the
+   * stored value of each entry it changed, unless a later change replaced
+   * that entry already.
    */
   const updateField = useCallback(
     async <F extends MapField>(field: F, update: (map: Maps[F]) => Maps[F]) => {
@@ -88,16 +94,18 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
       try {
         if (!db || !isReady) throw new Error('Database not available');
         await db.updatePreferences((stored) => ({ [field]: update(fromStored(stored)[field]) }));
+        storedRef.current = { ...storedRef.current, [field]: update(storedRef.current[field]) };
       } catch (err) {
         const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
           (key) => before[key] !== after[key]
         );
+        const stored = storedRef.current[field] as Record<string, unknown>;
         setMaps((current) => {
           const map = { ...(current[field] as Record<string, unknown>) };
           for (const key of changed) {
             if (map[key] !== after[key]) continue;
-            if (before[key] === undefined) delete map[key];
-            else map[key] = before[key];
+            if (stored[key] === undefined) delete map[key];
+            else map[key] = stored[key];
           }
           return { ...current, [field]: map };
         });

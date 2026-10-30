@@ -6,13 +6,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { getOllamaModelNames, isOllamaRunning } from '@/services/ai';
+import { getOllamaModelNames, getOpenAIModels, isOllamaRunning } from '@/services/ai';
 import { AISettings } from './AISettings';
 
 vi.mock('@/services/ai', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/ai')>()),
   isOllamaRunning: vi.fn().mockResolvedValue(false),
   getOllamaModelNames: vi.fn().mockResolvedValue([]),
+  getOpenAIModels: vi.fn().mockResolvedValue([]),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -265,6 +266,27 @@ describe('AISettings', () => {
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: 'Select Ollama model' })).toHaveValue('')
       );
+    });
+
+    it('shows no OpenAI model when the first one picked is not saved', async () => {
+      vi.mocked(getOpenAIModels).mockResolvedValue([{ value: 'gpt-5', label: 'GPT-5' }]);
+      const onOpenaiModelChange = vi.fn().mockRejectedValue(new Error('not saved'));
+      const user = userEvent.setup();
+      renderWithProviders(
+        <AISettings
+          {...defaultProps}
+          hasApiKey
+          getApiKey={vi.fn().mockResolvedValue('sk-test')}
+          onOpenaiModelChange={onOpenaiModelChange}
+        />
+      );
+      const select = await screen.findByRole('textbox', { name: 'Select OpenAI model' });
+
+      await user.click(select);
+      await user.click(await screen.findByRole('option', { name: 'GPT-5' }));
+
+      await waitFor(() => expect(onOpenaiModelChange).toHaveBeenCalledWith('gpt-5'));
+      await waitFor(() => expect(select).toHaveValue(''));
     });
 
     it('shows what it is given after a failed save, not what it showed before', async () => {

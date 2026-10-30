@@ -117,6 +117,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   // stored one again, as the one shown before it may not have been saved either
   const shownDisplay = useRef<DisplayValues>({ theme, dateFormat });
   const storedDisplay = useRef<DisplayValues>({ theme, dateFormat });
+  // The colors in use with the stored theme: not always its own, as the app
+  // starts with the colors last applied, not with the stored theme
+  const storedScheme = useRef(colorScheme);
 
   // Personal Targets state
   const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
@@ -233,17 +236,17 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     [db, isReady]
   );
 
-  const showTheme = useCallback(
-    (value: ThemeOption) => {
-      setTheme(value);
-      setColorScheme(value === 'system' ? 'auto' : value);
-    },
-    [setColorScheme]
-  );
-
   const handleThemeChange = useCallback(
-    (newTheme: ThemeOption) => saveDisplaySetting('Theme', 'theme', newTheme, showTheme),
-    [saveDisplaySetting, showTheme]
+    async (newTheme: ThemeOption) => {
+      const scheme = newTheme === 'system' ? 'auto' : newTheme;
+      await saveDisplaySetting('Theme', 'theme', newTheme, (value) => {
+        setTheme(value);
+        // Put back, the colors go back to those in use before
+        setColorScheme(value === newTheme ? scheme : storedScheme.current);
+      });
+      storedScheme.current = scheme;
+    },
+    [saveDisplaySetting, setColorScheme]
   );
 
   const handleDateFormatChange = useCallback(

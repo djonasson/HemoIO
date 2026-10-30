@@ -430,21 +430,26 @@ describe('SettingsPage', () => {
       );
     });
 
-    it('puts the stored colors back when the theme is not saved', async () => {
-      mockDb.updatePreferences.mockRejectedValueOnce(new SaveError('quota'));
-      const user = userEvent.setup();
-      renderWithProviders(<SettingsPage {...defaultProps} />);
-      await waitForSettingsToLoad();
-      await user.click(screen.getByRole('tab', { name: /display/i }));
+    it.each(['Dark', 'Light'])(
+      'keeps the colors in use when the theme %s is not saved',
+      async (choice) => {
+        // The stored theme (System by default) need not be the one in use
+        localStorage.setItem('mantine-color-scheme-value', 'light');
+        mockDb.updatePreferences.mockRejectedValueOnce(new SaveError('quota'));
+        const user = userEvent.setup();
+        renderWithProviders(<SettingsPage {...defaultProps} />);
+        await waitForSettingsToLoad();
+        await user.click(screen.getByRole('tab', { name: /display/i }));
 
-      await user.click(screen.getByText('Dark'));
+        await user.click(screen.getByText(choice));
 
-      await waitFor(() => expect(mockShowNotification).toHaveBeenCalled());
-      await waitFor(() =>
-        expect(localStorage.getItem('mantine-color-scheme-value')).toBe('auto')
-      );
-      expect(screen.getByRole('radio', { name: /system/i })).toBeChecked();
-    });
+        await waitFor(() => expect(mockShowNotification).toHaveBeenCalled());
+        await waitFor(() =>
+          expect(screen.getByRole('radio', { name: /system/i })).toBeChecked()
+        );
+        expect(localStorage.getItem('mantine-color-scheme-value')).toBe('light');
+      }
+    );
 
     it('applies a saved theme without reading the stored one again', async () => {
       const user = userEvent.setup();

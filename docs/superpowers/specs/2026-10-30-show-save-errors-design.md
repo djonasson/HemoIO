@@ -62,9 +62,13 @@ Two strategies, by kind of data:
   screen is exactly what a later unlock will show.
 - **Preferences, acknowledgements, theme, date format, AI settings: roll
   back.** These show at once (a unit switch must not wait on storage) and
-  a failed write puts the previous value back, unless a newer change
-  already replaced it. A reload instead would throw away other changes
-  still in flight, and needs a read from a database that just failed.
+  a failed write puts the stored value back (not the one shown before it,
+  which may not have been saved either), unless a newer change already
+  replaced it. A failed theme keeps the colors in use before it. A reload
+  instead would throw away other changes still in flight, and needs a read
+  from a database that just failed.
+- **A failure is never unseen.** A note editor or dialog shows its own
+  failure while open; one that fails after it was closed is notified.
 
 ### Import is all or nothing
 
@@ -72,14 +76,16 @@ All files of an import are saved in one transaction. A partial import
 would be worse than none: retrying it would duplicate the files that did
 save. On failure the wizard stays on Confirm with everything reviewed, so
 the user can retry; nothing is learned and the app stays put. Save shows a
-loading state and cannot be pressed twice.
+loading state and cannot be pressed twice, and the steps and the sidebar
+cannot be used until the import is saved (names are learned, and the folder
+synced, after). Locking stays possible: it is a security control.
 
 ### Messages
 
 Each failure says what was not saved and why, in plain language and
 without any health data (no lab names, biomarkers, values, notes or file
 names); e.g. "Import not saved — There is no room left in this browser's
-storage…". Raw errors are not logged; only the kind is.
+storage…". Failed saves are not logged: the user is told, and an error can quote stored data.
 
 ## Testing
 

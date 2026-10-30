@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { SaveError } from '@data/db/saveError';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
 
@@ -207,7 +208,8 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
         changes.tags = input.tags;
       }
 
-      await db.updateNote(id, changes);
+      // None updated: the note is gone (deleted elsewhere), so the edit is not kept
+      if ((await db.updateNote(id, changes)) === 0) throw new SaveError('failed');
       await fetchNotes();
     },
     [db, isReady, fetchNotes]

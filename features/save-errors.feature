@@ -20,7 +20,7 @@ Feature: Save Errors
     When I click "Save Results"
     Then I should see "Import not saved" saying the storage has no room left
     And I should still be on the confirm step with my reviewed values
-    And the timeline should show no lab results
+    And no lab result should be stored
     When the browser's storage has room again
     And I click "Save Results" again
     Then I should see that the import was saved
@@ -59,7 +59,7 @@ Feature: Save Errors
     Given I have lab results imported
     And the browser cancels every change before keeping it
     When I add a note to a lab result
-    Then I should see "Note not saved" in the editor
+    Then I should see "Note not saved" in the editor, without what I wrote
     And the note editor should still hold what I wrote
     And the note should not be listed
     And after I lock and unlock the app the lab result has no notes
@@ -102,7 +102,7 @@ Feature: Save Errors
     And the browser cancels every change before keeping it
     When I choose "mmol/L" as the preferred unit
     Then I should see "Preferred unit not saved"
-    And the trend should be shown in "mg/dL" again
+    And the preferred unit should be "mg/dL" again
 
   Scenario: A display setting that cannot be saved goes back
     Given I am on the Display settings
@@ -111,6 +111,14 @@ Feature: Save Errors
     Then I should see "Date format not saved"
     And the date format should be "MM/DD/YYYY" again
     And I should not see "Preferences saved"
+
+  Scenario: A theme that cannot be saved keeps the colors in use
+    Given I am on the Display settings
+    And the browser cancels every change before keeping it
+    When I choose the "Dark" theme
+    Then I should see "Theme not saved"
+    And the colors should be those in use before
+    And the stored theme should be selected again
 
   Scenario: An AI setting that cannot be saved goes back
     Given I am on the AI Configuration settings
@@ -155,5 +163,7 @@ Feature: Save Errors
     Then I should see "Note not saved" saying I should reload the page
 
   Scenario: Save errors never show my health data
-    Given a save fails for any reason
-    Then the message should not contain lab names, test names, values, notes or file names
+    Given I have reviewed an imported lab report
+    And the browser's storage is full
+    When I click "Save Results"
+    Then the message should not contain lab names, test names, values or file names

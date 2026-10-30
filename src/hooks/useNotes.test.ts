@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { SaveError } from '@data/db/saveError';
 import { useNotes } from './useNotes';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
@@ -286,6 +287,21 @@ describe('useNotes', () => {
   });
 
   describe('updateNote', () => {
+    it('does not count an edit to a note that is gone as saved', async () => {
+      // Deleted meanwhile, say in another tab: nothing is written
+      mockDb.updateNote.mockResolvedValue(0);
+      mockDb.getAllNotes.mockResolvedValue([]);
+      const { result } = renderHook(() => useNotes());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      let error: unknown;
+      await act(async () => {
+        await result.current.updateNote(1, { content: 'Updated content' }).catch((e) => (error = e));
+      });
+
+      expect(error).toBeInstanceOf(SaveError);
+    });
+
     it('should update an existing note', async () => {
       mockDb.updateNote.mockResolvedValue(1);
       mockDb.getAllNotes.mockResolvedValue([]);

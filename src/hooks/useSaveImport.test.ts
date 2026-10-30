@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { notifications } from '@mantine/notifications';
 import { SaveError } from '@data/db/saveError';
 import { saveImportResults } from '@services/persistence';
@@ -60,6 +60,26 @@ describe('useSaveImport', () => {
     expect(learnAliases).toHaveBeenCalled();
     expect(refresh).toHaveBeenCalled();
     expect(syncNow).toHaveBeenCalled();
+  });
+
+  it('is done once the import is saved and shown, while names are learned and synced after', async () => {
+    vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
+    let learned!: () => void;
+    learnAliases.mockReturnValue(new Promise<void>((resolve) => (learned = resolve)));
+    const syncNow = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderSave(syncNow);
+
+    let saved: boolean | undefined;
+    await act(async () => {
+      saved = await result.current(REVIEWED);
+    });
+
+    expect(saved).toBe(true);
+    expect(refresh).toHaveBeenCalled();
+    // The sync copies the learned names too
+    expect(syncNow).not.toHaveBeenCalled();
+    learned();
+    await waitFor(() => expect(syncNow).toHaveBeenCalled());
   });
 
   it('says when the names it learns are not saved, though the import is', async () => {

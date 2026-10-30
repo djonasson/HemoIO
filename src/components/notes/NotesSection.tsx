@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Stack, Text, Button, Collapse, Group } from '@mantine/core';
 import { IconPlus, IconNote, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
+import { useSaveState } from '@hooks/useSaveState';
 import type { UserNote } from '@/types';
 import { NoteEditor } from './NoteEditor';
 import { NoteDisplay } from './NoteDisplay';
@@ -56,9 +57,9 @@ export function NotesSection({
   const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
   const isCollapsed = userCollapsed ?? defaultCollapsed;
   const [showEditor, setShowEditor] = useState(showEditorByDefault);
-  const [isSaving, setIsSaving] = useState(false);
-  // Why the last save failed; the editor keeps the note so it can be saved again
-  const [saveError, setSaveError] = useState<unknown>(null);
+  // Shown in the editor, which keeps the note to save again; notified once
+  // the editor is gone
+  const { isSaving, error: saveError, run, clear } = useSaveState('Note not saved');
 
   const handleToggleCollapse = () => {
     setUserCollapsed(!isCollapsed);
@@ -70,20 +71,11 @@ export function NotesSection({
 
   const handleCancelEditor = () => {
     setShowEditor(false);
-    setSaveError(null);
+    clear();
   };
 
   const handleSaveNote = async (content: string, tags: string[]) => {
-    setIsSaving(true);
-    setSaveError(null);
-    try {
-      await onCreateNote(content, tags);
-      setShowEditor(false);
-    } catch (err) {
-      setSaveError(err);
-    } finally {
-      setIsSaving(false);
-    }
+    if (await run(() => onCreateNote(content, tags))) setShowEditor(false);
   };
 
   const handleUpdateNote = async (id: number, content: string, tags: string[]) => {

@@ -33,7 +33,8 @@ export interface ImportWizardProps {
    * Saves the reviewed results. The wizard shows it is saving until this
    * settles, and stays on the confirm step: on failure, to try again.
    */
-  onComplete: (results: ReviewedResult[]) => void | Promise<unknown>;
+  /** Resolves once the save has settled; the confirm step shows it saving until then */
+  onComplete: (results: ReviewedResult[]) => Promise<unknown>;
   /** Callback when wizard is cancelled */
   onCancel?: () => void;
   /** AI provider type */

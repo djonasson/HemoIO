@@ -461,8 +461,9 @@ export function OutOfRangeAlerts({
         )}
       </Group>
 
+      {/* The light red that meets AA contrast (see theme.ts); plain red does not */}
       {saveError && (
-        <Text role="alert" c="red" size="sm">
+        <Text role="alert" c="var(--mantine-color-red-light-color)" size="sm">
           {saveError}
         </Text>
       )}

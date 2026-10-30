@@ -596,7 +596,8 @@ export function AISettings({
               (localProvider === 'anthropic' && anthropicModels.length > 0)) ? (
               <>
                 <Select
-                  value={localProvider === 'openai' ? localOpenaiModel : localAnthropicModel}
+                  // null, not "": a searchable Select clears its text only for null
+                  value={(localProvider === 'openai' ? localOpenaiModel : localAnthropicModel) || null}
                   onChange={localProvider === 'openai' ? handleOpenaiModelChange : handleAnthropicModelChange}
                   data={localProvider === 'openai' ? openaiModels : anthropicModels}
                   disabled={isSaving || (localProvider === 'openai' && isLoadingOpenaiModels) || (localProvider === 'anthropic' && isLoadingAnthropicModels)}

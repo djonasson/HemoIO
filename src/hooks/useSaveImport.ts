@@ -51,24 +51,25 @@ export function useSaveImport(
         color: 'green',
       });
 
-      await Promise.all([
+      // Every view, the alerts badge included, shows the new results
+      await refresh();
+      // Not waited for: the import is saved, and the user may go on. The
+      // sync comes after, as it copies the learned names too.
+      void learnAliases(
         // Names saved under a test are this user's aliases from now on
-        learnAliases(
-          results.flatMap((r) =>
-            r.editedBiomarkers.map((b) => ({
-              name: b.name,
-              key: b.dictionaryMatch?.key,
-              pickedByUser: b.identifiedBy === 'user',
-              savedAsUnknown: b.savedAsUnknown,
-            }))
-          )
-        ).catch((err: unknown) =>
+        results.flatMap((r) =>
+          r.editedBiomarkers.map((b) => ({
+            name: b.name,
+            key: b.dictionaryMatch?.key,
+            pickedByUser: b.identifiedBy === 'user',
+            savedAsUnknown: b.savedAsUnknown,
+          }))
+        )
+      )
+        .catch((err: unknown) =>
           notifySaveFailed('Learned names not saved', err, 'The import was saved.')
-        ),
-        // Every view, the alerts badge included, shows the new results
-        refresh(),
-      ]);
-      await syncNow();
+        )
+        .then(syncNow);
       return true;
     },
     [db, isReady, refresh, learnAliases, syncNow]

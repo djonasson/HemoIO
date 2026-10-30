@@ -417,7 +417,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
 interface MainContentProps {
   view: View;
-  onImportComplete: (results: ReviewedResult[]) => void;
+  /** Resolves once the save has settled; the wizard shows it saving until then */
+  onImportComplete: (results: ReviewedResult[]) => Promise<void>;
   onNavigateToImport: () => void;
   onNavigate: (view: View) => void;
   trendFocus: TrendFocus | null;

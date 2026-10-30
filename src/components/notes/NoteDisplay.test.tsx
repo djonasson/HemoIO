@@ -7,8 +7,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { NoteDisplay } from './NoteDisplay';
 import type { UserNote } from '@/types';
+
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -344,6 +347,23 @@ describe('NoteDisplay', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent('Note not deleted');
       expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
+    });
+
+    it('notifies an edit that fails after the note was closed', async () => {
+      let fail!: (err: unknown) => void;
+      const onUpdate = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)));
+      const user = userEvent.setup();
+      const { unmount } = renderWithProviders(<NoteDisplay {...defaultProps} onUpdate={onUpdate} />);
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), ' more');
+      await user.click(screen.getByRole('button', { name: /save changes/i }));
+      unmount();
+      fail(new SaveError('timeout'));
+
+      await waitFor(() =>
+        expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+      );
     });
 
     it('opens the editor and the dialog without an earlier failure', async () => {

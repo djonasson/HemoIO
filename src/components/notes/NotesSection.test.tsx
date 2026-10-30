@@ -7,8 +7,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { NotesSection } from './NotesSection';
 import type { UserNote } from '@/types';
+
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -285,6 +288,25 @@ describe('NotesSection', () => {
       expect(alert).toHaveTextContent(/no room left/);
       expect(alert).not.toHaveTextContent('Felt tired');
       expect(screen.getByRole('textbox', { name: /note content/i })).toHaveValue('Felt tired');
+    });
+
+    it('notifies a failure that comes after the section was closed', async () => {
+      let fail!: (err: unknown) => void;
+      const onCreateNote = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)));
+      const user = userEvent.setup();
+      const { unmount } = renderWithProviders(
+        <NotesSection {...defaultProps} onCreateNote={onCreateNote} />
+      );
+
+      await user.click(screen.getByRole('button', { name: /add note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Note');
+      await user.click(screen.getByRole('button', { name: /save note/i }));
+      unmount();
+      fail(new SaveError('timeout'));
+
+      await waitFor(() =>
+        expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+      );
     });
 
     it('clears the error once the note is saved, or the editor is closed', async () => {

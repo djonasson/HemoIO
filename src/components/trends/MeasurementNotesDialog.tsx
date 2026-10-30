@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
+import { useSaveState } from '@hooks/useSaveState';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
 import type { UserNote } from '@/types';
@@ -37,9 +38,9 @@ export function MeasurementNotesDialog({
   onDeleteNote,
 }: MeasurementNotesDialogProps): React.ReactNode {
   const [adding, setAdding] = useState(false);
-  const [saving, setSaving] = useState(false);
-  // Why the last save failed; the editor keeps the note so it can be saved again
-  const [saveError, setSaveError] = useState<unknown>(null);
+  // Shown in the editor, which keeps the note to save again; notified once
+  // the editor is gone
+  const { isSaving: saving, error: saveError, run, clear } = useSaveState('Note not saved');
 
   // The modal stays mounted and opens and closes through `opened`, so it can
   // return focus to the point that opened it
@@ -48,23 +49,16 @@ export function MeasurementNotesDialog({
     : '';
   const stopAdding = () => {
     setAdding(false);
-    setSaveError(null);
+    clear();
   };
   const close = () => {
+    // Stays open while its note saves, so the outcome is shown with the note
+    if (saving) return;
     stopAdding();
     onClose();
   };
   const save = async (content: string, tags: string[]) => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      await onCreateNote(content, tags);
-      setAdding(false);
-    } catch (err) {
-      setSaveError(err);
-    } finally {
-      setSaving(false);
-    }
+    if (await run(() => onCreateNote(content, tags))) setAdding(false);
   };
 
   return (

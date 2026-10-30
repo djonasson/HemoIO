@@ -57,7 +57,12 @@ export interface ConfirmStepProps {
 /**
  * Confirm Step - final confirmation before saving
  */
-export function ConfirmStep({ results, onConfirm, onBack, isSaving = false }: ConfirmStepProps) {
+export function ConfirmStep({
+  results,
+  onConfirm,
+  onBack,
+  isSaving = false,
+}: ConfirmStepProps): React.ReactNode {
   // Calculate totals
   const totalFiles = results.length;
   const totalBiomarkers = results.reduce(

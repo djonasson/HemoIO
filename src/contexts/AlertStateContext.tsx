@@ -48,12 +48,18 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
     [sessionDb]
   );
 
+  // This session's stored acknowledgements: a failed save puts back the
+  // stored one, as the one shown before it may not have been saved either
+  const storedRef = useRef<Record<string, Date>>(NONE);
+
   useEffect(() => {
+    storedRef.current = NONE;
     if (!sessionDb) return;
     let cancelled = false;
     sessionDb
       .getPreferences()
       .then((prefs) => {
+        if (!cancelled) storedRef.current = toDates(prefs?.acknowledgedAlerts);
         // Acknowledgements made while loading win over the stored ones
         if (!cancelled) update((current) => ({ ...toDates(prefs?.acknowledgedAlerts), ...current }));
       })
@@ -67,13 +73,13 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
   const reload = useCallback(async () => {
     if (!sessionDb) return;
     const prefs = await sessionDb.getPreferences();
-    update(() => toDates(prefs?.acknowledgedAlerts));
+    storedRef.current = toDates(prefs?.acknowledgedAlerts);
+    update(() => storedRef.current);
   }, [sessionDb, update]);
 
   const acknowledge = useCallback(
     async (biomarkerKey: string, through: Date) => {
-      const previous = acknowledgedRef.current[biomarkerKey];
-      const kept = later(previous, through);
+      const kept = later(acknowledgedRef.current[biomarkerKey], through);
       update((current) => ({ ...current, [biomarkerKey]: later(current[biomarkerKey], through) }));
       if (!sessionDb) return;
 
@@ -89,12 +95,17 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
             },
           };
         });
+        storedRef.current = {
+          ...storedRef.current,
+          [biomarkerKey]: later(storedRef.current[biomarkerKey], through),
+        };
       } catch (err) {
         // Not saved: show the alert again rather than let it reappear on reload
+        const stored = storedRef.current[biomarkerKey];
         update((current) => {
           if (current[biomarkerKey] !== kept) return current;
           const next = { ...current };
-          if (previous) next[biomarkerKey] = previous;
+          if (stored) next[biomarkerKey] = stored;
           else delete next[biomarkerKey];
           return next;
         });
