@@ -5,20 +5,15 @@
  * the IndexedDB data to the selected filesystem directory after changes.
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { writeFolderCopy } from '@services/sync';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
-import { encrypt } from '@data/encryption';
+import type { FolderProtectionReason } from '@services/sync';
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
-
-/**
- * Format version of the encrypted sync file. Version 2 stores biomarker keys
- * (version 1 stored dictionary positions); a future reader must migrate v1.
- */
-const SYNC_FILE_VERSION = 2;
 
 /**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
@@ -28,13 +23,19 @@ export function useFilesystemSync(): {
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
+  /** Why the last sync left the folder copy alone, or null while syncs write */
+  protection: FolderProtectionReason | null;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
   const isSyncingRef = useRef(false);
+  // Syncs run one after another: one asked for during another (an import
+  // during the periodic sync) must still write, after it
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
   const lastSyncTimeRef = useRef<Date | null>(null);
   const syncErrorRef = useRef<string | null>(null);
   const providerRef = useRef<FileSystemStorageProvider | null>(null);
+  const [protection, setProtection] = useState<FolderProtectionReason | null>(null);
 
   // Check if filesystem storage is enabled
   const isFilesystemEnabled = useCallback(() => {
@@ -51,13 +52,8 @@ export function useFilesystemSync(): {
     return providerRef.current;
   }, []);
 
-  // Sync data to filesystem
-  const syncToFilesystem = useCallback(async () => {
+  const runSync = useCallback(async () => {
     if (!db || !isReady || !isFilesystemEnabled() || !encryptionKey) {
-      return;
-    }
-
-    if (isSyncingRef.current) {
       return;
     }
 
@@ -75,24 +71,13 @@ export function useFilesystemSync(): {
         return;
       }
 
-      // Export all data from the encrypted database
-      const exportData = await db.exportAllData();
+      const outcome = await writeFolderCopy(provider, await db.exportAllData(), encryptionKey);
+      if (outcome.status === 'protected') {
+        setProtection(outcome.reason);
+        return;
+      }
 
-      // Convert to JSON and then to ArrayBuffer
-      const jsonString = JSON.stringify({
-        version: SYNC_FILE_VERSION,
-        exportedAt: new Date().toISOString(),
-        data: exportData,
-      });
-      const encoder = new TextEncoder();
-      const plainData = encoder.encode(jsonString);
-
-      // Encrypt the data before saving
-      const encryptedData = await encrypt(plainData.buffer, encryptionKey);
-
-      // Save encrypted data to filesystem
-      await provider.save(encryptedData);
-
+      setProtection(null);
       lastSyncTimeRef.current = new Date();
     } catch (error) {
       console.error('Failed to sync to filesystem:', error);
@@ -101,6 +86,12 @@ export function useFilesystemSync(): {
       isSyncingRef.current = false;
     }
   }, [db, isReady, isFilesystemEnabled, getProvider, encryptionKey]);
+
+  const syncToFilesystem = useCallback((): Promise<void> => {
+    const next = queueRef.current.then(runSync);
+    queueRef.current = next;
+    return next;
+  }, [runSync]);
 
   // Set up periodic sync when filesystem storage is enabled
   useEffect(() => {
@@ -131,6 +122,7 @@ export function useFilesystemSync(): {
     isSyncing: isSyncingRef.current,
     lastSyncTime: lastSyncTimeRef.current,
     syncError: syncErrorRef.current,
+    protection,
   };
 }
 

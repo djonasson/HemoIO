@@ -34,6 +34,7 @@ import {
   useExportData,
   useEncryptedApiKey,
   useFilesystemSync,
+  useFolderSyncNotice,
   useAISettings,
   useAlerts,
   useAlertState,
@@ -141,7 +142,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
 
-  const { syncNow } = useFilesystemSync();
+  const { syncNow, protection: folderProtection } = useFilesystemSync();
+  useFolderSyncNotice(folderProtection);
 
   const handleNavClick = useCallback(
     (view: View) => {

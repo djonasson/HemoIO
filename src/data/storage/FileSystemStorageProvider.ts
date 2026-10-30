@@ -10,7 +10,21 @@
 
 import type { StorageProvider } from '@/types';
 
-const DATA_FILE_NAME = 'hemoio-data.encrypted';
+/**
+ * The folder copy: the encrypted JSON sync file
+ * (`{ version, exportedAt, data }`, see `services/sync/folderSync.ts`),
+ * AES-GCM encrypted with the session data key, IV first.
+ */
+export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
+
+/**
+ * The folder copy as it was before the last write replaced it: the replaced
+ * file's bytes, unchanged, so it has the same format and encryption as
+ * FOLDER_DATA_FILE_NAME. One bad write can be undone from it. Only one level
+ * is kept, so a synced folder does not fill up with copies of health data.
+ */
+export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
+
 const HANDLE_STORAGE_KEY = 'hemoio_filesystem_handle';
 
 /**
@@ -29,7 +43,8 @@ export class FileSystemStorageProvider implements StorageProvider {
   private directoryHandle: FileSystemDirectoryHandle | null = null;
 
   /**
-   * Save data to the selected directory
+   * Save data to the selected directory, keeping the copy it replaces as
+   * FOLDER_PREVIOUS_FILE_NAME. If that cannot be kept, nothing is replaced.
    */
   async save(data: ArrayBuffer): Promise<void> {
     const handle = await this.getDirectoryHandle();
@@ -43,15 +58,46 @@ export class FileSystemStorageProvider implements StorageProvider {
       throw new Error('Permission denied. Please grant folder access to continue.');
     }
 
-    // Get or create the file
-    const fileHandle = await handle.getFileHandle(DATA_FILE_NAME, { create: true });
+    const current = await this.readFile(handle, FOLDER_DATA_FILE_NAME);
+    // An empty file holds nothing to undo to, and would replace a previous copy that does
+    if (current && current.byteLength > 0) {
+      await this.writeFile(handle, FOLDER_PREVIOUS_FILE_NAME, current);
+    }
+    await this.writeFile(handle, FOLDER_DATA_FILE_NAME, data);
+  }
 
-    // Write the data
+  /** A file's bytes, or null when the directory does not hold it */
+  private async readFile(
+    handle: FileSystemDirectoryHandle,
+    name: string
+  ): Promise<ArrayBuffer | null> {
+    try {
+      const file = await (await handle.getFileHandle(name)).getFile();
+      return await file.arrayBuffer();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') return null;
+      throw error;
+    }
+  }
+
+  /**
+   * The browser writes to a temporary file and swaps it in on close, so a
+   * failed write leaves the file as it was
+   */
+  private async writeFile(
+    handle: FileSystemDirectoryHandle,
+    name: string,
+    data: ArrayBuffer
+  ): Promise<void> {
+    const fileHandle = await handle.getFileHandle(name, { create: true });
     const writable = await fileHandle.createWritable();
     try {
       await writable.write(data);
-    } finally {
       await writable.close();
+    } catch (error) {
+      // Abort can fail on a stream already closing; the write's error is the one to report
+      await writable.abort().catch(() => undefined);
+      throw error;
     }
   }
 
@@ -70,16 +116,11 @@ export class FileSystemStorageProvider implements StorageProvider {
       throw new Error('Permission denied. Please grant folder access to continue.');
     }
 
-    try {
-      const fileHandle = await handle.getFileHandle(DATA_FILE_NAME);
-      const file = await fileHandle.getFile();
-      return await file.arrayBuffer();
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'NotFoundError') {
-        throw new Error('No backup data found');
-      }
-      throw error;
+    const data = await this.readFile(handle, FOLDER_DATA_FILE_NAME);
+    if (!data) {
+      throw new Error('No backup data found');
     }
+    return data;
   }
 
   /**
@@ -98,7 +139,7 @@ export class FileSystemStorageProvider implements StorageProvider {
     }
 
     try {
-      await handle.getFileHandle(DATA_FILE_NAME);
+      await handle.getFileHandle(FOLDER_DATA_FILE_NAME);
       return true;
     } catch {
       return false;
