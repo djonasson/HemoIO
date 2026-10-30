@@ -35,8 +35,8 @@ import {
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
 
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 export interface StorageSettingsProps {
   /** Whether the settings are being saved */

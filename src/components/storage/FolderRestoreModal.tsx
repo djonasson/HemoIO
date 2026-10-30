@@ -145,7 +145,11 @@ export function FolderRestoreModal({
     const { labResults, testValues, userNotes, exportedAt } = prompt.data;
     return (
       <>
-        <Text size="sm">This browser has no lab data, but {folder} has a copy:</Text>
+        <Text size="sm">
+          {prompt.replacesBrowserData
+            ? `This browser had no lab data when you unlocked HemoIO, and ${folder} has a copy:`
+            : `This browser has no lab data, but ${folder} has a copy:`}
+        </Text>
         <List size="sm">
           <List.Item>{count(labResults.length, 'lab result')}</List.Item>
           <List.Item>{count(testValues.length, 'test value')}</List.Item>
@@ -154,6 +158,11 @@ export function FolderRestoreModal({
         <Text size="sm">
           Saved {exportedAt.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}
         </Text>
+        {prompt.replacesBrowserData && (
+          <Text size="sm" fw={500}>
+            Restoring replaces the lab data added to this browser since you unlocked HemoIO.
+          </Text>
+        )}
         <Text size="sm">{until}</Text>
         {restoreFailed && (
           <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
@@ -169,8 +178,12 @@ export function FolderRestoreModal({
   return (
     <Modal
       opened={prompt !== null}
-      // Escape is "Not now"; never during a restore
-      onClose={() => !isRestoring && decide('hold')}
+      // Escape is "Back" on the confirmation, else "Not now"; never during a restore
+      onClose={() => {
+        if (isRestoring) return;
+        if (confirmingReplace) setConfirmingReplace(false);
+        else decide('hold');
+      }}
       title={title}
       withCloseButton={false}
       closeOnClickOutside={false}

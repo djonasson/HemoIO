@@ -70,13 +70,37 @@ export class FileSystemStorageProvider implements StorageProvider {
       throw new Error('Permission denied. Please grant folder access to continue.');
     }
 
+    const data = await this.readFrom(handle);
+    if (!data) {
+      throw new Error('No backup data found');
+    }
+    return data;
+  }
+
+  /**
+   * The data file, or null when the folder has none. Unlike exists(), any
+   * other failure (no folder, no permission, an unreadable file) throws, so
+   * it is never mistaken for a folder without data.
+   */
+  async readDataFile(): Promise<ArrayBuffer | null> {
+    const handle = await this.getDirectoryHandle();
+    if (!handle) {
+      throw new Error('No directory selected. Please select a folder first.');
+    }
+    if ((await this.checkPermission(handle)) !== 'granted') {
+      throw new Error('Permission denied. Please grant folder access to continue.');
+    }
+    return this.readFrom(handle);
+  }
+
+  private async readFrom(handle: FileSystemDirectoryHandle): Promise<ArrayBuffer | null> {
     try {
       const fileHandle = await handle.getFileHandle(DATA_FILE_NAME);
       const file = await fileHandle.getFile();
       return await file.arrayBuffer();
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotFoundError') {
-        throw new Error('No backup data found');
+        return null;
       }
       throw error;
     }

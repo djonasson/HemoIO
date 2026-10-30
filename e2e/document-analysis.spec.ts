@@ -776,6 +776,9 @@ test.describe('Document Analysis - Performance', () => {
 
     ai.release();
 
+    // Three reports are read and matched after the release, which takes more
+    // than the default wait on a busy machine: wait as the other analyses do
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 6 biomarker values from 3 file(s).'
     );

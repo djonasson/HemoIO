@@ -16,8 +16,7 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
     getPermissionState = permission;
     getDirectoryName = vi.fn(async () => 'Health');
-    exists = vi.fn();
-    load = vi.fn();
+    readDataFile = vi.fn();
     constructor() {
       providerCreated();
     }
@@ -99,7 +98,12 @@ describe('useFolderRestore', () => {
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() =>
-      expect(result.current.prompt).toEqual({ kind: 'offer', data: COPY, folderName: 'Health' })
+      expect(result.current.prompt).toEqual({
+        kind: 'offer',
+        data: COPY,
+        folderName: 'Health',
+        replacesBrowserData: false,
+      })
     );
     expect(result.current.syncAllowed).toBe(false);
 
@@ -171,5 +175,46 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(false);
     expect(result.current.prompt).toBeNull();
     error.mockRestore();
+  });
+
+  it('still asks when the browser, empty at unlock, gained data before folder access, and says so', async () => {
+    permission.mockResolvedValue('prompt');
+    assessAs({ kind: 'offer', data: COPY });
+    const { result } = renderHook(() => useFolderRestore());
+    await waitFor(() => expect(permission).toHaveBeenCalled());
+
+    // An import while folder access waits
+    hasLabData.mockResolvedValue(true);
+    permission.mockResolvedValue('granted');
+    act(() => notifyFolderAccessChanged());
+
+    await waitFor(() => expect(result.current.prompt?.kind).toBe('offer'));
+    expect(assessFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ browserHasData: false }));
+    expect(result.current.prompt).toMatchObject({ replacesBrowserData: true });
+  });
+
+  it('once the user lets sync go ahead, later checks go by what the browser has', async () => {
+    assessAs({ kind: 'offer', data: COPY });
+    const { result } = renderHook(() => useFolderRestore());
+    await waitFor(() => expect(result.current.prompt).not.toBeNull());
+    act(() => result.current.decide('sync'));
+
+    hasLabData.mockResolvedValue(true);
+    assessAs({ kind: 'sync' });
+    act(() => notifyFolderAccessChanged());
+
+    await waitFor(() => expect(result.current.syncAllowed).toBe(true));
+    expect(assessFolderCopy).toHaveBeenLastCalledWith(expect.objectContaining({ browserHasData: true }));
+  });
+
+  it('reports a folder it cannot check, rather than holding sync without a word', async () => {
+    permission.mockRejectedValue(new Error('handle store blocked'));
+
+    const { result } = renderHook(() => useFolderRestore());
+
+    await waitFor(() =>
+      expect(result.current.prompt).toEqual({ kind: 'unreadable', reason: 'read-failed', folderName: null })
+    );
+    expect(result.current.syncAllowed).toBe(false);
   });
 });

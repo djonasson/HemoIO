@@ -8,19 +8,23 @@
  * first. Folder access granted again or another folder chosen starts over.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
-import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
-import { assessFolderCopy, type FolderCopyProblem } from '@services/sync';
+import { isFolderStorageOn } from '@data/storage/storageChoice';
+import { assessFolderCopy, type FolderCopyAssessment, type FolderCopyProblem } from '@services/sync';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { ParsedBackupData } from '@services/import';
 
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
-
 export type FolderRestorePrompt =
-  | { kind: 'offer'; data: ParsedBackupData; folderName: string | null }
+  | {
+      kind: 'offer';
+      data: ParsedBackupData;
+      folderName: string | null;
+      /** The browser gained data since unlock, which a restore replaces */
+      replacesBrowserData: boolean;
+    }
   | { kind: 'unreadable'; reason: FolderCopyProblem; folderName: string | null };
 
 /**
@@ -39,10 +43,6 @@ export interface UseFolderRestoreResult {
 
 type Phase = 'checking' | 'asking' | 'sync' | 'held';
 
-function isFolderStorageOn(): boolean {
-  return isFileSystemAccessSupported() && localStorage.getItem(STORAGE_PROVIDER_KEY) === 'filesystem';
-}
-
 export function useFolderRestore(): UseFolderRestoreResult {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
@@ -50,6 +50,8 @@ export function useFolderRestore(): UseFolderRestoreResult {
   const [prompt, setPrompt] = useState<FolderRestorePrompt | null>(null);
   // Bumped when folder access changes, to check the folder again
   const [generation, setGeneration] = useState(0);
+  // Whether this session's database was empty when first checked
+  const emptyAtUnlock = useRef<{ db: unknown; empty: boolean }>({ db: null, empty: false });
 
   useEffect(
     () =>
@@ -66,10 +68,6 @@ export function useFolderRestore(): UseFolderRestoreResult {
     let cancelled = false;
 
     async function check(database: NonNullable<typeof db>, key: CryptoKey): Promise<void> {
-      const folder = new FileSystemStorageProvider();
-      // Without access nothing can be written either: wait to be told it was granted
-      if ((await folder.getPermissionState()) !== 'granted') return;
-
       let browserHasData: boolean;
       try {
         browserHasData = await database.hasLabData();
@@ -78,18 +76,35 @@ export function useFolderRestore(): UseFolderRestoreResult {
         console.error('Could not check this browser for lab data before syncing to the folder');
         return;
       }
+      // Data added while folder access waited (an import, say) is not what the
+      // folder copy was meant to back up: the browser counts as empty until
+      // the user has decided
+      const unlock = emptyAtUnlock.current;
+      if (unlock.db !== database) {
+        emptyAtUnlock.current = { db: database, empty: !browserHasData };
+      }
+      const atRisk = emptyAtUnlock.current.empty || !browserHasData;
 
-      const assessment = await assessFolderCopy({ browserHasData, folder, key });
+      const folder = new FileSystemStorageProvider();
+      let assessment: FolderCopyAssessment;
+      let folderName: string | null = null;
+      try {
+        // Without access nothing can be written either: wait to be told it was granted
+        if ((await folder.getPermissionState()) !== 'granted') return;
+        assessment = await assessFolderCopy({ browserHasData: !atRisk, folder, key });
+        if (assessment.kind !== 'sync') folderName = await folder.getDirectoryName();
+      } catch {
+        assessment = { kind: 'unreadable', reason: 'read-failed' };
+      }
+
       if (cancelled) return;
       if (assessment.kind === 'sync') {
         setPhase('sync');
         return;
       }
-      const folderName = await folder.getDirectoryName();
-      if (cancelled) return;
       setPrompt(
         assessment.kind === 'offer'
-          ? { kind: 'offer', data: assessment.data, folderName }
+          ? { kind: 'offer', data: assessment.data, folderName, replacesBrowserData: browserHasData }
           : { kind: 'unreadable', reason: assessment.reason, folderName }
       );
       setPhase('asking');
@@ -102,6 +117,10 @@ export function useFolderRestore(): UseFolderRestoreResult {
   }, [db, isReady, encryptionKey, generation]);
 
   const decide = useCallback((decision: FolderRestoreDecision) => {
+    if (decision === 'sync') {
+      // Decided: from now on the browser's own data is what counts
+      emptyAtUnlock.current = { ...emptyAtUnlock.current, empty: false };
+    }
     setPrompt(null);
     setPhase(decision === 'sync' ? 'sync' : 'held');
   }, []);

@@ -10,11 +10,9 @@ import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
-import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { encrypt } from '@data/encryption';
 import { SYNC_FILE_VERSION } from '@services/sync';
-
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 export interface UseFilesystemSyncOptions {
   /**
@@ -53,11 +51,7 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
   );
 
   // Check if filesystem storage is enabled
-  const isFilesystemEnabled = useCallback(() => {
-    if (!isFileSystemAccessSupported()) return false;
-    const provider = localStorage.getItem(STORAGE_PROVIDER_KEY);
-    return provider === 'filesystem';
-  }, []);
+  const isFilesystemEnabled = useCallback(() => isFolderStorageOn(), []);
 
   // Get or create the storage provider
   const getProvider = useCallback(() => {

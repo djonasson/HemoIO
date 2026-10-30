@@ -40,9 +40,14 @@ access is granted, a folder is chosen, or storage is switched to a folder.
 
 ### What the check decides (`assessFolderCopy`, service layer)
 
-1. The browser has lab data (any lab result, test value or note row) → **sync**
-   as before. Counting rows needs no decryption.
-2. No folder file → **sync** (nothing to lose).
+1. The browser had lab data (any lab result, test value or note row) when the
+   session's first check ran → **sync** as before. Counting rows needs no
+   decryption. Data added later in the session (say, an import while folder
+   access waited) does not count until the user has decided; the offer then
+   says a restore replaces it.
+2. No folder file → **sync** (nothing to lose). The provider's new
+   `readDataFile()` returns null only for a missing file; any other failure
+   is `read-failed`, never "no file".
 3. Read the file, decrypt it with the session key (the data key, so a changed
    app password still opens it), parse it:
    - readable with lab results or notes → **offer** a restore;
@@ -51,6 +56,9 @@ access is granted, a folder is chosen, or storage is switched to a folder.
      earlier setup, or damage: AES-GCM cannot tell these apart);
    - not a HemoIO folder copy → **unreadable: `not-a-copy`**;
    - newer format version → **unreadable: `newer-version`**;
+   - formats 1–3 are read: folder copy version N holds backup schema N
+     records, so the backup migrations apply. The written version goes to 3,
+     since current copies hold schema 3 records;
    - reading the file fails → **unreadable: `read-failed`**.
 
 The folder file format (envelope `{ version, exportedAt, data }`) moves into
@@ -67,6 +75,7 @@ same deserialization as a backup restore (`parseBackupData`).
   saying the file has not been changed. Buttons: *Not now*,
   *Replace folder copy…*.
 - *Replace folder copy…* asks again, in the dialog, before allowing sync.
+- Escape on that confirmation goes back.
 - *Not now* (and Escape) keeps sync held for the rest of the session; HemoIO
   asks again at the next unlock or when folder access changes.
 - *Restore* runs the existing restore path (`handleRestore` in `AppShell`,
@@ -83,8 +92,10 @@ the file. The dialog shows counts and a date only.
 
 That branch changes what a sync write does (no empty overwrite, keep a previous
 file). This branch only decides *whether* a sync may start (`enabled`) and adds
-a read path. The overlap in `useFilesystemSync` is the `enabled` guard and the
-version constant import.
+a read path. The overlap in `useFilesystemSync` is the `enabled` guard, the
+version constant import, the shared `isFolderStorageOn()` and the provider
+reset when the folder changes. `FileSystemStorageProvider.load()` now goes
+through the same private read as `readDataFile()`.
 
 ## Risks
 

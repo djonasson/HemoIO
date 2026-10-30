@@ -32,8 +32,8 @@ import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
+import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
 
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 interface SetupWizardProps {
   onComplete: () => void;

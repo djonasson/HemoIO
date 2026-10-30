@@ -20,7 +20,12 @@ function copyOf(labResults: number, testValues: number, notes: number): ParsedBa
   };
 }
 
-const OFFER: FolderRestorePrompt = { kind: 'offer', data: copyOf(2, 3, 1), folderName: 'Health' };
+const OFFER: FolderRestorePrompt = {
+  kind: 'offer',
+  data: copyOf(2, 3, 1),
+  folderName: 'Health',
+  replacesBrowserData: false,
+};
 
 function renderModal(prompt: FolderRestorePrompt | null = OFFER, onRestore = vi.fn(async () => {})) {
   const onDecide = vi.fn();
@@ -49,10 +54,21 @@ describe('FolderRestoreModal', () => {
     expect(dialog).toHaveTextContent('1 note');
     expect(dialog).toHaveTextContent(`Saved ${SAVED_AT.toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}`);
     expect(dialog).toHaveTextContent('Nothing is written to the folder until you choose');
+    expect(dialog).toHaveTextContent('This browser has no lab data');
+  });
+
+  it('warns that a restore replaces data the browser gained since unlock', () => {
+    renderModal({ ...OFFER, replacesBrowserData: true } as FolderRestorePrompt);
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).not.toHaveTextContent('This browser has no lab data');
+    expect(dialog).toHaveTextContent(
+      'Restoring replaces the lab data added to this browser since you unlocked HemoIO'
+    );
   });
 
   it('counts in the singular and names no folder it does not know', () => {
-    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), folderName: null });
+    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), folderName: null, replacesBrowserData: false });
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('1 lab result');
@@ -123,6 +139,16 @@ describe('FolderRestoreModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
     expect(onDecide).toHaveBeenCalledWith('sync');
+  });
+
+  it('Escape on the confirmation goes back, rather than closing', async () => {
+    const { onDecide } = renderModal();
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog', { name: 'Restore your data from the folder?' })).toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
   });
 
   it.each([

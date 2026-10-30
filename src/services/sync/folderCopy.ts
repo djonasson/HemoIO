@@ -10,17 +10,12 @@ import { decrypt } from '@data/encryption';
 import { parseBackupData, type ParsedBackupData } from '@services/import';
 
 /**
- * Format version of the folder copy. Version 2 stores biomarker keys
- * (version 1 stored dictionary positions, and is not read back).
+ * Format version of the folder copy. Its records are those of the backup
+ * schema of the same number, so a copy is read back through the backup
+ * migrations: 1 named biomarkers by dictionary position, 2 by key, and 3
+ * has urea and urine red cells filed apart from BUN and urine blood.
  */
-export const SYNC_FILE_VERSION = 2;
-
-/**
- * The backup schema the folder copy's records match: version 2 stores keys,
- * so the backup migrations from schema 2 on apply (they leave current
- * records unchanged)
- */
-const BACKUP_SCHEMA_OF_COPY = 2;
+export const SYNC_FILE_VERSION = 3;
 
 export type FolderCopyProblem =
   /** Another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
@@ -81,14 +76,14 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   if (envelope.version > SYNC_FILE_VERSION) {
     return { status: 'unreadable', reason: 'newer-version' };
   }
-  if (envelope.version < SYNC_FILE_VERSION) {
+  if (!Number.isInteger(envelope.version) || envelope.version < 1) {
     return { status: 'unreadable', reason: 'not-a-copy' };
   }
 
   try {
     const { data } = envelope;
     const parsed = parseBackupData({
-      schemaVersion: BACKUP_SCHEMA_OF_COPY,
+      schemaVersion: envelope.version,
       exportedAt: envelope.exportedAt,
       appVersion: 'folder copy',
       labResults: data.labResults,
@@ -106,8 +101,8 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
 
 /** The folder file, as the folder storage provider reads it */
 export interface FolderCopySource {
-  exists(): Promise<boolean>;
-  load(): Promise<ArrayBuffer>;
+  /** The file, or null when there is none; throws when it cannot tell */
+  readDataFile(): Promise<ArrayBuffer | null>;
 }
 
 export type FolderCopyAssessment =
@@ -134,13 +129,13 @@ export async function assessFolderCopy({
 }): Promise<FolderCopyAssessment> {
   if (browserHasData) return { kind: 'sync' };
 
-  let bytes: ArrayBuffer;
+  let bytes: ArrayBuffer | null;
   try {
-    if (!(await folder.exists())) return { kind: 'sync' };
-    bytes = await folder.load();
+    bytes = await folder.readDataFile();
   } catch {
     return { kind: 'unreadable', reason: 'read-failed' };
   }
+  if (bytes === null) return { kind: 'sync' };
 
   const reading = await readFolderCopy(bytes, key);
   if (reading.status === 'unreadable') {

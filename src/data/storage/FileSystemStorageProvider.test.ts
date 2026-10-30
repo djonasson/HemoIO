@@ -227,6 +227,34 @@ describe('FileSystemStorageProvider', () => {
     });
   });
 
+  describe('readDataFile', () => {
+    beforeEach(async () => {
+      window.showDirectoryPicker = vi.fn().mockResolvedValue(mockDirectoryHandle);
+      await provider.selectDirectory();
+    });
+
+    it('is null only when the folder has no data file', async () => {
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
+
+      expect(await provider.readDataFile()).toBeNull();
+    });
+
+    it('fails, rather than reporting no file, when the file cannot be read', async () => {
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(
+        new DOMException('Busy', 'NotReadableError')
+      );
+
+      await expect(provider.readDataFile()).rejects.toThrow('Busy');
+    });
+
+    it('returns the data file', async () => {
+      const testData = new ArrayBuffer(10);
+      mockFileHandle.getFile.mockResolvedValue({ arrayBuffer: vi.fn().mockResolvedValue(testData) });
+
+      expect(await provider.readDataFile()).toBe(testData);
+    });
+  });
+
   describe('exists', () => {
     it('returns false when no directory is selected', async () => {
       expect(await provider.exists()).toBe(false);

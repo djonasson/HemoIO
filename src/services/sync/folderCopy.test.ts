@@ -106,13 +106,54 @@ describe('readFolderCopy', () => {
   });
 });
 
+describe('readFolderCopy, earlier formats', () => {
+  it('writes format 3, whose records match the current backup schema', () => {
+    expect(SYNC_FILE_VERSION).toBe(3);
+  });
+
+  it('reads a format 1 copy, whose values name biomarkers by dictionary position', async () => {
+    const key = await newKey();
+    const v1 = {
+      ...STORED,
+      testValues: [{ ...STORED.testValues[0], biomarkerKey: undefined, biomarkerId: 22, rawText: 'Glucose' }],
+    };
+
+    const reading = await readFolderCopy(await sealed(copy(v1, 1), key), key);
+
+    expect(reading.status).toBe('readable');
+    if (reading.status !== 'readable') return;
+    expect(reading.data.testValues[0].biomarkerKey).toBe('glucose');
+  });
+
+  it('refiles urea saved as blood urea nitrogen in a format 2 copy, but not in a format 3 one', async () => {
+    const key = await newKey();
+    const urea = {
+      ...STORED,
+      testValues: [{ ...STORED.testValues[0], biomarkerKey: 'blood-urea-nitrogen', rawText: 'Urea', unit: 'mg/dL' }],
+    };
+
+    const v2 = await readFolderCopy(await sealed(copy(urea, 2), key), key);
+    const v3 = await readFolderCopy(await sealed(copy(urea, 3), key), key);
+
+    expect(v2.status === 'readable' && v2.data.testValues[0].biomarkerKey).toBe('urea');
+    expect(v3.status === 'readable' && v3.data.testValues[0].biomarkerKey).toBe('blood-urea-nitrogen');
+  });
+
+  it('reports a format it never wrote as not a copy', async () => {
+    const key = await newKey();
+
+    expect(await readFolderCopy(await sealed(copy(STORED, 0), key), key)).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
+  });
+});
+
 describe('assessFolderCopy', () => {
   function source(bytes: ArrayBuffer | null | Error): FolderCopySource {
     return {
-      exists: vi.fn(async () => bytes !== null),
-      load: vi.fn(async () => {
+      readDataFile: vi.fn(async () => {
         if (bytes instanceof Error) throw bytes;
-        if (bytes === null) throw new Error('No backup data found');
         return bytes;
       }),
     };
@@ -124,7 +165,7 @@ describe('assessFolderCopy', () => {
     const assessment = await assessFolderCopy({ browserHasData: true, folder, key: await newKey() });
 
     expect(assessment).toEqual({ kind: 'sync' });
-    expect(folder.load).not.toHaveBeenCalled();
+    expect(folder.readDataFile).not.toHaveBeenCalled();
   });
 
   it('lets sync go ahead when the folder has no copy', async () => {

@@ -126,7 +126,7 @@ describe('useFilesystemSync', () => {
   });
 
   describe('sync file format', () => {
-    it('writes the current format version, which stores biomarker keys', async () => {
+    it('writes the current format version, which matches backup schema 3', async () => {
       localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
 
       renderHook(() => useFilesystemSync());
@@ -134,7 +134,7 @@ describe('useFilesystemSync', () => {
       await waitFor(() => expect(mockSave).toHaveBeenCalled());
       const plain = vi.mocked(encrypt).mock.calls[0][0] as ArrayBuffer;
       const file = JSON.parse(new TextDecoder().decode(plain));
-      expect(file.version).toBe(2);
+      expect(file.version).toBe(3);
     });
   });
 

@@ -79,6 +79,29 @@ Feature: Restore From the Folder Copy
     When I grant folder access in Settings
     Then I should be asked whether to restore my data from the folder
 
+  Scenario: Data added before folder access was granted
+    Given this browser no longer has any of my lab data
+    And HemoIO needs my permission to use the folder again
+    And I unlock HemoIO
+    And I import a lab report
+    When I grant folder access in Settings
+    Then I should still be asked whether to restore my data from the folder
+    And I should be told that restoring replaces the lab data added since I unlocked
+
+  Scenario: Folder copy saved by an earlier version of HemoIO
+    Given the folder copy was saved by an earlier version of HemoIO
+    And this browser no longer has any of my lab data
+    When I unlock HemoIO
+    Then I should be asked whether to restore my data from the folder
+    And the restored values should keep their biomarkers
+
+  Scenario: Change my mind about replacing the folder copy
+    Given this browser no longer has any of my lab data
+    And I unlock HemoIO
+    And I choose to replace the folder copy
+    When I press Escape
+    Then I should be asked again whether to restore my data from the folder
+
   Scenario: The dialog is accessible
     Given this browser no longer has any of my lab data
     When I unlock HemoIO
