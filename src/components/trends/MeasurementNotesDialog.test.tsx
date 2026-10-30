@@ -83,16 +83,23 @@ describe('MeasurementNotesDialog', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('stays open while its note is saving', async () => {
-    const { onClose } = renderDialog({ onCreateNote: vi.fn(() => new Promise<void>(() => {})) });
+  it('notifies a note that fails after the dialog was closed', async () => {
+    let fail!: (err: unknown) => void;
+    const { onClose } = renderDialog({
+      onCreateNote: vi.fn(() => new Promise<void>((_, reject) => (fail = reject))),
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'Big dinner');
     await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
 
     screen.getByRole('dialog').focus();
     await userEvent.keyboard('{Escape}');
+    fail(new SaveError('timeout'));
 
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+    );
   });
 
   it('notifies an edit that fails after the dialog was closed', async () => {

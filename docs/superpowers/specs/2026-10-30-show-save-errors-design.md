@@ -68,7 +68,8 @@ Two strategies, by kind of data:
   instead would throw away other changes still in flight, and needs a read
   from a database that just failed.
 - **A failure is never unseen.** A note editor or dialog shows its own
-  failure while open; one that fails after it was closed is notified.
+  failure while open; one that fails after it was closed is notified, so
+  closing is never held up by a save.
 
 ### Import is all or nothing
 
