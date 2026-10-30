@@ -333,7 +333,7 @@ describe('NoteDisplay', () => {
       expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
     });
 
-    it('keeps the dialog open while deleting, so a failure is seen where it happened', async () => {
+    it('lets the dialog close while deleting, and notifies a failure after', async () => {
       let refuse!: (err: unknown) => void;
       const onDelete = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
       const user = userEvent.setup();
@@ -343,10 +343,12 @@ describe('NoteDisplay', () => {
       const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
       await user.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent === 'Delete')!);
       await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       refuse(new SaveError('failed'));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('Note not deleted');
-      expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(notifySaveFailed).toHaveBeenCalledWith('Note not deleted', expect.any(SaveError))
+      );
     });
 
     it('notifies an edit that fails after the note was closed', async () => {

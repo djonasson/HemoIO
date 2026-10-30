@@ -45,7 +45,7 @@ Feature: Save Errors
 
   Scenario: An import saves all of its files or none of them
     Given I have reviewed two lab reports imported at once
-    And the browser's storage has room for only one of them
+    And the browser's storage has room for all but the last of their values
     When I click "Save Results"
     Then I should see "Import not saved"
     And neither lab report is saved

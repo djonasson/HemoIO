@@ -113,8 +113,9 @@ describe('EncryptedDb: a write the storage does not keep', () => {
       { labResult: labResult('Lab'), testValues: [value('glucose'), value('hemoglobin')] },
     ]);
     const noteId = await db.addNote(note('Keep me'));
-    // The lab result's values go first: the result's own deletion is what fails
-    failWrites('cancel', 2);
+    // Both values are deleted first (writes 1 and 2): the result's own
+    // deletion, write 3, is what fails
+    failWrites('cancel', 3);
 
     await rejection(db.deleteLabResult(resultId));
     vi.restoreAllMocks();
@@ -188,8 +189,8 @@ describe('EncryptedDb.addLabResultsWithValues', () => {
 
   it('stores none of them when one cannot be stored', async () => {
     const { db } = await openTestDb();
-    // First result and its value go through; the second result fails
-    failWrites('quota', 3);
+    // Both results, then the values: all but the last value go through
+    failWrites('quota', 4);
 
     await rejection(
       db.addLabResultsWithValues([

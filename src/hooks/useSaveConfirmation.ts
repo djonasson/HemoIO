@@ -6,11 +6,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const SHOWN_FOR_MS = 2000;
 
-/**
- * @returns Whether to show the confirmation, and a function that shows it
- *   (again, for the full time, when called while it shows)
- */
-export function useSaveConfirmation(): { saved: boolean; confirm: () => void } {
+export interface SaveConfirmation {
+  /** Whether to show the confirmation */
+  saved: boolean;
+  /** Show it (again, for the full time, when called while it shows) */
+  confirm: () => void;
+  /** Hide it, as when a later save fails: it would read as if that one was saved */
+  clear: () => void;
+}
+
+export function useSaveConfirmation(): SaveConfirmation {
   const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -22,5 +27,10 @@ export function useSaveConfirmation(): { saved: boolean; confirm: () => void } {
     timer.current = setTimeout(() => setSaved(false), SHOWN_FOR_MS);
   }, []);
 
-  return { saved, confirm };
+  const clear = useCallback(() => {
+    clearTimeout(timer.current);
+    setSaved(false);
+  }, []);
+
+  return { saved, confirm, clear };
 }

@@ -309,6 +309,19 @@ describe('NotesSection', () => {
       );
     });
 
+    it('stays open while a note saves, so the outcome is seen', async () => {
+      const onCreateNote = vi.fn(() => new Promise<void>(() => {}));
+      const user = userEvent.setup();
+      renderWithProviders(<NotesSection {...defaultProps} onCreateNote={onCreateNote} />);
+
+      await user.click(screen.getByRole('button', { name: /add note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Note');
+      await user.click(screen.getByRole('button', { name: /save note/i }));
+      await user.click(screen.getByRole('button', { name: /section, expanded/ }));
+
+      expect(screen.getByRole('button', { name: /section, expanded/ })).toBeInTheDocument();
+    });
+
     it('clears the error once the note is saved, or the editor is closed', async () => {
       const onCreateNote = vi
         .fn()

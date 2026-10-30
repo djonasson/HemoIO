@@ -21,6 +21,16 @@ describe('useSaveConfirmation', () => {
     expect(result.current.saved).toBe(false);
   });
 
+  it('hides at once when a later save fails', () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useSaveConfirmation());
+
+    act(() => result.current.confirm());
+    act(() => result.current.clear());
+
+    expect(result.current.saved).toBe(false);
+  });
+
   it('leaves no timer behind once unmounted', () => {
     vi.useFakeTimers();
     const { result, unmount } = renderHook(() => useSaveConfirmation());

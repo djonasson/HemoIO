@@ -62,6 +62,8 @@ export function NotesSection({
   const { isSaving, error: saveError, run, clear } = useSaveState('Note not saved');
 
   const handleToggleCollapse = () => {
+    // Not while a note saves: hidden, its failure would be seen by no one
+    if (isSaving) return;
     setUserCollapsed(!isCollapsed);
   };
 

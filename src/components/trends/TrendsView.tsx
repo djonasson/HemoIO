@@ -485,6 +485,8 @@ export function TrendsView({
           {/* Notes for selected biomarker */}
           <Paper p="md" withBorder>
             <NotesSection
+              // A fresh editor per biomarker: a draft saved after switching would go to the new one
+              key={selectedBiomarkerId}
               title={`Notes for ${selectedBiomarkerData?.name || 'Biomarker'}`}
               notes={selectedBiomarkerNotes}
               onCreateNote={handleCreateNote}

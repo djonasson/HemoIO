@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -36,6 +36,8 @@ function renderDialog(props: Partial<React.ComponentProps<typeof MeasurementNote
 }
 
 describe('MeasurementNotesDialog', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('shows the measurement and offers to add a note', () => {
     renderDialog();
     const dialog = screen.getByRole('dialog');

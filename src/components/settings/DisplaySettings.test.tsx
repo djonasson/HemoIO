@@ -160,6 +160,25 @@ describe('DisplaySettings', () => {
       expect(await screen.findByText('Preferences saved')).toBeInTheDocument();
     });
 
+    it('no longer says saved once a later change is not', async () => {
+      const user = userEvent.setup();
+      const onDateFormatChange = vi.fn().mockRejectedValue(new Error('not saved'));
+      renderWithProviders(
+        <DisplaySettings
+          {...defaultProps}
+          onThemeChange={vi.fn().mockResolvedValue(undefined)}
+          onDateFormatChange={onDateFormatChange}
+        />
+      );
+
+      await user.click(screen.getByText('Dark'));
+      expect(await screen.findByText('Preferences saved')).toBeInTheDocument();
+      await user.click(screen.getByRole('textbox', { name: 'Select date format' }));
+      await user.click(await screen.findByRole('option', { name: /YYYY-MM-DD \(ISO\)/ }));
+
+      await waitFor(() => expect(screen.queryByText('Preferences saved')).not.toBeInTheDocument());
+    });
+
     it('goes back to the previous date format', async () => {
       const user = userEvent.setup();
       const onDateFormatChange = vi.fn().mockRejectedValue(new Error('not saved'));

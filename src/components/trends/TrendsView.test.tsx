@@ -464,6 +464,37 @@ describe('TrendsView', () => {
     expect(screen.getByRole('heading', { name: 'Trends' })).toHaveFocus();
   });
 
+  it('starts a fresh note editor for another biomarker, so a draft is not saved under it', async () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', [
+          createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+          createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+    const notes = screen.getByRole('button', { name: /Notes for Glucose section/ }).closest('.mantine-Paper-root') as HTMLElement;
+    fireEvent.click(within(notes).getByRole('button', { name: /add note/i }));
+    fireEvent.change(within(notes).getByRole('textbox', { name: /note content/i }), {
+      target: { value: 'Felt dizzy' },
+    });
+
+    fireEvent.click(screen.getByPlaceholderText(/choose a biomarker/i));
+    fireEvent.click(await screen.findByText(/hemoglobin \(1 values?\)/i));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Notes for Hemoglobin section/ })).toBeInTheDocument()
+    );
+    expect(screen.queryByDisplayValue('Felt dizzy')).not.toBeInTheDocument();
+  });
+
   it('should open compare modal when compare button is clicked', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [

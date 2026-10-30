@@ -106,7 +106,7 @@ export function AISettings({
   const [isEditing, setIsEditing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
-  const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
+  const { saved: saveSuccess, confirm: showSaved, clear: hideSaved } = useSaveConfirmation();
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [localOllamaModel, setLocalOllamaModel] = useState<string | undefined>(ollamaModel);
@@ -149,9 +149,12 @@ export function AISettings({
    */
   const saveChange = useCallback(
     (saving: void | Promise<void>, showGiven: () => void) => {
-      Promise.resolve(saving).then(showSaved, showGiven);
+      Promise.resolve(saving).then(showSaved, () => {
+        hideSaved();
+        showGiven();
+      });
     },
-    [showSaved]
+    [showSaved, hideSaved]
   );
 
   // Fetch OpenAI models when provider is OpenAI and API key is available
@@ -360,12 +363,13 @@ export function AISettings({
     try {
       await onApiKeyChange?.(newApiKey.trim());
     } catch {
+      hideSaved();
       return;
     }
     setNewApiKey('');
     setIsEditing(false);
     showSaved();
-  }, [newApiKey, onApiKeyChange, showSaved]);
+  }, [newApiKey, onApiKeyChange, showSaved, hideSaved]);
 
   // Handle test connection
   const handleTestConnection = useCallback(async () => {

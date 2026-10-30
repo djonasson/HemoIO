@@ -1,7 +1,7 @@
 /**
  * A measurement from the trend chart: its value and notes, and adding one
  */
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
@@ -51,22 +51,13 @@ export function MeasurementNotesDialog({
     setAdding(false);
     clear();
   };
-  // Each opening of the editor, so a save from an earlier one does not close a new one
-  const opening = useRef(0);
-  const startAdding = () => {
-    opening.current += 1;
-    setAdding(true);
-  };
   const close = () => {
     // A save still under way reports a failure as a notification
     stopAdding();
     onClose();
   };
   const save = async (content: string, tags: string[]) => {
-    const current = opening.current;
-    if ((await run(() => onCreateNote(content, tags))) && opening.current === current) {
-      setAdding(false);
-    }
+    if (await run(() => onCreateNote(content, tags))) setAdding(false);
   };
 
   return (
@@ -108,7 +99,7 @@ export function MeasurementNotesDialog({
             <Button
               variant="light"
               leftSection={<IconPlus size={14} />}
-              onClick={startAdding}
+              onClick={() => setAdding(true)}
             >
               Add Note
             </Button>

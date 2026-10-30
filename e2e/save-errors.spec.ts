@@ -132,8 +132,9 @@ test.describe('Save errors', () => {
       await start(page);
       await analyzeReport(page, REPORT, 2);
       await continueToConfirm(page);
-      // Room for the first lab result only
-      await breakStorage(page, 'full', { fromWrite: 2 });
+      // Both lab results, then their values: room for all but the last value,
+      // so a save per file would keep the first file
+      await breakStorage(page, 'full', { fromWrite: 4 });
 
       await saveResults(page);
 
@@ -316,8 +317,9 @@ test.describe('Save errors', () => {
       await page.getByRole('option', { name: 'YYYY-MM-DD (ISO)' }).click();
 
       await expect(notification(page, 'Date format not saved')).toBeVisible();
+      // Checked once, at once: a confirmation shown wrongly is gone in 2 seconds
+      expect(await page.getByText('Preferences saved').count()).toBe(0);
       await expect(dateFormat).toHaveValue('MM/DD/YYYY (US)');
-      await expect(page.getByText('Preferences saved')).toHaveCount(0);
     });
 
     test('a theme that cannot be saved puts the colors back', async ({ page }) => {
@@ -346,8 +348,9 @@ test.describe('Save errors', () => {
       await page.getByRole('option', { name: other }).click();
 
       await expect(notification(page, 'AI setting not saved')).toBeVisible();
+      // Checked once, at once: a confirmation shown wrongly is gone in 2 seconds
+      expect(await page.getByText('Settings saved').count()).toBe(0);
       await expect(provider).toHaveValue(before);
-      await expect(page.getByText('Settings saved')).toHaveCount(0);
     });
   });
 

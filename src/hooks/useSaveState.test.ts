@@ -77,4 +77,23 @@ describe('useSaveState', () => {
 
     expect(notifySaveFailed).toHaveBeenCalledWith('Note not deleted', expect.any(SaveError));
   });
+
+  it('is not saving once its place was closed, so a new one starts afresh', async () => {
+    const { result } = renderHook(() => useSaveState('Note not saved'));
+    let finish!: () => void;
+    let running!: Promise<boolean>;
+    act(() => {
+      running = result.current.run(() => new Promise<void>((resolve) => (finish = resolve)));
+    });
+
+    act(() => result.current.clear());
+    expect(result.current.isSaving).toBe(false);
+
+    await act(async () => {
+      finish();
+      // Saved, but its place is gone: nothing there to close
+      expect(await running).toBe(false);
+    });
+    expect(result.current.isSaving).toBe(false);
+  });
 });

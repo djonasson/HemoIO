@@ -7,12 +7,15 @@ import { render, screen, fireEvent, waitFor, within, act } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { OutOfRangeAlerts } from './OutOfRangeAlerts';
 import { useAlerts } from '@hooks/useAlerts';
 import type { BiomarkerAlert } from '@hooks/useAlerts';
 import type { OutOfRangeAlertsProps } from './OutOfRangeAlerts';
 
 // Mock useAlerts
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
+
 vi.mock('@hooks/useAlerts', () => ({
   useAlerts: vi.fn(),
 }));
@@ -285,7 +288,7 @@ describe('OutOfRangeAlerts', () => {
     expect(mockDismiss).toHaveBeenCalledWith('1');
   });
 
-  it('should call acknowledgeAlert when acknowledge button clicked', () => {
+  it('should call acknowledgeAlert when acknowledge button clicked', async () => {
     const mockAcknowledge = vi.fn().mockResolvedValue(undefined);
     const alerts = [createMockAlert('1')];
 
@@ -306,7 +309,8 @@ describe('OutOfRangeAlerts', () => {
     renderWithProviders(<OutOfRangeAlerts />);
 
     const acknowledgeButton = screen.getByRole('button', { name: /acknowledge alert/i });
-    fireEvent.click(acknowledgeButton);
+    // Settles the save, which updates the component
+    await act(async () => fireEvent.click(acknowledgeButton));
 
     expect(mockAcknowledge).toHaveBeenCalledWith('1');
   });
@@ -630,6 +634,24 @@ describe('OutOfRangeAlerts', () => {
     const shown = await screen.findByRole('alert');
     expect(shown).toHaveTextContent(/could not save the acknowledgement/i);
     expect(shown).toHaveTextContent(/no room left/);
+  });
+
+  it('notifies an acknowledgement that fails after the alerts were left', async () => {
+    let fail!: (err: unknown) => void;
+    mockAlerts([alert()]);
+    vi.mocked(useAlerts).mockReturnValue({
+      ...vi.mocked(useAlerts)(),
+      acknowledgeAlert: vi.fn(() => new Promise<void>((_, reject) => (fail = reject))),
+    });
+    const { unmount } = renderAlerts();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge alert' }));
+    unmount();
+    fail(new SaveError('timeout'));
+
+    await waitFor(() =>
+      expect(notifySaveFailed).toHaveBeenCalledWith('Acknowledgement not saved', expect.any(SaveError))
+    );
   });
 
   it('drops a category filter once that category has no alerts left', async () => {

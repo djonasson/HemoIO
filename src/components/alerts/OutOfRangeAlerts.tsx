@@ -40,6 +40,7 @@ import { indicatorColor } from '@services/alerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
 import { saveErrorMessage } from '@data/db/saveError';
 import { RelativeTime } from '@components/common/RelativeTime';
+import { useSaveState } from '@hooks/useSaveState';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -303,16 +304,14 @@ export function OutOfRangeAlerts({
 
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // Shown here while the alerts are open, notified once they are gone
+  const { error: saveError, run: runSave } = useSaveState('Acknowledgement not saved');
 
   const handleAcknowledge = useCallback(
     (alertId: string) => {
-      setSaveError(null);
-      acknowledgeAlert(alertId).catch((err: unknown) => {
-        setSaveError(`Could not save the acknowledgement. ${saveErrorMessage(err)}`);
-      });
+      void runSave(() => acknowledgeAlert(alertId));
     },
-    [acknowledgeAlert]
+    [acknowledgeAlert, runSave]
   );
 
   // Get unique categories for filter
@@ -462,9 +461,9 @@ export function OutOfRangeAlerts({
       </Group>
 
       {/* The light red that meets AA contrast (see theme.ts); plain red does not */}
-      {saveError && (
+      {saveError !== null && (
         <Text role="alert" c="var(--mantine-color-red-light-color)" size="sm">
-          {saveError}
+          Could not save the acknowledgement. {saveErrorMessage(saveError)}
         </Text>
       )}
 

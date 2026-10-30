@@ -69,7 +69,10 @@ Two strategies, by kind of data:
   from a database that just failed.
 - **A failure is never unseen.** A note editor or dialog shows its own
   failure while open; one that fails after it was closed is notified, so
-  closing is never held up by a save.
+  closing is never held up by a save. Opened again, it starts afresh. A
+  notes section does not collapse while its editor saves: collapsed, the
+  failure would be hidden, though still there. A failure also hides a
+  "saved" confirmation still showing from an earlier change.
 
 ### Import is all or nothing
 

@@ -82,8 +82,7 @@ export function NoteDisplay({
   };
 
   const handleCancelDelete = () => {
-    // Stays open while deleting, so a failure is shown where it happened
-    if (isDeleting) return;
+    // A deletion still under way reports a failure as a notification
     setDeleteConfirmOpen(false);
     deletion.clear();
   };

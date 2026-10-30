@@ -70,7 +70,7 @@ export function DisplaySettings({
 }: DisplaySettingsProps): React.ReactNode {
   const [localTheme, setLocalTheme] = useState<ThemeOption>(theme);
   const [localDateFormat, setLocalDateFormat] = useState<DateFormatOption>(dateFormat);
-  const { saved: saveSuccess, confirm: showSaved } = useSaveConfirmation();
+  const { saved: saveSuccess, confirm: showSaved, clear: hideSaved } = useSaveConfirmation();
 
   // What the owner holds, which a failed save shows again
   const given = useRef({ theme, dateFormat });
@@ -96,11 +96,12 @@ export function DisplaySettings({
     (value: string) => {
       const newTheme = value as ThemeOption;
       setLocalTheme(newTheme);
-      Promise.resolve(onThemeChange?.(newTheme)).then(showSaved, () =>
-        setLocalTheme(given.current.theme)
-      );
+      Promise.resolve(onThemeChange?.(newTheme)).then(showSaved, () => {
+        hideSaved();
+        setLocalTheme(given.current.theme);
+      });
     },
-    [onThemeChange, showSaved]
+    [onThemeChange, showSaved, hideSaved]
   );
 
   const handleDateFormatChange = useCallback(
@@ -108,11 +109,12 @@ export function DisplaySettings({
       if (!value) return;
       const newFormat = value as DateFormatOption;
       setLocalDateFormat(newFormat);
-      Promise.resolve(onDateFormatChange?.(newFormat)).then(showSaved, () =>
-        setLocalDateFormat(given.current.dateFormat)
-      );
+      Promise.resolve(onDateFormatChange?.(newFormat)).then(showSaved, () => {
+        hideSaved();
+        setLocalDateFormat(given.current.dateFormat);
+      });
     },
-    [onDateFormatChange, showSaved]
+    [onDateFormatChange, showSaved, hideSaved]
   );
 
   return (

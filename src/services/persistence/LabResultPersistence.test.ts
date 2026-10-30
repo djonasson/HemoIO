@@ -201,6 +201,22 @@ describe('saveImportResults', () => {
     expect(await saved(db)).toHaveLength(2);
   });
 
+  it('saves all files in one write, so the import is kept whole or not at all', async () => {
+    const { db } = await openTestDb();
+    const write = vi.spyOn(db, 'addLabResultsWithValues');
+
+    await saveImportResults(
+      [
+        createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')]),
+        createMockReviewedResult('test2.pdf', [createMockBiomarker('Glucose', 95, 'mg/dL')]),
+      ],
+      db
+    );
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0]).toHaveLength(2);
+  });
+
   it('saves nothing, and says why, when the storage does not keep the import', async () => {
     const { db } = await openTestDb();
     vi.spyOn(db, 'addLabResultsWithValues').mockRejectedValue(new SaveError('quota'));
