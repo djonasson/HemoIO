@@ -56,8 +56,8 @@ export interface UseNavigationResult {
   /** Changes with every visit; key the view by it to build it anew */
   visit: number;
   /**
-   * Move to a view. Choosing an open view that keeps its state (an import,
-   * settings, alerts, notes) changes nothing.
+   * Move to a view. Choosing the open view again is a new visit only for the
+   * views in STARTS_FRESH; for the others it changes nothing.
    */
   go: (to: Destination) => void;
 }

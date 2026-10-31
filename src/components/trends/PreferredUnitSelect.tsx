@@ -67,6 +67,7 @@ export function PreferredUnitSelect({
       inputContainer={(input) => (
         <Group gap="sm">
           <Box style={{ flex: '1 1 100px', maxWidth: 180 }}>{input}</Box>
+          {/* A flex box, so no line box adds space below the button and lowers it */}
           {aside && <Box style={{ display: 'flex', flexShrink: 0 }}>{aside}</Box>}
         </Group>
       )}

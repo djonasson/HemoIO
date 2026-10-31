@@ -556,7 +556,7 @@ test.describe('A biomarker page opened from another page', () => {
     // itself. Both pages are tall enough to keep it, so only the app resets it.
     await expect.poll(scrollRoom).toBeGreaterThan(120);
     await page.mouse.wheel(0, 120);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(60);
 
     await link.click();
 

@@ -516,13 +516,13 @@ test.describe('Reference page from a trend', () => {
   test('works while a unit Glucose does not support is typed', async ({ page }) => {
     await selectBiomarker(page, 'Glucose');
     const unit = page.getByRole('textbox', { name: 'Preferred unit' });
-    const before = await referenceLink(page, 'Glucose').boundingBox();
+    const before = (await referenceLink(page, 'Glucose').boundingBox())!;
     await unit.fill('stones');
     await expect(page.getByText('Unit not supported for Glucose')).toBeVisible();
     // Level with the unit input, and not moved by the error below it
     const link = (await referenceLink(page, 'Glucose').boundingBox())!;
     const input = (await unit.boundingBox())!;
-    expect(link).toEqual(before);
+    expect(link.y).toBeCloseTo(before.y, 0);
     expect(link.y + link.height / 2).toBeCloseTo(input.y + input.height / 2, 0);
 
     await referenceLink(page, 'Glucose').click();

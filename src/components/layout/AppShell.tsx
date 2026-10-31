@@ -444,8 +444,9 @@ interface MainContentProps {
   onNavigate: (view: AppView) => void;
   focus: ViewFocus | null;
   /**
-   * Every view is keyed by it, so a new visit builds the view anew. When a
-   * move is a new visit is useNavigation's call.
+   * The views are keyed by it, so a new visit builds the open view anew.
+   * When a move is a new visit is useNavigation's call: only a view in its
+   * STARTS_FRESH is rebuilt when chosen while open.
    */
   visit: number;
   onOpen: (focus: ViewFocus) => void;
