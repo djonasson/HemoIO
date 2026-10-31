@@ -50,6 +50,7 @@ export function DictionaryView({
   const [listShown, setListShown] = useState(!openedOnDetail);
   const [editingTarget, setEditingTarget] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   // Opened on a detail: Back shows the list from the top, focused on its search
   const listPosition = useRef<ListPosition | null>(
     openedOnDetail ? { biomarkerKey: null, scrollY: 0 } : null
@@ -78,13 +79,11 @@ export function DictionaryView({
     if (selected || !listPosition.current) return;
     const { biomarkerKey, scrollY } = listPosition.current;
     listPosition.current = null;
-    listRef.current
-      ?.querySelector<HTMLElement>(
-        biomarkerKey === null
-          ? 'input[aria-label="Search biomarkers"]'
-          : `[data-biomarker-key="${biomarkerKey}"]`
-      )
-      ?.focus({ preventScroll: true });
+    const focusTarget =
+      biomarkerKey === null
+        ? searchRef.current
+        : listRef.current?.querySelector<HTMLElement>(`[data-biomarker-key="${biomarkerKey}"]`);
+    focusTarget?.focus({ preventScroll: true });
     window.scrollTo(0, scrollY);
   }, [selected]);
 
@@ -119,6 +118,7 @@ export function DictionaryView({
           <BiomarkerDictionary
             onSelectBiomarker={handleSelectFromList}
             selectedBiomarker={selected?.name}
+            searchRef={searchRef}
           />
         </Box>
       )}

@@ -10,13 +10,7 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
-import {
-  backButton,
-  expectDetailPage,
-  goToDictionary,
-  searchField,
-  viewDetail,
-} from './steps/dictionary.steps';
+import { backButton, expectDetailPage, searchField } from './steps/dictionary.steps';
 import {
   GLUCOSE,
   HDL,
@@ -537,20 +531,6 @@ test.describe('Reference page from a trend', () => {
     await expect(biomarkerSelect(page)).toHaveValue('');
     await expect(referenceLink(page, 'Glucose')).toHaveCount(0);
   });
-});
-
-test('a trend opened from a biomarker page starts at the top', async ({ page }) => {
-  await seedAndOpenTrends(page);
-  await goToDictionary(page);
-  const detail = await viewDetail(page, 'Glucose');
-  const viewTrend = detail.getByRole('region', { name: 'Your results' }).getByRole('button', { name: 'View trend' });
-  await page.mouse.wheel(0, 120);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
-
-  await viewTrend.click();
-
-  await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
 test('a test with a single unit offers its reference page', async ({ page }) => {

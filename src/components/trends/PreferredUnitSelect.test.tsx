@@ -49,8 +49,10 @@ describe('PreferredUnitSelect', () => {
 
     const beside = screen.getByRole('button', { name: 'Beside' });
     const error = screen.getByText('Unit not supported for Glucose');
-    // The error comes after the row, so it cannot push what is beside the input
-    expect(input.closest('.mantine-Select-root')).toContainElement(beside);
+    // One row holds the input and what is beside it; the error is outside it
+    const row = beside.parentElement?.parentElement;
+    expect(row).toContainElement(input);
+    expect(row).not.toContainElement(error);
     expect(beside.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

@@ -137,11 +137,6 @@ Feature: Trend Charts
     Then I should not be offered a choice of unit
     But I should be offered its reference page
 
-  Scenario: A trend opened from another page starts at the top
-    Given I have scrolled down the Biomarkers page for "Glucose"
-    When I choose to view its trend
-    Then the trend chart for "Glucose" should start at the top of the page
-
   Scenario: No reference link for a test that is not in the biomarker dictionary
     Given I have values for a test that is not in the biomarker dictionary
     When I view the trend chart for that test

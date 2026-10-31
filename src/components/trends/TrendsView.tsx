@@ -455,21 +455,23 @@ export function TrendsView({
           onCompare={handleOpenCompare}
           showCompareButton={biomarkerOptions.length >= 2}
         />
-        {selectedBiomarkerData && showUnitChoice ? (
+        {selectedBiomarkerData && (showUnitChoice || referenceButton) && (
           <Box mt="sm">
-            <PreferredUnitSelect
-              // A new biomarker starts with its own unit in the search
-              key={selectedBiomarkerId}
-              biomarkerName={selectedBiomarkerData.name}
-              units={selectedBiomarkerData.unitOptions}
-              value={selectedBiomarkerData.unit}
-              onChange={handlePreferredUnitChange}
-              // In the unit input's row, where the error below cannot move it
-              aside={referenceButton}
-            />
+            {showUnitChoice ? (
+              <PreferredUnitSelect
+                // A new biomarker starts with its own unit in the search
+                key={selectedBiomarkerId}
+                biomarkerName={selectedBiomarkerData.name}
+                units={selectedBiomarkerData.unitOptions}
+                value={selectedBiomarkerData.unit}
+                onChange={handlePreferredUnitChange}
+                // In the unit input's row, where the error below cannot move it
+                aside={referenceButton}
+              />
+            ) : (
+              referenceButton
+            )}
           </Box>
-        ) : (
-          referenceButton && <Box mt="sm">{referenceButton}</Box>
         )}
       </Paper>
 

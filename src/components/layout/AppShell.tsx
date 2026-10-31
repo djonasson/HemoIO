@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   AppShell as MantineAppShell,
   Burger,
@@ -41,6 +41,7 @@ import {
   useLabResults,
   usePreferences,
   useSaveImport,
+  useNavigation,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -62,36 +63,14 @@ import {
 } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { FolderRestoreDecision } from '@hooks';
-
-type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'notes' | 'dictionary' | 'settings';
-
-/** What a view opens on when another view links to it */
-type Focus =
-  | {
-      view: 'trends';
-      biomarkerKey: string;
-      /** Date of the data point to highlight, if any */
-      date?: Date;
-    }
-  | { view: 'timeline'; labResultId: number }
-  | { view: 'dictionary'; biomarkerKey: string };
-
-/** Where the user went: a view, or a view focused on something */
-type Destination = View | Focus;
-
-interface NavState {
-  to: Destination;
-  /** Counts every move, so each one shows its view fresh */
-  visit: number;
-}
+import type { AppView, FolderRestoreDecision, ViewFocus } from '@hooks';
 
 interface AppShellProps {
   children?: React.ReactNode;
 }
 
 const NAV_ITEMS: Array<{
-  view: View;
+  view: AppView;
   label: string;
   icon: React.ReactNode;
   description: string;
@@ -144,14 +123,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { lock } = useAuth();
   const { db, isReady } = useEncryptedDb();
   const [opened, { toggle, close }] = useDisclosure();
-  const [{ to, visit }, setNav] = useState<NavState>({ to: 'timeline', visit: 0 });
-  const activeView = typeof to === 'string' ? to : to.view;
-  // Every move opens its view at the top, not at the last view's scroll
-  useLayoutEffect(() => window.scrollTo(0, 0), [visit]);
-  const openView = useCallback(
-    (destination: Destination) => setNav((prev) => ({ to: destination, visit: prev.visit + 1 })),
-    []
-  );
+  const { view: activeView, focus, visit, go: openView } = useNavigation();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // While an import saves, the user stays on its confirm step: leaving would
   // drop the reviewed values a failed save needs to be tried again
@@ -182,7 +154,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const folderSyncHeld = folderRestore.syncHeld;
 
   const handleNavClick = useCallback(
-    (view: View) => {
+    (view: AppView) => {
       if (isSavingImport) return;
       openView(view);
       close();
@@ -442,7 +414,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onImportComplete={handleImportComplete}
               onNavigateToImport={handleNavigateToImport}
               onNavigate={handleNavClick}
-              focus={typeof to === 'string' ? null : to}
+              focus={focus}
               visit={visit}
               onOpen={openView}
               onRestore={handleRestore}
@@ -465,15 +437,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 }
 
 interface MainContentProps {
-  view: View;
+  view: AppView;
   /** Resolves once the save has settled; the wizard shows it saving until then */
   onImportComplete: (results: ReviewedResult[]) => Promise<void>;
   onNavigateToImport: () => void;
-  onNavigate: (view: View) => void;
-  focus: Focus | null;
+  onNavigate: (view: AppView) => void;
+  focus: ViewFocus | null;
   /** Changes with every move, which shows the view fresh */
   visit: number;
-  onOpen: (focus: Focus) => void;
+  onOpen: (focus: ViewFocus) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }

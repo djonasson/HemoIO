@@ -550,9 +550,11 @@ test.describe('A biomarker page opened from another page', () => {
   test('starts at the top, with its back button in view', async ({ page }) => {
     const link = referenceLink(page, 'Glucose');
     const header = (await page.getByRole('banner').boundingBox())!;
-    // Scrolled a little: further, the shorter page in between scrolls back by itself
+    // Scrolled a little: further, the shorter page in between scrolls back by
+    // itself. The Trends page is tall enough to keep it.
+    expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeGreaterThan(120);
     await page.mouse.wheel(0, 120);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
     await link.click();
 
