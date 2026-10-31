@@ -12,6 +12,7 @@ import {
 } from './src/services/ocr/ocrAssets';
 import { OCR_CACHE_NAME } from './ocrCache.config';
 import { ONNX_ASSET_DIR, ONNX_RUNTIME_FILES } from './src/services/matching/onnxAssets';
+import { dataLayerReload } from './src/utils/dataLayerReload';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
 const ocrTargets = ocrCopyTargets();
@@ -30,6 +31,8 @@ export default defineConfig(({ command }) => {
       __OCR_CACHE_NAME__: JSON.stringify(OCR_CACHE_NAME),
     },
     plugins: [
+      // Dev server only: a data-layer change reloads the page instead of hot-updating it
+      dataLayerReload(),
       react(),
       viteStaticCopy({
         // Flat into tesseract/…, without the node_modules path

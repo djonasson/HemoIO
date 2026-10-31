@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Ports come from the environment so several checkouts can run E2E at once
+const DEV_PORT = Number(process.env.E2E_DEV_PORT ?? 5173);
+const PWA_PORT = Number(process.env.E2E_PWA_PORT ?? 4173);
+const DEV_URL = `http://localhost:${DEV_PORT}`;
+
 /** A production build, with its service worker */
-const PWA_URL = 'http://localhost:4173';
+const PWA_URL = `http://localhost:${PWA_PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -11,7 +16,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: DEV_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -44,15 +49,17 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
+      command: `npx vite --port ${DEV_PORT} --strictPort`,
+      url: DEV_URL,
       reuseExistingServer: !process.env.CI,
     },
     {
       // Served at the root, as the dev server is, so the same steps apply
       command:
         'npx vite build --base / --outDir dist-e2e --emptyOutDir && ' +
-        'npx vite preview --base / --outDir dist-e2e --port 4173 --strictPort',
+        'npx vite preview --base / --outDir dist-e2e --port ' +
+        PWA_PORT +
+        ' --strictPort',
       url: PWA_URL,
       reuseExistingServer: !process.env.CI,
       timeout: 300000,
