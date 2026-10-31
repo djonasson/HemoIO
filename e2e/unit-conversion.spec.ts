@@ -16,7 +16,7 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
-import { biomarkerDetail, goToDictionary } from './steps/dictionary.steps';
+import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
 import {
   ALT,
   CREATININE,
@@ -56,11 +56,7 @@ test.describe('Unit Conversion', () => {
       await openApp(page);
       await goToDictionary(page);
 
-      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
-      await page.getByRole('button', { name: 'View details for Glucose', exact: true }).click();
-
-      const detail = biomarkerDetail(page, 'Glucose');
-      await expect(detail).toBeVisible();
+      const detail = await viewDetail(page, 'Glucose');
       await expect(detail.getByText('Units', { exact: true })).toBeVisible();
       await expect(detail.getByText('mg/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('mmol/L', { exact: true })).toBeVisible();
@@ -70,10 +66,7 @@ test.describe('Unit Conversion', () => {
       await openApp(page);
       await goToDictionary(page);
 
-      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Hemoglobin');
-      await page.getByRole('button', { name: 'View details for Hemoglobin', exact: true }).click();
-
-      const detail = biomarkerDetail(page, 'Hemoglobin');
+      const detail = await viewDetail(page, 'Hemoglobin');
       await expect(detail.getByText('12 - 17.5 g/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('g/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('g/L', { exact: true })).toBeVisible();
@@ -696,7 +689,7 @@ test.describe('Unit Conversion - Accessibility', () => {
     await goToDictionary(page);
 
     // Reach and open a biomarker using only the keyboard
-    const search = page.getByRole('textbox', { name: 'Search biomarkers' });
+    const search = searchField(page);
     await search.focus();
     await page.keyboard.type('Glucose');
     const glucose = page.getByRole('button', { name: 'View details for Glucose', exact: true });

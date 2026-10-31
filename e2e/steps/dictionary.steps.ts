@@ -5,7 +5,10 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 
-function biomarkersNavItem(page: Page): Locator {
+/**
+ * The Biomarkers item in the main menu
+ */
+export function biomarkersNavItem(page: Page): Locator {
   return page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ });
 }
 
@@ -34,6 +37,9 @@ export function biomarkerDetail(page: Page, name: string): Locator {
     .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
 }
 
+/**
+ * The detail's button back to the biomarker list
+ */
 export function backButton(detail: Locator): Locator {
   return detail.getByRole('button', { name: 'Back to biomarker list' });
 }
@@ -43,6 +49,17 @@ export function backButton(detail: Locator): Locator {
  */
 export async function expectDetailPage(page: Page, name: string): Promise<Locator> {
   await expect(biomarkersNavItem(page)).toHaveAttribute('aria-current', 'page');
+  const detail = biomarkerDetail(page, name);
+  await expect(detail).toBeVisible();
+  return detail;
+}
+
+/**
+ * When I view the detail for "<name>" — searched for, then opened from the list
+ */
+export async function viewDetail(page: Page, name: string): Promise<Locator> {
+  await searchField(page).fill(name);
+  await page.getByRole('button', { name: `View details for ${name}`, exact: true }).click();
   const detail = biomarkerDetail(page, name);
   await expect(detail).toBeVisible();
   return detail;

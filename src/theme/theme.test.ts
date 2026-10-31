@@ -60,4 +60,12 @@ describe('theme', () => {
     const box = blend(rgb(merged.colors.red[8]), 0.15, body);
     expect(contrast(text, box)).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('gives light blue button text AA contrast, also on hover, in light mode', () => {
+    const text = rgb(resolved.light['--mantine-color-blue-light-color']);
+    const white = rgb(merged.white);
+    const blue = rgb(merged.colors.blue[6]);
+    expect(contrast(text, blend(blue, 0.1, white))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(text, blend(blue, 0.12, white))).toBeGreaterThanOrEqual(4.5);
+  });
 });

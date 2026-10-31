@@ -77,10 +77,13 @@ type Focus =
   | { view: 'timeline'; labResultId: number }
   | { view: 'dictionary'; biomarkerKey: string };
 
-/** The open view, and what it focuses on (only ever the open view's focus) */
+/** Where the user went: a view, or a view focused on something */
+type Destination = View | Focus;
+
 interface NavState {
-  view: View;
-  focus: Focus | null;
+  to: Destination;
+  /** Counts every move, so each one shows its view fresh */
+  visit: number;
 }
 
 interface AppShellProps {
@@ -141,12 +144,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { lock } = useAuth();
   const { db, isReady } = useEncryptedDb();
   const [opened, { toggle, close }] = useDisclosure();
-  const [{ view: activeView, focus }, setNav] = useState<NavState>({
-    view: 'timeline',
-    focus: null,
-  });
-  const openView = useCallback((view: View) => setNav({ view, focus: null }), []);
-  const openFocus = useCallback((to: Focus) => setNav({ view: to.view, focus: to }), []);
+  const [{ to, visit }, setNav] = useState<NavState>({ to: 'timeline', visit: 0 });
+  const activeView = typeof to === 'string' ? to : to.view;
+  const openView = useCallback(
+    (destination: Destination) => setNav((prev) => ({ to: destination, visit: prev.visit + 1 })),
+    []
+  );
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // While an import saves, the user stays on its confirm step: leaving would
   // drop the reviewed values a failed save needs to be tried again
@@ -437,8 +440,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onImportComplete={handleImportComplete}
               onNavigateToImport={handleNavigateToImport}
               onNavigate={handleNavClick}
-              focus={focus}
-              onOpen={openFocus}
+              focus={typeof to === 'string' ? null : to}
+              visit={visit}
+              onOpen={openView}
               onRestore={handleRestore}
               isRestoring={isRestoring}
             />
@@ -465,6 +469,8 @@ interface MainContentProps {
   onNavigateToImport: () => void;
   onNavigate: (view: View) => void;
   focus: Focus | null;
+  /** Changes with every move, which shows the view fresh */
+  visit: number;
   onOpen: (focus: Focus) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
@@ -476,6 +482,7 @@ function MainContent({
   onNavigateToImport,
   onNavigate,
   focus,
+  visit,
   onOpen,
   onRestore,
   isRestoring,
@@ -483,7 +490,7 @@ function MainContent({
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
   const trendFocus = focus?.view === 'trends' ? focus : null;
   const timelineFocus = focus?.view === 'timeline' ? focus.labResultId : null;
-  const dictionaryFocus = focus?.view === 'dictionary' ? focus.biomarkerKey : null;
+  const dictionaryFocus = focus?.view === 'dictionary' ? focus.biomarkerKey : undefined;
   const onOpenTrend = (biomarkerKey: string, date?: Date): void =>
     onOpen({ view: 'trends', biomarkerKey, date });
   const onOpenLabResult = (labResultId: number): void => onOpen({ view: 'timeline', labResultId });
@@ -501,8 +508,8 @@ function MainContent({
   if (view === 'timeline') {
     return (
       <TimelineView
-        // A new focus remounts the view so the focused result opens expanded
-        key={timelineFocus ?? 'timeline'}
+        // Each move here, from the menu or a link, shows the view fresh
+        key={visit}
         onNavigateToImport={onNavigateToImport}
         focusLabResultId={timelineFocus ?? undefined}
         onOpenTrend={onOpenTrend}
@@ -570,12 +577,8 @@ function MainContent({
   if (view === 'trends') {
     return (
       <TrendsView
-        // A new focus remounts the view so it opens on the focused biomarker
-        key={
-          trendFocus
-            ? `${trendFocus.biomarkerKey}-${trendFocus.date?.getTime() ?? 'all'}`
-            : 'trends'
-        }
+        // Each move here, from the menu or a link, shows the view fresh
+        key={visit}
         onNavigateToImport={onNavigateToImport}
         onNavigateToAlerts={() => onNavigate('alerts')}
         initialBiomarkerKey={trendFocus?.biomarkerKey}
@@ -602,10 +605,10 @@ function MainContent({
   if (view === 'dictionary') {
     return (
       <DictionaryView
-        // A new focus remounts the view so it opens on the focused biomarker
-        key={dictionaryFocus ?? 'dictionary'}
-        onOpenTrend={(biomarkerKey) => onOpenTrend(biomarkerKey)}
-        initialBiomarkerKey={dictionaryFocus ?? undefined}
+        // Each move here, from the menu or a link, shows the view fresh
+        key={visit}
+        onOpenTrend={onOpenTrend}
+        initialBiomarkerKey={dictionaryFocus}
       />
     );
   }

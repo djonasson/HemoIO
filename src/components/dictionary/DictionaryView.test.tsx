@@ -51,12 +51,12 @@ const scrollTo = vi.fn();
 
 function renderView(initialBiomarkerKey?: string) {
   const onOpenTrend = vi.fn();
-  render(
+  const { container } = render(
     <MantineProvider env="test">
       <DictionaryView onOpenTrend={onOpenTrend} initialBiomarkerKey={initialBiomarkerKey} />
     </MantineProvider>
   );
-  return { onOpenTrend };
+  return { onOpenTrend, container };
 }
 
 async function openFromSearch(term: string, name: string) {
@@ -120,15 +120,24 @@ describe('DictionaryView', () => {
     expect(onOpenTrend).toHaveBeenCalledWith('glucose');
   });
 
-  it('opens on the requested biomarker, and Back shows the list from the top', async () => {
+  it('opens on the requested biomarker at the top of the page', () => {
     renderView('glucose');
 
     expect(screen.getByRole('heading', { level: 3, name: 'Glucose' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Search biomarkers' })).not.toBeInTheDocument();
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('builds the list only when Back asks for it, then focuses its search', async () => {
+    const { container } = renderView('glucose');
+    expect(container.querySelector('[data-biomarker-key]')).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: 'Back to biomarker list' }));
 
-    expect(screen.getByRole('textbox', { name: 'Search biomarkers' })).toHaveValue('');
+    const search = screen.getByRole('textbox', { name: 'Search biomarkers' });
+    expect(search).toHaveValue('');
+    // Its biomarker sits in a closed category, so the search takes focus
+    expect(search).toHaveFocus();
     expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 

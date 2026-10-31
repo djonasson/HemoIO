@@ -29,7 +29,8 @@ export interface DictionaryViewProps {
 
 /** Where to put the list back when the detail closes */
 interface ListPosition {
-  biomarkerKey: string;
+  /** The list item to focus; null focuses the search (the list was never shown) */
+  biomarkerKey: string | null;
   scrollY: number;
 }
 
@@ -42,12 +43,20 @@ export function DictionaryView({
   const [selected, setSelected] = useState<BiomarkerDefinition | null>(
     () => (initialBiomarkerKey ? (getBiomarkerByKey(initialBiomarkerKey) ?? null) : null)
   );
+  const [openedOnDetail] = useState(selected !== null);
+  // Opened on a detail, the list is built only if Back asks for it
+  const [listShown, setListShown] = useState(!openedOnDetail);
   const [editingTarget, setEditingTarget] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  // Opened on a detail: Back shows the list from the top
+  // Opened on a detail: Back shows the list from the top, focused on its search
   const listPosition = useRef<ListPosition | null>(
-    selected ? { biomarkerKey: selected.key, scrollY: 0 } : null
+    openedOnDetail ? { biomarkerKey: null, scrollY: 0 } : null
   );
+
+  // Opened from another view, which may have been scrolled down
+  useLayoutEffect(() => {
+    if (openedOnDetail) window.scrollTo(0, 0);
+  }, [openedOnDetail]);
 
   const handleSelectFromList = useCallback((biomarker: BiomarkerDefinition) => {
     listPosition.current = { biomarkerKey: biomarker.key, scrollY: window.scrollY };
@@ -62,7 +71,10 @@ export function DictionaryView({
     window.scrollTo(0, 0);
   }, []);
 
-  const handleBack = useCallback(() => setSelected(null), []);
+  const handleBack = useCallback(() => {
+    setListShown(true);
+    setSelected(null);
+  }, []);
 
   // Before paint, so the list never shows at the top first
   useLayoutEffect(() => {
@@ -70,7 +82,9 @@ export function DictionaryView({
     const { biomarkerKey, scrollY } = listPosition.current;
     listPosition.current = null;
     listRef.current
-      ?.querySelector<HTMLElement>(`[data-biomarker-key="${biomarkerKey}"]`)
+      ?.querySelector<HTMLElement>(
+        biomarkerKey === null ? 'input' : `[data-biomarker-key="${biomarkerKey}"]`
+      )
       ?.focus({ preventScroll: true });
     window.scrollTo(0, scrollY);
   }, [selected]);
@@ -101,12 +115,14 @@ export function DictionaryView({
 
   return (
     <>
-      <Box ref={listRef} style={{ display: selected ? 'none' : undefined }}>
-        <BiomarkerDictionary
-          onSelectBiomarker={handleSelectFromList}
-          selectedBiomarker={selected?.name}
-        />
-      </Box>
+      {listShown && (
+        <Box ref={listRef} style={{ display: selected ? 'none' : undefined }}>
+          <BiomarkerDictionary
+            onSelectBiomarker={handleSelectFromList}
+            selectedBiomarker={selected?.name}
+          />
+        </Box>
+      )}
       {selected && (
         <BiomarkerDetail
           biomarker={selected}

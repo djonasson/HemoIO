@@ -10,18 +10,13 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
-import {
-  backButton,
-  biomarkerDetail,
-  expectDetailPage,
-  goToDictionary,
-  searchField,
-} from './steps/dictionary.steps';
+import { backButton, expectDetailPage, searchField } from './steps/dictionary.steps';
 import {
   GLUCOSE,
   HDL,
   HEMOGLOBIN,
   LDL,
+  RDW,
   VITAMIN_D,
   biomarkerSelect,
   dataPoints,
@@ -90,10 +85,10 @@ const RED = '#fa5252';
 const ORANGE = '#fd7e14';
 const STANDARD_GREEN = '#40c057';
 
-async function seedAndOpenTrends(page: Page): Promise<void> {
+async function seedAndOpenTrends(page: Page, visits: LabVisit[] = VISITS): Promise<void> {
   await page.goto('/');
   await setupOrUnlock(page);
-  await seedVisits(page, VISITS);
+  await seedVisits(page, visits);
   await goToTrends(page);
 }
 
@@ -438,15 +433,12 @@ test.describe('Trend Charts with Data', () => {
 // Scenario: View trend direction indicator
 test.describe('Trend direction indicator', () => {
   test('should display trend direction indicator', async ({ page }) => {
-    await page.goto('/');
-    await setupOrUnlock(page);
     // Three hemoglobin readings a month apart, rising ~1.5 g/dL per month
-    await seedVisits(page, [
+    await seedAndOpenTrends(page, [
       { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
       { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
       { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 15.5 }] },
     ]);
-    await goToTrends(page);
     await selectBiomarker(page, 'Hemoglobin');
 
     await expect(dataPoints(page)).toHaveCount(3);
@@ -454,14 +446,11 @@ test.describe('Trend direction indicator', () => {
   });
 
   test('does not plot a value whose unit cannot be converted to the chart unit', async ({ page }) => {
-    await page.goto('/');
-    await setupOrUnlock(page);
-    await seedVisits(page, [
+    await seedAndOpenTrends(page, [
       { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
       { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
       { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 140, unit: 'xyz/L' }] },
     ]);
-    await goToTrends(page);
     await selectBiomarker(page, 'Hemoglobin');
 
     await expect(dataPoints(page)).toHaveCount(2);
@@ -473,14 +462,11 @@ test.describe('Trend direction indicator', () => {
   });
 
   test('should show stable when values barely change', async ({ page }) => {
-    await page.goto('/');
-    await setupOrUnlock(page);
-    await seedVisits(page, [
+    await seedAndOpenTrends(page, [
       { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
       { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.1 }] },
       { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
     ]);
-    await goToTrends(page);
     await selectBiomarker(page, 'Hemoglobin');
 
     await expect(page.getByRole('main').getByText('Stable', { exact: true })).toBeVisible();
@@ -512,38 +498,61 @@ test.describe('Reference page from a trend', () => {
     await expectDetailPage(page, 'Hemoglobin');
   });
 
-  test('opens by keyboard', async ({ page }) => {
+  test('is reached by tabbing, and opens with Enter', async ({ page }) => {
     await selectBiomarker(page, 'Glucose');
+    const link = referenceLink(page, 'Glucose');
 
-    await referenceLink(page, 'Glucose').focus();
-    await expect(referenceLink(page, 'Glucose')).toBeFocused();
+    // Reached by tabbing: back to the control before it, then forward again
+    await link.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(link).not.toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(link).toBeFocused();
     await page.keyboard.press('Enter');
 
     await expectDetailPage(page, 'Glucose');
   });
 
-  test('the Biomarkers menu item still opens the list', async ({ page }) => {
+  test('works while a unit Glucose does not support is typed', async ({ page }) => {
     await selectBiomarker(page, 'Glucose');
+    await page.getByRole('textbox', { name: 'Preferred unit' }).fill('stones');
+    await expect(page.getByText('Unit not supported for Glucose')).toBeVisible();
+
     await referenceLink(page, 'Glucose').click();
+
     await expectDetailPage(page, 'Glucose');
+  });
+
+  test('choosing Trends in the menu starts the page over', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
 
     await goToTrends(page);
-    await goToDictionary(page);
 
-    await expect(searchField(page)).toBeVisible();
-    await expect(biomarkerDetail(page, 'Glucose')).toHaveCount(0);
+    await expect(biomarkerSelect(page)).toHaveValue('');
+    await expect(referenceLink(page, 'Glucose')).toHaveCount(0);
   });
 });
 
+test('a test with a single unit offers its reference page', async ({ page }) => {
+  await seedAndOpenTrends(page, [
+    { date: '2024-03-01', values: [{ biomarker: RDW, value: 13 }] },
+    { date: '2024-04-01', values: [{ biomarker: RDW, value: 13.4 }] },
+  ]);
+
+  await selectBiomarker(page, RDW.name);
+
+  await expect(page.getByRole('textbox', { name: 'Preferred unit' })).toHaveCount(0);
+  await referenceLink(page, RDW.name).click();
+  await expectDetailPage(page, RDW.name);
+});
+
 test('a test outside the biomarker dictionary offers no reference page', async ({ page }) => {
-  const zorblatin = { biomarkerKey: 'unknown:zorblatinindex', name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
-  await page.goto('/');
-  await setupOrUnlock(page);
-  await seedVisits(page, [
+  // A legacy hash ID: a test the dictionary does not have
+  const zorblatin = { id: 10042, name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
+  await seedAndOpenTrends(page, [
     { date: '2024-03-01', values: [{ biomarker: zorblatin, value: 3 }] },
     { date: '2024-04-01', values: [{ biomarker: zorblatin, value: 4 }] },
   ]);
-  await goToTrends(page);
 
   await selectBiomarker(page, 'Zorblatin index');
 

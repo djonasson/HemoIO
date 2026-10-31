@@ -48,6 +48,13 @@ const CHART_COLORS = [
 ];
 
 /**
+ * Space above the reference button beside the unit select, so the two are
+ * level: the select's label (a small-text line), the 3px gap below it, and
+ * half of the 6px the select's input is taller than the button
+ */
+const REFERENCE_BUTTON_OFFSET = 'calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 6px)';
+
+/**
  * Props for TrendsView
  */
 export interface TrendsViewProps {
@@ -432,7 +439,9 @@ export function TrendsView({
           showCompareButton={biomarkerOptions.length >= 2}
         />
         {selectedBiomarkerData && (showUnitChoice || openReference) && (
-          <Group mt="sm" align="flex-end">
+          // Aligned to the top: the unit's error line below its input must not
+          // move the button, or a click that clears the error would miss it
+          <Group mt="sm" align="flex-start">
             {showUnitChoice && (
               <PreferredUnitSelect
                 // A new biomarker starts with its own unit in the search
@@ -447,6 +456,8 @@ export function TrendsView({
               <Button
                 variant="light"
                 size="xs"
+                // Level with the unit input below its label, when there is one
+                mt={showUnitChoice ? REFERENCE_BUTTON_OFFSET : undefined}
                 leftSection={<IconBook size={14} aria-hidden />}
                 onClick={openReference}
                 aria-label={`View reference for ${selectedBiomarkerData.name}`}

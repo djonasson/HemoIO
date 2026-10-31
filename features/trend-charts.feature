@@ -123,18 +123,28 @@ Feature: Trend Charts
 
   Scenario: Open the reference page by keyboard
     Given I am viewing the trend chart for "Glucose"
-    When I move to the reference link with the keyboard and press Enter
+    When I tab to the reference link and press Enter
     Then I should see the Biomarkers page showing the detail for "Glucose"
+
+  Scenario: The reference link works while I am typing a unit
+    Given I am viewing the trend chart for "Glucose"
+    And I have typed a unit Glucose does not support as my preferred unit
+    When I choose to view the reference information for "Glucose"
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+
+  Scenario: The reference link for a test with a single unit
+    Given I am viewing the trend chart for "Hemoglobin", which has a single unit
+    Then I should be offered its reference page
 
   Scenario: No reference link for a test that is not in the biomarker dictionary
     Given I have values for a test that is not in the biomarker dictionary
     When I view the trend chart for that test
     Then I should not be offered a reference page
 
-  Scenario: Opening the Biomarkers page from the menu still shows the list
-    Given I have opened the reference page for "Glucose" from its trend
-    When I go to Trends and then to Biomarkers from the menu
-    Then I should see the biomarker list, not a biomarker's detail
+  Scenario: Choosing Trends in the menu starts the page over
+    Given I am viewing the trend chart for "Glucose"
+    When I choose Trends in the menu
+    Then no biomarker should be selected
 
   Scenario: View trend statistics summary
     Given I am viewing the trend chart for "Glucose"

@@ -2,8 +2,8 @@
  * Step definitions for features/trend-charts.feature (also used by alerts)
  *
  * Builds scenario-specific lab data for seedLabData(). Biomarker IDs refer to
- * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS), and a
- * test outside it is given its stored key instead; the
+ * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS), or
+ * above 10000 to a test outside it (a legacy hash ID); the
  * display name is resolved from rawText, as it is for imported values.
  */
 
@@ -11,9 +11,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { seedLabData } from './data.steps';
 
 export interface BiomarkerFixture {
-  /** Position in the dictionary; a test outside it has a biomarkerKey instead */
-  id?: number;
-  biomarkerKey?: string;
+  id: number;
   name: string;
   unit: string;
   low: number;
@@ -24,6 +22,8 @@ export const HEMOGLOBIN: BiomarkerFixture = { id: 3, name: 'Hemoglobin', unit: '
 export const GLUCOSE: BiomarkerFixture = { id: 22, name: 'Glucose', unit: 'mg/dL', low: 70, high: 100 };
 export const LDL: BiomarkerFixture = { id: 33, name: 'LDL Cholesterol', unit: 'mg/dL', low: 0, high: 100 };
 export const HDL: BiomarkerFixture = { id: 34, name: 'HDL Cholesterol', unit: 'mg/dL', low: 40, high: 60 };
+/** One unit only, so its chart offers no unit choice */
+export const RDW: BiomarkerFixture = { id: 9, name: 'Red Cell Distribution Width', unit: '%', low: 11.5, high: 14.5 };
 export const VITAMIN_D: BiomarkerFixture = { id: 50, name: 'Vitamin D', unit: 'ng/mL', low: 30, high: 100 };
 
 /** One lab visit: its date, lab and the values measured on it */
@@ -58,7 +58,6 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
         id: testValues.length + 1,
         labResultId,
         biomarkerId: biomarker.id,
-        biomarkerKey: biomarker.biomarkerKey,
         rawText: biomarker.name,
         value,
         unit: unit ?? biomarker.unit,

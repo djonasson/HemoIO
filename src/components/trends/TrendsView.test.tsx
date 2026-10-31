@@ -173,16 +173,15 @@ function createMockResult(
   };
 }
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUnitPreferences = {};
+  mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
+  mockShowNotification.mockReset();
+  mockAlerts();
+});
+
 describe('TrendsView', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUnitPreferences = {};
-    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
-    mockShowNotification.mockReset();
-
-    mockAlerts();
-  });
-
   it('should render loading state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
@@ -626,14 +625,6 @@ function renderWithTwoValues(
 }
 
 describe('TrendsView preferred unit', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUnitPreferences = {};
-    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
-    mockShowNotification.mockReset();
-    mockAlerts();
-  });
-
   const renderWithGlucose = () => renderWithTwoValues('glucose', 'Glucose');
 
   it('shows glucose in the stored preferred unit', () => {
@@ -677,12 +668,6 @@ describe('TrendsView preferred unit', () => {
 });
 
 describe('TrendsView reference link', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUnitPreferences = {};
-    mockAlerts();
-  });
-
   it("opens the chart's biomarker reference page", async () => {
     const onOpenReference = vi.fn();
     renderWithTwoValues('glucose', 'Glucose', { onOpenReference });
@@ -696,7 +681,7 @@ describe('TrendsView reference link', () => {
     renderWithTwoValues('glucose', 'Glucose', { onOpenReference: vi.fn() });
 
     expect(screen.getByRole('button', { name: 'View reference for Glucose' })).toHaveTextContent(
-      'View reference'
+      /^View reference$/
     );
   });
 
@@ -707,9 +692,19 @@ describe('TrendsView reference link', () => {
     expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();
   });
 
+  it('offers the link for a biomarker with a single unit, which has no unit choice', async () => {
+    const onOpenReference = vi.fn();
+    renderWithTwoValues('hemoglobin', 'Hemoglobin', { onOpenReference });
+
+    expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View reference for Hemoglobin' }));
+    expect(onOpenReference).toHaveBeenCalledWith('hemoglobin');
+  });
+
   it('offers no link when nowhere to open it', () => {
     renderWithTwoValues('glucose', 'Glucose');
 
+    expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();
   });
 });
