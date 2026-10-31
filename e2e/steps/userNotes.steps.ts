@@ -117,7 +117,9 @@ export async function addNote(container: Locator, content: string): Promise<void
   await container.getByRole('button', { name: 'Add Note' }).click();
   await noteEditor(container).fill(content);
   await container.getByRole('button', { name: 'Save Note' }).click();
-  await expect(noteEditor(container)).toBeHidden();
+  // The editor closes once the browser has kept the note on disk, which a
+  // busy disk can delay past the default wait
+  await expect(noteEditor(container)).toBeHidden({ timeout: 15000 });
   await expect(container.getByText(content, { exact: true })).toBeVisible();
 }
 

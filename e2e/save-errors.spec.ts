@@ -361,10 +361,10 @@ test.describe('Save errors', () => {
     await breakStorage(page, 'cancel');
 
     const glucose = alertCard(page, 'Glucose');
-    await glucose.getByRole('button', { name: 'Acknowledge alert' }).click();
+    await glucose.getByRole('button', { name: 'Acknowledge all Glucose results' }).click();
 
     await expect(page.getByRole('main').getByText(/Could not save the acknowledgement/)).toBeVisible();
-    await expect(glucose.getByRole('button', { name: 'Acknowledge alert' })).toBeVisible();
+    await expect(glucose.getByRole('button', { name: 'Acknowledge all Glucose results' })).toBeVisible();
   });
 
   test('a restore that cannot be saved keeps the current data', async ({ page }) => {

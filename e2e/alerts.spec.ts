@@ -21,6 +21,7 @@ import {
   earlierResults,
   earlierResultsToggle,
   expandEarlierResults,
+  acknowledgeAndWaitForSave,
   reloadAndViewAlerts,
   seedAlertData,
   viewAlerts,
@@ -333,7 +334,7 @@ test.describe('Alerts with Data', () => {
     await viewAlerts(page);
 
     const glucose = alertCard(page, 'Glucose');
-    await acknowledgeButton(glucose, 'Glucose').click();
+    await acknowledgeAndWaitForSave(page, 'Glucose');
 
     // Marked as acknowledged: no longer offers to be acknowledged, no longer counted as new
     await expect(acknowledgeButton(glucose, 'Glucose')).toHaveCount(0);
@@ -371,7 +372,7 @@ test.describe('Alerts with Data', () => {
     ]);
     await viewAlerts(page);
 
-    await acknowledgeButton(alertCard(page, 'Glucose'), 'Glucose').click();
+    await acknowledgeAndWaitForSave(page, 'Glucose');
     await expect(alertCard(page, 'Glucose')).toHaveCount(0);
     await expect(page.getByRole('main').getByText('1 new', { exact: true })).toBeVisible();
 

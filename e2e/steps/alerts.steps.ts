@@ -8,6 +8,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { setupOrUnlock } from './app.steps';
 import { waitForAnimations } from './timeline.steps';
 import { seedVisits, type LabVisit } from './trends.steps';
+import { readStoredRows } from './dataAtRest.steps';
 
 /** Mantine red-6 / orange-6, used for the alert's left border indicator */
 export const RED_INDICATOR = 'rgb(250, 82, 82)';
@@ -32,6 +33,18 @@ export async function viewAlerts(page: Page): Promise<void> {
 /**
  * Reload the app (a new page load), unlock it and return to the alerts
  */
+/**
+ * Acknowledge a test's card and wait until the browser has stored it: the
+ * card goes at once, before the save is kept
+ */
+export async function acknowledgeAndWaitForSave(page: Page, biomarkerName: string): Promise<void> {
+  // Sealed records keep their ciphertext as text
+  const stored = async (): Promise<string> => JSON.stringify((await readStoredRows(page)).userPreferences);
+  const before = await stored();
+  await acknowledgeButton(alertCard(page, biomarkerName), biomarkerName).click();
+  await expect.poll(stored).not.toBe(before);
+}
+
 export async function reloadAndViewAlerts(page: Page): Promise<void> {
   await page.reload();
   await setupOrUnlock(page);
