@@ -126,3 +126,25 @@ export async function pickDate(page: Page, inputLabel: string, isoDate: string):
   await dropdown.getByRole('button', { name: `${day} ${monthName} ${year}`, exact: true }).click();
   await expect(dropdown).toBeHidden();
 }
+
+/**
+ * The reference link next to the chart's biomarker picker
+ */
+export function referenceLink(page: Page, name: string): Locator {
+  return page.getByRole('main').getByRole('button', { name: `View reference for ${name}`, exact: true });
+}
+
+/**
+ * Then I should see the Biomarkers page showing the detail for "<name>"
+ */
+export async function expectReferencePage(page: Page, name: string): Promise<Locator> {
+  await expect(
+    page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ })
+  ).toHaveAttribute('aria-current', 'page');
+  const detail = page
+    .getByRole('main')
+    .locator('.mantine-Paper-root')
+    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
+  await expect(detail).toBeVisible();
+  return detail;
+}

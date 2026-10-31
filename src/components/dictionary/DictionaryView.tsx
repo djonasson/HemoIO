@@ -8,6 +8,7 @@
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mantine/core';
+import { getBiomarkerByKey } from '@data/biomarkers';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { usePreferences } from '@hooks/usePreferences';
@@ -22,6 +23,8 @@ import type { BiomarkerDefinition } from '@data/biomarkers';
 export interface DictionaryViewProps {
   /** Show a biomarker's trend chart */
   onOpenTrend: (biomarkerKey: string) => void;
+  /** Open on this biomarker's detail; a key the dictionary lacks shows the list */
+  initialBiomarkerKey?: string;
 }
 
 /** Where to put the list back when the detail closes */
@@ -30,13 +33,21 @@ interface ListPosition {
   scrollY: number;
 }
 
-export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.ReactNode {
+export function DictionaryView({
+  onOpenTrend,
+  initialBiomarkerKey,
+}: DictionaryViewProps): React.ReactNode {
   const { results } = useLabResults();
   const { unitPreferences, personalTargets, setPersonalTarget } = usePreferences();
-  const [selected, setSelected] = useState<BiomarkerDefinition | null>(null);
+  const [selected, setSelected] = useState<BiomarkerDefinition | null>(
+    () => (initialBiomarkerKey && getBiomarkerByKey(initialBiomarkerKey)) || null
+  );
   const [editingTarget, setEditingTarget] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const listPosition = useRef<ListPosition | null>(null);
+  // Opened on a detail: Back shows the list from the top
+  const listPosition = useRef<ListPosition | null>(
+    selected ? { biomarkerKey: selected.key, scrollY: 0 } : null
+  );
 
   const handleSelectFromList = useCallback((biomarker: BiomarkerDefinition) => {
     listPosition.current = { biomarkerKey: biomarker.key, scrollY: window.scrollY };

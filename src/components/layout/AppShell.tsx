@@ -153,6 +153,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
+  const [dictionaryFocus, setDictionaryFocus] = useState<string | null>(null);
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
@@ -168,6 +169,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setActiveView(view);
       setTrendFocus(null);
       setTimelineFocus(null);
+      setDictionaryFocus(null);
       close();
     },
     [close, isSavingImport]
@@ -176,6 +178,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const handleOpenTrend = useCallback((biomarkerKey: string, date?: Date) => {
     setTrendFocus({ biomarkerKey, date });
     setActiveView('trends');
+  }, []);
+
+  const handleOpenReference = useCallback((biomarkerKey: string) => {
+    setDictionaryFocus(biomarkerKey);
+    setActiveView('dictionary');
   }, []);
 
   const handleOpenLabResult = useCallback((labResultId: number) => {
@@ -440,6 +447,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onOpenTrend={handleOpenTrend}
               timelineFocus={timelineFocus}
               onOpenLabResult={handleOpenLabResult}
+              dictionaryFocus={dictionaryFocus}
+              onOpenReference={handleOpenReference}
               onRestore={handleRestore}
               isRestoring={isRestoring}
             />
@@ -469,6 +478,8 @@ interface MainContentProps {
   onOpenTrend: (biomarkerKey: string, date?: Date) => void;
   timelineFocus: number | null;
   onOpenLabResult: (labResultId: number) => void;
+  dictionaryFocus: string | null;
+  onOpenReference: (biomarkerKey: string) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }
@@ -482,6 +493,8 @@ function MainContent({
   onOpenTrend,
   timelineFocus,
   onOpenLabResult,
+  dictionaryFocus,
+  onOpenReference,
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
@@ -578,6 +591,7 @@ function MainContent({
         onNavigateToAlerts={() => onNavigate('alerts')}
         initialBiomarkerKey={trendFocus?.biomarkerKey}
         highlightDate={trendFocus?.date}
+        onOpenReference={onOpenReference}
       />
     );
   }
@@ -597,7 +611,14 @@ function MainContent({
 
   // Render BiomarkerDictionary for the dictionary view
   if (view === 'dictionary') {
-    return <DictionaryView onOpenTrend={(biomarkerKey) => onOpenTrend(biomarkerKey)} />;
+    return (
+      <DictionaryView
+        // A new focus remounts the view so it opens on the focused biomarker
+        key={dictionaryFocus ?? 'dictionary'}
+        onOpenTrend={(biomarkerKey) => onOpenTrend(biomarkerKey)}
+        initialBiomarkerKey={dictionaryFocus ?? undefined}
+      />
+    );
   }
 
   // Placeholder for other views

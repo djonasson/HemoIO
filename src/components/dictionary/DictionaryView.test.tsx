@@ -49,11 +49,11 @@ vi.mock('@mantine/notifications', () => ({
 
 const scrollTo = vi.fn();
 
-function renderView() {
+function renderView(initialBiomarkerKey?: string) {
   const onOpenTrend = vi.fn();
   render(
     <MantineProvider env="test">
-      <DictionaryView onOpenTrend={onOpenTrend} />
+      <DictionaryView onOpenTrend={onOpenTrend} initialBiomarkerKey={initialBiomarkerKey} />
     </MantineProvider>
   );
   return { onOpenTrend };
@@ -118,6 +118,24 @@ describe('DictionaryView', () => {
 
     await userEvent.click(within(yours).getByRole('button', { name: 'View trend' }));
     expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+  });
+
+  it('opens on the requested biomarker, and Back shows the list from the top', async () => {
+    renderView('glucose');
+
+    expect(screen.getByRole('heading', { level: 3, name: 'Glucose' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Search biomarkers' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back to biomarker list' }));
+
+    expect(screen.getByRole('textbox', { name: 'Search biomarkers' })).toHaveValue('');
+    expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('shows the list for a biomarker the dictionary does not have', () => {
+    renderView('unknown:zorblatin');
+
+    expect(screen.getByRole('textbox', { name: 'Search biomarkers' })).toBeInTheDocument();
   });
 
   it('says when a biomarker has no recorded values', async () => {

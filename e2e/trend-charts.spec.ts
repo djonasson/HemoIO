@@ -10,6 +10,7 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
+import { seedLabData } from './steps/data.steps';
 import {
   GLUCOSE,
   HDL,
@@ -18,8 +19,10 @@ import {
   VITAMIN_D,
   biomarkerSelect,
   dataPoints,
+  expectReferencePage,
   goToTrends,
   pickDate,
+  referenceLink,
   seedVisits,
   selectBiomarker,
   type LabVisit,
@@ -477,4 +480,76 @@ test.describe('Trend direction indicator', () => {
 
     await expect(page.getByRole('main').getByText('Stable', { exact: true })).toBeVisible();
   });
+});
+
+test.describe('Reference page from a trend', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAndOpenTrends(page);
+  });
+
+  test("opens the biomarker's reference page, and from there the list", async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+
+    await referenceLink(page, 'Glucose').click();
+
+    const detail = await expectReferencePage(page, 'Glucose');
+    await detail.getByRole('button', { name: 'Back to biomarker list' }).click();
+    await expect(page.getByRole('textbox', { name: 'Search biomarkers' })).toBeVisible();
+  });
+
+  test('follows the biomarker picked after switching', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+    await selectBiomarker(page, 'Hemoglobin');
+
+    await expect(referenceLink(page, 'Glucose')).toHaveCount(0);
+    await referenceLink(page, 'Hemoglobin').click();
+
+    await expectReferencePage(page, 'Hemoglobin');
+  });
+
+  test('opens by keyboard', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+
+    await referenceLink(page, 'Glucose').focus();
+    await expect(referenceLink(page, 'Glucose')).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    await expectReferencePage(page, 'Glucose');
+  });
+
+  test('the Biomarkers menu item still opens the list', async ({ page }) => {
+    await selectBiomarker(page, 'Glucose');
+    await referenceLink(page, 'Glucose').click();
+    await expectReferencePage(page, 'Glucose');
+
+    await goToTrends(page);
+    await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
+
+    await expect(page.getByRole('textbox', { name: 'Search biomarkers' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { level: 3, name: 'Glucose', exact: true })).toHaveCount(0);
+  });
+});
+
+test('a test outside the biomarker dictionary offers no reference page', async ({ page }) => {
+  const at = '2024-03-01T10:00:00.000Z';
+  const value = (id: number, labResultId: number, amount: number) => ({
+    id, labResultId, biomarkerKey: 'unknown:zorblatinindex', rawText: 'Zorblatin index',
+    value: amount, unit: 'U', confidence: 0.9, createdAt: at, updatedAt: at,
+  });
+  await page.goto('/');
+  await setupOrUnlock(page);
+  await seedLabData(page, {
+    labResults: [
+      { id: 1, date: at, labName: 'Test Lab', createdAt: at, updatedAt: at },
+      { id: 2, date: '2024-04-01T10:00:00.000Z', labName: 'Test Lab', createdAt: at, updatedAt: at },
+    ],
+    testValues: [value(1, 1, 3), value(2, 2, 4)],
+    userNotes: [],
+  });
+  await goToTrends(page);
+
+  await selectBiomarker(page, 'Zorblatin index');
+
+  await expect(dataPoints(page)).toHaveCount(2);
+  await expect(page.getByRole('main').getByRole('button', { name: /^View reference/ })).toHaveCount(0);
 });

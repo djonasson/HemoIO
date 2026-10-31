@@ -109,6 +109,33 @@ Feature: Trend Charts
     Then I should see a message indicating no data is available
     And I should see a suggestion to import lab results
 
+  Scenario: Open a biomarker's reference page from its trend
+    Given I am viewing the trend chart for "Glucose"
+    When I choose to view the reference information for "Glucose"
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+    And I should be able to go from there to the biomarker list
+
+  Scenario: Reference page of another biomarker after switching
+    Given I am viewing the trend chart for "Glucose"
+    When I select "Hemoglobin" from the biomarker dropdown
+    And I choose to view the reference information for "Hemoglobin"
+    Then I should see the Biomarkers page showing the detail for "Hemoglobin"
+
+  Scenario: Open the reference page by keyboard
+    Given I am viewing the trend chart for "Glucose"
+    When I move to the reference link with the keyboard and press Enter
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+
+  Scenario: No reference link for a test that is not in the biomarker dictionary
+    Given I have values for a test that is not in the biomarker dictionary
+    When I view the trend chart for that test
+    Then I should not be offered a reference page
+
+  Scenario: Opening the Biomarkers page from the menu still shows the list
+    Given I have opened the reference page for "Glucose" from its trend
+    When I go to Trends and then to Biomarkers from the menu
+    Then I should see the biomarker list, not a biomarker's detail
+
   Scenario: View trend statistics summary
     Given I am viewing the trend chart for "Glucose"
     And I have multiple data points
