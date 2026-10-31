@@ -4,7 +4,7 @@
  * Review and edit extracted biomarker values before saving.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useContext } from 'react';
 import {
   Stack,
   Group,
@@ -44,11 +44,13 @@ import {
   applyBiomarkerName,
   applyBiomarkerUnit,
   chooseTest,
-  proposedTest,
   suggestBiomarkerNames,
-  unitFitsBiomarker,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
+import { unitFitsBiomarker } from '@services/units/unitFit';
+import { proposedTest } from '@services/analysis/nameMatching';
+import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
+import { PreferencesContext } from '@hooks/usePreferences';
 import { resultsToSave } from './resultsToSave';
 import { SavedAsCell } from './SavedAsCell';
 import type { SpecimenType } from '../../types';
@@ -218,6 +220,12 @@ export function ReviewStep({
     biomarkerIndex: number;
   } | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // The user's learned names: an edited value is identified as the analyzer would
+  const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
+  const learned = useCallback(
+    (name: string) => lookupLearnedAlias(learnedAliases, name),
+    [learnedAliases]
+  );
 
   // Update a biomarker value
   const updateBiomarker = useCallback(
@@ -360,7 +368,7 @@ export function ReviewStep({
         }
 
         // A value is saved under its test only in a unit of that test: the
-        // one the AI proposed, or the one it is saved as (renamed or not)
+        // one proposed (by the AI or the typed name), or the one it is saved as
         const test = b.savedAsUnknown ? undefined : (b.dictionaryMatch ?? proposedTest(b));
         if (missing.length === 0 && test && !unitFitsBiomarker(test, b.unit)) {
           invalidBiomarkers.push(
@@ -580,7 +588,7 @@ export function ReviewStep({
                                     updateBiomarker(
                                       resultIndex,
                                       bioIndex,
-                                      applyBiomarkerName(biomarker, name)
+                                      applyBiomarkerName(biomarker, name, learned)
                                     )
                                   }
                                   data={BIOMARKER_NAMES}
@@ -716,7 +724,7 @@ export function ReviewStep({
                                   size="xs"
                                   value={biomarker.unit}
                                   onChange={(unit) =>
-                                    updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit))
+                                    updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit, learned))
                                   }
                                   data={unitOptionsFor(
                                     biomarker.dictionaryMatch?.name ??

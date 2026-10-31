@@ -20,18 +20,19 @@ import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '..
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
 import { MODEL_LOAD_NOTE } from '../matching/notes';
-import { unitFitsBiomarker } from '@/utils/biomarkerSuggestions';
+import {
+  identifyByKey,
+  identifyByPrintedName,
+  identifyByModel,
+  notIdentified,
+  proposedTest,
+} from './nameMatching';
 import type {
   AIProviderConfig,
   AIProviderType,
   LabReportAnalysisResult,
   ExtractedBiomarker,
 } from '../ai';
-import {
-  findBiomarker,
-  getBiomarkerByKey,
-  matchBiomarkerName,
-} from '../../data/biomarkers/dictionary';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
 import { normalizeUnit, canConvert, convertValue, unitsMatch } from '../units';
 
@@ -70,8 +71,15 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   hasDuplicateConflict?: boolean;
   /** Details about the duplicate conflict if present */
   duplicateConflict?: DuplicateConflict;
-  /** Set when the user renamed it in review: its unit must then fit the new name */
-  renamedInReview?: boolean;
+  /** Set while its unit is the standard unit of the test the name typed in review is */
+  unitFromName?: boolean;
+  /**
+   * The value as the analyzer read it. Review identifies an edited value
+   * from this and its current name and unit, so nothing typed on the way
+   * counts: the printed name and unit, and the test the matching model
+   * chose for that name.
+   */
+  analyzed?: AnalyzedValue;
   /** How its test was chosen: by the AI, the printed name, the matching model or the user */
   identifiedBy?: IdentifiedBy;
   /** Checks the identification needs; absent means none (manual rows, fixtures) */
@@ -83,6 +91,16 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
 }
 
 export type IdentifiedBy = 'ai' | 'name' | 'model' | 'user';
+
+/** What the analyzer read a value as */
+export interface AnalyzedValue {
+  /** The name as printed */
+  name: string;
+  /** The unit as the report gave it ('' for a screening value) */
+  unit: string;
+  /** The test the matching model chose for the printed name */
+  modelMatch?: BiomarkerDefinition;
+}
 
 /** What review asks the user to check about a value's test */
 export type IdentificationFlag =
@@ -413,9 +431,10 @@ export async function analyzeLabReport(
     matchedBiomarkers = deduplicationResult.deduplicated;
     duplicateConflicts = deduplicationResult.conflicts;
 
-    // Count unmatched biomarkers
+    // The values review shows as not in the dictionary (a test the AI
+    // proposed is labelled instead)
     const unmatchedCount = matchedBiomarkers.filter(
-      (b) => !b.isExactMatch && !b.suggestedMatch
+      (b) => !b.dictionaryMatch && !proposedTest(b)
     ).length;
     if (unmatchedCount > 0) {
       warnings.push(
@@ -469,52 +488,9 @@ export async function analyzeLabReport(
   };
 }
 
-/** Whether a dictionary entry measures in this unit, or one it converts from */
-function unitFits(definition: BiomarkerDefinition, unit: string): boolean {
-  // Review's check (any spelling, units that convert), so the two never disagree
-  return unitFitsBiomarker(definition, unit);
-}
-
-/**
- * Units of a share of cells: a percentage, per mille, or a count per 100
- * white cells
- */
-const SHARE_UNIT = /^(%|‰|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
-
 /** "Analyzing with OpenAI gpt-4o-mini": the provider, and the model when one was chosen */
 function analyzingLabel(provider: AIProviderType, model: string | undefined): string {
   return `Analyzing with ${AI_PROVIDER_NAMES[provider]}${model ? ` ${model}` : ''}`;
-}
-
-/**
- * A 24-hour urine collection's amount per day and its concentration, which
- * reports name alike ("Creatinina (urine, 24h)" in g/24h and in µmol/L)
- */
-const UNIT_PAIRS: Record<string, string> = Object.fromEntries(
-  [
-    ['24-hour-urine-creatinine', 'urine-creatinine'],
-    ['24-hour-urine-urea', 'urine-urea'],
-  ].flatMap(([perDay, concentration]) => [
-    [perDay, concentration],
-    [concentration, perDay],
-  ])
-);
-
-/**
- * The test reported alike with `definition` that the unit fits: a count's
- * percentage, or a 24-hour urine collection's concentration or amount
- */
-function alikeFitting(
-  definition: BiomarkerDefinition,
-  unit: string,
-  normalizedUnit: string
-): BiomarkerDefinition | undefined {
-  return [
-    SHARE_UNIT.test(normalizedUnit.trim()) && `${definition.key}-percentage`,
-    UNIT_PAIRS[definition.key],
-  ]
-    .map((key) => (key ? getBiomarkerByKey(key) : undefined))
-    .find((alike) => alike && unitFits(alike, unit));
 }
 
 /**
@@ -528,128 +504,23 @@ async function matchBiomarkerToDictionary(
   fallback: NameFallback = {},
   model: { failed: boolean } = { failed: false }
 ): Promise<MatchedBiomarker> {
-  const normalizedUnit = normalizeUnit(biomarker.unit);
-  const fits = (definition: BiomarkerDefinition) =>
-    unitFits(definition, biomarker.unit);
-  const aiKey = biomarker.biomarkerKey ? getBiomarkerByKey(biomarker.biomarkerKey) : undefined;
-  // The AI's test, or the one reported alike that the unit fits (its
-  // percentage, its 24-hour pair), as for names
-  const aiChoice = aiKey && !fits(aiKey) ? (alikeFitting(aiKey, biomarker.unit, normalizedUnit) ?? aiKey) : aiKey;
+  const value = { ...biomarker, analyzed: { name: biomarker.name, unit: biomarker.unit } };
+  const identified =
+    identifyByKey(value, fallback.learned) ?? identifyByPrintedName(value, fallback.learned);
+  if (identified) return identified;
 
-  // A value the report gives no unit (a dipstick screening, "< 15") is not
-  // the measured test its name or key is: saved under its own name
-  const unitless = {
-    ...biomarker,
-    isExactMatch: false,
-    normalizedUnit,
-    identificationFlags: ['no-unit'] satisfies IdentificationFlag[],
-  };
-  const noUnit = biomarker.unit.trim() === '';
-
-  if (aiChoice) {
-    if (!fits(aiChoice) && noUnit) return unitless;
-    if (!fits(aiChoice)) {
-      return {
-        ...biomarker,
-        suggestedMatch: aiChoice,
-        isExactMatch: false,
-        normalizedUnit,
-        identificationFlags: ['unit-mismatch'],
-      };
-    }
-    // The test the printed name is, read with its unit (a count's name in %
-    // is its percentage): only a different one is worth a check
-    const byName = matchByName(biomarker);
-    const named = byName.dictionaryMatch ?? findBiomarker(biomarker.name);
-    const disagrees = named !== undefined && named.key !== aiChoice.key;
-    return {
-      ...biomarker,
-      dictionaryMatch: aiChoice,
-      isExactMatch: true,
-      normalizedUnit,
-      identifiedBy: 'ai',
-      identificationFlags: disagrees ? ['name-disagrees'] : [],
-      ...(disagrees && { nameSuggests: named }),
-    };
-  }
-
-  const byName = matchByName(biomarker);
-  const named = byName.dictionaryMatch ?? byName.suggestedMatch;
-  if (noUnit && named && named.canonicalUnit !== '') return unitless;
-  if (byName.dictionaryMatch) {
-    return { ...byName, identifiedBy: 'name', identificationFlags: ['name-only'] };
-  }
-  const learned = fallback.learned?.(biomarker.name);
-  if (learned && fits(learned)) {
-    return {
-      ...byName,
-      dictionaryMatch: learned,
-      suggestedMatch: undefined,
-      identifiedBy: 'name',
-      identificationFlags: ['name-only'],
-    };
-  }
-  let similar: BiomarkerDefinition | undefined;
+  let closest: BiomarkerDefinition | undefined;
   try {
-    // Only the closest test: one rejected by its unit is a reason to doubt the match
-    const [closest] = (await fallback.similar?.(biomarker.name)) ?? [];
-    similar = closest && fits(closest) ? closest : undefined;
+    [closest] = (await fallback.similar?.(biomarker.name)) ?? [];
   } catch {
     // The matching model could not load: the value is not identified, the notes say why
     model.failed = true;
   }
-  if (similar) {
-    return {
-      ...byName,
-      dictionaryMatch: similar,
-      suggestedMatch: undefined,
-      identifiedBy: 'model',
-      identificationFlags: ['similar-name'],
-    };
-  }
-  return { ...byName, identificationFlags: ['not-identified'] };
-}
-
-/**
- * Match an extracted biomarker to the dictionary by its printed name
- */
-function matchByName(
-  biomarker: ExtractedBiomarker
-): MatchedBiomarker {
-  const normalizedUnit = normalizeUnit(biomarker.unit);
-
-  // Exact name or alias first, then variations (punctuation, spacing)
-  const exactMatch = findBiomarker(biomarker.name);
-  let candidate = exactMatch ?? matchBiomarkerName(biomarker.name);
-
-  // Reports name some tests alike and tell them apart by the unit. Only
-  // when the unit does not fit the entry the name matched, and only to an
-  // entry of that one the unit fits: a count's percentage ("Eritroblasti",
-  // "Neutrophils" in %), or a 24-hour urine collection's concentration,
-  // which reports name after the collection
-  if (candidate && !unitFits(candidate, biomarker.unit)) {
-    candidate = alikeFitting(candidate, biomarker.unit, normalizedUnit) ?? candidate;
-  }
-
-  if (candidate) {
-    // An incompatible unit means the name may be misread: suggest, don't assume
-    return unitFits(candidate, biomarker.unit)
-      ? {
-          ...biomarker,
-          dictionaryMatch: candidate,
-          // Exact when the name matched exactly, also when the unit then
-          // chose the entry reported alike
-          isExactMatch: exactMatch !== undefined,
-          normalizedUnit,
-        }
-      : { ...biomarker, suggestedMatch: candidate, isExactMatch: false, normalizedUnit };
-  }
-
-  return {
-    ...biomarker,
-    isExactMatch: false,
-    normalizedUnit,
-  };
+  // Only the closest test, read with the unit (a count's name in % is its
+  // percentage): one rejected by its unit is a reason to doubt the match
+  const byModel =
+    closest && identifyByModel({ ...value, analyzed: { ...value.analyzed, modelMatch: closest } }, closest);
+  return byModel?.dictionaryMatch ? byModel : notIdentified(value);
 }
 
 /**

@@ -15,10 +15,9 @@ import {
 import type { SpecimenType } from '@/types';
 import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import {
-  findBiomarker,
-  getBiomarkerByKey,
   getBiomarkerDisplayName,
   getBiomarkerForTestValue,
+  type BiomarkerDefinition,
 } from '@data/biomarkers/dictionary';
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
@@ -159,18 +158,15 @@ function extractSpecimenFromName(name: string): { cleanName: string; extractedSp
 /**
  * Get biomarker metadata (specimen type and LOINC code) from dictionary
  */
-function getBiomarkerMetadata(testValue: EnrichedTestValue): {
+function getBiomarkerMetadata(
+  testValue: EnrichedTestValue,
+  found: BiomarkerDefinition | undefined
+): {
   specimenType?: SpecimenType;
   loincCode?: string;
   description?: string;
   cleanName: string;
 } {
-  const searchTerm = testValue.biomarkerName || testValue.rawText;
-  const { cleanName, extractedSpecimen } = extractSpecimenFromName(searchTerm || '');
-
-  // The stored ID wins; biomarkerName may carry a specimen suffix the raw text lacks
-  const found =
-    getBiomarkerByKey(testValue.biomarkerKey) ?? (searchTerm ? findBiomarker(searchTerm) : undefined);
   if (found) {
     return {
       specimenType: found.specimenType,
@@ -181,6 +177,8 @@ function getBiomarkerMetadata(testValue: EnrichedTestValue): {
   }
 
   // If not found in dictionary, still return extracted specimen from name
+  const searchTerm = testValue.biomarkerName || testValue.rawText;
+  const { cleanName, extractedSpecimen } = extractSpecimenFromName(searchTerm || '');
   return {
     specimenType: extractedSpecimen,
     cleanName,
@@ -253,7 +251,9 @@ export function TestValuesList({
           );
           const indicator = getStatusIndicator(testValue.status);
           const biomarkerName = getBiomarkerName(testValue);
-          const metadata = getBiomarkerMetadata(testValue);
+          // By the stored key only: a value saved as not in the dictionary is
+          // not the test its name is
+          const metadata = getBiomarkerMetadata(testValue, definition);
 
           // Build tooltip content for LOINC code and description
           const tooltipParts: string[] = [];

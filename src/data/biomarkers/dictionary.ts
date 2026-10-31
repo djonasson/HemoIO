@@ -61,7 +61,7 @@ const cbcBiomarkers: BiomarkerEntry[] = [
   {
     key: 'white-blood-cell-count',
     name: 'White Blood Cell Count',
-    aliases: ['WBC', 'Leukocytes', 'White Blood Cells', 'Globuli Bianchi', 'Leucociti'],
+    aliases: ['WBC', 'WBCs', 'Leukocytes', 'White Blood Cells', 'Globuli Bianchi', 'Leucociti'],
     category: 'cbc',
     specimenType: 'whole-blood',
     loincCode: '6690-2',
@@ -75,7 +75,7 @@ const cbcBiomarkers: BiomarkerEntry[] = [
   {
     key: 'red-blood-cell-count',
     name: 'Red Blood Cell Count',
-    aliases: ['RBC', 'Erythrocytes', 'Red Blood Cells', 'Globuli Rossi', 'Eritrociti'],
+    aliases: ['RBC', 'RBCs', 'Erythrocytes', 'Red Blood Cells', 'Globuli Rossi', 'Eritrociti'],
     category: 'cbc',
     specimenType: 'whole-blood',
     loincCode: '789-8',
@@ -1031,7 +1031,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-red-blood-cells',
     name: 'Urine Red Blood Cells',
-    aliases: ['Hematuria', 'RBC in Urine', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Eritrociti (urine, per campo)', 'Esame morfologico - eritrociti per campo', 'Esame morfologico eritrociti', 'Esame morfologico: eritrociti per campo', 'Urine RBC'],
+    aliases: ['Hematuria', 'RBC in Urine', 'Globuli rossi (urine)', 'Urine Erythrocytes', 'Eritrociti (urine)', 'Eritrociti Urine', 'Emazie Urine', 'Eritrociti (urine) per campo', 'Eritrociti (urine, per campo)', 'Esame morfologico - eritrociti per campo', 'Esame morfologico eritrociti', 'Esame morfologico: eritrociti per campo', 'Urine RBC'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '13945-1',
@@ -1044,7 +1044,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'urine-wbc',
     name: 'Urine WBC',
-    aliases: ['WBC in Urine', 'Leucociti (urine)', 'Leucociti Urine', 'Urine Leukocytes', 'White Blood Cells Urine'],
+    aliases: ['WBC in Urine', 'Leucociti (urine)', 'Globuli bianchi (urine)', 'Leucociti Urine', 'Urine Leukocytes', 'White Blood Cells Urine'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '5821-4',
@@ -1083,7 +1083,7 @@ const urinalysisBiomarkers: BiomarkerEntry[] = [
   {
     key: 'microalbumin',
     name: 'Microalbumin',
-    aliases: ['Urine Microalbumin', 'MAU', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
+    aliases: ['Urine Microalbumin', 'Urine Albumin', 'Albumin (urine)', 'MAU', 'U-ALBUMINA Micro', 'U-ALBUMINA Micro (U-Albumina/L)', 'Microalbumina', 'Microalbuminuria', 'U-Albumina', 'Albumina urinaria', 'U-ALBUMINA', 'U-Albumina (turbidimetria Roche)', 'U-Albumina (albuminuria)', 'U-Albumina/L', 'U-Albumina/L (urine)', 'U-Albumina (Micro, Urine)', 'Microalbumina (urine)', 'Micro U-Albumina (urine)', 'U-Albumina (urine)'],
     category: 'urinalysis',
     specimenType: 'urine',
     loincCode: '14957-5',
@@ -1805,17 +1805,14 @@ export function unknownBiomarkerKey(extractedName: string): string {
 }
 
 /**
- * Dictionary entry for a stored test value. The stored key wins over the
- * extracted text: it reflects the match the user confirmed during review.
+ * Dictionary entry for a stored test value, by its stored key only: the key
+ * is the test review saved it as, and a value saved as not in the
+ * dictionary stays so whatever its printed name
  */
 export function getBiomarkerForTestValue(testValue: {
   biomarkerKey: string;
-  rawText?: string;
 }): BiomarkerDefinition | undefined {
-  return (
-    getBiomarkerByKey(testValue.biomarkerKey) ??
-    (testValue.rawText ? findBiomarker(testValue.rawText) : undefined)
-  );
+  return getBiomarkerByKey(testValue.biomarkerKey);
 }
 
 /**
@@ -1834,25 +1831,78 @@ export function getBiomarkerDisplayName(testValue: {
 const BY_NAME_OR_ALIAS = new Map<string, BiomarkerDefinition>();
 for (const definition of BIOMARKER_DEFINITIONS) {
   for (const name of [definition.name, ...definition.aliases]) {
-    const term = name.toLowerCase();
+    const term = nameKey(name);
     if (!BY_NAME_OR_ALIAS.has(term)) BY_NAME_OR_ALIAS.set(term, definition);
   }
 }
 
+/** A name as every lookup reads it: case, spacing and accent encoding aside */
+export function nameKey(name: string): string {
+  return name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 /**
- * Find a biomarker by name or alias (case-insensitive)
+ * Find a biomarker by name or alias (case, spacing and accent encoding aside)
  */
 export function findBiomarker(nameOrAlias: string): BiomarkerDefinition | undefined {
-  return BY_NAME_OR_ALIAS.get(nameOrAlias.toLowerCase().trim());
+  return BY_NAME_OR_ALIAS.get(nameKey(nameOrAlias));
+}
+
+/** A name with only its letters, digits and "%": "P.C.R. *" is "pcr", "Neutrofili (%)" keeps its "%" */
+function bareName(name: string): string {
+  return nameKey(name).replace(/[^\p{L}\p{N}%]/gu, '');
+}
+
+/** Whether a printed name is one of the test's own, marks and punctuation aside ("PCR *") */
+export function isNameOf(test: BiomarkerDefinition, name: string): boolean {
+  const printed = bareName(name);
+  return printed !== '' && ownBareNames(test).has(printed);
+}
+
+/** Each test's names read bare once: every value of a report is checked against its test's */
+const OWN_BARE_NAMES = new WeakMap<BiomarkerDefinition, ReadonlySet<string>>();
+
+function ownBareNames(test: BiomarkerDefinition): ReadonlySet<string> {
+  let names = OWN_BARE_NAMES.get(test);
+  if (!names) {
+    names = new Set([test.name, ...test.aliases].map(bareName));
+    OWN_BARE_NAMES.set(test, names);
+  }
+  return names;
+}
+
+/** The tests whose name or an alias is a share ("Neutrofili (%)"), by that name with only its letters, digits and "%" */
+const BY_SHARE_NAME = new Map(
+  BIOMARKER_DEFINITIONS.flatMap((d) =>
+    [d.name, ...d.aliases].filter((n) => n.includes('%')).map((n) => [bareName(n), d] as const)
+  )
+);
+
+/**
+ * Exactly (name or alias), then ignoring spacing and punctuation; a "%"
+ * however printed names the share ("Neutrofili %" is the percentage, not
+ * the count)
+ */
+function matchNameVariations(name: string): BiomarkerDefinition | undefined {
+  const match = matchSpellings(name);
+  if (!match || !name.includes('%')) return match;
+  return BY_SHARE_NAME.get(bareName(name)) ?? percentageOf(match) ?? match;
+}
+
+/** A count's percentage, which reports name alike: Neutrophils' is Neutrophils Percentage */
+export function percentageOf(count: BiomarkerDefinition): BiomarkerDefinition | undefined {
+  return getBiomarkerByKey(`${count.key}-percentage`);
 }
 
 /** Exactly (name or alias), then ignoring spacing and punctuation */
-function matchNameVariations(name: string): BiomarkerDefinition | undefined {
+function matchSpellings(name: string): BiomarkerDefinition | undefined {
+  // Accents as marks of their letters, so "é" keeps its "e" in either encoding
+  const unaccented = name.normalize('NFD').replace(/\p{M}/gu, '');
   const variations = [
     name,
     name.replace(/\s+/g, ''),
-    name.replace(/[^a-zA-Z0-9\s]/g, ''),
-    name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+    unaccented.replace(/[^a-zA-Z0-9\s]/g, ''),
+    unaccented.toLowerCase().replace(/[^a-z0-9]/g, ''),
   ];
   for (const variation of variations) {
     const match = findBiomarker(variation);
@@ -1863,14 +1913,90 @@ function matchNameVariations(name: string): BiomarkerDefinition | undefined {
 
 /** A name with a trailing qualifier, as in "Creatinina (urine, 24h)" */
 const QUALIFIED_NAME = /^(.+?)\s*\(([^()]*)\)\s*$/;
+/** A qualifier naming a urine specimen, or a 24-hour (urine) collection */
+const URINE = /\burin/;
+const PER_DAY = /24\s*(h|ore|hours?)\b/;
+
+/** Whether a test is measured in blood (a test with no specimen given is) */
+export function isBloodSpecimen(specimen: SpecimenType | undefined): boolean {
+  return specimen === undefined || ['serum', 'plasma', 'whole-blood', 'capillary'].includes(specimen);
+}
+
+/** Words that say a name is of a blood specimen wherever they stand: "Urea plasmatica", "Serum Creatinine" */
+const BLOOD_SPECIMEN_WORDS = new Set([
+  'siero', 'sierica', 'sierico', 'sieriche', 'sierici', 'serum', 'plasma', 'plasmatica', 'plasmatico',
+  'plasmatiche', 'plasmatici', 'venoso', 'venosa', 'venous', 'arterioso', 'arteriosa', 'arterial',
+  'capillare', 'capillary',
+]);
+/**
+ * Words naming a blood specimen in a qualifier: never one of a urine or
+ * semen test. "Blood", "whole", S and P only say so there ("White Blood
+ * Cells" is no specimen).
+ */
+const BLOOD_WORDS = new Set([...BLOOD_SPECIMEN_WORDS, 'sangue', 'intero', 'whole', 'blood', 's', 'p']);
+/** Words that say a name is of a blood test: fasting is for blood ("Glucosio (a digiuno)") */
+const FASTING_WORDS = new Set(['digiuno', 'fasting']);
+/** Words that say a name is of semen: "pH seminale", "Volume eiaculato" */
+const SEMEN_WORDS = new Set(['sperma', 'seminale', 'semen', 'seminal', 'eiaculato', 'ejaculate']);
+/**
+ * Words of a qualifier that leave any test as it is: the total, fasting,
+ * and a method that names no test (IFCC is the method of most enzyme
+ * assays). "metodo" itself says nothing: the word after it must be one of these.
+ */
+const GENERAL_WORDS = new Set([
+  'totale', 'total', 'tot', 'tot.', ...FASTING_WORDS,
+  'metodo', 'method', 'enzimatico', 'enzymatic', 'ifcc',
+]);
+/** Words that leave one test as it is: its form or equation */
+export const TEST_WORDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  'vitamin-d': new Set(['25', 'oh', '25-oh', '25oh', 'd', 'd3', 'ohd', '25-ohd', '25ohd', '25-ohd3', '25ohd3']),
+  egfr: new Set(['ckd-epi', 'ckdepi', 'mdrd']),
+  'hemoglobin-a1c': new Set(['dcct', 'ngsp']),
+};
+/** General words that name another test of one test: IFCC hemoglobin is HbA1c */
+export const OTHER_TEST_WORDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  hemoglobin: new Set(['ifcc']),
+};
+
+/** Whether a qualifier word leaves `test` as it is */
+function keepsTest(word: string, test: BiomarkerDefinition): boolean {
+  if (BLOOD_WORDS.has(word)) return isBloodSpecimen(test.specimenType);
+  if (GENERAL_WORDS.has(word)) return !OTHER_TEST_WORDS[test.key]?.has(word);
+  // An equation's year: "CKD-EPI 2021"
+  if (test.key === 'egfr' && /^(19|20)\d\d$/.test(word)) return true;
+  return TEST_WORDS[test.key]?.has(word) ?? false;
+}
+
+/** A qualifier part as read: OCR spaces hyphens ("CKD -EPI", "CKD EPI", "25 -OH") */
+function qualifierPhrase(part: string): string {
+  return nameKey(part).replace(/ ?- ?/g, '-').replace(/\bckd epi\b/g, 'ckd-epi');
+}
+
+/**
+ * Whether a qualifier part restates `test`: one of its own names, or only
+ * words that leave it as it is (its blood specimen, total, method, form or
+ * equation). A blood specimen does not restate a urine test: "pH (venoso)"
+ * is no urine pH.
+ */
+function restatesTest(part: string, test: BiomarkerDefinition): boolean {
+  if (isNameOf(test, part)) return true;
+  const phrase = qualifierPhrase(part);
+  if (matchNameVariations(phrase)?.key === test.key) return true;
+  // "a digiuno" is fasting; a lone "a" says nothing
+  const words = phrase.replace(/\ba digiuno\b/g, 'digiuno').split(' ');
+  return words.every((word) => keepsTest(word, test));
+}
 
 /**
  * Find a biomarker by name as an import does: exactly (name or alias), then
  * ignoring spacing and punctuation ("HEMOGLOBIN." is Hemoglobin). A trailing
  * qualifier that names a specimen picks that specimen's entry, never the
  * blood test: "Creatinina (urine, per litro)" is Urine Creatinine and
- * "Urea (urine, 24h)" is 24-Hour Urine Urea. Any other qualifier is ignored:
- * "Vitamina D (25-OH, totale)" is Vitamin D.
+ * "Urea (urine, 24h)" is 24-Hour Urine Urea. A qualifier that only restates
+ * the test (its own abbreviation, the blood specimen, the total or method)
+ * is ignored: "Emoglobina (HGB)" is Hemoglobin and "Vitamina D (25-OH,
+ * totale)" Vitamin D. Any other names another test ("Cholesterol (HDL)",
+ * "Calcio (ionizzato)"), so the name matches no test of its base name.
  */
 export function matchBiomarkerName(name: string): BiomarkerDefinition | undefined {
   const match = matchNameVariations(name);
@@ -1880,16 +2006,179 @@ export function matchBiomarkerName(name: string): BiomarkerDefinition | undefine
   if (!qualified) return undefined;
   const [, base, qualifier] = qualified;
   const words = qualifier.toLowerCase();
-  const perDay = /24\s*(h|ore|hours?)\b/.test(words);
-  const urine = /\burin/.test(words);
-  if (!perDay && !urine) return matchBiomarkerName(base);
+  const perDay = PER_DAY.test(words);
+  const urine = URINE.test(words);
+  if (!perDay && !urine) {
+    // Each part restates the base name's test ("Emoglobina (HGB)", "Sodio
+    // (siero/plasma)", "eGFR (CKD-EPI 2021)")
+    const test = matchBiomarkerName(base);
+    const sameTest = test !== undefined && words.split(/[,/]/).every((part) => restatesTest(part.trim(), test));
+    return sameTest ? test : undefined;
+  }
 
   const forms = perDay ? [`${base} (urine, 24h)`, `${base} 24h`] : [`${base} (urine)`, `${base} urinaria`];
   for (const form of forms) {
     const specimenMatch = matchNameVariations(form);
     if (specimenMatch) return specimenMatch;
   }
-  return undefined;
+  return analyteIn(base, perDay || PER_DAY.test(nameKey(base)) ? 'urine-24h' : 'urine');
+}
+
+/**
+ * The test of what a base name measures in a urine specimen, when the
+ * dictionary has exactly one there: "Creatinine (urine)" is Urine
+ * Creatinine, as the AI names every urinalysis value "<name> (urine)".
+ * Never for a name that says blood or semen, nor a pad or ratio.
+ */
+function analyteIn(base: string, specimen: SpecimenType): BiomarkerDefinition | undefined {
+  const says = namedSpecimen(base);
+  const test = says === 'blood' || says === 'semen' ? undefined : matchBiomarkerName(base);
+  if (!test || test.specimenType === specimen) return test;
+  const there = measuring(test, (d) => d.specimenType === specimen && !MEASURED_WITHIN[d.key]);
+  return there.length === 1 ? there[0] : undefined;
+}
+
+/** A specimen family a printed name can say */
+export type NamedSpecimen = 'urine' | 'blood' | 'semen';
+
+/**
+ * The specimen family a printed name says it is of: urine ("Proteine
+ * (urine)", "Albumina 24h", "U-Creatinina", "Proteinuria"), semen ("pH
+ * seminale"), blood ("Creatinina (siero)", "Urea plasmatica",
+ * "S-Creatinina", "Creatinina (s/p)"), or none. "Blood" and "whole" only
+ * say so in a qualifier ("White Blood Cells" is no specimen), and S or P
+ * only as a qualifier or prefix of its own; "(s)" after an English cell
+ * name is its plural ("Erythrocyte(s)", "WBC(S)"), fasting is of blood.
+ */
+export function namedSpecimen(name: string): NamedSpecimen | undefined {
+  const printed = nameKey(name);
+  if (URINE.test(printed) || PER_DAY.test(printed) || /^d?u[-\s]|uria\b/.test(printed)) return 'urine';
+  const words = printed.split(/[^\p{L}]+/u);
+  if (words.some((w) => SEMEN_WORDS.has(w))) return 'semen';
+  if (words.some((w) => BLOOD_SPECIMEN_WORDS.has(w) || FASTING_WORDS.has(w))) return 'blood';
+  const qualifiers = [...printed.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]);
+  if (qualifiers.some((q) => q.split(/[\s,/]+/).some((w) => w.length > 1 && BLOOD_WORDS.has(w)))) return 'blood';
+  if (/^[sp]\s*-/.test(printed)) return 'blood';
+  const letters = /^(.*?)\s*\(\s*([sp])\s*([,/]\s*[sp]\s*)*\)/.exec(printed);
+  if (!letters) return undefined;
+  const [, base, letter, more] = letters;
+  return letter === 's' && !more && isPluralOf(base) ? undefined : 'blood';
+}
+
+/**
+ * Whether "(s)" after `base` makes it an English plural: "Erythrocyte(s)",
+ * "WBC(s)". An Italian plural ("Leucociti (S)") takes no "s", so its "(S)"
+ * is the serum.
+ */
+function isPluralOf(base: string): boolean {
+  return matchSpellings(`${base}s`) !== undefined;
+}
+
+/**
+ * Names reports print for an analyte in any specimen: under a urine
+ * heading as under a blood one, so either test of the analyte is what
+ * they say. A name that is not one of these says the specimen of its
+ * own test ("Glicemia" is blood glucose, "Semen pH" no urine pH).
+ */
+export const BARE_ANALYTE_NAMES: readonly string[] = [
+  'Creatinina', 'Creatinine', 'Creat', 'Urea', 'Glucose', 'Glucosio', 'Protein', 'Total Protein',
+  'Proteine totali', 'Albumin', 'Leucociti', 'Leukocytes', 'WBC', 'Globuli bianchi', 'White Blood Cells',
+  'Eritrociti', 'Erythrocytes', 'RBC', 'Globuli rossi', 'Red Blood Cells', 'Emoglobina', 'Hemoglobin', 'Hb',
+  'Hgb', 'Bilirubin', 'pH', 'Volume',
+];
+const BARE_NAMES = new Set(BARE_ANALYTE_NAMES.map(bareName));
+
+/**
+ * Whether a printed name is one reports print for an analyte in any
+ * specimen, marks and a qualifier aside ("Erythrocyte(s)", "Creatinina
+ * (metodo enzimatico)"); a singular English cell name is its plural's
+ */
+export function isBareAnalyteName(name: string): boolean {
+  const base = bareName(QUALIFIED_NAME.exec(name)?.[1] ?? name);
+  return BARE_NAMES.has(base) || (base.endsWith('e') && BARE_NAMES.has(`${base}s`));
+}
+
+/**
+ * What tests measure, where one analyte is measured in several specimens
+ * or ways: a printed name of one is no reason to question another
+ * ("Creatinina" keyed as 24-hour urine creatinine). Every other test
+ * measures only itself.
+ */
+export const ANALYTE_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  protein: ['total-protein', 'urine-protein'],
+  glucose: ['glucose', 'urine-glucose'],
+  hemoglobin: ['hemoglobin'],
+  erythrocytes: ['red-blood-cell-count', 'urine-red-blood-cells'],
+  leukocytes: ['white-blood-cell-count', 'urine-wbc'],
+  creatinine: ['creatinine', 'urine-creatinine', '24-hour-urine-creatinine'],
+  urea: ['urea', 'urine-urea', '24-hour-urine-urea'],
+  bilirubin: ['bilirubin-total', 'urine-bilirubin'],
+  albumin: ['albumin', 'microalbumin', '24-hour-urine-albumin'],
+  ph: ['urine-ph', 'semen-ph'],
+  volume: ['urine-volume', 'semen-volume'],
+};
+
+/**
+ * Tests that measure an analyte only within another reading: a dipstick
+ * pad screens for it, a ratio divides it by creatinine. A name of the
+ * analyte keyed as one ("Leucociti" as the leukocyte esterase pad,
+ * "Microalbumina" as the albumin/creatinine ratio) is no reason for a
+ * check, but the pad's or ratio's own name keyed as the analyte is (a
+ * pad's grade is no count, a ratio no concentration).
+ */
+export const MEASURED_WITHIN: Readonly<Record<string, readonly string[]>> = {
+  'urine-leukocyte-esterase': ['leukocytes'],
+  'urine-blood': ['erythrocytes', 'hemoglobin'],
+  'albumin-creatinine-ratio': ['albumin'],
+  'protein-creatinine-ratio': ['protein'],
+};
+
+/** What each test measures: its groups, or only itself (kept apart from the groups' names) */
+const ANALYTES = new Map(
+  BIOMARKER_DEFINITIONS.map((d) => {
+    const groups = Object.keys(ANALYTE_GROUPS).filter((analyte) => ANALYTE_GROUPS[analyte].includes(d.key));
+    return [d.key, groups.length > 0 ? groups : [`test:${d.key}`]] as const;
+  })
+);
+
+function analytesOf(test: BiomarkerDefinition): readonly string[] {
+  return ANALYTES.get(test.key) ?? [`test:${test.key}`];
+}
+
+/** The tests `where` keeps that measure what `test` does, or measure it within another reading */
+function measuring(test: BiomarkerDefinition, where: (d: BiomarkerDefinition) => boolean): BiomarkerDefinition[] {
+  return BIOMARKER_DEFINITIONS.filter((d) => where(d) && nameMeasuresTest(test, d));
+}
+
+/**
+ * Whether a printed name's test `named` measures what `test` does, or what
+ * it measures within another reading: Creatinine and 24-Hour Urine
+ * Creatinine, a white cell count and the leukocyte esterase pad,
+ * Microalbumin and the albumin/creatinine ratio (not the other way round)
+ */
+export function nameMeasuresTest(named: BiomarkerDefinition, test: BiomarkerDefinition): boolean {
+  const measured = [...analytesOf(test), ...(MEASURED_WITHIN[test.key] ?? [])];
+  return analytesOf(named).some((analyte) => measured.includes(analyte));
+}
+
+/** Whether two tests are of one specimen: the same one, or both of blood */
+export function sameSpecimen(a: BiomarkerDefinition, b: BiomarkerDefinition): boolean {
+  return a.specimenType === b.specimenType || (isBloodSpecimen(a.specimenType) && isBloodSpecimen(b.specimenType));
+}
+
+/**
+ * The test of what `test` measures in the specimen of `other`: the first
+ * one the unit fits, else the first that measures it as such, not within
+ * another reading (Creatinine's in 24-hour urine is 24-Hour Urine
+ * Creatinine; Hemoglobin's in urine in mg/dL is the urine blood pad)
+ */
+export function sameAnalyteIn(
+  test: BiomarkerDefinition,
+  other: BiomarkerDefinition,
+  fits: (candidate: BiomarkerDefinition) => boolean
+): BiomarkerDefinition | undefined {
+  const there = measuring(test, (d) => sameSpecimen(d, other));
+  return there.find(fits) ?? there.find((d) => !MEASURED_WITHIN[d.key]) ?? there[0];
 }
 
 /**
@@ -1900,18 +2189,41 @@ export function getBiomarkersByCategory(category: BiomarkerCategory): BiomarkerD
 }
 
 /**
- * Search biomarkers by partial name match
+ * Search biomarkers by partial name or alias, the closest first
  */
 export function searchBiomarkers(query: string): BiomarkerDefinition[] {
-  const searchTerm = query.toLowerCase().trim();
+  const searchTerm = nameKey(query);
   if (!searchTerm) return [];
 
-  return BIOMARKER_DEFINITIONS.filter(
-    (b) =>
-      b.name.toLowerCase().includes(searchTerm) ||
-      b.aliases.some((a) => a.toLowerCase().includes(searchTerm))
-  );
+  const exact = findBiomarker(searchTerm);
+  // The test the text names exactly (a name or alias), then names that
+  // start with it, names that contain it, and tests an alias of which does
+  const rank = ({ definition, name, aliases }: SearchableTest): number | undefined => {
+    if (definition === exact) return 0;
+    if (name.startsWith(searchTerm)) return 1;
+    if (name.includes(searchTerm)) return 2;
+    return aliases.some((a) => a.includes(searchTerm)) ? 3 : undefined;
+  };
+  return SEARCHABLE_TESTS.flatMap((test) => {
+    const order = rank(test);
+    return order === undefined ? [] : [{ definition: test.definition, order }];
+  })
+    .sort((a, b) => a.order - b.order)
+    .map((found) => found.definition);
 }
+
+/** A test's name and aliases as a search reads them, read once: searches run on every keystroke */
+interface SearchableTest {
+  definition: BiomarkerDefinition;
+  name: string;
+  aliases: readonly string[];
+}
+
+const SEARCHABLE_TESTS: readonly SearchableTest[] = BIOMARKER_DEFINITIONS.map((definition) => ({
+  definition,
+  name: nameKey(definition.name),
+  aliases: definition.aliases.map(nameKey),
+}));
 
 /**
  * Get canonical unit for a biomarker

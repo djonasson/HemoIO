@@ -30,8 +30,13 @@ import {
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withBiomarkerKey } from './biomarkerKey';
-import { ollamaContextSize } from './ollamaContext';
-import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
+import { ollamaContext } from './ollamaContext';
+import { fetchWithRateLimitRetry } from './rateLimitedFetch';
+
+/** How many times the usual answer limit a cut-off answer is asked again with */
+const LONGER_ANSWER = 4;
+/** Room left over the prompt and answer estimates: a prompt read as more tokens never pushes the answer out */
+const CONTEXT_SLACK = 1024;
 
 /**
  * Ollama native chat message: text, and images for vision models
@@ -55,8 +60,8 @@ interface ChatResponse {
 /**
  * Ollama Provider for local AI analysis of lab reports
  *
- * Uses Ollama's OpenAI-compatible API for text analysis
- * and native API for vision analysis.
+ * Uses Ollama's native chat API, which can set the context size, for text
+ * and vision analysis.
  */
 export class OllamaProvider implements AIProvider {
   readonly type: AIProviderType = 'ollama';
@@ -65,6 +70,13 @@ export class OllamaProvider implements AIProvider {
   private baseUrl: string;
   private model: string;
   private visionModel: string | undefined;
+  /**
+   * The last context each model accepted (also for a longer answer):
+   * Ollama reloads a model whenever the size changes, so a shorter report
+   * after a longer one keeps the larger size rather than shrinking it. The
+   * answer's limit is the room of the report's own size, never the kept one's.
+   */
+  private readonly acceptedContext = new Map<string, number>();
   private enableVision: boolean;
   private timeout: number;
   private temperature: number;
@@ -102,14 +114,7 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
-      const content = response.message?.content;
-
-      if (!content) {
-        throw new AIAnalysisError('Empty response from Ollama', 'ollama');
-      }
-
-      const parsed = this.parseResponse(content);
+      const parsed = await this.requestAnswer(messages, modelToUse, options, 'Empty response from Ollama');
       const processingTime = performance.now() - startTime;
 
       return {
@@ -166,14 +171,12 @@ export class OllamaProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeChatRequest(messages, modelToUse, options.rateLimit, options.signal);
-      const content = response.message?.content;
-
-      if (!content) {
-        throw new AIAnalysisError('Empty response from Ollama vision model', 'ollama');
-      }
-
-      const parsed = this.parseResponse(content);
+      const parsed = await this.requestAnswer(
+        messages,
+        modelToUse,
+        options,
+        'Empty response from Ollama vision model'
+      );
       const processingTime = performance.now() - startTime;
 
       return {
@@ -362,8 +365,9 @@ export class OllamaProvider implements AIProvider {
   private async makeChatRequest(
     messages: ChatMessage[],
     model: string,
-    rateLimit?: RateLimitOptions,
-    signal?: AbortSignal
+    { rateLimit, signal }: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
+    numCtx: number,
+    numPredict: number
   ): Promise<ChatResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -388,11 +392,8 @@ export class OllamaProvider implements AIProvider {
           format: 'json',
           options: {
             temperature: this.temperature,
-            num_predict: this.maxTokens,
-            num_ctx: ollamaContextSize(
-              messages.reduce((sum, m) => sum + m.content.length, 0),
-              this.maxTokens
-            ),
+            num_predict: numPredict,
+            num_ctx: numCtx,
           },
         }),
         signal: controller.signal,
@@ -402,10 +403,10 @@ export class OllamaProvider implements AIProvider {
 
       if (!response.ok) {
         const errorMessage = await parseOllamaError(response);
-        throw new AIAnalysisError(
-          `Ollama API error: ${errorMessage}`,
-          'ollama'
-        );
+        // A server error is a request Ollama could not load or run (too
+        // large for its free memory); a gateway giving up (502, 504) ran out
+        // of time; a 503 is a busy server
+        throw new AIAnalysisError(`Ollama API error: ${errorMessage}`, 'ollama', serverErrorCode(response.status));
       }
 
       return response.json() as Promise<ChatResponse>;
@@ -416,10 +417,15 @@ export class OllamaProvider implements AIProvider {
         throw error;
       }
 
+      if (signal?.aborted) {
+        throw new AIAnalysisError('Ollama request was cancelled.', 'ollama', 'cancelled');
+      }
+
       if (error instanceof Error && error.name === 'AbortError') {
         throw new AIAnalysisError(
           `Ollama request timed out after ${this.timeout / 1000} seconds. Try a smaller model or increase timeout.`,
-          'ollama'
+          'ollama',
+          'timeout'
         );
       }
 
@@ -441,24 +447,114 @@ export class OllamaProvider implements AIProvider {
 REPORT LANGUAGE: ${language}
 EXTRACT PATIENT INFO: ${extractPatientInfo ? 'Yes' : 'No'}
 
-Extract the following information:
-- All biomarker names and their numeric values
-- Units of measurement
-- Reference ranges when shown
-- Lab date and laboratory name if visible
-- Any abnormal flags (High, Low, H, L, etc.)
+Extract every value as the system prompt says: its name, the key of its test from KNOWN TESTS, value, unit, reference range and flags, and the lab date and laboratory name if visible.
 
-Respond with ONLY a valid JSON object containing:
-- biomarkers: Array of {name, value, unit, referenceRange?, confidence, notes?, flaggedAbnormal?}
-- labDate: Date string if found
-- labName: Laboratory name if found
-- warnings: Array of any issues or uncertainties`;
+Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt gives.`;
 
     if (options.additionalInstructions) {
       prompt += `\n\nADDITIONAL INSTRUCTIONS: ${options.additionalInstructions}`;
     }
 
     return prompt;
+  }
+
+  /**
+   * The answer's values. One Ollama stopped at the answer limit before it
+   * was complete is asked again once, with room for four times the
+   * configured limit.
+   */
+  private async requestAnswer(
+    messages: ChatMessage[],
+    model: string,
+    options: AnalysisOptions,
+    emptyMessage: string
+  ): Promise<ParsedAnswer> {
+    const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
+    const images = messages.reduce((sum, m) => sum + (m.images?.length ?? 0), 0);
+    // The answer gets the room of the report's own context beside the
+    // prompt and the slack (at least the limit asked for), never that of a
+    // larger context kept from before: a runaway answer stops there, and
+    // the retry always has more room
+    const ask = async (answerTokens: number) => {
+      const { size: own, answerRoom: limit } = ollamaContext(characters, answerTokens, images, CONTEXT_SLACK);
+      const kept = this.acceptedContext.get(model) ?? 0;
+      const send = (size: number) => this.chat(messages, model, options, size, limit);
+      if (kept <= own) return { limit, response: await send(own) };
+      try {
+        return { limit, response: await send(kept) };
+      } catch (error) {
+        // The size kept from before no longer fits (less free memory): the report's own may
+        if (!isRefused(error)) throw error;
+        return { limit, response: await send(own) };
+      }
+    };
+    const split = 'Split the report into smaller files and import them one by one.';
+    const cutOffAt = (limit: number) =>
+      `Ollama's answer was cut off at HemoIO's limit of ${limit} tokens before it was complete.`;
+
+    const first = await ask(this.maxTokens);
+    const answer = this.readAnswer(first.response);
+    if (answer !== 'cut-off') return answer ?? this.empty(emptyMessage);
+
+    let retried: Awaited<ReturnType<typeof ask>>;
+    try {
+      retried = await ask(this.maxTokens * LONGER_ANSWER);
+    } catch (error) {
+      // Out of memory or time for the larger answer: still the cut-off's advice;
+      // anything else (a busy server, a cancel, Ollama not running) says what it is
+      if (!isTooLarge(error)) throw error;
+      throw new AIAnalysisError(
+        `${cutOffAt(first.limit)} Asking again with more room failed (${error.message}). ${split}`,
+        'ollama'
+      );
+    }
+    const again = this.readAnswer(retried.response);
+    if (again === 'cut-off') throw new AIAnalysisError(`${cutOffAt(retried.limit)} ${split}`, 'ollama');
+    return again ?? this.empty(emptyMessage);
+  }
+
+  /**
+   * One chat request with a context of `size`, remembered for the model
+   * once Ollama accepted it. A size no larger than the one kept that Ollama
+   * refused, or that ran out of time, means that one no longer fits either
+   * (less free memory), so it is forgotten; a larger one leaves it.
+   */
+  private async chat(
+    messages: ChatMessage[],
+    model: string,
+    options: AnalysisOptions,
+    size: number,
+    answerTokens: number
+  ): Promise<ChatResponse> {
+    try {
+      const response = await this.makeChatRequest(messages, model, options, size, answerTokens);
+      this.acceptedContext.set(model, size);
+      return response;
+    } catch (error) {
+      if (isTooLarge(error) && size <= (this.acceptedContext.get(model) ?? 0)) this.acceptedContext.delete(model);
+      throw error;
+    }
+  }
+
+  /**
+   * The values of an answer; 'cut-off' when Ollama stopped it at the answer
+   * limit before it was complete (also while a model was still thinking,
+   * with no content yet); undefined for an empty one
+   */
+  private readAnswer(response: ChatResponse): ParsedAnswer | 'cut-off' | undefined {
+    const content = response.message?.content;
+    const stopped = response.done_reason === 'length';
+    if (!content) return stopped ? 'cut-off' : undefined;
+    try {
+      return this.parseResponse(content);
+    } catch (error) {
+      if (stopped) return 'cut-off';
+      throw error;
+    }
+  }
+
+  private empty(message: string): never {
+    throw new AIAnalysisError(message, 'ollama');
   }
 
   /**
@@ -565,4 +661,32 @@ Respond with ONLY a valid JSON object containing:
     const sum = biomarkers.reduce((acc, b) => acc + b.confidence, 0);
     return sum / biomarkers.length;
   }
+}
+
+/** Whether Ollama refused a request it could not load or run: too large for its free memory */
+function isRefused(error: unknown): error is AIAnalysisError {
+  return error instanceof AIAnalysisError && error.code === 'server_error';
+}
+
+/** Whether a request ran out of time: HemoIO's own limit, or a proxy's in front of Ollama */
+function isTimeout(error: unknown): error is AIAnalysisError {
+  return error instanceof AIAnalysisError && error.code === 'timeout';
+}
+
+/** Whether a request was too large for Ollama now: refused, or out of time */
+function isTooLarge(error: unknown): error is AIAnalysisError {
+  return isRefused(error) || isTimeout(error);
+}
+
+/** The values read from an answer */
+type ParsedAnswer = ReturnType<OllamaProvider['parseResponse']>;
+
+/** A proxy's or tunnel's timeout (Cloudflare's 522 and 524), not Ollama's own answer */
+const GATEWAY_TIMEOUTS = new Set([502, 504, 522, 524]);
+
+/** The code of an error status: a refused request, a gateway's timeout, or none */
+function serverErrorCode(status: number): string | undefined {
+  if (GATEWAY_TIMEOUTS.has(status)) return 'timeout';
+  if (status === 503 || status < 500) return undefined;
+  return 'server_error';
 }

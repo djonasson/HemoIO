@@ -110,6 +110,62 @@ describe('analyzeLabReport: identifying each value', () => {
     expect(value.nameSuggests?.key).toBe('blood-urea-nitrogen');
   });
 
+  it("flags a learned name whose test differs from the AI's", async () => {
+    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-urea') : undefined);
+    const [value] = (
+      await analyze([extracted('Zorb', 7, 'g/L', 'urine-protein')], { learned })
+    ).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('urine-protein');
+    expect(value.identificationFlags).toEqual(['name-disagrees']);
+    expect(value.nameSuggests?.key).toBe('urine-urea');
+  });
+
+  it("says which learned test fits when the AI's test does not fit the unit", async () => {
+    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-urea') : undefined);
+    const [value] = (
+      await analyze([extracted('Zorb', 7, 'mmol/L', 'urine-protein')], { learned })
+    ).matchedBiomarkers;
+    expect(value.suggestedMatch?.key).toBe('urine-protein');
+    expect(value.identificationFlags).toEqual(['unit-mismatch', 'name-disagrees']);
+    expect(value.nameSuggests?.key).toBe('urine-urea');
+  });
+
+  it('reads a learned name with its unit, as the 24-hour amount of a concentration', async () => {
+    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-creatinine') : undefined);
+    const [value] = (
+      await analyze([extracted('Zorb', 1.2, 'g/24h', '24-hour-urine-creatinine')], { learned })
+    ).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('24-hour-urine-creatinine');
+    expect(value.identificationFlags).toEqual([]);
+  });
+
+  it("flags a name that is exactly another test, also in a unit that test is not measured in", async () => {
+    // "Emoglobina" in % keyed as hematocrit: a row mix-up worth a check
+    const [value] = (await analyze([extracted('Emoglobina', 43.5, '%', 'hematocrit')])).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('hematocrit');
+    expect(value.identificationFlags).toEqual(['name-disagrees']);
+    expect(value.nameSuggests?.key).toBe('hemoglobin');
+  });
+
+  it('reads a learned name with its unit when the AI gives no key', async () => {
+    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-creatinine') : undefined);
+    const [value] = (await analyze([extracted('Zorb', 1.2, 'g/24h')], { learned })).matchedBiomarkers;
+    expect(value.dictionaryMatch?.key).toBe('24-hour-urine-creatinine');
+    expect(value.identificationFlags).toEqual(['name-only']);
+  });
+
+  it('counts as not matched exactly the values review shows as not in the dictionary', async () => {
+    const NOTE = '1 biomarker(s) could not be matched to the dictionary';
+    // A variation of Hemoglobin is matched, and the AI's proposal is labelled instead
+    const matched = await analyze([
+      extracted('Hemo-globin', 14.5, 'g/dL'),
+      extracted('Glicemia', 5, 'mmol/24h', 'glucose'),
+    ]);
+    expect(matched.warnings.filter((w) => w.includes('could not be matched'))).toEqual([]);
+    // Glucose in a unit glucose is not measured in is not in the dictionary
+    expect((await analyze([extracted('Glucose', 5, 'mmol/24h')])).warnings).toContain(NOTE);
+  });
+
   it("does not flag a name the unit makes the AI's test", async () => {
     // The count's name in /100 WBC is its percentage; "Creatinina 24h" in µmol/L its concentration
     const result = await analyze([
@@ -186,6 +242,14 @@ describe('analyzeLabReport: identifying each value', () => {
       ['glucose', ['name-only']],
       [undefined, ['not-identified']],
     ]);
+  });
+
+  it("reads the matching model's test with the unit: a count's name in % is its percentage", async () => {
+    const similar = async () => [getBiomarkerByKey('neutrophils')!];
+    const result = await analyze([extracted('Neutrófilos', 62, '%')], { similar });
+    expect(result.matchedBiomarkers[0].dictionaryMatch?.key).toBe('neutrophils-percentage');
+    // Kept for review, so a unit edit can read it again
+    expect(result.matchedBiomarkers[0].analyzed?.modelMatch?.key).toBe('neutrophils');
   });
 
   it('matches a name by meaning only with a fitting unit', async () => {

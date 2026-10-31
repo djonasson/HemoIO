@@ -205,7 +205,7 @@ export function AnalysisStep({
                 },
                 signal: controller.signal,
                 nameFallback: {
-                  learned: (name) => lookupLearnedAlias(learnedAliasesRef.current ?? {}, name),
+                  learned: (name) => lookupLearnedAlias(learnedAliasesRef.current, name),
                   // Loaded the first time a name needs it, then kept for offline use
                   similar: async (name) => {
                     const matcher = await getSimilarNameMatcher(() => {

@@ -53,6 +53,14 @@ Feature: Biomarker Dictionary
     When I type "WBC" in the search field
     Then I should see "White Blood Cell Count (WBC)" in the results
 
+  Scenario: Search for a biomarker by its abbreviation in the plural
+    When I type "WBCs" in the search field
+    Then I should see "White Blood Cell Count (WBC)" in the results
+
+  Scenario: Extra spaces in a search do not change the results
+    When I type "  white   blood cell " in the search field
+    Then I should see "White Blood Cell Count (WBC)" in the results
+
   Scenario: Search with no results
     When I type "xyz123" in the search field
     Then I should see a message indicating no results found

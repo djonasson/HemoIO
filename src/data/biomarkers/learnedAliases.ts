@@ -3,17 +3,17 @@
  * Consulted only after the dictionary's aliases, so they never override
  * them. Stored in the (sealed) preferences record.
  */
-import { findBiomarker, getBiomarkerByKey, type BiomarkerDefinition } from './dictionary';
+import { findBiomarker, getBiomarkerByKey, nameKey, type BiomarkerDefinition } from './dictionary';
 
-export function learnedAliasName(name: string): string {
-  return name.toLowerCase().replace(/\s+/g, ' ').trim();
-}
+/** A name as every lookup of the user's names reads it: case, spacing and accent encoding aside */
+export const learnedAliasName = nameKey;
 
+/** The test the user saved a printed name under; none before preferences load */
 export function lookupLearnedAlias(
-  aliases: Readonly<Record<string, string>>,
+  aliases: Readonly<Record<string, string>> | undefined,
   name: string
 ): BiomarkerDefinition | undefined {
-  const key = aliases[learnedAliasName(name)];
+  const key = aliases?.[learnedAliasName(name)];
   return key ? getBiomarkerByKey(key) : undefined;
 }
 

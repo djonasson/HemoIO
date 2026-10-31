@@ -3,7 +3,7 @@
  */
 import { expect, type Locator, type Page } from '@playwright/test';
 import { reviewRows } from './unitConversion.steps';
-import { continueToConfirm, saveResults } from './importWizard.steps';
+import { continueToConfirm, main, saveResults } from './importWizard.steps';
 
 /** The review row whose value cell shows `value` */
 export function rowFor(page: Page, value: string): Locator {
@@ -15,12 +15,35 @@ export function savedAsCell(row: Locator): Locator {
   return row.getByTestId('saved-as');
 }
 
+/** The review row being edited */
+export function editingRow(page: Page): Locator {
+  return main(page).getByRole('row').filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+}
+
+/** When I edit the row's name and unit (either may be left as it is) and save the edit */
+export async function editRow(
+  page: Page,
+  row: Locator,
+  edit: { name?: string; unit?: string }
+): Promise<void> {
+  await row.getByRole('button', { name: 'Edit biomarker' }).click();
+  const editing = editingRow(page);
+  if (edit.name !== undefined) await editing.getByPlaceholder('Biomarker name').fill(edit.name);
+  if (edit.unit !== undefined) await editing.getByPlaceholder('Unit', { exact: true }).fill(edit.unit);
+  await editing.getByRole('button', { name: 'Save changes' }).click();
+}
+
+/** Then the row carries no label that asks for a check, of any kind */
+export async function expectNoCheckLabel(row: Locator): Promise<void> {
+  await expect(row.getByTestId('check-labels')).toHaveCount(0);
+}
+
 /** When I change the row's test to `testName` */
 export async function changeTest(page: Page, row: Locator, testName: string): Promise<void> {
   await row.getByRole('button', { name: /^Change test for / }).click();
   const dialog = page.getByRole('dialog', { name: /Saved as/ });
   await dialog.getByRole('textbox', { name: 'Search tests' }).fill(testName);
-  await dialog.getByRole('option', { name: testName, exact: true }).click();
+  await dialog.getByRole('button', { name: testName, exact: true }).click();
   await expect(dialog).toBeHidden();
 }
 

@@ -52,7 +52,18 @@ export function createSimilarNameMatcher(
     const batch = pending;
     pending = [];
     try {
-      vectors ??= embedder.embed(entries.map((e) => e.text));
+      if (!vectors) {
+        const attempt = embedder.embed(entries.map((e) => e.text));
+        vectors = attempt;
+        // A failed try is not kept, so the next names try again. In the
+        // browser this recovers only from a failure outside the model's
+        // run: transformers.js chains every run on the one before, so a
+        // failed run fails all later ones until the app reloads (the
+        // import notes say so)
+        attempt.catch(() => {
+          if (vectors === attempt) vectors = undefined;
+        });
+      }
       const dictionary = await vectors;
       const queries = await embedder.embed(batch.map((b) => b.name));
       batch.forEach((b, i) => b.resolve(rank(queries[i], dictionary)));

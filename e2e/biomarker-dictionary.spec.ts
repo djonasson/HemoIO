@@ -194,6 +194,18 @@ test.describe('Biomarker Dictionary', () => {
       await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cell Count (WBC)');
     });
 
+    test('should search for biomarker by its abbreviation in the plural', async ({ page }) => {
+      await searchField(page).fill('WBCs');
+
+      await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cell Count (WBC)');
+    });
+
+    test('should ignore extra spaces in a search', async ({ page }) => {
+      await searchField(page).fill('  white   blood cell ');
+
+      await expectBiomarkerListed(page.getByRole('main'), 'White Blood Cell Count (WBC)');
+    });
+
     test('should show no results message for invalid search', async ({ page }) => {
       await searchField(page).fill('xyz123');
 

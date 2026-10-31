@@ -15,7 +15,7 @@ export function IdentificationLabels({ biomarker }: IdentificationLabelsProps) {
   const flags = biomarker.identificationFlags ?? [];
   if (flags.length === 0) return null;
   return (
-    <Group gap={4}>
+    <Group gap={4} data-testid="check-labels">
       {flags.map((flag) => {
         const label = IDENTIFICATION_LABELS[flag](biomarker);
         return (

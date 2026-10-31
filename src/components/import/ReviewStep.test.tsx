@@ -17,6 +17,7 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
     // Glucose with full metadata for testing
     if (name.toLowerCase() === 'glucose') {
       return {
+        key: 'glucose',
         name: 'Glucose',
         canonicalUnit: 'mg/dL',
         aliases: ['Blood Sugar'],
@@ -34,6 +35,15 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
     return undefined;
   }),
   BIOMARKER_DEFINITIONS: [],
+  nameKey: (name: string) => name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim(),
+  // No name variations; the one keyed test is the AI's proposed glucose
+  matchBiomarkerName: vi.fn(() => undefined),
+  getBiomarkerByKey: vi.fn((key: string) =>
+    key === 'glucose'
+      ? { key: 'glucose', name: 'Glucose', canonicalUnit: 'mg/dL', aliases: [], category: 'metabolic',
+          description: '', alternativeUnits: ['mmol/L'], related: [] }
+      : undefined
+  ),
   searchBiomarkers: vi.fn((query: string) =>
     ['Hematocrit', 'Hemoglobin', 'Glucose']
       .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
@@ -555,7 +565,6 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: true,
             normalizedUnit: 'g/dL',
-            renamedInReview: true,
             dictionaryMatch: {
               key: 'hemoglobin-a1c',
               name: 'Hemoglobin A1c',
@@ -1042,12 +1051,14 @@ describe('ReviewStep', () => {
         ...mockReviewedResult,
         editedBiomarkers: [
           {
-            name: 'Glicemia',
+            name: 'Glucose',
             value: 95,
             unit: 'mmol/24h',
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: 'mmol/24h',
+            biomarkerKey: 'glucose',
+            identifiedBy: 'ai',
             identificationFlags: ['unit-mismatch'],
             suggestedMatch: {
               key: 'glucose',

@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from './OllamaProvider';
+import { ollamaContext, promptTokens } from './ollamaContext';
 import { AIAnalysisError } from './types';
 
 // Mock the ollamaUtils module
@@ -102,6 +103,226 @@ describe('OllamaProvider', () => {
       expect(result.labDate).toBe('2024-01-15');
       expect(result.labName).toBe('Test Laboratory');
       expect(result.modelUsed).toBe('llama3.2:8b');
+    });
+
+    const cutOff = () =>
+      ({
+        ok: true,
+        json: () =>
+          Promise.resolve({ message: { content: '{"biomarkers": [{"name": "Gluc' }, done_reason: 'length' }),
+      }) as Response;
+    const requestOptions = (call: number) =>
+      JSON.parse(vi.mocked(fetch).mock.calls[call][1]?.body as string).options;
+    const promptCharacters = (call: number) =>
+      (
+        JSON.parse(vi.mocked(fetch).mock.calls[call][1]?.body as string).messages as { content: string }[]
+      ).reduce((sum, m) => sum + m.content.length, 0);
+
+    it("gives the answer the room of the report's context beside the prompt and 1024 spare", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSuccessResponse),
+      } as Response);
+
+      await new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL');
+
+      const { num_ctx, num_predict } = requestOptions(0);
+      expect(num_predict).toBeGreaterThanOrEqual(4096);
+      expect(num_ctx).toBe(ollamaContext(promptCharacters(0), 4096, 0, 1024).size);
+      expect(num_ctx - promptTokens(promptCharacters(0)) - num_predict).toBe(1024);
+    });
+
+    it("never gives the answer the room of a larger context kept from before", async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch).mockResolvedValueOnce(reply()).mockResolvedValueOnce(reply());
+      const provider = new OllamaProvider();
+      await provider.analyzeLabReport('x'.repeat(80_000));
+
+      await provider.analyzeLabReport('Glucose: 95 mg/dL');
+
+      expect(requestOptions(1).num_ctx).toBe(requestOptions(0).num_ctx);
+      expect(requestOptions(1).num_predict).toBe(ollamaContext(promptCharacters(1), 4096, 0, 1024).answerRoom);
+    });
+
+    it('does not ask again at the report\'s own size when a gateway gives up on a kept context', async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(reply())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 504,
+          statusText: 'Gateway Time-out',
+          json: () => Promise.reject(new Error('not JSON')),
+        } as unknown as Response);
+      const provider = new OllamaProvider();
+      await provider.analyzeLabReport('x'.repeat(80_000));
+
+      await expect(provider.analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(/504/);
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks a later report with its own context after a gateway gave up on a kept one', async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(reply())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 504,
+          statusText: 'Gateway Time-out',
+          json: () => Promise.reject(new Error('not JSON')),
+        } as unknown as Response)
+        .mockResolvedValueOnce(reply());
+      const provider = new OllamaProvider();
+      await provider.analyzeLabReport('x'.repeat(80_000));
+      await expect(provider.analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(/504/);
+
+      await provider.analyzeLabReport('Glucose: 95 mg/dL');
+
+      expect(requestOptions(2).num_ctx).toBe(ollamaContext(promptCharacters(2), 4096, 0, 1024).size);
+      expect(requestOptions(2).num_ctx).toBeLessThan(requestOptions(0).num_ctx);
+    });
+
+    it('takes a Cloudflare tunnel timing out on a kept context as a timeout, not as a refused size', async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(reply())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 524,
+          statusText: 'A Timeout Occurred',
+          json: () => Promise.reject(new Error('not JSON')),
+        } as unknown as Response);
+      const provider = new OllamaProvider();
+      await provider.analyzeLabReport('x'.repeat(80_000));
+
+      await expect(provider.analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(/524/);
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves at least 1024 tokens spare also when the prompt and answer nearly fill a step', async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch).mockResolvedValueOnce(reply()).mockResolvedValueOnce(reply());
+      await new OllamaProvider().analyzeLabReport('x');
+      const overhead = promptCharacters(0) - 1;
+      // A report whose prompt and answer end 512 tokens short of a step
+      const report = 'x'.repeat(Math.floor((4096 * 3 - 512 - 4096) * 2.3) - overhead);
+
+      await new OllamaProvider().analyzeLabReport(report);
+
+      const spare = requestOptions(1).num_ctx - promptTokens(promptCharacters(1)) - 4096;
+      expect(spare).toBeGreaterThanOrEqual(1024);
+    });
+
+    it('asks again with a larger answer limit also at a context kept from before', async () => {
+      const reply = () => ({ ok: true, json: () => Promise.resolve(mockSuccessResponse) }) as Response;
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(reply())
+        .mockResolvedValueOnce(cutOff())
+        .mockResolvedValueOnce(reply());
+      const provider = new OllamaProvider();
+      await provider.analyzeLabReport('x'.repeat(80_000));
+
+      await provider.analyzeLabReport('Glucose: 95 mg/dL');
+
+      expect(requestOptions(2).num_predict).toBeGreaterThan(requestOptions(1).num_predict);
+    });
+
+    it('says the answer was cut off when a proxy gives up on the larger request', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 504,
+          statusText: 'Gateway Time-out',
+          json: () => Promise.reject(new Error('not JSON')),
+        } as unknown as Response);
+
+      await expect(new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(
+        /cut off.*smaller files/
+      );
+    });
+
+    it('keeps the error of a larger request that fails for another reason than its size', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      await expect(new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(
+        /^Failed to connect to Ollama/
+      );
+    });
+
+    it('says Ollama is busy, not that the report is too large, when the larger request finds it busy', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          json: () => Promise.resolve({ error: 'server busy, please try again. maximum pending requests exceeded' }),
+        } as unknown as Response);
+
+      await expect(new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(
+        /^Ollama API error: server busy/
+      );
+    });
+
+    it('says the analysis was cancelled when the caller cancels the larger request', async () => {
+      const controller = new AbortController();
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockImplementationOnce(() => {
+          controller.abort();
+          return Promise.reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        });
+
+      const analysis = new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL', { signal: controller.signal });
+
+      await expect(analysis).rejects.toThrow(/^Ollama request was cancelled/);
+    });
+
+    it('asks again with a larger answer limit when the answer was cut off', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccessResponse) } as Response);
+
+      const result = await new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL');
+
+      expect(result.biomarkers).toHaveLength(2);
+      expect(requestOptions(1).num_predict).toBeGreaterThan(requestOptions(0).num_predict);
+      expect(requestOptions(1).num_ctx).toBeGreaterThan(requestOptions(0).num_ctx);
+    });
+
+    it('asks again also when a thinking model was stopped before it wrote anything', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: '', thinking: '...' }, done_reason: 'length' }),
+        } as Response)
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccessResponse) } as Response);
+
+      const result = await new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL');
+
+      expect(result.biomarkers).toHaveLength(2);
+    });
+
+    it("says an answer cut off again was cut off at HemoIO's limit, not that it was malformed", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce(cutOff()).mockResolvedValueOnce(cutOff());
+
+      await expect(new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(
+        /cut off at HemoIO's limit of \d+ tokens.*smaller files/
+      );
+    });
+
+    it('says the answer was cut off when the larger request fails too', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(cutOff())
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: 'model requires more system memory' }),
+        } as unknown as Response);
+
+      await expect(new OllamaProvider().analyzeLabReport('Glucose: 95 mg/dL')).rejects.toThrow(/cut off/);
     });
 
     it('should throw error for empty text', async () => {
@@ -250,6 +471,23 @@ describe('OllamaProvider', () => {
       // Ollama's native API takes images beside the text, base64 without a data URL
       expect(typeof userMessage.content).toBe('string');
       expect(userMessage.images).toEqual(['dGVzdGltYWdl']);
+    });
+
+    it("asks the vision model for the key of each value's test", async () => {
+      vi.mocked(getModelNames).mockResolvedValue(['llava:13b']);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockVisionResponse),
+      } as Response);
+
+      const provider = new OllamaProvider({ visionModel: 'llava:13b' });
+      await provider.analyzeImage('dGVzdGltYWdl', 'image/jpeg');
+
+      const callBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+      // The answer format is the system prompt's, not a copy that can drift
+      expect(callBody.messages[0].content).toContain('biomarkerKey');
+      expect(callBody.messages[1].content).not.toMatch(/biomarkers: Array of/);
+      expect(callBody.messages[1].content).toContain('OUTPUT FORMAT');
     });
   });
 
@@ -596,5 +834,99 @@ describe('OllamaProvider native chat API', () => {
     const body = JSON.parse(String((init as RequestInit).body));
     expect(body).toMatchObject({ stream: false, format: 'json' });
     expect(body.options.num_ctx).toBeGreaterThan(10_000);
+  });
+
+  it('never asks a model for a smaller context than it accepted, so Ollama keeps it loaded', async () => {
+    const reply = () =>
+      ({
+        ok: true,
+        json: () => Promise.resolve({ message: { content: '{"biomarkers":[],"warnings":[]}' }, done_reason: 'stop' }),
+      }) as Response;
+    vi.mocked(fetch).mockResolvedValueOnce(reply()).mockResolvedValueOnce(reply());
+    // The app keeps one provider per configuration
+    const provider = new OllamaProvider();
+
+    await provider.analyzeLabReport('x'.repeat(60_000));
+    await provider.analyzeLabReport('short report text');
+
+    const numCtx = vi.mocked(fetch).mock.calls.slice(-2).map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)).options.num_ctx
+    );
+    expect(numCtx[1]).toBe(numCtx[0]);
+  });
+
+  const okReply = () =>
+    ({
+      ok: true,
+      json: () => Promise.resolve({ message: { content: '{"biomarkers":[],"warnings":[]}' }, done_reason: 'stop' }),
+    }) as Response;
+  const refused = () =>
+    ({ ok: false, status: 500, json: () => Promise.resolve({ error: 'out of memory' }) }) as unknown as Response;
+  const contexts = (count: number) =>
+    vi.mocked(fetch).mock.calls.slice(-count).map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)).options.num_ctx as number
+    );
+
+  it('does not keep a context Ollama refused', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(refused()).mockResolvedValueOnce(okReply());
+    const provider = new OllamaProvider();
+
+    await expect(provider.analyzeLabReport('x'.repeat(60_000))).rejects.toThrow();
+    await provider.analyzeLabReport('short report text');
+
+    const [large, short] = contexts(2);
+    expect(short).toBeLessThan(large);
+  });
+
+  it('forgets a context it accepted once Ollama refuses it, and asks at the report\'s own size', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(okReply())
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(okReply())
+      .mockResolvedValueOnce(okReply());
+    const provider = new OllamaProvider();
+
+    await provider.analyzeLabReport('x'.repeat(60_000));
+    await provider.analyzeLabReport('short report text');
+    await provider.analyzeLabReport('short report text');
+
+    // The second report asks at the size accepted before, then at its own
+    const [large, remembered, own, next] = contexts(4);
+    expect(remembered).toBe(large);
+    expect(own).toBeLessThan(large);
+    expect(next).toBe(own);
+  });
+
+  it('keeps the context it accepted when Ollama refuses a larger one', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(okReply())
+      .mockResolvedValueOnce(refused())
+      .mockResolvedValueOnce(okReply());
+    const provider = new OllamaProvider();
+
+    await provider.analyzeLabReport('x'.repeat(30_000));
+    await expect(provider.analyzeLabReport('x'.repeat(60_000))).rejects.toThrow();
+    await provider.analyzeLabReport('short report text');
+
+    const [accepted, larger, next] = contexts(3);
+    expect(larger).toBeGreaterThan(accepted);
+    expect(next).toBe(accepted);
+  });
+
+  it('keeps the larger context of a cut-off answer it accepted, so the next report needs no reload', async () => {
+    const cutOffReply = () =>
+      ({
+        ok: true,
+        json: () => Promise.resolve({ message: { content: '{"biomarkers": [' }, done_reason: 'length' }),
+      }) as Response;
+    vi.mocked(fetch).mockResolvedValueOnce(cutOffReply()).mockResolvedValueOnce(okReply()).mockResolvedValueOnce(okReply());
+    const provider = new OllamaProvider();
+
+    await provider.analyzeLabReport('short report text');
+    await provider.analyzeLabReport('short report text');
+
+    const [first, larger, next] = contexts(3);
+    expect(larger).toBeGreaterThan(first);
+    expect(next).toBe(larger);
   });
 });

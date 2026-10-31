@@ -61,7 +61,7 @@ vi.mock('@mantine/notifications', () => ({
 vi.mock('@data/biomarkers/dictionary', () => {
   const mock = {
   findBiomarker: vi.fn((name: string) => {
-    if (name === 'Glucose') {
+    if (name.toLowerCase() === 'glucose') {
       return {
         name: 'Glucose',
         category: 'metabolic',
@@ -69,7 +69,7 @@ vi.mock('@data/biomarkers/dictionary', () => {
         alternativeUnits: ['mmol/L'],
       };
     }
-    if (name === 'Hemoglobin') {
+    if (name.toLowerCase() === 'hemoglobin') {
       return { name: 'Hemoglobin', category: 'cbc', canonicalUnit: 'g/dL' };
     }
     return null;
@@ -87,11 +87,11 @@ vi.mock('@data/biomarkers/dictionary', () => {
   };
   return {
     ...mock,
-    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerByKey: () => undefined,
-    getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
-    getBiomarkerDisplayName: (tv: { rawText?: string }) =>
-      mock.findBiomarker(tv.rawText ?? '')?.name || tv.rawText || 'Unknown biomarker',
+    // By the stored key, as the app does; this mock's names stand for its keys
+    getBiomarkerByKey: (key: string) => mock.findBiomarker(key) ?? undefined,
+    getBiomarkerForTestValue: (tv: { biomarkerKey: string }) => mock.findBiomarker(tv.biomarkerKey) ?? undefined,
+    getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
+      mock.findBiomarker(tv.biomarkerKey)?.name || tv.rawText || 'Unknown biomarker',
   };
 });
 
@@ -551,11 +551,11 @@ describe('TrendsView', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         // First value in mg/dL (canonical unit)
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+        createMockTestValue(1, 1, 'glucose', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
       ]),
       createMockResult(2, '2024-02-15', [
         // Second value in mmol/L (should be converted to mg/dL)
-        createMockTestValue(2, 2, 'marker-1', 'Glucose', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
+        createMockTestValue(2, 2, 'glucose', 'Glucose', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
       ]),
     ];
 

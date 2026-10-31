@@ -346,6 +346,7 @@ test.describe('Document Analysis - AI Processing', () => {
     await goToImport(page);
     await uploadFiles(page, track(createTextPdf('multi-page.pdf', reportPages(3))));
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
 
     // Text from every page reaches the AI, pages in order
@@ -499,6 +500,8 @@ test.describe('Document Analysis - AI Processing', () => {
     await analyzeToReview(page, track(createTextLabReportPdf()));
 
     await expect(reviewCell(reviewRow(page, 'Hemo-globin'), 'Specimen')).toHaveText('Whole Blood');
+    // Matched, so not counted as unmatched
+    await expect(main(page).getByText(/could not be matched to the dictionary/)).toBeHidden();
 
     // Saved as Hemoglobin
     await continueToConfirm(page);
@@ -607,6 +610,112 @@ test.describe('Document Analysis - Error Handling', () => {
     await expect(page.getByRole('alert', { name: 'Analysis Failed' })).toBeVisible();
     // The user can go back and retry later
     await expect(main(page).getByRole('button', { name: 'Back' })).toBeEnabled();
+  });
+
+  test("asks again with a larger limit when the AI's answer is cut off", async ({ page }) => {
+    // Scenario: The AI's answer is cut off at the length limit
+    const ai = await loginWithOllama(page, [
+      { cutOff: '{"biomarkers": [{"name": "Gluc' },
+      { extraction: DEFAULT_EXTRACTION },
+    ]);
+    await analyzeToReview(page, track(createTextLabReportPdf()));
+
+    expect(ai.prompts).toHaveLength(2);
+    expect(ai.answerLimits[1]).toBeGreaterThan(ai.answerLimits[0]);
+    await expect(reviewRow(page, 'Glucose')).toBeVisible();
+  });
+
+  test("says when the AI's answer is cut off also with the larger limit", async ({ page }) => {
+    // Scenario: The AI's answer is cut off also with the larger limit
+    await loginWithOllama(page, [{ cutOff: '{"biomarkers": [{"name": "Gluc' }]);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextLabReportPdf()));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
+      /cut off at HemoIO's limit of \d+ tokens.*smaller files/
+    );
+  });
+
+  test('says the local AI is busy when asking again finds it busy', async ({ page }) => {
+    // Scenario: Asking again with a larger limit finds the local AI busy
+    await loginWithOllama(page, [
+      { cutOff: '{"biomarkers": [{"name": "Gluc' },
+      { status: 503, error: 'server busy, please try again' },
+    ]);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextLabReportPdf()));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    const item = analysisItem(page, 'lab-report.pdf');
+    await expect(item).toContainText('AI analysis failed: Ollama API error: server busy');
+    await expect(item).not.toContainText('smaller files');
+  });
+
+  test('asks at the report\'s own size when a context kept from before no longer fits', async ({ page }) => {
+    // Scenario: A short report after a long one needs only its own memory
+    const ai = await loginWithOllama(page, [
+      { extraction: DEFAULT_EXTRACTION },
+      { status: 500, error: 'model requires more system memory' },
+      { extraction: DEFAULT_EXTRACTION },
+    ]);
+    const notes = Array.from({ length: 300 }, (_, i) => `Note ${i}: sample handled and stored as required`);
+    const pages = [LAB_REPORT_LINES, ...Array.from({ length: 6 }, (_, i) => notes.slice(i * 50, i * 50 + 50))];
+    await goToImport(page);
+    await uploadFiles(page, [
+      track(createTextPdf('long-report.pdf', pages)),
+      track(createTextPdf('short-report.pdf', [LAB_REPORT_LINES])),
+    ]);
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText('from 2 file(s)');
+    const [long, kept, own] = ai.contexts;
+    expect(kept).toBe(long);
+    expect(own).toBeLessThan(long);
+  });
+
+  test('suggests splitting the report when the connection times out on the larger request', async ({ page }) => {
+    // Scenario: The connection to the local AI times out when it is asked again
+    await loginWithOllama(page, [
+      { cutOff: '{"biomarkers": [{"name": "Gluc' },
+      { status: 504, error: 'Gateway Time-out' },
+    ]);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextLabReportPdf()));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
+      /cut off at HemoIO's limit of \d+ tokens.*Gateway Time-out.*smaller files/
+    );
+  });
+
+  test("asks a report after a timed-out one with only its own room, not the long report's", async ({ page }) => {
+    // Scenario: A report after the connection timed out with a long report's memory needs only its own
+    const ai = await loginWithOllama(page, [
+      { extraction: DEFAULT_EXTRACTION },
+      { status: 504, error: 'Gateway Time-out' },
+      { extraction: DEFAULT_EXTRACTION },
+    ]);
+    const notes = Array.from({ length: 300 }, (_, i) => `Note ${i}: sample handled and stored as required`);
+    const pages = [LAB_REPORT_LINES, ...Array.from({ length: 6 }, (_, i) => notes.slice(i * 50, i * 50 + 50))];
+    await goToImport(page);
+    await uploadFiles(page, [
+      track(createTextPdf('long-report.pdf', pages)),
+      track(createTextPdf('short-report.pdf', [LAB_REPORT_LINES])),
+      track(createTextPdf('next-report.pdf', [LAB_REPORT_LINES])),
+    ]);
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'short-report.pdf')).toContainText('Gateway Time-out');
+    await expect(analysisItem(page, 'next-report.pdf')).not.toContainText('failed');
+    const [long, kept, own] = ai.contexts;
+    expect(kept).toBe(long);
+    expect(own).toBeLessThan(long);
   });
 
   test('should allow retry after error', async ({ page }) => {
@@ -776,6 +885,7 @@ test.describe('Document Analysis - Performance', () => {
 
     ai.release();
 
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 6 biomarker values from 3 file(s).'
     );

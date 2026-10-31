@@ -103,10 +103,12 @@ Feature: Document Analysis
     Then exact matches should be found
     And common aliases should be recognized
     And fuzzy matching should handle variations
+    And a value matched by a variation of its name should not be counted as unmatched in the analysis notes
 
   Scenario: Handle unknown biomarkers
     Given the AI extracts an unknown biomarker name
     Then it should be flagged for user review
+    And the analysis notes should count it among the values not matched to the dictionary
     And the user should be able to map it to a known biomarker
 
   # Unit Handling
@@ -156,6 +158,47 @@ Feature: Document Analysis
     Then the request should be retried 3 times
     And the file should fail with a message to wait and try again
     And manual entry should be offered as alternative
+
+  Scenario: The AI's answer is cut off at the length limit
+    Given the local AI stops its answer at HemoIO's length limit before it is complete
+    When the report is analyzed
+    Then the AI should be asked again with a larger limit
+    And the values of its complete answer should be shown for review
+
+  Scenario: The AI's answer is cut off also with the larger limit
+    Given the local AI stops its answer at HemoIO's length limit also when asked again
+    When the report is analyzed
+    Then the analysis should fail, saying the answer was cut off at HemoIO's limit
+    And suggest splitting the report into smaller files
+
+  Scenario: Asking again with a larger limit finds the local AI busy
+    Given the local AI stops its answer at HemoIO's length limit
+    And it is busy when asked again
+    When the report is analyzed
+    Then the analysis should fail, saying the local AI is busy
+    And not suggest splitting the report
+
+  Scenario: A short report after a long one needs only its own memory
+    Given the local AI analyzed a long report
+    And it no longer has the memory that report needed
+    When a short report is analyzed after it
+    Then the AI should be asked again with only the room the short report needs
+    And the values of both reports should be extracted
+
+  Scenario: The connection to the local AI times out when it is asked again
+    Given the local AI stops its answer at HemoIO's length limit
+    And the connection to the local AI times out when it is asked again
+    When the report is analyzed
+    Then the analysis should fail, saying the answer was cut off at HemoIO's limit
+    And suggest splitting the report into smaller files
+
+  Scenario: A report after the connection timed out with a long report's memory needs only its own
+    Given the local AI analyzed a long report
+    And the connection to the local AI times out when the next report is analyzed with that much memory
+    When two short reports are analyzed after it
+    Then the first short report should fail, saying the connection timed out
+    And the second should be asked with only the room it needs
+    And its values should be extracted
 
   Scenario: Enter values manually after a failed analysis
     Given a document could not be analyzed

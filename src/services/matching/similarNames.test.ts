@@ -58,4 +58,21 @@ describe('createSimilarNameMatcher', () => {
     expect(embedder.calls).toHaveLength(2);
     expect(embedder.calls[1]).toEqual(['Urea urinaria', 'Zorb']);
   });
+
+  it("embeds the dictionary again after a failed try, rather than failing every later name", async () => {
+    const embedder = tableEmbedder({ 'urine urea': 0, 'urea urinaria': 0 });
+    const embed = embedder.embed.bind(embedder);
+    let fail = true;
+    embedder.embed = async (texts) => {
+      if (fail) {
+        fail = false;
+        throw new Error('out of memory');
+      }
+      return embed(texts);
+    };
+    const matcher = createSimilarNameMatcher(embedder, [urea], 0.8);
+
+    await expect(matcher.similar('Urea urinaria')).rejects.toThrow('out of memory');
+    expect(await matcher.similar('Urea urinaria')).toEqual([urea]);
+  });
 });

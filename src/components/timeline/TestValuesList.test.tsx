@@ -87,6 +87,14 @@ describe('TestValuesList', () => {
     expect(screen.queryByText('Hemo-globin')).not.toBeInTheDocument();
   });
 
+  it("never describes a value saved as not in the dictionary as the test its name is", () => {
+    const testValues = [createTestValue(1, { biomarkerKey: 'unknown:hemoglobin', rawText: 'Hemoglobin' })];
+    renderWithProviders(<TestValuesList testValues={testValues} />);
+
+    expect(screen.getByText('Hemoglobin')).not.toHaveStyle({ cursor: 'help' });
+    expect(screen.queryByText('Whole Blood')).not.toBeInTheDocument();
+  });
+
   it('should render table with headers', () => {
     const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
@@ -253,14 +261,14 @@ describe('TestValuesList', () => {
 
   describe('Specimen type display', () => {
     it('should display specimen type for known biomarkers', () => {
-      const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
       expect(screen.getByText('Whole Blood')).toBeInTheDocument();
     });
 
     it('should display serum for glucose', () => {
-      const testValues = [createTestValue(1, { rawText: 'Glucose' })];
+      const testValues = [createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
       expect(screen.getByText('Serum')).toBeInTheDocument();
@@ -278,7 +286,7 @@ describe('TestValuesList', () => {
 
   describe('LOINC tooltip display', () => {
     it('should show biomarker name with tooltip styling when LOINC code exists', () => {
-      const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
       const hemoglobinText = screen.getByText('Hemoglobin');

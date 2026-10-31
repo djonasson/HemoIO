@@ -8,7 +8,8 @@ import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb } from '@data/db';
 import type { LabResult, TestValue } from '@/types';
-import { findBiomarker, unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { testOfName } from '@services/analysis/nameMatching';
 import { normalizeLabDate } from '@/utils/labDate';
 
 /**
@@ -19,8 +20,6 @@ export interface SaveLabResultOutput {
   labResultId: number;
   /** Count of test values saved */
   testValueCount: number;
-  /** Any warnings during save */
-  warnings: string[];
 }
 
 /**
@@ -54,15 +53,16 @@ function parseLabDate(dateStr: string | undefined): Date {
  * for the unknown name. A value the analyzer identified (it has
  * identification flags) is saved as review showed it: without a match it
  * is not in the dictionary, whatever its name. Only values from elsewhere
- * (manual entry) are still looked up by name.
+ * (manual entry) are still looked up by name, read with their unit as the
+ * analyzer reads it (never serum creatinine in g/24h).
  */
 function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
   // The user chose "Not in dictionary", or review showed it
   if (biomarker.savedAsUnknown || (biomarker.identificationFlags && !biomarker.dictionaryMatch)) {
     return unknownBiomarkerKey(biomarker.name);
   }
-  const definition = biomarker.dictionaryMatch ?? findBiomarker(biomarker.name);
-  return definition?.key ?? unknownBiomarkerKey(biomarker.name);
+  const test = biomarker.dictionaryMatch ?? testOfName(biomarker.name, biomarker.unit);
+  return test?.key ?? unknownBiomarkerKey(biomarker.name);
 }
 
 /**
@@ -111,14 +111,12 @@ function transformReviewedToLabResult(
  *
  * @param reviewed - The reviewed result from the import wizard
  * @param db - The encrypted database instance
- * @returns SaveLabResultOutput with the saved IDs and any warnings
+ * @returns SaveLabResultOutput with the saved IDs
  */
 export async function saveReviewedResult(
   reviewed: ReviewedResult,
   db: EncryptedDb
 ): Promise<SaveLabResultOutput> {
-  const warnings: string[] = [];
-
   // Transform and save the lab result
   const labResultData = transformReviewedToLabResult(reviewed);
   const labResultId = await db.addLabResult(labResultData);
@@ -128,18 +126,6 @@ export async function saveReviewedResult(
     transformBiomarkerToTestValue(biomarker, labResultId)
   );
 
-  // Track biomarkers that couldn't be matched to dictionary
-  const unmatchedBiomarkers = reviewed.editedBiomarkers.filter(
-    (b) => !b.dictionaryMatch && !findBiomarker(b.name)
-  );
-  if (unmatchedBiomarkers.length > 0) {
-    warnings.push(
-      `${unmatchedBiomarkers.length} biomarker(s) not found in dictionary: ${unmatchedBiomarkers
-        .map((b) => b.name)
-        .join(', ')}`
-    );
-  }
-
   // Save test values in bulk
   if (testValueData.length > 0) {
     await db.addTestValues(testValueData);
@@ -148,7 +134,6 @@ export async function saveReviewedResult(
   return {
     labResultId,
     testValueCount: testValueData.length,
-    warnings,
   };
 }
 

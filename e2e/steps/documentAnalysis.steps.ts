@@ -18,12 +18,18 @@ const OLLAMA_CHAT_URL = '**/localhost:11434/api/chat';
  */
 export type ChatReply =
   | { extraction: object }
+  /** An answer Ollama stopped at the length limit: `content` is all it sent */
+  | { cutOff: string }
   | { status: number; error: string; headers?: Record<string, string> }
   | { abort: true };
 
 export interface OllamaChatScript {
   /** Lab report prompts sent to the AI, in request order */
   prompts: string[];
+  /** Each request's answer limit (num_predict), in request order */
+  answerLimits: number[];
+  /** Each request's context size (num_ctx), in request order */
+  contexts: number[];
   /** Highest number of analysis requests in flight at the same time */
   maxInFlight: number;
   /** Let held requests (and all later ones) be answered */
@@ -61,14 +67,21 @@ export async function scriptOllamaChat(
   let inFlight = 0;
   const script: OllamaChatScript = {
     prompts: [],
+    answerLimits: [],
+    contexts: [],
     maxInFlight: 0,
     release: () => releaseHeld(),
   };
 
   await page.route(OLLAMA_CHAT_URL, async (route: Route) => {
     const index = script.prompts.length;
-    const body = route.request().postDataJSON() as { messages: { role: string; content: string }[] };
+    const body = route.request().postDataJSON() as {
+      messages: { role: string; content: string }[];
+      options?: { num_predict?: number; num_ctx?: number };
+    };
     script.prompts.push(body.messages.find((m) => m.role === 'user')?.content ?? '');
+    script.answerLimits.push(body.options?.num_predict ?? 0);
+    script.contexts.push(body.options?.num_ctx ?? 0);
 
     inFlight++;
     script.maxInFlight = Math.max(script.maxInFlight, inFlight);
@@ -88,14 +101,18 @@ export async function scriptOllamaChat(
           body: JSON.stringify({ error: { message: reply.error, type: 'api_error' } }),
         });
       } else {
+        const cutOff = 'cutOff' in reply;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
             model: MOCK_OLLAMA_MODELS[0],
-            message: { role: 'assistant', content: JSON.stringify(reply.extraction) },
+            message: {
+              role: 'assistant',
+              content: cutOff ? reply.cutOff : JSON.stringify(reply.extraction),
+            },
             done: true,
-            done_reason: 'stop',
+            done_reason: cutOff ? 'length' : 'stop',
           }),
         });
       }

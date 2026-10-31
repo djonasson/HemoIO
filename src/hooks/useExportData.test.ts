@@ -163,7 +163,7 @@ describe('useExportData', () => {
     );
   });
 
-  it('should name biomarkers from their extracted names, not their IDs', async () => {
+  it('names a value saved as not in the dictionary by its printed name, never a test it resembles', async () => {
     mockDb.getAllLabResults.mockResolvedValue([
       { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
     ]);
@@ -171,11 +171,11 @@ describe('useExportData', () => {
       {
         id: 1,
         labResultId: 1,
-        // Unknown-biomarker ID range: identified by the extracted name
-        biomarkerKey: 'marker-10007',
+        // Saved as not in the dictionary
+        biomarkerKey: 'unknown:bloodsugar',
         value: 95,
         unit: 'mg/dL',
-        // Alias of the dictionary entry "Glucose"
+        // An alias of Glucose, which review did not save it as
         rawText: 'Blood Sugar',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -202,12 +202,12 @@ describe('useExportData', () => {
 
     expect(result.current.biomarkerOptions).toEqual(
       expect.arrayContaining([
-        { value: 'marker-10007', label: 'Glucose' },
+        { value: 'unknown:bloodsugar', label: 'Blood Sugar' },
         { value: 'marker-10008', label: 'Exotic Marker' },
       ])
     );
     const names = result.current.labResultsData[0].biomarkerNames;
-    expect(names.get('marker-10007')).toBe('Glucose');
+    expect(names.get('unknown:bloodsugar')).toBe('Blood Sugar');
     expect(names.get('marker-10008')).toBe('Exotic Marker');
   });
 

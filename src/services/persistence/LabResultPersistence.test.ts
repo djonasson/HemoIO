@@ -13,10 +13,10 @@ import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 vi.mock('@data/biomarkers/dictionary', () => ({
   findBiomarker: vi.fn((name: string) => {
     if (name === 'Hemoglobin' || name === 'Hgb') {
-      return { key: 'hemoglobin', name: 'Hemoglobin', category: 'cbc' };
+      return { key: 'hemoglobin', name: 'Hemoglobin', category: 'cbc', canonicalUnit: 'g/dL', alternativeUnits: ['g/L'] };
     }
     if (name === 'Glucose') {
-      return { key: 'glucose', name: 'Glucose', category: 'metabolic' };
+      return { key: 'glucose', name: 'Glucose', category: 'metabolic', canonicalUnit: 'mg/dL', alternativeUnits: ['mmol/L'] };
     }
     return undefined;
   }),
@@ -25,6 +25,9 @@ vi.mock('@data/biomarkers/dictionary', () => ({
     { name: 'Glucose', category: 'metabolic' },
     { name: 'Creatinine', category: 'metabolic' },
   ],
+  // Name variations and keyed tests: none in these tests
+  matchBiomarkerName: vi.fn(() => undefined),
+  getBiomarkerByKey: vi.fn(() => undefined),
   unknownBiomarkerKey: (name: string) => `unknown:${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
 }));
 
@@ -175,22 +178,6 @@ describe('LabResultPersistence', () => {
       expect(savedTestValues?.[0]?.referenceRangeHigh).toBe(17.5);
     });
 
-    it('should warn about unmatched biomarkers', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
-        createMockBiomarker('UnknownBiomarker', 100, 'units', {
-          dictionaryMatch: undefined,
-          isExactMatch: false,
-        }),
-      ];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers);
-
-      const result = await saveReviewedResult(reviewed, mockDb as any);
-
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toContain('UnknownBiomarker');
-    });
-
     it('saves a value the user put as not in the dictionary under its own name', async () => {
       const mockDb = createMockDb();
       const biomarkers = [
@@ -215,6 +202,21 @@ describe('LabResultPersistence', () => {
       await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
 
       expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
+    });
+
+    it('looks up a value entered in review by its name only when its unit fits that test', async () => {
+      const mockDb = createMockDb();
+      const biomarkers = [
+        createMockBiomarker('Glucose', 5.2, 'mmol/L', { dictionaryMatch: undefined }),
+        createMockBiomarker('Glucose', 30, 'mmol/24h', { dictionaryMatch: undefined }),
+      ];
+
+      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
+
+      expect(mockDb.getLastTestValuesCall()?.map((v) => v.biomarkerKey)).toEqual([
+        'glucose',
+        'unknown:glucose',
+      ]);
     });
 
     it('should handle empty biomarkers list', async () => {
@@ -293,26 +295,6 @@ describe('LabResultPersistence', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should aggregate warnings from all results', async () => {
-      const mockDb = createMockDb();
-      const reviewed1 = createMockReviewedResult('test1.pdf', [
-        createMockBiomarker('UnknownMarker1', 100, 'units', {
-          dictionaryMatch: undefined,
-          isExactMatch: false,
-        }),
-      ]);
-      const reviewed2 = createMockReviewedResult('test2.pdf', [
-        createMockBiomarker('UnknownMarker2', 200, 'units', {
-          dictionaryMatch: undefined,
-          isExactMatch: false,
-        }),
-      ]);
-
-      const result = await saveImportResults([reviewed1, reviewed2], mockDb as any);
-
-      expect(result.results[0].warnings).toHaveLength(1);
-      expect(result.results[1].warnings).toHaveLength(1);
-    });
   });
 });
 

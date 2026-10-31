@@ -58,11 +58,11 @@ vi.mock('@data/biomarkers/dictionary', () => {
   };
   return {
     ...mock,
-    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerByKey: () => undefined,
-    getBiomarkerForTestValue: (tv: { rawText?: string }) => mock.findBiomarker(tv.rawText ?? ''),
-    getBiomarkerDisplayName: (tv: { rawText?: string }) =>
-      mock.findBiomarker(tv.rawText ?? '')?.name || tv.rawText || 'Unknown biomarker',
+    // By the stored key, as the app does; this mock's names stand for its keys
+    getBiomarkerByKey: (key: string) => mock.findBiomarker(key) ?? undefined,
+    getBiomarkerForTestValue: (tv: { biomarkerKey: string }) => mock.findBiomarker(tv.biomarkerKey) ?? undefined,
+    getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
+      mock.findBiomarker(tv.biomarkerKey)?.name || tv.rawText || 'Unknown biomarker',
   };
 });
 
@@ -436,14 +436,14 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: 'glucose',
           rawText: 'Glucose',
         }),
         createMockTestValue(2, 1, {
           value: 10,
           status: 'low',
           referenceRangeLow: 12,
-          biomarkerKey: 'marker-2',
+          biomarkerKey: 'hemoglobin',
           rawText: 'Hemoglobin',
         }),
       ]),
@@ -732,6 +732,7 @@ describe('useAlerts', () => {
             unit: 'mUI/dL',
             status: 'high',
             referenceRangeHigh: 100,
+            biomarkerKey: 'glucose',
             rawText: 'Glucose',
           }),
         ])

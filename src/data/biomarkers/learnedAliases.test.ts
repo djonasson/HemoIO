@@ -42,6 +42,7 @@ describe('learned aliases', () => {
       lookupLearnedAlias({ 'zorblatina (urine)': 'urine-urea' }, 'ZORBLATINA  (urine)')?.key
     ).toBe('urine-urea');
     expect(lookupLearnedAlias({ x: 'no-such-key' }, 'x')).toBeUndefined();
+    expect(lookupLearnedAlias(undefined, 'x')).toBeUndefined();
     expect(learnedAliasName('  A   b ')).toBe('a b');
   });
 });
