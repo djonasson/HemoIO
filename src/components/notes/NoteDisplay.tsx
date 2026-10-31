@@ -18,6 +18,8 @@ import {
 } from '@mantine/core';
 import { IconEdit, IconTrash, IconNote } from '@tabler/icons-react';
 import { RelativeTime } from '@components/common/RelativeTime';
+import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
+import { useSaveState } from '@hooks/useSaveState';
 import type { UserNote } from '@/types';
 import { NoteEditor } from './NoteEditor';
 import { NoteContent } from './NoteContent';
@@ -46,9 +48,13 @@ export function NoteDisplay({
   isProcessing = false,
 }: NoteDisplayProps): React.ReactNode {
   const [isEditing, setIsEditing] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // Shown in the editor and the dialog while open, notified once they are
+  // gone; the note is still as stored
+  const edit = useSaveState('Note not saved');
+  const deletion = useSaveState('Note not deleted');
+  const isSaving = edit.isSaving;
+  const isDeleting = deletion.isSaving;
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -56,17 +62,13 @@ export function NoteDisplay({
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+    edit.clear();
   };
 
   const handleSaveEdit = async (content: string, tags: string[]) => {
-    if (!note.id) return;
-    setIsSaving(true);
-    try {
-      await onUpdate(note.id, content, tags);
-      setIsEditing(false);
-    } finally {
-      setIsSaving(false);
-    }
+    const id = note.id;
+    if (!id) return;
+    if (await edit.run(() => onUpdate(id, content, tags))) setIsEditing(false);
   };
 
   const handleDeleteClick = () => {
@@ -74,30 +76,30 @@ export function NoteDisplay({
   };
 
   const handleConfirmDelete = async () => {
-    if (!note.id) return;
-    setIsDeleting(true);
-    try {
-      await onDelete(note.id);
-      setDeleteConfirmOpen(false);
-    } finally {
-      setIsDeleting(false);
-    }
+    const id = note.id;
+    if (!id) return;
+    if (await deletion.run(() => onDelete(id))) setDeleteConfirmOpen(false);
   };
 
   const handleCancelDelete = () => {
+    // A deletion still under way reports a failure as a notification
     setDeleteConfirmOpen(false);
+    deletion.clear();
   };
 
   if (isEditing) {
     return (
-      <NoteEditor
-        initialContent={note.content}
-        initialTags={note.tags}
-        onSave={handleSaveEdit}
-        onCancel={handleCancelEdit}
-        isEditing
-        isSaving={isSaving}
-      />
+      <Stack gap="xs">
+        {edit.error !== null && <SaveFailedAlert title="Note not saved" error={edit.error} />}
+        <NoteEditor
+          initialContent={note.content}
+          initialTags={note.tags}
+          onSave={handleSaveEdit}
+          onCancel={handleCancelEdit}
+          isEditing
+          isSaving={isSaving}
+        />
+      </Stack>
     );
   }
 
@@ -175,6 +177,9 @@ export function NoteDisplay({
             Are you sure you want to delete this note? This action cannot be
             undone.
           </Text>
+          {deletion.error !== null && (
+            <SaveFailedAlert title="Note not deleted" error={deletion.error} />
+          )}
           <Group justify="flex-end" gap="sm">
             <Button
               variant="subtle"

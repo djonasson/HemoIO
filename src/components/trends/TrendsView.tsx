@@ -7,8 +7,8 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
 import { useNotes } from '@hooks/useNotes';
@@ -305,13 +305,9 @@ export function TrendsView({
   const handlePreferredUnitChange = useCallback(
     (unit: string) => {
       if (!selectedBiomarkerId) return;
-      setPreferredUnit(selectedBiomarkerId, unit).catch(() => {
-        notifications.show({
-          title: 'Preferred unit not saved',
-          message: 'Your choice could not be saved. Try again.',
-          color: 'red',
-        });
-      });
+      setPreferredUnit(selectedBiomarkerId, unit).catch((err: unknown) =>
+        notifySaveFailed('Preferred unit not saved', err)
+      );
     },
     [selectedBiomarkerId, setPreferredUnit]
   );
@@ -490,6 +486,8 @@ export function TrendsView({
           {/* Notes for selected biomarker */}
           <Paper p="md" withBorder>
             <NotesSection
+              // A fresh editor per biomarker: a draft saved after switching would go to the new one
+              key={selectedBiomarkerId}
               title={`Notes for ${selectedBiomarkerData?.name || 'Biomarker'}`}
               notes={selectedBiomarkerNotes}
               onCreateNote={handleCreateNote}

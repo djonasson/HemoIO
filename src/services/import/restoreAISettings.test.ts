@@ -63,6 +63,27 @@ describe('restoreAISettings', () => {
     expect(t.setApiKey).toHaveBeenCalledWith('sk-secret');
   });
 
+  it('applies every setting it can, then says some were not applied', async () => {
+    const t = target();
+    vi.mocked(t.setAiProvider).mockRejectedValue(new Error('not saved'));
+    const encrypted: ParsedEncryptedBackupData = {
+      ...base,
+      wasEncrypted: true,
+      fullSettings: {
+        storageProvider: 'local',
+        aiProvider: 'openai',
+        aiApiKey: 'sk-secret',
+        openaiModel: 'gpt-y',
+        language: 'en',
+      },
+    };
+
+    await expect(restoreAISettings(encrypted, t)).rejects.toThrow();
+
+    expect(t.setOpenaiModel).toHaveBeenCalledWith('gpt-y');
+    expect(t.setApiKey).toHaveBeenCalledWith('sk-secret');
+  });
+
   it('changes nothing when the backup has no settings', async () => {
     const t = target();
 

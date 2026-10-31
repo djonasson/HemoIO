@@ -6,34 +6,20 @@
 
 import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
-import type { EncryptedDb } from '@data/db';
+import type { EncryptedDb, LabResultWithValues } from '@data/db/encryptedDb';
 import type { LabResult, TestValue } from '@/types';
 import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
 import { testOfName } from '@services/analysis/nameMatching';
 import { normalizeLabDate } from '@/utils/labDate';
 
 /**
- * Output from saving a lab result
- */
-export interface SaveLabResultOutput {
-  /** The saved lab result ID */
-  labResultId: number;
-  /** Count of test values saved */
-  testValueCount: number;
-}
-
-/**
- * Result of saving multiple import results
+ * What an import saved
  */
 export interface SaveImportResultsOutput {
-  /** Individual save results */
-  results: SaveLabResultOutput[];
-  /** Total lab results saved */
+  /** Lab results saved, one per file */
   totalLabResults: number;
-  /** Total test values saved */
+  /** Test values saved, across the files */
   totalTestValues: number;
-  /** Any errors that occurred */
-  errors: Array<{ fileName: string; error: string }>;
 }
 
 /**
@@ -69,13 +55,11 @@ function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
  * Transform a MatchedBiomarker to a TestValue for database storage
  */
 function transformBiomarkerToTestValue(
-  biomarker: MatchedBiomarker,
-  labResultId: number
-): Omit<TestValue, 'id'> {
+  biomarker: MatchedBiomarker
+): Omit<TestValue, 'id' | 'labResultId'> {
   const now = new Date();
 
   return {
-    labResultId,
     biomarkerKey: resolveBiomarkerKey(biomarker),
     value: biomarker.value,
     unit: biomarker.unit,
@@ -107,75 +91,25 @@ function transformReviewedToLabResult(
 }
 
 /**
- * Save a single reviewed result to the database
+ * Save the reviewed results of an import, every file or none: a partly
+ * saved import could not be retried without duplicating what was kept
  *
- * @param reviewed - The reviewed result from the import wizard
+ * @param results - The reviewed results from the import wizard, one per file
  * @param db - The encrypted database instance
- * @returns SaveLabResultOutput with the saved IDs
- */
-export async function saveReviewedResult(
-  reviewed: ReviewedResult,
-  db: EncryptedDb
-): Promise<SaveLabResultOutput> {
-  // Transform and save the lab result
-  const labResultData = transformReviewedToLabResult(reviewed);
-  const labResultId = await db.addLabResult(labResultData);
-
-  // Transform and save all test values
-  const testValueData = reviewed.editedBiomarkers.map((biomarker) =>
-    transformBiomarkerToTestValue(biomarker, labResultId)
-  );
-
-  // Save test values in bulk
-  if (testValueData.length > 0) {
-    await db.addTestValues(testValueData);
-  }
-
-  return {
-    labResultId,
-    testValueCount: testValueData.length,
-  };
-}
-
-/**
- * Save multiple reviewed results to the database
- *
- * @param results - Array of reviewed results from the import wizard
- * @param db - The encrypted database instance
- * @returns SaveImportResultsOutput with all saved IDs and any errors
- *
- * @example
- * ```tsx
- * const { db } = useEncryptedDb();
- * const output = await saveImportResults(reviewedResults, db);
- * console.log(`Saved ${output.totalLabResults} results with ${output.totalTestValues} test values`);
- * ```
+ * @returns What was saved
+ * @throws SaveError when the browser's storage did not keep the import
  */
 export async function saveImportResults(
   results: ReviewedResult[],
   db: EncryptedDb
 ): Promise<SaveImportResultsOutput> {
-  const output: SaveImportResultsOutput = {
-    results: [],
-    totalLabResults: 0,
-    totalTestValues: 0,
-    errors: [],
+  const entries: LabResultWithValues[] = results.map((reviewed) => ({
+    labResult: transformReviewedToLabResult(reviewed),
+    testValues: reviewed.editedBiomarkers.map(transformBiomarkerToTestValue),
+  }));
+  if (entries.length > 0) await db.addLabResultsWithValues(entries);
+  return {
+    totalLabResults: entries.length,
+    totalTestValues: entries.reduce((sum, entry) => sum + entry.testValues.length, 0),
   };
-
-  for (const reviewed of results) {
-    try {
-      const saveResult = await saveReviewedResult(reviewed, db);
-      output.results.push(saveResult);
-      output.totalLabResults++;
-      output.totalTestValues += saveResult.testValueCount;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      output.errors.push({
-        fileName: reviewed.fileName,
-        error: errorMessage,
-      });
-    }
-  }
-
-  return output;
 }

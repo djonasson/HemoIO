@@ -167,6 +167,7 @@ describe('AlertStateProvider', () => {
     expect(result.current.acknowledgedThrough.hemoglobin).toBeUndefined();
     expect(result.current.acknowledgedThrough.glucose).toBeDefined();
   });
+
   it('forgets dismissals when the stored state is read again, e.g. after a restore', async () => {
     const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
     await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
@@ -175,5 +176,28 @@ describe('AlertStateProvider', () => {
     await act(() => result.current.reload());
 
     expect(result.current.dismissedThrough).toEqual({});
+  });
+
+  it('goes back to the stored acknowledgement when overlapping ones all fail', async () => {
+    const { result } = renderHook(() => useAlertState(), { wrapper: AlertStateProvider });
+    await waitFor(() => expect(result.current.acknowledgedThrough.glucose).toBeDefined());
+    const fails: Array<(err: unknown) => void> = [];
+    mockUpdatePreferences.mockImplementation(() => new Promise((_, reject) => fails.push(reject)));
+
+    const saves: Promise<void>[] = [];
+    act(() => {
+      saves.push(result.current.acknowledge('glucose', new Date('2024-04-01T10:00:00.000Z')));
+    });
+    act(() => {
+      saves.push(result.current.acknowledge('glucose', new Date('2024-05-01T10:00:00.000Z')));
+    });
+    await act(async () => {
+      fails.forEach((fail) => fail(new Error('timeout')));
+      await Promise.allSettled(saves);
+    });
+
+    expect(result.current.acknowledgedThrough.glucose?.toISOString()).toBe(
+      '2024-03-10T10:00:00.000Z'
+    );
   });
 });

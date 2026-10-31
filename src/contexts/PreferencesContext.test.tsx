@@ -106,6 +106,26 @@ describe('PreferencesProvider', () => {
     expect(result.current.unitPreferences).toEqual({ glucose: 'mmol/L' });
   });
 
+  it('goes back to the stored unit when overlapping changes all fail', async () => {
+    const { result } = await renderLoaded();
+    const fails: Array<(err: unknown) => void> = [];
+    mockUpdatePreferences.mockImplementation(() => new Promise((_, reject) => fails.push(reject)));
+
+    const saves: Promise<void>[] = [];
+    act(() => {
+      saves.push(result.current.setPreferredUnit('glucose', 'mg/dL'));
+    });
+    act(() => {
+      saves.push(result.current.setPreferredUnit('glucose', 'mg/L'));
+    });
+    await act(async () => {
+      fails.forEach((fail) => fail(new Error('timeout')));
+      await Promise.allSettled(saves);
+    });
+
+    expect(result.current.unitPreferences).toEqual({ glucose: 'mmol/L' });
+  });
+
   it('re-reads the stored preferences on reload', async () => {
     const { result } = await renderLoaded();
     stored = { ...base, personalTargets: { ferritin: { low: 30 } } };

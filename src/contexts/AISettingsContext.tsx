@@ -8,7 +8,7 @@
  * the import view, which stays mounted across navigation.
  */
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import { AISettingsContext, type UseAISettingsResult } from '@hooks/useAISettings';
 import type { AIProviderType, Settings } from '@/types';
@@ -39,10 +39,16 @@ function useAISettingsState(): UseAISettingsResult {
   const [openaiModel, setOpenaiModelState] = useState<string | undefined>();
   const [anthropicModel, setAnthropicModelState] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(true);
+  // The values shown, and the values stored: a failed save shows the stored
+  // one again, as the value shown before it may not have been saved either
+  const shown = useRef<Partial<AIFields>>({ aiProvider: 'openai' });
+  const stored = useRef<Partial<AIFields>>({ aiProvider: 'openai' });
 
   // Load settings from IndexedDB with localStorage migration
   useEffect(() => {
     const show = (fields: Partial<AIFields>) => {
+      shown.current = { ...fields, aiProvider: fields.aiProvider ?? shown.current.aiProvider };
+      stored.current = shown.current;
       if (fields.aiProvider) setAiProviderState(fields.aiProvider);
       setOllamaModelState(fields.ollamaModel);
       setOpenaiModelState(fields.openaiModel);
@@ -83,48 +89,54 @@ function useAISettingsState(): UseAISettingsResult {
     loadSettings();
   }, [db, isReady]);
 
-  const save = useCallback(
-    async (changes: Partial<AIFields>, what: string) => {
-      if (!db || !isReady) return;
+  /**
+   * Show a change at once, then save it. A failed save puts the stored
+   * value back, unless a newer change replaced it already, and rejects so
+   * the caller can tell the user.
+   */
+  const change = useCallback(
+    async <F extends keyof AIFields>(
+      field: F,
+      value: AIFields[F],
+      setState: (value: AIFields[F]) => void
+    ): Promise<void> => {
+      shown.current = { ...shown.current, [field]: value };
+      setState(value);
       try {
-        await db.updateSettings(changes);
+        // Before unlock there is nowhere to save it: what is shown is all there is
+        if (db && isReady) await db.updateSettings({ [field]: value });
+        stored.current = { ...stored.current, [field]: value };
       } catch (err) {
-        console.error(`Failed to save ${what}:`, err);
+        if (shown.current[field] === value) {
+          const before = stored.current[field] as AIFields[F];
+          shown.current = { ...shown.current, [field]: before };
+          setState(before);
+        }
+        throw err;
       }
     },
     [db, isReady]
   );
 
   const setAiProvider = useCallback(
-    async (provider: AIProviderType) => {
-      setAiProviderState(provider);
-      await save({ aiProvider: provider }, 'AI provider');
-    },
-    [save]
+    (provider: AIProviderType) =>
+      change('aiProvider', provider, (value) => setAiProviderState(value ?? 'openai')),
+    [change]
   );
 
   const setOllamaModel = useCallback(
-    async (model: string) => {
-      setOllamaModelState(model);
-      await save({ ollamaModel: model }, 'Ollama model');
-    },
-    [save]
+    (model: string) => change('ollamaModel', model, setOllamaModelState),
+    [change]
   );
 
   const setOpenaiModel = useCallback(
-    async (model: string) => {
-      setOpenaiModelState(model);
-      await save({ openaiModel: model }, 'OpenAI model');
-    },
-    [save]
+    (model: string) => change('openaiModel', model, setOpenaiModelState),
+    [change]
   );
 
   const setAnthropicModel = useCallback(
-    async (model: string) => {
-      setAnthropicModelState(model);
-      await save({ anthropicModel: model }, 'Anthropic model');
-    },
-    [save]
+    (model: string) => change('anthropicModel', model, setAnthropicModelState),
+    [change]
   );
 
   return useMemo(

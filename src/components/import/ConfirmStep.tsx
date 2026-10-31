@@ -49,13 +49,20 @@ export interface ConfirmStepProps {
   onConfirm: () => void;
   /** Callback to go back */
   onBack: () => void;
+  /** Whether the results are being saved */
+  isSaving?: boolean;
 }
 
 
 /**
  * Confirm Step - final confirmation before saving
  */
-export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
+export function ConfirmStep({
+  results,
+  onConfirm,
+  onBack,
+  isSaving = false,
+}: ConfirmStepProps): React.ReactNode {
   // Calculate totals
   const totalFiles = results.length;
   const totalBiomarkers = results.reduce(
@@ -242,6 +249,7 @@ export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
           variant="subtle"
           leftSection={<IconArrowLeft size={16} />}
           onClick={onBack}
+          disabled={isSaving}
         >
           Back to Review
         </Button>
@@ -249,6 +257,7 @@ export function ConfirmStep({ results, onConfirm, onBack }: ConfirmStepProps) {
           color="green"
           leftSection={<IconCheck size={16} />}
           onClick={onConfirm}
+          loading={isSaving}
         >
           Save Results
         </Button>

@@ -4,6 +4,8 @@
 import { useState } from 'react';
 import { Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
+import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
+import { useSaveState } from '@hooks/useSaveState';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
 import type { UserNote } from '@/types';
@@ -36,25 +38,26 @@ export function MeasurementNotesDialog({
   onDeleteNote,
 }: MeasurementNotesDialogProps): React.ReactNode {
   const [adding, setAdding] = useState(false);
-  const [saving, setSaving] = useState(false);
+  // Shown in the editor, which keeps the note to save again; notified once
+  // the editor is gone
+  const { isSaving: saving, error: saveError, run, clear } = useSaveState('Note not saved');
 
   // The modal stays mounted and opens and closes through `opened`, so it can
   // return focus to the point that opened it
   const what = measurement
     ? `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`
     : '';
-  const close = () => {
+  const stopAdding = () => {
     setAdding(false);
+    clear();
+  };
+  const close = () => {
+    // A save still under way reports a failure as a notification
+    stopAdding();
     onClose();
   };
   const save = async (content: string, tags: string[]) => {
-    setSaving(true);
-    try {
-      await onCreateNote(content, tags);
-      setAdding(false);
-    } finally {
-      setSaving(false);
-    }
+    if (await run(() => onCreateNote(content, tags))) setAdding(false);
   };
 
   return (
@@ -83,12 +86,15 @@ export function MeasurementNotesDialog({
             />
           ))}
           {adding ? (
-            <NoteEditor
-              onSave={save}
-              onCancel={() => setAdding(false)}
-              isSaving={saving}
-              placeholder="Add a note about this measurement..."
-            />
+            <>
+              {saveError !== null && <SaveFailedAlert title="Note not saved" error={saveError} />}
+              <NoteEditor
+                onSave={save}
+                onCancel={stopAdding}
+                isSaving={saving}
+                placeholder="Add a note about this measurement..."
+              />
+            </>
           ) : (
             <Button
               variant="light"

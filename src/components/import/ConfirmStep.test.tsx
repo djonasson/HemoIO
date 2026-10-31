@@ -173,6 +173,18 @@ describe('ConfirmStep', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it('shows that it is saving, and cannot be saved again or left, until the save finishes', () => {
+    const onConfirm = vi.fn();
+    renderConfirmStep({ onConfirm, isSaving: true });
+
+    const save = screen.getByRole('button', { name: /Save Results/i });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute('data-loading', 'true');
+    expect(screen.getByRole('button', { name: /Back to Review/i })).toBeDisabled();
+    fireEvent.click(save);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it('handles multiple results', () => {
     const secondResult: ReviewedResult = {
       ...mockResult,

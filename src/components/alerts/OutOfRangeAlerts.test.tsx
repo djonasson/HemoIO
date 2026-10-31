@@ -3,14 +3,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { groupAlerts } from '@services/alerts';
+import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { OutOfRangeAlerts } from './OutOfRangeAlerts';
 import { useAlerts } from '@hooks/useAlerts';
 import type { BiomarkerAlert, UseAlertsResult } from '@hooks/useAlerts';
 import type { OutOfRangeAlertsProps } from './OutOfRangeAlerts';
+
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
 
 vi.mock('@hooks/useAlerts', () => ({
   useAlerts: vi.fn(),
@@ -164,12 +168,30 @@ describe('OutOfRangeAlerts', () => {
   });
 
   it('shows an error when an acknowledgement cannot be saved', async () => {
-    mockAlerts([alert()], { acknowledgeGroup: vi.fn().mockRejectedValue(new Error('quota')) });
+    mockAlerts([alert()], { acknowledgeGroup: vi.fn().mockRejectedValue(new SaveError('quota')) });
     renderAlerts();
 
     await userEvent.click(screen.getByRole('button', { name: 'Acknowledge all Glucose results' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/could not save/i);
+    const shown = await screen.findByRole('alert');
+    expect(shown).toHaveTextContent(/could not save the acknowledgement/i);
+    expect(shown).toHaveTextContent(/no room left/);
+  });
+
+  it('notifies an acknowledgement that fails after the alerts were left', async () => {
+    let fail!: (err: unknown) => void;
+    mockAlerts([alert()], {
+      acknowledgeGroup: vi.fn(() => new Promise<void>((_, reject) => (fail = reject))),
+    });
+    const { unmount } = renderAlerts();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge all Glucose results' }));
+    unmount();
+    fail(new SaveError('timeout'));
+
+    await waitFor(() =>
+      expect(notifySaveFailed).toHaveBeenCalledWith('Acknowledgement not saved', expect.any(SaveError))
+    );
   });
 
   it('limits the visible cards to maxVisible', () => {

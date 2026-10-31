@@ -7,9 +7,10 @@
 import { useCallback } from 'react';
 import { Stack, Text, Loader, Alert, Center } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconCheck, IconX } from '@tabler/icons-react';
+import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
 import { useNotes } from '@hooks/useNotes';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { LabResultCard } from './LabResultCard';
 import { TimelineFilters } from './TimelineFilters';
 import { EmptyTimeline } from './EmptyTimeline';
@@ -124,13 +125,7 @@ export function TimelineView({
         icon: <IconCheck size={16} />,
       });
     } catch (err) {
-      console.error('Failed to delete result:', err);
-      notifications.show({
-        title: 'Could not delete lab result',
-        message: 'Please try again.',
-        color: 'red',
-        icon: <IconX size={16} />,
-      });
+      notifySaveFailed('Lab result not deleted', err);
     }
   };
 

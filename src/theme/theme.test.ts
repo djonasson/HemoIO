@@ -45,4 +45,19 @@ describe('theme', () => {
     expect(contrast(dimmed, body)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(dimmed, blend(gray, 0.15, body))).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('gives red alert text AA contrast on its light red box, in light mode', () => {
+    const text = rgb(resolved.light['--mantine-color-red-light-color']);
+    const white = rgb(merged.white);
+    const box = blend(rgb(merged.colors.red[6]), 0.1, white);
+    expect(contrast(text, box)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(text, white)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('gives red alert text AA contrast on its red box, in dark mode', () => {
+    const text = rgb(resolved.dark['--mantine-color-red-light-color'] ?? merged.colors.red[3]);
+    const body = rgb(merged.colors.dark[7]);
+    const box = blend(rgb(merged.colors.red[8]), 0.15, body);
+    expect(contrast(text, box)).toBeGreaterThanOrEqual(4.5);
+  });
 });

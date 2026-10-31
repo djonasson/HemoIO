@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { TrendsView } from './TrendsView';
+import { SaveError } from '@data/db/saveError';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
@@ -444,6 +445,37 @@ describe('TrendsView', () => {
     expect(screen.getByRole('heading', { name: 'Trends' })).toHaveFocus();
   });
 
+  it('starts a fresh note editor for another biomarker, so a draft is not saved under it', async () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', [
+          createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+          createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+    const notes = screen.getByRole('button', { name: /Notes for Glucose section/ }).closest('.mantine-Paper-root') as HTMLElement;
+    fireEvent.click(within(notes).getByRole('button', { name: /add note/i }));
+    fireEvent.change(within(notes).getByRole('textbox', { name: /note content/i }), {
+      target: { value: 'Felt dizzy' },
+    });
+
+    fireEvent.click(screen.getByPlaceholderText(/choose a biomarker/i));
+    fireEvent.click(await screen.findByText(/hemoglobin \(1 values?\)/i));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Notes for Hemoglobin section/ })).toBeInTheDocument()
+    );
+    expect(screen.queryByDisplayValue('Felt dizzy')).not.toBeInTheDocument();
+  });
+
   it('should open compare modal when compare button is clicked', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
@@ -633,14 +665,18 @@ describe('TrendsView preferred unit', () => {
   });
 
   it('tells the user when the unit could not be saved', async () => {
-    mockSetPreferredUnit.mockRejectedValueOnce(new Error('disk full'));
+    mockSetPreferredUnit.mockRejectedValueOnce(new SaveError('quota'));
     renderWithGlucose();
     await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
     await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
 
     await waitFor(() =>
       expect(mockShowNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Preferred unit not saved', color: 'red' })
+        expect.objectContaining({
+          title: 'Preferred unit not saved',
+          message: expect.stringMatching(/no room left/),
+          color: 'red',
+        })
       )
     );
   });

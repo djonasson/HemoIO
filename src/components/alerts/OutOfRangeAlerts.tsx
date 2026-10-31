@@ -22,6 +22,8 @@ import { useState, useMemo } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
 import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
 import { AlertGroupCard } from './AlertGroupCard';
+import { saveErrorMessage } from '@data/db/saveError';
+import { useSaveState } from '@hooks/useSaveState';
 import type { BiomarkerCategory } from '@/types';
 
 /**
@@ -57,13 +59,11 @@ export function OutOfRangeAlerts({
 
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // Shown here while the alerts are open, notified once they are gone
+  const { error: saveError, run: runSave } = useSaveState('Acknowledgement not saved');
 
   const handleAcknowledge = (group: GroupedAlert): void => {
-    setSaveError(null);
-    acknowledgeGroup(group).catch(() => {
-      setSaveError('Could not save the acknowledgement. Please try again.');
-    });
+    void runSave(() => acknowledgeGroup(group));
   };
 
   const categories = useMemo(() => {
@@ -204,9 +204,10 @@ export function OutOfRangeAlerts({
         )}
       </Group>
 
-      {saveError && (
-        <Text role="alert" c="red" size="sm">
-          {saveError}
+      {/* The light red that meets AA contrast (see theme.ts); plain red does not */}
+      {saveError !== null && (
+        <Text role="alert" c="var(--mantine-color-red-light-color)" size="sm">
+          Could not save the acknowledgement. {saveErrorMessage(saveError)}
         </Text>
       )}
 

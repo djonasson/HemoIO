@@ -25,7 +25,6 @@ import {
   IconLock,
   IconBook,
   IconCheck,
-  IconX,
   IconDownload,
 } from '@tabler/icons-react';
 import { useAuth } from '@contexts';
@@ -39,6 +38,7 @@ import {
   useAlertState,
   useLabResults,
   usePreferences,
+  useSaveImport,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -48,9 +48,15 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { saveImportResults } from '@services/persistence';
 import { modelForProvider } from '@services/ai';
-import { restoreAISettings, restoreBackup, runAfterRestore } from '@services/import';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
+import {
+  afterRestoreAdvice,
+  restoreAISettings,
+  restoreBackup,
+  runAfterRestore,
+  type AfterRestoreStep,
+} from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 
@@ -122,6 +128,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [opened, { toggle, close }] = useDisclosure();
   const [activeView, setActiveView] = useState<View>('timeline');
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  // While an import saves, the user stays on its confirm step: leaving would
+  // drop the reviewed values a failed save needs to be tried again
+  const [isSavingImport, setIsSavingImport] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   // Loaded when the export dialog opens, so an export has what is stored now
   const {
@@ -136,7 +145,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
   const { refresh: refreshLabResults } = useLabResults();
-  const { reload: reloadPreferences, learnAliases } = usePreferences();
+  const { reload: reloadPreferences } = usePreferences();
   const { reload: reloadAlertState } = useAlertState();
   const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
   const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
@@ -145,12 +154,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   const handleNavClick = useCallback(
     (view: View) => {
+      if (isSavingImport) return;
       setActiveView(view);
       setTrendFocus(null);
       setTimelineFocus(null);
       close();
     },
-    [close]
+    [close, isSavingImport]
   );
 
   const handleOpenTrend = useCallback((biomarkerKey: string, date?: Date) => {
@@ -167,70 +177,18 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     lock();
   }, [lock]);
 
+  const saveImport = useSaveImport(syncNow);
   const handleImportComplete = useCallback(
     async (results: ReviewedResult[]) => {
-      if (!db || !isReady) {
-        notifications.show({
-          title: 'Error',
-          message: 'Database not available. Please try again.',
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
-        return;
-      }
-
+      setIsSavingImport(true);
       try {
-        const output = await saveImportResults(results, db);
-
-        if (output.errors.length > 0) {
-          // Partial success
-          notifications.show({
-            title: 'Import Partially Complete',
-            message: `Saved ${output.totalLabResults} lab result(s) with ${output.totalTestValues} test value(s). ${output.errors.length} file(s) failed.`,
-            color: 'yellow',
-            icon: <IconCheck size={16} />,
-          });
-        } else {
-          // Full success
-          notifications.show({
-            title: 'Import Complete',
-            message: `Successfully saved ${output.totalLabResults} lab result(s) with ${output.totalTestValues} test value(s).`,
-            color: 'green',
-            icon: <IconCheck size={16} />,
-          });
-        }
-
-        // Names saved under a test are this user's aliases from now on
-        await learnAliases(
-          results.flatMap((r) =>
-            r.editedBiomarkers.map((b) => ({
-              name: b.name,
-              key: b.dictionaryMatch?.key,
-              pickedByUser: b.identifiedBy === 'user',
-              savedAsUnknown: b.savedAsUnknown,
-            }))
-          )
-        ).catch(() => console.error('Failed to save learned names'));
-
-        // Every view, the alerts badge included, shows the new results
-        await refreshLabResults();
-
-        // Sync to filesystem if enabled
-        await syncNow();
-
-        // Navigate to timeline to show the imported results
-        setActiveView('timeline');
-      } catch (err) {
-        console.error('Import save error:', err);
-        notifications.show({
-          title: 'Import Failed',
-          message: err instanceof Error ? err.message : 'Failed to save import results.',
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
+        // Not saved: the wizard stays on its confirm step to try again
+        if (await saveImport(results)) setActiveView('timeline');
+      } finally {
+        setIsSavingImport(false);
       }
     },
-    [db, isReady, syncNow, refreshLabResults, learnAliases]
+    [saveImport]
   );
 
   const handleNavigateToImport = useCallback(() => {
@@ -257,7 +215,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         const restored = await restoreBackup(db, data);
 
         // The data is replaced: from here on a failure is not a failed restore
-        const failed = await runAfterRestore([
+        const steps: AfterRestoreStep[] = [
           // A backup can bring unit preferences, personal targets and acknowledgements
           { name: 'loading your preferences', run: reloadPreferences },
           { name: 'loading your alert acknowledgements', run: reloadAlertState },
@@ -265,6 +223,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             ? [
                 {
                   name: 'applying the AI configuration',
+                  // A reload reads the restored data again, but an AI
+                  // setting that was not saved is stored nowhere to be read
+                  remedy: 'Check the AI configuration in Settings.',
                   run: () =>
                     restoreAISettings(data, {
                       setAiProvider,
@@ -278,7 +239,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             : []),
           { name: 'showing the restored results', run: refreshLabResults },
           { name: 'syncing to your folder', run: syncNow },
-        ]);
+        ];
+        const failed = await runAfterRestore(steps);
 
         const summary = `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).`;
         notifications.show(
@@ -291,7 +253,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               }
             : {
                 title: 'Data Restored, With Problems',
-                message: `${summary} Failed: ${failed.join(', ')}. Reload the page to see everything restored.`,
+                message: `${summary} Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
                 color: 'yellow',
               }
         );
@@ -299,13 +261,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         // Navigate to timeline to show restored data
         setActiveView('timeline');
       } catch (err) {
-        console.error('Restore error:', err);
-        notifications.show({
-          title: 'Restore Failed',
-          message: err instanceof Error ? err.message : 'Failed to restore data.',
-          color: 'red',
-          icon: <IconX size={16} />,
-        });
+        notifySaveFailed('Restore failed', err, 'Your data was not changed.');
         throw err;
       } finally {
         setIsRestoring(false);
@@ -406,6 +362,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
                   leftSection={item.icon}
                   active={activeView === item.view}
                   onClick={() => handleNavClick(item.view)}
+                  disabled={isSavingImport}
+                  aria-disabled={isSavingImport || undefined}
                   aria-current={activeView === item.view ? 'page' : undefined}
                 />
               );
@@ -420,6 +378,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               leftSection={<IconSettings size={20} />}
               active={activeView === 'settings'}
               onClick={() => handleNavClick('settings')}
+              disabled={isSavingImport}
+              aria-disabled={isSavingImport || undefined}
               aria-current={activeView === 'settings' ? 'page' : undefined}
             />
           </Stack>
@@ -457,7 +417,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
 interface MainContentProps {
   view: View;
-  onImportComplete: (results: ReviewedResult[]) => void;
+  /** Resolves once the save has settled; the wizard shows it saving until then */
+  onImportComplete: (results: ReviewedResult[]) => Promise<void>;
   onNavigateToImport: () => void;
   onNavigate: (view: View) => void;
   trendFocus: TrendFocus | null;

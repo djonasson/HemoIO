@@ -6,8 +6,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { NoteDisplay } from './NoteDisplay';
 import type { UserNote } from '@/types';
+
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
@@ -275,6 +279,109 @@ describe('NoteDisplay', () => {
       const paragraph = screen.getByText(/Line 1/);
       expect(paragraph).toHaveTextContent('Line 1Line 2Line 3');
       expect(paragraph.querySelectorAll('br')).toHaveLength(2);
+    });
+  });
+
+  describe('a change that cannot be saved', () => {
+    it('keeps the edit open and says why', async () => {
+      const onUpdate = vi.fn().mockRejectedValue(new SaveError('failed'));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onUpdate={onUpdate} />);
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      const textarea = screen.getByRole('textbox', { name: /note content/i });
+      await user.clear(textarea);
+      await user.type(textarea, 'Changed');
+      await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Note not saved');
+      expect(alert).not.toHaveTextContent('Changed');
+      expect(screen.getByRole('textbox', { name: /note content/i })).toHaveValue('Changed');
+    });
+
+    it('shows the note as it was once the edit is cancelled', async () => {
+      const onUpdate = vi.fn().mockRejectedValue(new SaveError('failed'));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onUpdate={onUpdate} />);
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), ' and more');
+      await user.click(screen.getByRole('button', { name: /save changes/i }));
+      await screen.findByRole('alert');
+      await user.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(screen.getByText('Test note content')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('keeps a note it could not delete, saying so in the dialog', async () => {
+      const onDelete = vi.fn().mockRejectedValue(new SaveError('closed'));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onDelete={onDelete} />);
+
+      await user.click(screen.getByRole('button', { name: /delete note/i }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
+      const confirmButton = Array.from(dialog.querySelectorAll('button')).find(
+        (btn) => btn.textContent === 'Delete'
+      );
+      await user.click(confirmButton!);
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Note not deleted');
+      expect(alert).toHaveTextContent(/Reload the page/);
+      expect(screen.getByRole('dialog', { name: 'Delete Note' })).toBeInTheDocument();
+    });
+
+    it('lets the dialog close while deleting, and notifies a failure after', async () => {
+      let refuse!: (err: unknown) => void;
+      const onDelete = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onDelete={onDelete} />);
+
+      await user.click(screen.getByRole('button', { name: /delete note/i }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
+      await user.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent === 'Delete')!);
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      refuse(new SaveError('failed'));
+
+      await waitFor(() =>
+        expect(notifySaveFailed).toHaveBeenCalledWith('Note not deleted', expect.any(SaveError))
+      );
+    });
+
+    it('notifies an edit that fails after the note was closed', async () => {
+      let fail!: (err: unknown) => void;
+      const onUpdate = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)));
+      const user = userEvent.setup();
+      const { unmount } = renderWithProviders(<NoteDisplay {...defaultProps} onUpdate={onUpdate} />);
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      await user.type(screen.getByRole('textbox', { name: /note content/i }), ' more');
+      await user.click(screen.getByRole('button', { name: /save changes/i }));
+      unmount();
+      fail(new SaveError('timeout'));
+
+      await waitFor(() =>
+        expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+      );
+    });
+
+    it('opens the editor and the dialog without an earlier failure', async () => {
+      const onDelete = vi.fn().mockRejectedValue(new SaveError('failed'));
+      const user = userEvent.setup();
+      renderWithProviders(<NoteDisplay {...defaultProps} onDelete={onDelete} />);
+
+      await user.click(screen.getByRole('button', { name: /delete note/i }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete Note' });
+      await user.click(Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent === 'Delete')!);
+      await screen.findByRole('alert');
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(screen.getByRole('button', { name: /edit note/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 });

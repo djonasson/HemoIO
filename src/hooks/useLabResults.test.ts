@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useLabResults } from './useLabResults';
 import { LabResultsProvider } from '@contexts/LabResultsContext';
+import { SaveError } from '@data/db/saveError';
 import type { LabResult, TestValue } from '@/types';
 
 // Mock useEncryptedDb
@@ -404,7 +405,8 @@ describe('useLabResults', () => {
 
   it('should handle errors during delete', async () => {
     const mockDb = createMockDb();
-    mockDb.deleteLabResult.mockRejectedValue(new Error('Delete failed'));
+    const failure = new SaveError('failed');
+    mockDb.deleteLabResult.mockRejectedValue(failure);
     vi.mocked(useEncryptedDb).mockReturnValue({
       db: mockDb as any,
       isReady: true,
@@ -420,7 +422,7 @@ describe('useLabResults', () => {
       act(async () => {
         await result.current.deleteResult(1);
       })
-    ).rejects.toThrow('Delete failed');
+    ).rejects.toBe(failure);
     // The results are still there: other views must not turn into an error
     await act(async () => {});
     expect(result.current.error).toBeNull();

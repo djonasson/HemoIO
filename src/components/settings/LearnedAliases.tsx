@@ -6,6 +6,7 @@ import { ActionIcon, Group, List, Stack, Text, Title } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { usePreferences } from '@hooks/usePreferences';
 import { getBiomarkerByKey } from '@data/biomarkers/dictionary';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 
 export function LearnedAliases() {
   const { learnedAliases, removeLearnedAlias } = usePreferences();
@@ -34,8 +35,8 @@ export function LearnedAliases() {
                   size="sm"
                   aria-label={`Remove ${name}`}
                   onClick={() => {
-                    removeLearnedAlias(name).catch(() =>
-                      console.error('Failed to remove a learned name')
+                    removeLearnedAlias(name).catch((err: unknown) =>
+                      notifySaveFailed('Learned name not removed', err)
                     );
                   }}
                 >

@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DictionaryView } from './DictionaryView';
+import { SaveError } from '@data/db/saveError';
 
 const mockSetPersonalTarget = vi.fn();
 let mockTargets: Record<string, { low?: number; high?: number }> = {};
@@ -137,7 +138,7 @@ describe('DictionaryView', () => {
   });
 
   it('tells the user when the target could not be saved', async () => {
-    mockSetPersonalTarget.mockRejectedValueOnce(new Error('disk full'));
+    mockSetPersonalTarget.mockRejectedValueOnce(new SaveError('quota'));
     renderView();
     await openFromSearch('gluc', 'Glucose');
     await userEvent.click(screen.getByRole('button', { name: 'Edit personal target' }));
@@ -146,7 +147,11 @@ describe('DictionaryView', () => {
 
     await vi.waitFor(() =>
       expect(mockShowNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Personal target not saved', color: 'red' })
+        expect.objectContaining({
+          title: 'Personal target not saved',
+          message: expect.stringMatching(/no room left/),
+          color: 'red',
+        })
       )
     );
   });

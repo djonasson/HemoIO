@@ -173,8 +173,11 @@ describe('BackupRestore', () => {
       await user.click(screen.getByText('Encrypted', { exact: true }));
       await user.click(screen.getByRole('button', { name: 'Create Encrypted Backup' }));
       const dialog = await screen.findByRole('dialog');
-      await user.type(within(dialog).getByLabelText(/^Backup Password/), 'Str0ng!Backup#Pass');
-      await user.type(within(dialog).getByLabelText(/^Confirm Password/), 'Str0ng!Backup#Pass');
+      // Pasting, not typing: the strength check re-runs on every key and pushed these past 5 s under load.
+      await user.click(within(dialog).getByLabelText(/^Backup Password/));
+      await user.paste('Str0ng!Backup#Pass');
+      await user.click(within(dialog).getByLabelText(/^Confirm Password/));
+      await user.paste('Str0ng!Backup#Pass');
       await user.click(within(dialog).getByRole('button', { name: 'Create Encrypted Backup' }));
 
       await waitFor(() => expect(exportToEncryptedJson).toHaveBeenCalled());
@@ -202,8 +205,11 @@ describe('BackupRestore', () => {
       await user.click(screen.getByText('Encrypted', { exact: true }));
       await user.click(screen.getByRole('button', { name: 'Create Encrypted Backup' }));
       const dialog = await screen.findByRole('dialog');
-      await user.type(within(dialog).getByLabelText(/^Backup Password/), 'Str0ng!Backup#Pass');
-      await user.type(within(dialog).getByLabelText(/^Confirm Password/), 'Str0ng!Backup#Pass');
+      // Pasting, not typing: the strength check re-runs on every key and pushed these past 5 s under load.
+      await user.click(within(dialog).getByLabelText(/^Backup Password/));
+      await user.paste('Str0ng!Backup#Pass');
+      await user.click(within(dialog).getByLabelText(/^Confirm Password/));
+      await user.paste('Str0ng!Backup#Pass');
       await user.click(within(dialog).getByRole('button', { name: 'Create Encrypted Backup' }));
 
       await waitFor(() => expect(exportToEncryptedJson).toHaveBeenCalled());

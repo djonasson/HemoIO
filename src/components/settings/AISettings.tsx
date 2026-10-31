@@ -4,7 +4,7 @@
  * Settings section for AI provider configuration.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Stack,
   Paper,
@@ -37,6 +37,7 @@ import {
   getAnthropicModels,
 } from '@/services/ai';
 import { isLocalhost, getCurrentOrigin } from '@/utils/isLocalhost';
+import { useSaveConfirmation } from '@hooks/useSaveConfirmation';
 
 /**
  * Props for AISettings component
@@ -54,16 +55,16 @@ export interface AISettingsProps {
   openaiModel?: string;
   /** Currently configured Anthropic model */
   anthropicModel?: string;
-  /** Called when provider changes */
-  onProviderChange?: (provider: AIProviderType) => void;
+  /** Called when provider changes; a rejected promise means it was not saved */
+  onProviderChange?: (provider: AIProviderType) => void | Promise<void>;
   /** Called when API key is updated */
   onApiKeyChange?: (apiKey: string) => void | Promise<void>;
-  /** Called when Ollama model changes */
-  onOllamaModelChange?: (model: string) => void;
-  /** Called when OpenAI model changes */
-  onOpenaiModelChange?: (model: string) => void;
-  /** Called when Anthropic model changes */
-  onAnthropicModelChange?: (model: string) => void;
+  /** Called when Ollama model changes; a rejected promise means it was not saved */
+  onOllamaModelChange?: (model: string) => void | Promise<void>;
+  /** Called when OpenAI model changes; a rejected promise means it was not saved */
+  onOpenaiModelChange?: (model: string) => void | Promise<void>;
+  /** Called when Anthropic model changes; a rejected promise means it was not saved */
+  onAnthropicModelChange?: (model: string) => void | Promise<void>;
   /** Called when test connection is requested */
   onTestConnection?: () => Promise<boolean>;
   /** Whether settings are being saved */
@@ -105,7 +106,7 @@ export function AISettings({
   const [isEditing, setIsEditing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const { saved: saveSuccess, confirm: showSaved, clear: hideSaved } = useSaveConfirmation();
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [localOllamaModel, setLocalOllamaModel] = useState<string | undefined>(ollamaModel);
@@ -115,30 +116,46 @@ export function AISettings({
   const [isLoadingOpenaiModels, setIsLoadingOpenaiModels] = useState(false);
   const [anthropicModels, setAnthropicModels] = useState<Array<{ value: string; label: string }>>([]);
   const [isLoadingAnthropicModels, setIsLoadingAnthropicModels] = useState(false);
+  const autoSelected = useRef(false);
+  // What the owner holds, which a failed save shows again
+  const given = useRef({ provider, ollamaModel, openaiModel, anthropicModel });
+
+  useEffect(() => {
+    given.current = { provider, ollamaModel, openaiModel, anthropicModel };
+  }, [provider, ollamaModel, openaiModel, anthropicModel]);
 
   // Sync local state with props
   useEffect(() => {
     setLocalProvider(provider);
   }, [provider]);
 
-  // Sync Ollama model with props
   useEffect(() => {
     setLocalOllamaModel(ollamaModel);
   }, [ollamaModel]);
 
-  // Sync OpenAI model with props
   useEffect(() => {
-    if (openaiModel) {
-      setLocalOpenaiModel(openaiModel);
-    }
+    setLocalOpenaiModel(openaiModel || '');
   }, [openaiModel]);
 
-  // Sync Anthropic model with props
   useEffect(() => {
-    if (anthropicModel) {
-      setLocalAnthropicModel(anthropicModel);
-    }
+    setLocalAnthropicModel(anthropicModel || '');
   }, [anthropicModel]);
+
+  /**
+   * A change shows at once and is confirmed once saved. A failed save shows
+   * what the owner holds: it puts the stored value back, and says why. Read
+   * after the failure, as the owner's change may come in the same render as
+   * the choice and never reach the props.
+   */
+  const saveChange = useCallback(
+    (saving: void | Promise<void>, showGiven: () => void) => {
+      Promise.resolve(saving).then(showSaved, () => {
+        hideSaved();
+        showGiven();
+      });
+    },
+    [showSaved, hideSaved]
+  );
 
   // Fetch OpenAI models when provider is OpenAI and API key is available
   useEffect(() => {
@@ -212,6 +229,26 @@ export function AISettings({
     };
   }, [localProvider, hasApiKey, getApiKey]);
 
+  const showGivenOllamaModel = useCallback(
+    () => setLocalOllamaModel(given.current.ollamaModel),
+    []
+  );
+
+  /**
+   * Pick the first model when none is chosen. Once only: a save that fails
+   * is put back, and picking again would retry it in a loop. The caller
+   * tells the user when it is not saved.
+   */
+  const autoSelectFirstModel = useCallback(
+    (models: string[]) => {
+      if (models.length === 0 || localOllamaModel || autoSelected.current) return;
+      autoSelected.current = true;
+      setLocalOllamaModel(models[0]);
+      saveChange(onOllamaModelChange?.(models[0]), showGivenOllamaModel);
+    },
+    [localOllamaModel, onOllamaModelChange, saveChange, showGivenOllamaModel]
+  );
+
   // Check Ollama status when provider is Ollama
   useEffect(() => {
     if (localProvider !== 'ollama') {
@@ -232,11 +269,7 @@ export function AISettings({
 
           setOllamaModels(models);
           setOllamaStatus('connected');
-          // Auto-select first model if none selected
-          if (models.length > 0 && !localOllamaModel) {
-            setLocalOllamaModel(models[0]);
-            onOllamaModelChange?.(models[0]);
-          }
+          autoSelectFirstModel(models);
         } else {
           setOllamaStatus('disconnected');
           setOllamaModels([]);
@@ -254,7 +287,7 @@ export function AISettings({
     return () => {
       cancelled = true;
     };
-  }, [localProvider, localOllamaModel, onOllamaModelChange]);
+  }, [localProvider, autoSelectFirstModel]);
 
   // Manual retry function for connection check
   const checkOllamaStatus = useCallback(async () => {
@@ -265,10 +298,7 @@ export function AISettings({
         const models = await getOllamaModelNames();
         setOllamaModels(models);
         setOllamaStatus('connected');
-        if (models.length > 0 && !localOllamaModel) {
-          setLocalOllamaModel(models[0]);
-          onOllamaModelChange?.(models[0]);
-        }
+        autoSelectFirstModel(models);
       } else {
         setOllamaStatus('disconnected');
         setOllamaModels([]);
@@ -277,7 +307,7 @@ export function AISettings({
       setOllamaStatus('disconnected');
       setOllamaModels([]);
     }
-  }, [localOllamaModel, onOllamaModelChange]);
+  }, [autoSelectFirstModel]);
 
   // Handle provider change
   const handleProviderChange = useCallback(
@@ -285,14 +315,10 @@ export function AISettings({
       if (!value) return;
       const newProvider = value as AIProviderType;
       setLocalProvider(newProvider);
-      onProviderChange?.(newProvider);
       setTestResult(null);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      saveChange(onProviderChange?.(newProvider), () => setLocalProvider(given.current.provider));
     },
-    [onProviderChange]
+    [onProviderChange, saveChange]
   );
 
   // Handle Ollama model change
@@ -300,13 +326,9 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalOllamaModel(value);
-      onOllamaModelChange?.(value);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      saveChange(onOllamaModelChange?.(value), showGivenOllamaModel);
     },
-    [onOllamaModelChange]
+    [onOllamaModelChange, saveChange, showGivenOllamaModel]
   );
 
   // Handle OpenAI model change
@@ -314,13 +336,11 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalOpenaiModel(value);
-      onOpenaiModelChange?.(value);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      saveChange(onOpenaiModelChange?.(value), () =>
+        setLocalOpenaiModel(given.current.openaiModel || '')
+      );
     },
-    [onOpenaiModelChange]
+    [onOpenaiModelChange, saveChange]
   );
 
   // Handle Anthropic model change
@@ -328,27 +348,28 @@ export function AISettings({
     (value: string | null) => {
       if (!value) return;
       setLocalAnthropicModel(value);
-      onAnthropicModelChange?.(value);
-
-      // Show success briefly
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      saveChange(onAnthropicModelChange?.(value), () =>
+        setLocalAnthropicModel(given.current.anthropicModel || '')
+      );
     },
-    [onAnthropicModelChange]
+    [onAnthropicModelChange, saveChange]
   );
 
   // Handle save API key
-  const handleSaveApiKey = useCallback(() => {
+  // Confirmed once saved; a key that is not saved stays typed in, to try
+  // again, and the caller says why
+  const handleSaveApiKey = useCallback(async () => {
     if (!newApiKey.trim()) return;
-
-    onApiKeyChange?.(newApiKey.trim());
+    try {
+      await onApiKeyChange?.(newApiKey.trim());
+    } catch {
+      hideSaved();
+      return;
+    }
     setNewApiKey('');
     setIsEditing(false);
-
-    // Show success briefly
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, [newApiKey, onApiKeyChange]);
+    showSaved();
+  }, [newApiKey, onApiKeyChange, showSaved, hideSaved]);
 
   // Handle test connection
   const handleTestConnection = useCallback(async () => {
@@ -579,7 +600,8 @@ export function AISettings({
               (localProvider === 'anthropic' && anthropicModels.length > 0)) ? (
               <>
                 <Select
-                  value={localProvider === 'openai' ? localOpenaiModel : localAnthropicModel}
+                  // null, not "": a searchable Select clears its text only for null
+                  value={(localProvider === 'openai' ? localOpenaiModel : localAnthropicModel) || null}
                   onChange={localProvider === 'openai' ? handleOpenaiModelChange : handleAnthropicModelChange}
                   data={localProvider === 'openai' ? openaiModels : anthropicModels}
                   disabled={isSaving || (localProvider === 'openai' && isLoadingOpenaiModels) || (localProvider === 'anthropic' && isLoadingAnthropicModels)}

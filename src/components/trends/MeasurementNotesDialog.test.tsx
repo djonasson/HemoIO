@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { SaveError } from '@data/db/saveError';
+import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import type { UserNote } from '@/types';
+
+vi.mock('@components/common/notifySaveFailed', () => ({ notifySaveFailed: vi.fn() }));
 
 const measurement = {
   testValueId: 2,
@@ -32,6 +36,8 @@ function renderDialog(props: Partial<React.ComponentProps<typeof MeasurementNote
 }
 
 describe('MeasurementNotesDialog', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('shows the measurement and offers to add a note', () => {
     renderDialog();
     const dialog = screen.getByRole('dialog');
@@ -51,6 +57,96 @@ describe('MeasurementNotesDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
 
     expect(onCreateNote).toHaveBeenCalledWith('Big dinner', []);
+  });
+
+  it('says why a note was not saved, and keeps it in the editor to try again', async () => {
+    renderDialog({ onCreateNote: vi.fn().mockRejectedValue(new SaveError('quota')) });
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'Big dinner');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Note not saved');
+    expect(alert).toHaveTextContent(/no room left/);
+    expect(alert).not.toHaveTextContent('Big dinner');
+    expect(screen.getByRole('textbox', { name: 'Note content' })).toHaveValue('Big dinner');
+  });
+
+  it('forgets a failed save once the editor is closed', async () => {
+    renderDialog({ onCreateNote: vi.fn().mockRejectedValue(new SaveError('failed')) });
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
+    await screen.findByRole('alert');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('notifies a note that fails after the dialog was closed', async () => {
+    let fail!: (err: unknown) => void;
+    const { onClose } = renderDialog({
+      onCreateNote: vi.fn(() => new Promise<void>((_, reject) => (fail = reject))),
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Note content' }), 'Big dinner');
+    await userEvent.click(screen.getByRole('button', { name: 'Save Note' }));
+
+    screen.getByRole('dialog').focus();
+    await userEvent.keyboard('{Escape}');
+    fail(new SaveError('timeout'));
+
+    expect(onClose).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+    );
+  });
+
+  it('notifies an edit that fails after the dialog was closed', async () => {
+    let fail!: (err: unknown) => void;
+    const note: UserNote = {
+      id: 1,
+      testValueId: 2,
+      content: 'Fasted',
+      tags: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const { rerender } = render(
+      <MantineProvider env="test">
+        <MeasurementNotesDialog
+          measurement={measurement}
+          notes={[note]}
+          onClose={vi.fn()}
+          onCreateNote={vi.fn()}
+          onUpdateNote={vi.fn(() => new Promise<void>((_, reject) => (fail = reject)))}
+          onDeleteNote={vi.fn()}
+        />
+      </MantineProvider>
+    );
+    await userEvent.click(screen.getByRole('button', { name: /edit note/i }));
+    await userEvent.type(screen.getByRole('textbox', { name: /note content/i }), ' more');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    rerender(
+      <MantineProvider env="test">
+        <MeasurementNotesDialog
+          measurement={null}
+          notes={[]}
+          onClose={vi.fn()}
+          onCreateNote={vi.fn()}
+          onUpdateNote={vi.fn()}
+          onDeleteNote={vi.fn()}
+        />
+      </MantineProvider>
+    );
+    fail(new SaveError('timeout'));
+
+    await waitFor(() =>
+      expect(notifySaveFailed).toHaveBeenCalledWith('Note not saved', expect.any(SaveError))
+    );
   });
 
   it('lists the notes on the measurement', () => {

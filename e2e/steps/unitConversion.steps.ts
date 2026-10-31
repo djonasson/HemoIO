@@ -174,10 +174,14 @@ export function buildTextPdf(lines: string[]): Buffer {
 /**
  * Given a lab report contains <biomarkers> / When the values are analyzed.
  *
- * Imports a text PDF with a mocked local AI that extracts exactly
- * `biomarkers`, and ends on the review step.
+ * Imports `reportCount` text PDFs with a mocked local AI that extracts
+ * exactly `biomarkers` from each, and ends on the review step.
  */
-export async function analyzeReport(page: Page, biomarkers: ExtractedBiomarkerFixture[]): Promise<void> {
+export async function analyzeReport(
+  page: Page,
+  biomarkers: ExtractedBiomarkerFixture[],
+  reportCount = 1
+): Promise<void> {
   await mockOllama(page, {
     biomarkers,
     labDate: '2024-03-10',
@@ -187,18 +191,21 @@ export async function analyzeReport(page: Page, biomarkers: ExtractedBiomarkerFi
   await configureOllamaProvider(page);
 
   const reportText = biomarkers.map((b) => `${b.name} ${b.value} ${b.unit.replace('µ', 'u')}`);
-  const pdfPath = writeTempFile('lab-report.pdf', buildTextPdf(['Laboratory report', ...reportText]));
+  const pdf = buildTextPdf(['Laboratory report', ...reportText]);
+  const pdfPaths = Array.from({ length: reportCount }, (_, i) =>
+    writeTempFile(reportCount === 1 ? 'lab-report.pdf' : `lab-report-${i + 1}.pdf`, pdf)
+  );
   try {
     await page.getByRole('navigation').getByRole('button', { name: /^Import/ }).click();
-    await page.locator('input[type="file"]').setInputFiles(pdfPath);
-    await page.getByRole('button', { name: 'Analyze (1)' }).click();
+    await page.locator('input[type="file"]').setInputFiles(pdfPaths);
+    await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 
     const review = page.getByRole('button', { name: /^Review Results/ });
     await expect(review).toBeEnabled({ timeout: 30_000 });
     await review.click();
     await expect(page.getByText('Review Extracted Values', { exact: true })).toBeVisible();
   } finally {
-    removeTempFile(pdfPath);
+    pdfPaths.forEach(removeTempFile);
   }
 }
 

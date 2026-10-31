@@ -3,6 +3,7 @@ import { openTestDb } from '@data/db/testDb';
 import { restoreBackup } from './restoreBackup';
 import type { ParsedBackupData } from './jsonImport';
 import type { EncryptedDb } from '@data/db/encryptedDb';
+import { SaveError } from '@data/db/saveError';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -158,9 +159,11 @@ describe('restoreBackup', () => {
   it('leaves existing data untouched when a restore fails part-way', async () => {
     const { db, database } = await openTestDb();
     await seedExisting(db);
-    vi.spyOn(database.userNotes, 'bulkAdd').mockRejectedValue(new Error('Disk full'));
+    vi.spyOn(database.userNotes, 'bulkAdd').mockRejectedValue(
+      new DOMException('Disk full', 'QuotaExceededError')
+    );
 
-    await expect(restoreBackup(db, backup())).rejects.toThrow('Disk full');
+    await expect(restoreBackup(db, backup())).rejects.toEqual(new SaveError('quota'));
 
     expect(await db.getAllLabResults()).toHaveLength(30);
     expect(await db.getAllTestValues()).toHaveLength(30);

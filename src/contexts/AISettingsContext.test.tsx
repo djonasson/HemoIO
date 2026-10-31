@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAISettings } from '@hooks/useAISettings';
+import { SaveError } from '@data/db/saveError';
 import { AISettingsProvider } from './AISettingsContext';
 
 // Mock db functions
@@ -186,6 +187,68 @@ describe('useAISettings', () => {
   });
 
   describe('error handling', () => {
+    it('puts a setting back when it is not saved, and passes the failure on', async () => {
+      mockGetSettings.mockResolvedValue({
+        storageProvider: 'local',
+        aiProvider: 'openai',
+        openaiModel: 'gpt-4',
+        language: 'en',
+      });
+      const failure = new SaveError('quota');
+      mockUpdateSettings.mockRejectedValue(failure);
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await act(async () => {
+        await expect(result.current.setAiProvider('anthropic')).rejects.toBe(failure);
+        await expect(result.current.setOpenaiModel('gpt-5')).rejects.toBe(failure);
+      });
+
+      expect(result.current.aiProvider).toBe('openai');
+      expect(result.current.openaiModel).toBe('gpt-4');
+    });
+
+    it('keeps a newer change when an older one fails', async () => {
+      let failOlder: (err: unknown) => void = () => {};
+      mockUpdateSettings
+        .mockImplementationOnce(() => new Promise((_, reject) => (failOlder = reject)))
+        .mockResolvedValueOnce(undefined);
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      let older: Promise<void> = Promise.resolve();
+      await act(async () => {
+        older = result.current.setOllamaModel('llama2');
+        await result.current.setOllamaModel('llava');
+      });
+      await act(async () => {
+        failOlder(new SaveError('failed'));
+        await older.catch(() => {});
+      });
+
+      expect(result.current.ollamaModel).toBe('llava');
+    });
+
+    it('goes back to the stored setting when overlapping changes all fail', async () => {
+      const fails: Array<(err: unknown) => void> = [];
+      mockUpdateSettings.mockImplementation(() => new Promise((_, reject) => fails.push(reject)));
+      const { result } = renderHook(() => useAISettings(), { wrapper: AISettingsProvider });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.aiProvider).toBe('openai');
+
+      const saves: Promise<void>[] = [];
+      act(() => {
+        saves.push(result.current.setAiProvider('anthropic'));
+        saves.push(result.current.setAiProvider('ollama'));
+      });
+      await act(async () => {
+        for (const fail of fails) fail(new SaveError('timeout'));
+        await Promise.allSettled(saves);
+      });
+
+      expect(result.current.aiProvider).toBe('openai');
+    });
+
     it('should handle getSettings errors gracefully', async () => {
       mockGetSettings.mockRejectedValue(new Error('Database error'));
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

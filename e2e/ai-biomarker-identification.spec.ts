@@ -539,6 +539,8 @@ test.describe('AI biomarker identification', () => {
   });
 
   test('learns a name saved under a test', async ({ page }) => {
+    // An import, then a second analysis
+    test.slow();
     // Scenario: A confirmed name is learned
     await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await analyzeReport(page, [
@@ -565,6 +567,8 @@ test.describe('AI biomarker identification', () => {
   });
 
   test('forgets a learned name removed in Settings', async ({ page }) => {
+    // Two imports, each analyzed and saved
+    test.slow();
     // Scenario: Remove a learned name
     await learnName(page, 'Zorblatina (urine)', 'Urine Urea');
     await removeLearnedName(page, 'zorblatina (urine)');

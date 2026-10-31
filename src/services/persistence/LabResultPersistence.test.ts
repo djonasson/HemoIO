@@ -2,12 +2,14 @@
  * Tests for LabResultPersistence service
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { saveReviewedResult, saveImportResults } from './LabResultPersistence';
+import { openTestDb } from '@data/db/testDb';
+import { SaveError } from '@data/db/saveError';
+import { saveImportResults } from './LabResultPersistence';
+import type { EncryptedDb } from '@data/db';
 import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
+import type { LabResult, TestValue } from '@/types';
 
 // Mock the biomarker dictionary
 vi.mock('@data/biomarkers/dictionary', () => ({
@@ -31,28 +33,12 @@ vi.mock('@data/biomarkers/dictionary', () => ({
   unknownBiomarkerKey: (name: string) => `unknown:${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
 }));
 
-// Create mock db
-function createMockDb() {
-  let labResultIdCounter = 1;
-  let testValueIdCounter = 1;
-
-  // Parameter captured for mock.calls access
-  const addLabResult = vi.fn(async (data: Record<string, unknown>) => {
-    void data;
-    return labResultIdCounter++;
-  });
-  const addTestValues = vi.fn(async (values: unknown[]) =>
-    values.map(() => testValueIdCounter++)
+/** The values saved, newest result first, with their lab result */
+async function saved(db: EncryptedDb): Promise<Array<LabResult & { values: TestValue[] }>> {
+  const results = await db.getAllLabResults();
+  return Promise.all(
+    results.map(async (r) => ({ ...r, values: await db.getTestValuesByLabResult(r.id!) }))
   );
-  const addTestValue = vi.fn(async () => testValueIdCounter++);
-
-  return {
-    addLabResult,
-    addTestValues,
-    addTestValue,
-    getLastLabResultCall: () => addLabResult.mock.calls[addLabResult.mock.calls.length - 1]?.[0],
-    getLastTestValuesCall: () => addTestValues.mock.calls[addTestValues.mock.calls.length - 1]?.[0] as Record<string, unknown>[] | undefined,
-  };
 }
 
 function createMockBiomarker(
@@ -91,227 +77,176 @@ function createMockReviewedResult(
   };
 }
 
-describe('LabResultPersistence', () => {
+/** Save one reviewed result and return it as stored */
+async function saveOne(reviewed: ReviewedResult): Promise<LabResult & { values: TestValue[] }> {
+  const { db } = await openTestDb();
+  await saveImportResults([reviewed], db);
+  const [result] = await saved(db);
+  return result;
+}
+
+describe('saveImportResults', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe('saveReviewedResult', () => {
-    it('should save a lab result and its test values', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
+  it('saves a lab result and its test values', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
         createMockBiomarker('Hemoglobin', 14.5, 'g/dL'),
         createMockBiomarker('Glucose', 95, 'mg/dL'),
-      ];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers);
+      ])
+    );
 
-      const result = await saveReviewedResult(reviewed, mockDb as any);
+    expect(result.values.map((v) => v.biomarkerKey).sort()).toEqual(['glucose', 'hemoglobin']);
+  });
 
-      expect(mockDb.addLabResult).toHaveBeenCalledTimes(1);
-      expect(mockDb.addTestValues).toHaveBeenCalledTimes(1);
-      expect(result.labResultId).toBe(1);
-      expect(result.testValueCount).toBe(2);
-    });
+  it('looks up a value entered in review by its name only when its unit fits that test', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Glucose', 5.2, 'mmol/L', { dictionaryMatch: undefined }),
+        createMockBiomarker('Glucose', 30, 'mmol/24h', { dictionaryMatch: undefined }),
+      ])
+    );
 
-    it('should use edited lab date and name', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers, {
+    expect(result.values.map((v) => v.biomarkerKey).sort()).toEqual(['glucose', 'unknown:glucose']);
+  });
+
+  it('uses the edited lab date and name', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')], {
         editedLabDate: '2024-06-15',
         editedLabName: 'Custom Lab Name',
-      });
+      })
+    );
 
-      await saveReviewedResult(reviewed, mockDb as any);
+    expect(result.labName).toBe('Custom Lab Name');
+    expect(result.date.toISOString().substring(0, 10)).toBe('2024-06-15');
+  });
 
-      const savedLabResult = mockDb.getLastLabResultCall();
-      expect(savedLabResult?.labName).toBe('Custom Lab Name');
-      expect((savedLabResult?.date as Date).toISOString().substring(0, 10)).toBe('2024-06-15');
-    });
-
-    it('should fallback to original lab date and name if not edited', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers, {
+  it('falls back to the original lab date and name if not edited', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')], {
         editedLabDate: undefined,
         editedLabName: undefined,
         labDate: '2024-03-20',
         labName: 'Original Lab',
-      });
+      })
+    );
 
-      await saveReviewedResult(reviewed, mockDb as any);
+    expect(result.labName).toBe('Original Lab');
+    expect(result.date.toISOString().substring(0, 10)).toBe('2024-03-20');
+  });
 
-      const savedLabResult = mockDb.getLastLabResultCall();
-      expect(savedLabResult?.labName).toBe('Original Lab');
-      expect((savedLabResult?.date as Date).toISOString().substring(0, 10)).toBe('2024-03-20');
-    });
+  it.each([
+    ['06/15/2024', '2024-06-15'],
+    ['15.01.2024', '2024-01-15'],
+    ['15/01/2024', '2024-01-15'],
+    ['01/15/2024', '2024-01-15'],
+  ])('saves the lab date %s under %s', async (labDate, day) => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')], {
+        editedLabDate: labDate,
+      })
+    );
 
-    it('should handle US date format (MM/DD/YYYY)', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers, {
-        editedLabDate: '06/15/2024',
-      });
+    expect(result.date.toISOString().slice(0, 10)).toBe(day);
+  });
 
-      await saveReviewedResult(reviewed, mockDb as any);
-
-      const savedLabResult = mockDb.getLastLabResultCall();
-      const savedDate = savedLabResult?.date as Date;
-      // Use UTC methods since we store dates in UTC
-      expect(savedDate.getUTCMonth()).toBe(5); // June is 5 (0-indexed)
-      expect(savedDate.getUTCDate()).toBe(15);
-      expect(savedDate.getUTCFullYear()).toBe(2024);
-    });
-
-    it('should include reference ranges in test values', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
+  it('includes reference ranges and confidence in test values', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
         createMockBiomarker('Hemoglobin', 14.5, 'g/dL', {
+          confidence: 0.85,
           referenceRange: { low: 12.0, high: 17.5, unit: 'g/dL' },
         }),
-      ];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers);
+      ])
+    );
 
-      await saveReviewedResult(reviewed, mockDb as any);
+    expect(result.values[0]).toEqual(
+      expect.objectContaining({ referenceRangeLow: 12.0, referenceRangeHigh: 17.5, confidence: 0.85 })
+    );
+  });
 
-      const savedTestValues = mockDb.getLastTestValuesCall();
-      expect(savedTestValues?.[0]?.referenceRangeLow).toBe(12.0);
-      expect(savedTestValues?.[0]?.referenceRangeHigh).toBe(17.5);
-    });
-
-    it('saves a value the user put as not in the dictionary under its own name', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
+  it('saves a value the user put as not in the dictionary under its own name', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
         createMockBiomarker('Glucose', 95, 'mg/dL', { savedAsUnknown: true }),
-      ];
+      ])
+    );
 
-      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
+    expect(result.values[0].biomarkerKey).toBe('unknown:glucose');
+  });
 
-      expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
-    });
-
-    it('saves an analyzed value without a test under its own name, as review showed it', async () => {
-      // Review shows "Not in dictionary": the name alone must not pick a test
-      const mockDb = createMockDb();
-      const biomarkers = [
+  it('saves an analyzed value without a test under its own name, as review showed it', async () => {
+    // Review shows "Not in dictionary": the name alone must not pick a test
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
         createMockBiomarker('Glucose', 95, 'mmol/24h', {
           dictionaryMatch: undefined,
           identificationFlags: ['not-identified'],
         }),
-      ];
+      ])
+    );
 
-      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
-
-      expect(mockDb.getLastTestValuesCall()?.[0].biomarkerKey).toBe('unknown:glucose');
-    });
-
-    it('looks up a value entered in review by its name only when its unit fits that test', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
-        createMockBiomarker('Glucose', 5.2, 'mmol/L', { dictionaryMatch: undefined }),
-        createMockBiomarker('Glucose', 30, 'mmol/24h', { dictionaryMatch: undefined }),
-      ];
-
-      await saveReviewedResult(createMockReviewedResult('test.pdf', biomarkers), mockDb as any);
-
-      expect(mockDb.getLastTestValuesCall()?.map((v) => v.biomarkerKey)).toEqual([
-        'glucose',
-        'unknown:glucose',
-      ]);
-    });
-
-    it('should handle empty biomarkers list', async () => {
-      const mockDb = createMockDb();
-      const reviewed = createMockReviewedResult('test.pdf', []);
-
-      const result = await saveReviewedResult(reviewed, mockDb as any);
-
-      expect(mockDb.addLabResult).toHaveBeenCalledTimes(1);
-      expect(mockDb.addTestValues).not.toHaveBeenCalled();
-      expect(result.testValueCount).toBe(0);
-    });
-
-    it('should store confidence values', async () => {
-      const mockDb = createMockDb();
-      const biomarkers = [
-        createMockBiomarker('Hemoglobin', 14.5, 'g/dL', { confidence: 0.85 }),
-      ];
-      const reviewed = createMockReviewedResult('test.pdf', biomarkers);
-
-      await saveReviewedResult(reviewed, mockDb as any);
-
-      const savedTestValues = mockDb.getLastTestValuesCall();
-      expect(savedTestValues?.[0]?.confidence).toBe(0.85);
-    });
+    expect(result.values[0].biomarkerKey).toBe('unknown:glucose');
   });
 
-  describe('saveImportResults', () => {
-    it('should save multiple reviewed results', async () => {
-      const mockDb = createMockDb();
-      const reviewed1 = createMockReviewedResult('test1.pdf', [
-        createMockBiomarker('Hemoglobin', 14.5, 'g/dL'),
-      ]);
-      const reviewed2 = createMockReviewedResult('test2.pdf', [
-        createMockBiomarker('Glucose', 95, 'mg/dL'),
-        createMockBiomarker('Hemoglobin', 13.0, 'g/dL'),
-      ]);
+  it('saves a lab result without values', async () => {
+    const result = await saveOne(createMockReviewedResult('test.pdf', []));
 
-      const result = await saveImportResults([reviewed1, reviewed2], mockDb as any);
-
-      expect(result.totalLabResults).toBe(2);
-      expect(result.totalTestValues).toBe(3);
-      expect(result.results).toHaveLength(2);
-      expect(result.errors).toHaveLength(0);
-    });
-
-    it('should capture errors for individual results', async () => {
-      const mockDb = createMockDb();
-      mockDb.addLabResult
-        .mockResolvedValueOnce(1)
-        .mockRejectedValueOnce(new Error('Database error'));
-
-      const reviewed1 = createMockReviewedResult('test1.pdf', [
-        createMockBiomarker('Hemoglobin', 14.5, 'g/dL'),
-      ]);
-      const reviewed2 = createMockReviewedResult('test2.pdf', [
-        createMockBiomarker('Glucose', 95, 'mg/dL'),
-      ]);
-
-      const result = await saveImportResults([reviewed1, reviewed2], mockDb as any);
-
-      expect(result.totalLabResults).toBe(1);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].fileName).toBe('test2.pdf');
-      expect(result.errors[0].error).toBe('Database error');
-    });
-
-    it('should return empty results for empty input', async () => {
-      const mockDb = createMockDb();
-
-      const result = await saveImportResults([], mockDb as any);
-
-      expect(result.totalLabResults).toBe(0);
-      expect(result.totalTestValues).toBe(0);
-      expect(result.results).toHaveLength(0);
-      expect(result.errors).toHaveLength(0);
-    });
-
+    expect(result.values).toEqual([]);
   });
-});
 
-describe('lab dates', () => {
-  it.each([
-    ['15.01.2024', '2024-01-15'],
-    ['15/01/2024', '2024-01-15'],
-    ['01/15/2024', '2024-01-15'],
-  ])('saves %s under %s', async (labDate, day) => {
-    const mockDb = createMockDb();
-    const reviewed = createMockReviewedResult('test.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')], {
-      editedLabDate: labDate,
-    });
+  it('saves every file and counts what it saved', async () => {
+    const { db } = await openTestDb();
+    const output = await saveImportResults(
+      [
+        createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')]),
+        createMockReviewedResult('test2.pdf', [
+          createMockBiomarker('Glucose', 95, 'mg/dL'),
+          createMockBiomarker('Hemoglobin', 13.0, 'g/dL'),
+        ]),
+      ],
+      db
+    );
 
-    await saveReviewedResult(reviewed, mockDb as unknown as Parameters<typeof saveReviewedResult>[1]);
+    expect(output).toEqual({ totalLabResults: 2, totalTestValues: 3 });
+    expect(await saved(db)).toHaveLength(2);
+  });
 
-    const saved = mockDb.getLastLabResultCall()?.date as Date;
-    expect(saved.toISOString().slice(0, 10)).toBe(day);
+  it('saves all files in one write, so the import is kept whole or not at all', async () => {
+    const { db } = await openTestDb();
+    const write = vi.spyOn(db, 'addLabResultsWithValues');
+
+    await saveImportResults(
+      [
+        createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')]),
+        createMockReviewedResult('test2.pdf', [createMockBiomarker('Glucose', 95, 'mg/dL')]),
+      ],
+      db
+    );
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('saves nothing, and says why, when the storage does not keep the import', async () => {
+    const { db } = await openTestDb();
+    vi.spyOn(db, 'addLabResultsWithValues').mockRejectedValue(new SaveError('quota'));
+
+    await expect(
+      saveImportResults(
+        [createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')])],
+        db
+      )
+    ).rejects.toEqual(new SaveError('quota'));
+  });
+
+  it('saves nothing for an empty import', async () => {
+    const { db } = await openTestDb();
+
+    expect(await saveImportResults([], db)).toEqual({ totalLabResults: 0, totalTestValues: 0 });
+    expect(await saved(db)).toEqual([]);
   });
 });
