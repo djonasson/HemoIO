@@ -76,7 +76,8 @@ describe('writeFolderCopy', () => {
     expect(outcome).toEqual({ status: 'written' });
     const copy = await readCopy(store, key);
     expect(copy.version).toBe(FOLDER_SYNC_FILE_VERSION);
-    expect(copy.version).toBe(2);
+    // The backup schema's version, so a restore reads it back through the right migrations
+    expect(copy.version).toBe(3);
     expect(copy.data.labResults).toHaveLength(1);
     expect(typeof copy.exportedAt).toBe('string');
   });
