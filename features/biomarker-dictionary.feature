@@ -127,6 +127,22 @@ Feature: Biomarker Dictionary
     Then I should return to the category or search results
     And my search and scroll position should be kept
 
+  Scenario: A biomarker page opened from another page starts at the top
+    Given I have scrolled down the trend chart for "Glucose"
+    When I open its reference page
+    Then the page for "Glucose" should start at the top, with its back button in view
+
+  Scenario: Back from a biomarker page opened from another page
+    Given I opened the page for "Glucose" from its trend chart
+    When I click the back button
+    Then I should see the biomarker list from the top, with nothing searched
+    And the search field should have keyboard focus
+
+  Scenario: Choosing Biomarkers in the menu shows the list
+    Given I am viewing the detail for "LDL Cholesterol"
+    When I choose Biomarkers in the menu
+    Then I should see the biomarker list
+
   Scenario: Navigate between biomarker details
     Given I am viewing the detail for "Glucose"
     When I click on a related biomarker "HbA1c"

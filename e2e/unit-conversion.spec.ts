@@ -16,6 +16,7 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
+import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
 import {
   ALT,
   CREATININE,
@@ -49,32 +50,13 @@ async function openApp(page: Page): Promise<void> {
   await setupOrUnlock(page);
 }
 
-async function navigateToDictionary(page: Page): Promise<void> {
-  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
-}
-
-/**
- * The detail panel for a biomarker, identified by its heading
- */
-function biomarkerDetail(page: Page, name: string) {
-  return page
-    .getByRole('main')
-    .locator('.mantine-Paper-root')
-    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
-}
-
 test.describe('Unit Conversion', () => {
   test.describe('Biomarker Dictionary - Units Display', () => {
     test('should list the standard unit and the alternative units of a biomarker', async ({ page }) => {
       await openApp(page);
-      await navigateToDictionary(page);
+      await goToDictionary(page);
 
-      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
-      await page.getByRole('button', { name: 'View details for Glucose', exact: true }).click();
-
-      const detail = biomarkerDetail(page, 'Glucose');
-      await expect(detail).toBeVisible();
+      const detail = await viewDetail(page, 'Glucose');
       await expect(detail.getByText('Units', { exact: true })).toBeVisible();
       await expect(detail.getByText('mg/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('mmol/L', { exact: true })).toBeVisible();
@@ -82,12 +64,9 @@ test.describe('Unit Conversion', () => {
 
     test('should show the standard reference range in the standard unit', async ({ page }) => {
       await openApp(page);
-      await navigateToDictionary(page);
+      await goToDictionary(page);
 
-      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Hemoglobin');
-      await page.getByRole('button', { name: 'View details for Hemoglobin', exact: true }).click();
-
-      const detail = biomarkerDetail(page, 'Hemoglobin');
+      const detail = await viewDetail(page, 'Hemoglobin');
       await expect(detail.getByText('12 - 17.5 g/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('g/dL', { exact: true })).toBeVisible();
       await expect(detail.getByText('g/L', { exact: true })).toBeVisible();
@@ -707,10 +686,10 @@ test.describe('Unit Conversion - Error Handling', () => {
 test.describe('Unit Conversion - Accessibility', () => {
   test('biomarker dictionary should show units accessibly', async ({ page }) => {
     await openApp(page);
-    await navigateToDictionary(page);
+    await goToDictionary(page);
 
     // Reach and open a biomarker using only the keyboard
-    const search = page.getByRole('textbox', { name: 'Search biomarkers' });
+    const search = searchField(page);
     await search.focus();
     await page.keyboard.type('Glucose');
     const glucose = page.getByRole('button', { name: 'View details for Glucose', exact: true });

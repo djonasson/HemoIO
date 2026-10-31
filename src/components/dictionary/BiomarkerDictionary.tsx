@@ -33,6 +33,8 @@ export interface BiomarkerDictionaryProps {
   onSelectBiomarker?: (biomarker: BiomarkerDefinition) => void;
   /** Currently selected biomarker name */
   selectedBiomarker?: string;
+  /** The search field, for the caller to focus */
+  searchRef?: React.Ref<HTMLInputElement>;
 }
 
 /**
@@ -64,6 +66,7 @@ function getBiomarkersByCategory(): Record<BiomarkerCategory, BiomarkerDefinitio
 export function BiomarkerDictionary({
   onSelectBiomarker,
   selectedBiomarker,
+  searchRef,
 }: BiomarkerDictionaryProps): React.ReactNode {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -110,6 +113,7 @@ export function BiomarkerDictionary({
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.currentTarget.value)}
         aria-label="Search biomarkers"
+        ref={searchRef}
       />
 
       {/* Search Results */}

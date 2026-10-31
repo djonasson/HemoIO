@@ -107,6 +107,21 @@ beforeAll(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
 });
 
+/** useAlerts with this many unacknowledged alerts */
+function mockAlerts(unacknowledgedCount = 0): void {
+  vi.mocked(useAlerts).mockReturnValue({
+    groups: [],
+    unacknowledgedCount,
+    hiddenCount: 0,
+    assessedCount: 1,
+    isLoading: false,
+    error: null,
+    dismissGroup: vi.fn(),
+    acknowledgeGroup: vi.fn(),
+    refresh: vi.fn(),
+  });
+}
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">
@@ -158,27 +173,15 @@ function createMockResult(
   };
 }
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUnitPreferences = {};
+  mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
+  mockShowNotification.mockReset();
+  mockAlerts();
+});
+
 describe('TrendsView', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUnitPreferences = {};
-    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
-    mockShowNotification.mockReset();
-
-    // Default mock for useAlerts
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 0,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
-  });
-
   it('should render loading state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
@@ -399,17 +402,7 @@ describe('TrendsView', () => {
       deleteResult: vi.fn(),
     });
 
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 1,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockAlerts(1);
 
     const onNavigateToAlerts = vi.fn();
     renderWithProviders(<TrendsView onNavigateToAlerts={onNavigateToAlerts} />);
@@ -611,7 +604,11 @@ describe('TrendsView', () => {
 });
 
 /** Renders Trends opened on the given biomarker, recorded twice */
-function renderWithTwoValues(key: string, rawText: string): void {
+function renderWithTwoValues(
+  key: string,
+  rawText: string,
+  props: Partial<React.ComponentProps<typeof TrendsView>> = {}
+): void {
   vi.mocked(useLabResults).mockReturnValue({
     results: [
       createMockResult(1, '2024-01-15', [createMockTestValue(1, 1, key, rawText, 95)]),
@@ -624,28 +621,10 @@ function renderWithTwoValues(key: string, rawText: string): void {
     refresh: vi.fn(),
     deleteResult: vi.fn(),
   });
-  renderWithProviders(<TrendsView initialBiomarkerKey={key} />);
+  renderWithProviders(<TrendsView initialBiomarkerKey={key} {...props} />);
 }
 
 describe('TrendsView preferred unit', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockUnitPreferences = {};
-    mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
-    mockShowNotification.mockReset();
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 0,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
-  });
-
   const renderWithGlucose = () => renderWithTwoValues('glucose', 'Glucose');
 
   it('shows glucose in the stored preferred unit', () => {
@@ -685,5 +664,48 @@ describe('TrendsView preferred unit', () => {
     renderWithTwoValues('mystery', 'Mystery Marker');
     expect(screen.getByText('Mystery Marker (mg/dL)')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
+  });
+});
+
+describe('TrendsView reference link', () => {
+  it("opens the chart's biomarker reference page", async () => {
+    const onOpenReference = vi.fn();
+    renderWithTwoValues('glucose', 'Glucose', { onOpenReference });
+
+    await userEvent.click(screen.getByRole('button', { name: 'View reference for Glucose' }));
+
+    expect(onOpenReference).toHaveBeenCalledWith('glucose');
+  });
+
+  it('shows the link with a short visible label', () => {
+    renderWithTwoValues('glucose', 'Glucose', { onOpenReference: vi.fn() });
+
+    expect(screen.getByRole('button', { name: 'View reference for Glucose' })).toHaveTextContent(
+      /^View reference$/
+    );
+  });
+
+  it('offers no link for a biomarker outside the dictionary', () => {
+    renderWithTwoValues('mystery', 'Mystery Marker', { onOpenReference: vi.fn() });
+
+    expect(screen.getByText('Mystery Marker (mg/dL)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the link for a biomarker with a single unit, which has no unit choice', async () => {
+    // This file's dictionary mock gives Hemoglobin a single unit
+    const onOpenReference = vi.fn();
+    renderWithTwoValues('hemoglobin', 'Hemoglobin', { onOpenReference });
+
+    expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'View reference for Hemoglobin' }));
+    expect(onOpenReference).toHaveBeenCalledWith('hemoglobin');
+  });
+
+  it('offers no link when nowhere to open it', () => {
+    renderWithTwoValues('glucose', 'Glucose');
+
+    expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();
   });
 });

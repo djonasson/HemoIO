@@ -109,6 +109,44 @@ Feature: Trend Charts
     Then I should see a message indicating no data is available
     And I should see a suggestion to import lab results
 
+  Scenario: Open a biomarker's reference page from its trend
+    Given I am viewing the trend chart for "Glucose"
+    When I choose to view the reference information for "Glucose"
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+    And I should be able to go from there to the biomarker list
+
+  Scenario: Reference page of another biomarker after switching
+    Given I am viewing the trend chart for "Glucose"
+    When I select "Hemoglobin" from the biomarker dropdown
+    And I choose to view the reference information for "Hemoglobin"
+    Then I should see the Biomarkers page showing the detail for "Hemoglobin"
+
+  Scenario: Open the reference page by keyboard
+    Given I am viewing the trend chart for "Glucose"
+    When I tab to the reference link and press Enter
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+
+  Scenario: The reference link works while I am typing a unit
+    Given I am viewing the trend chart for "Glucose"
+    And I have typed a unit Glucose does not support as my preferred unit
+    When I choose to view the reference information for "Glucose"
+    Then I should see the Biomarkers page showing the detail for "Glucose"
+
+  Scenario: The reference link for a test with a single unit
+    Given I am viewing the trend chart for "Red Cell Distribution Width", which has a single unit
+    Then I should not be offered a choice of unit
+    But I should be offered its reference page
+
+  Scenario: No reference link for a test that is not in the biomarker dictionary
+    Given I have values for a test that is not in the biomarker dictionary
+    When I view the trend chart for that test
+    Then I should not be offered a reference page
+
+  Scenario: Choosing Trends in the menu starts the page over
+    Given I am viewing the trend chart for "Glucose"
+    When I choose Trends in the menu
+    Then no biomarker should be selected
+
   Scenario: View trend statistics summary
     Given I am viewing the trend chart for "Glucose"
     And I have multiple data points

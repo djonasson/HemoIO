@@ -1,13 +1,16 @@
 /**
  * DictionaryView Component
  *
- * The biomarker list, or one biomarker's detail in its place. The list stays
- * mounted while hidden, so Back returns to the same search and open
- * categories; the scroll position and focus are restored by hand.
+ * The biomarker list, or one biomarker's detail in its place. Once shown, the
+ * list stays mounted while hidden, so Back returns to the same search and
+ * open categories; the scroll position and focus are restored by hand.
+ * Opened on a detail from another view, the list is built only on Back, and
+ * then shows from the top with its search focused.
  */
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mantine/core';
+import { getBiomarkerByKey } from '@data/biomarkers';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { usePreferences } from '@hooks/usePreferences';
@@ -22,21 +25,36 @@ import type { BiomarkerDefinition } from '@data/biomarkers';
 export interface DictionaryViewProps {
   /** Show a biomarker's trend chart */
   onOpenTrend: (biomarkerKey: string) => void;
+  /** Open on this biomarker's detail; a key the dictionary lacks shows the list */
+  initialBiomarkerKey?: string;
 }
 
 /** Where to put the list back when the detail closes */
 interface ListPosition {
-  biomarkerKey: string;
+  /** The list item to focus; null focuses the search (the list was never shown) */
+  biomarkerKey: string | null;
   scrollY: number;
 }
 
-export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.ReactNode {
+export function DictionaryView({
+  onOpenTrend,
+  initialBiomarkerKey,
+}: DictionaryViewProps): React.ReactNode {
   const { results } = useLabResults();
   const { unitPreferences, personalTargets, setPersonalTarget } = usePreferences();
-  const [selected, setSelected] = useState<BiomarkerDefinition | null>(null);
+  const [selected, setSelected] = useState<BiomarkerDefinition | null>(
+    () => (initialBiomarkerKey ? (getBiomarkerByKey(initialBiomarkerKey) ?? null) : null)
+  );
+  const [openedOnDetail] = useState(selected !== null);
+  // Opened on a detail, the list is built only if Back asks for it
+  const [listShown, setListShown] = useState(!openedOnDetail);
   const [editingTarget, setEditingTarget] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const listPosition = useRef<ListPosition | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  // Opened on a detail: Back shows the list from the top, focused on its search
+  const listPosition = useRef<ListPosition | null>(
+    openedOnDetail ? { biomarkerKey: null, scrollY: 0 } : null
+  );
 
   const handleSelectFromList = useCallback((biomarker: BiomarkerDefinition) => {
     listPosition.current = { biomarkerKey: biomarker.key, scrollY: window.scrollY };
@@ -51,16 +69,21 @@ export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.Reac
     window.scrollTo(0, 0);
   }, []);
 
-  const handleBack = useCallback(() => setSelected(null), []);
+  const handleBack = useCallback(() => {
+    setListShown(true);
+    setSelected(null);
+  }, []);
 
   // Before paint, so the list never shows at the top first
   useLayoutEffect(() => {
     if (selected || !listPosition.current) return;
     const { biomarkerKey, scrollY } = listPosition.current;
     listPosition.current = null;
-    listRef.current
-      ?.querySelector<HTMLElement>(`[data-biomarker-key="${biomarkerKey}"]`)
-      ?.focus({ preventScroll: true });
+    const focusTarget =
+      biomarkerKey === null
+        ? searchRef.current
+        : listRef.current?.querySelector<HTMLElement>(`[data-biomarker-key="${biomarkerKey}"]`);
+    focusTarget?.focus({ preventScroll: true });
     window.scrollTo(0, scrollY);
   }, [selected]);
 
@@ -90,12 +113,15 @@ export function DictionaryView({ onOpenTrend }: DictionaryViewProps): React.Reac
 
   return (
     <>
-      <Box ref={listRef} style={{ display: selected ? 'none' : undefined }}>
-        <BiomarkerDictionary
-          onSelectBiomarker={handleSelectFromList}
-          selectedBiomarker={selected?.name}
-        />
-      </Box>
+      {listShown && (
+        <Box ref={listRef} style={{ display: selected ? 'none' : undefined }}>
+          <BiomarkerDictionary
+            onSelectBiomarker={handleSelectFromList}
+            selectedBiomarker={selected?.name}
+            searchRef={searchRef}
+          />
+        </Box>
+      )}
       {selected && (
         <BiomarkerDetail
           biomarker={selected}

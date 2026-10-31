@@ -12,7 +12,23 @@ import { test, expect } from './fixtures';
 import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { waitForAnimations } from './steps/timeline.steps';
-import { biomarkerSelect, goToTrends } from './steps/trends.steps';
+import {
+  GLUCOSE as TREND_GLUCOSE,
+  biomarkerSelect,
+  goToTrends,
+  referenceLink,
+  seedVisits,
+  selectBiomarker,
+} from './steps/trends.steps';
+import {
+  backButton,
+  biomarkerDetail,
+  biomarkersNavItem,
+  expectDetailPage,
+  goToDictionary,
+  searchField,
+  viewDetail,
+} from './steps/dictionary.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import { storeTestValueAsEarlierVersion } from './steps/dataAtRest.steps';
 import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
@@ -23,12 +39,7 @@ import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
 async function openDictionary(page: Page): Promise<void> {
   await page.goto('/');
   await setupOrUnlock(page);
-  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
-}
-
-function searchField(page: Page): Locator {
-  return page.getByRole('textbox', { name: 'Search biomarkers' });
+  await goToDictionary(page);
 }
 
 /**
@@ -75,33 +86,6 @@ async function expectBiomarkerListed(container: Locator, label: string): Promise
   await expect(item).toBeVisible();
 }
 
-/**
- * The detail panel for a biomarker, identified by its heading
- */
-function biomarkerDetail(page: Page, name: string): Locator {
-  return page
-    .getByRole('main')
-    .locator('.mantine-Paper-root')
-    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
-}
-
-async function viewDetail(page: Page, name: string): Promise<Locator> {
-  await searchField(page).fill(name);
-  await page.getByRole('button', { name: `View details for ${name}`, exact: true }).click();
-  const detail = biomarkerDetail(page, name);
-  await expect(detail).toBeVisible();
-  return detail;
-}
-
-async function goToDictionary(page: Page): Promise<void> {
-  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
-}
-
-function backButton(detail: Locator): Locator {
-  return detail.getByRole('button', { name: 'Back to biomarker list' });
-}
-
 test.describe('Biomarker Dictionary', () => {
   test.beforeEach(async ({ page }) => {
     await openDictionary(page);
@@ -109,9 +93,7 @@ test.describe('Biomarker Dictionary', () => {
 
   test.describe('Navigation', () => {
     test('should display biomarker dictionary when navigating to Biomarkers', async ({ page }) => {
-      await expect(
-        page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ })
-      ).toHaveAttribute('aria-current', 'page');
+      await expect(biomarkersNavItem(page)).toHaveAttribute('aria-current', 'page');
       await expect(page.getByRole('main').getByRole('heading', { name: 'Biomarker Dictionary', level: 2 })).toBeVisible();
     });
 
@@ -442,6 +424,15 @@ test.describe('Biomarker Dictionary', () => {
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scrollY);
     });
 
+    test('shows the list when Biomarkers is chosen in the menu', async ({ page }) => {
+      const detail = await viewDetail(page, 'LDL Cholesterol');
+
+      await goToDictionary(page);
+
+      await expect(detail).toHaveCount(0);
+      await expect(searchField(page)).toBeVisible();
+    });
+
     test('should return to the list, not the previous detail, after related biomarkers', async ({
       page,
     }) => {
@@ -541,6 +532,50 @@ test.describe('Values filed under the wrong test by earlier versions', () => {
     const options = await trendOptions(page);
     expect(options).toContain('Urine Red Blood Cells (1 value)');
     expect(options.join()).not.toMatch(/Urine Blood/);
+  });
+});
+
+test.describe('A biomarker page opened from another page', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedVisits(page, [
+      { date: '2024-01-15', values: [{ biomarker: TREND_GLUCOSE, value: 92 }] },
+      { date: '2024-03-15', values: [{ biomarker: TREND_GLUCOSE, value: 110 }] },
+    ]);
+    await goToTrends(page);
+    await selectBiomarker(page, 'Glucose');
+  });
+
+  test('starts at the top, with its back button in view', async ({ page }) => {
+    const link = referenceLink(page, 'Glucose');
+    const header = (await page.getByRole('banner').boundingBox())!;
+    const scrollRoom = () =>
+      page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+    // Scrolled a little: further, the shorter page in between scrolls back by
+    // itself. Both pages are tall enough to keep it, so only the app resets it.
+    await expect.poll(scrollRoom).toBeGreaterThan(120);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(60);
+
+    await link.click();
+
+    const detail = await expectDetailPage(page, 'Glucose');
+    await expect.poll(scrollRoom).toBeGreaterThan(120);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    const back = (await backButton(detail).boundingBox())!;
+    expect(back.y).toBeGreaterThanOrEqual(header.y + header.height);
+  });
+
+  test('Back shows the list from the top, with its search focused', async ({ page }) => {
+    await referenceLink(page, 'Glucose').click();
+    const detail = await expectDetailPage(page, 'Glucose');
+
+    await backButton(detail).click();
+
+    await expect(searchField(page)).toBeFocused();
+    await expect(searchField(page)).toHaveValue('');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 });
 

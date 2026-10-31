@@ -2,7 +2,8 @@
  * Step definitions for features/trend-charts.feature (also used by alerts)
  *
  * Builds scenario-specific lab data for seedLabData(). Biomarker IDs refer to
- * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS); the
+ * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS), or
+ * above 10000 to a test outside it (a legacy hash ID); the
  * display name is resolved from rawText, as it is for imported values.
  */
 
@@ -21,6 +22,8 @@ export const HEMOGLOBIN: BiomarkerFixture = { id: 3, name: 'Hemoglobin', unit: '
 export const GLUCOSE: BiomarkerFixture = { id: 22, name: 'Glucose', unit: 'mg/dL', low: 70, high: 100 };
 export const LDL: BiomarkerFixture = { id: 33, name: 'LDL Cholesterol', unit: 'mg/dL', low: 0, high: 100 };
 export const HDL: BiomarkerFixture = { id: 34, name: 'HDL Cholesterol', unit: 'mg/dL', low: 40, high: 60 };
+/** One unit only, so its chart offers no unit choice */
+export const RDW: BiomarkerFixture = { id: 9, name: 'Red Cell Distribution Width', unit: '%', low: 11.5, high: 14.5 };
 export const VITAMIN_D: BiomarkerFixture = { id: 50, name: 'Vitamin D', unit: 'ng/mL', low: 30, high: 100 };
 
 /** One lab visit: its date, lab and the values measured on it */
@@ -125,4 +128,11 @@ export async function pickDate(page: Page, inputLabel: string, isoDate: string):
   await dropdown.getByRole('button', { name: new RegExp(`^${monthName.slice(0, 3)}`) }).click();
   await dropdown.getByRole('button', { name: `${day} ${monthName} ${year}`, exact: true }).click();
   await expect(dropdown).toBeHidden();
+}
+
+/**
+ * The reference link next to the chart's biomarker picker
+ */
+export function referenceLink(page: Page, name: string): Locator {
+  return page.getByRole('main').getByRole('button', { name: `View reference for ${name}`, exact: true });
 }

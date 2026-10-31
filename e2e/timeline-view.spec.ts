@@ -219,6 +219,17 @@ test.describe('Timeline with Data', () => {
     }
   });
 
+  test('choosing Timeline in the menu shows the timeline fresh', async ({ page }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    await seedLabData(page, { labResults: [result], testValues: panelValues(result, 3, 1) });
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+
+    await goToTimeline(page);
+
+    await expect(card).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('should expand card to show test values', async ({ page }) => {
     const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
     await seedLabData(page, {

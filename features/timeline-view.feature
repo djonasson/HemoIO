@@ -88,6 +88,11 @@ Feature: Timeline View
     Then that test's name should be shown as plain text, not a link
 
   # Filtering
+  Scenario: Choosing Timeline in the menu shows the timeline fresh
+    Given I have expanded a lab result card
+    When I choose Timeline in the menu
+    Then every lab result card should be collapsed
+
   Scenario: Filter timeline by date range
     Given I have lab results from the following dates:
       | date       |

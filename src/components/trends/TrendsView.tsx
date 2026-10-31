@@ -6,8 +6,21 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
-import { IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
+import {
+  Alert,
+  Box,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Modal,
+  MultiSelect,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
+import { IconBook, IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
@@ -22,7 +35,11 @@ import {
   analyzeTrend,
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
-import { getBiomarkerDisplayName, getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
+import {
+  getBiomarkerByKey,
+  getBiomarkerDisplayName,
+  getBiomarkerForTestValue,
+} from '@data/biomarkers/dictionary';
 import { convertMeasurement, preferredUnitOptions, resolveDisplayUnit } from '@services/units';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
@@ -55,6 +72,8 @@ export interface TrendsViewProps {
   initialBiomarkerKey?: string;
   /** Date of the data point to highlight */
   highlightDate?: Date;
+  /** Show a biomarker's page in the biomarker dictionary */
+  onOpenReference?: (biomarkerKey: string) => void;
 }
 
 /**
@@ -73,6 +92,7 @@ export function TrendsView({
   onNavigateToAlerts,
   initialBiomarkerKey,
   highlightDate,
+  onOpenReference,
 }: TrendsViewProps = {}) {
   const { results, isLoading, error } = useLabResults();
   const { unacknowledgedCount: alertCount } = useAlerts();
@@ -268,6 +288,24 @@ export function TrendsView({
     return biomarkerDataMap.get(selectedBiomarkerId) || null;
   }, [selectedBiomarkerId, biomarkerDataMap]);
 
+  const showUnitChoice = (selectedBiomarkerData?.unitOptions.length ?? 0) > 1;
+  // Only biomarkers in the dictionary have a reference page
+  const referenceButton =
+    onOpenReference &&
+    selectedBiomarkerData &&
+    selectedBiomarkerId &&
+    getBiomarkerByKey(selectedBiomarkerId) ? (
+      <Button
+        variant="light"
+        size="xs"
+        leftSection={<IconBook size={14} aria-hidden />}
+        onClick={() => onOpenReference(selectedBiomarkerId)}
+        aria-label={`View reference for ${selectedBiomarkerData.name}`}
+      >
+        View reference
+      </Button>
+    ) : null;
+
   // Filter data points by date range
   const filteredDataPoints = useMemo(() => {
     if (!selectedBiomarkerData) return [];
@@ -417,17 +455,23 @@ export function TrendsView({
           onCompare={handleOpenCompare}
           showCompareButton={biomarkerOptions.length >= 2}
         />
-        {selectedBiomarkerData && selectedBiomarkerData.unitOptions.length > 1 && (
-          <Group mt="sm">
-            <PreferredUnitSelect
-              // A new biomarker starts with its own unit in the search
-              key={selectedBiomarkerId}
-              biomarkerName={selectedBiomarkerData.name}
-              units={selectedBiomarkerData.unitOptions}
-              value={selectedBiomarkerData.unit}
-              onChange={handlePreferredUnitChange}
-            />
-          </Group>
+        {selectedBiomarkerData && (showUnitChoice || referenceButton) && (
+          <Box mt="sm">
+            {showUnitChoice ? (
+              <PreferredUnitSelect
+                // A new biomarker starts with its own unit in the search
+                key={selectedBiomarkerId}
+                biomarkerName={selectedBiomarkerData.name}
+                units={selectedBiomarkerData.unitOptions}
+                value={selectedBiomarkerData.unit}
+                onChange={handlePreferredUnitChange}
+                // In the unit input's row, where the error below cannot move it
+                aside={referenceButton}
+              />
+            ) : (
+              referenceButton
+            )}
+          </Box>
         )}
       </Paper>
 
