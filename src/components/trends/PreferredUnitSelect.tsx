@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Select, type ComboboxItem, type OptionsFilter } from '@mantine/core';
+import { Box, Group, Select, type ComboboxItem, type OptionsFilter } from '@mantine/core';
 import { unitsMatch } from '@services/units';
 
 export interface PreferredUnitSelectProps {
@@ -18,6 +18,8 @@ export interface PreferredUnitSelectProps {
   /** The unit shown now */
   value: string;
   onChange: (unit: string) => void;
+  /** Shown beside the input, in its row: an error below never moves it */
+  aside?: React.ReactNode;
 }
 
 /** Whether a unit is what the user is typing: part of it, or the whole unit in another spelling */
@@ -33,6 +35,7 @@ export function PreferredUnitSelect({
   units,
   value,
   onChange,
+  aside,
 }: PreferredUnitSelectProps): React.ReactNode {
   // Search stays uncontrolled so Mantine keeps it in step with the value;
   // this copy only decides whether to show the error
@@ -54,7 +57,14 @@ export function PreferredUnitSelect({
       searchable
       allowDeselect={false}
       error={unsupported ? `Unit not supported for ${biomarkerName}` : undefined}
-      w={180}
+      // One line, the input giving way on narrow screens: wrapped, the aside
+      // would come between the input and its error
+      inputContainer={(input) => (
+        <Group gap="sm" wrap="nowrap">
+          <Box style={{ flex: '0 1 180px', minWidth: 0 }}>{input}</Box>
+          {aside && <Box style={{ display: 'flex', flexShrink: 0 }}>{aside}</Box>}
+        </Group>
+      )}
     />
   );
 }

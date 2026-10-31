@@ -133,8 +133,14 @@ Feature: Trend Charts
     Then I should see the Biomarkers page showing the detail for "Glucose"
 
   Scenario: The reference link for a test with a single unit
-    Given I am viewing the trend chart for "Hemoglobin", which has a single unit
-    Then I should be offered its reference page
+    Given I am viewing the trend chart for "Red Cell Distribution Width", which has a single unit
+    Then I should not be offered a choice of unit
+    But I should be offered its reference page
+
+  Scenario: A trend opened from another page starts at the top
+    Given I have scrolled down the Biomarkers page for "Glucose"
+    When I choose to view its trend
+    Then the trend chart for "Glucose" should start at the top of the page
 
   Scenario: No reference link for a test that is not in the biomarker dictionary
     Given I have values for a test that is not in the biomarker dictionary

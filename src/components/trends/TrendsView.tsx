@@ -6,7 +6,20 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Stack, Paper, Title, Alert, Center, Loader, Text, Modal, Button, Group, MultiSelect } from '@mantine/core';
+import {
+  Alert,
+  Box,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Modal,
+  MultiSelect,
+  Paper,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { IconBook, IconChartLine, IconAlertCircle, IconTrendingUp } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
@@ -46,13 +59,6 @@ const CHART_COLORS = [
   '#7950f2',
   '#20c997',
 ];
-
-/**
- * Space above the reference button beside the unit select, so the two are
- * level: the select's label (a small-text line), the 3px gap below it, and
- * half of the 6px the select's input is taller than the button
- */
-const REFERENCE_BUTTON_OFFSET = 'calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 6px)';
 
 /**
  * Props for TrendsView
@@ -284,10 +290,21 @@ export function TrendsView({
 
   const showUnitChoice = (selectedBiomarkerData?.unitOptions.length ?? 0) > 1;
   // Only biomarkers in the dictionary have a reference page
-  const openReference =
-    onOpenReference && selectedBiomarkerId && getBiomarkerByKey(selectedBiomarkerId)
-      ? () => onOpenReference(selectedBiomarkerId)
-      : null;
+  const referenceButton =
+    onOpenReference &&
+    selectedBiomarkerData &&
+    selectedBiomarkerId &&
+    getBiomarkerByKey(selectedBiomarkerId) ? (
+      <Button
+        variant="light"
+        size="xs"
+        leftSection={<IconBook size={14} aria-hidden />}
+        onClick={() => onOpenReference(selectedBiomarkerId)}
+        aria-label={`View reference for ${selectedBiomarkerData.name}`}
+      >
+        View reference
+      </Button>
+    ) : null;
 
   // Filter data points by date range
   const filteredDataPoints = useMemo(() => {
@@ -438,34 +455,21 @@ export function TrendsView({
           onCompare={handleOpenCompare}
           showCompareButton={biomarkerOptions.length >= 2}
         />
-        {selectedBiomarkerData && (showUnitChoice || openReference) && (
-          // Aligned to the top: the unit's error line below its input must not
-          // move the button, or a click that clears the error would miss it
-          <Group mt="sm" align="flex-start">
-            {showUnitChoice && (
-              <PreferredUnitSelect
-                // A new biomarker starts with its own unit in the search
-                key={selectedBiomarkerId}
-                biomarkerName={selectedBiomarkerData.name}
-                units={selectedBiomarkerData.unitOptions}
-                value={selectedBiomarkerData.unit}
-                onChange={handlePreferredUnitChange}
-              />
-            )}
-            {openReference && (
-              <Button
-                variant="light"
-                size="xs"
-                // Level with the unit input below its label, when there is one
-                mt={showUnitChoice ? REFERENCE_BUTTON_OFFSET : undefined}
-                leftSection={<IconBook size={14} aria-hidden />}
-                onClick={openReference}
-                aria-label={`View reference for ${selectedBiomarkerData.name}`}
-              >
-                View reference
-              </Button>
-            )}
-          </Group>
+        {selectedBiomarkerData && showUnitChoice ? (
+          <Box mt="sm">
+            <PreferredUnitSelect
+              // A new biomarker starts with its own unit in the search
+              key={selectedBiomarkerId}
+              biomarkerName={selectedBiomarkerData.name}
+              units={selectedBiomarkerData.unitOptions}
+              value={selectedBiomarkerData.unit}
+              onChange={handlePreferredUnitChange}
+              // In the unit input's row, where the error below cannot move it
+              aside={referenceButton}
+            />
+          </Box>
+        ) : (
+          referenceButton && <Box mt="sm">{referenceButton}</Box>
         )}
       </Paper>
 

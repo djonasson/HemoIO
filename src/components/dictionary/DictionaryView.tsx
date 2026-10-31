@@ -1,9 +1,11 @@
 /**
  * DictionaryView Component
  *
- * The biomarker list, or one biomarker's detail in its place. The list stays
- * mounted while hidden, so Back returns to the same search and open
- * categories; the scroll position and focus are restored by hand.
+ * The biomarker list, or one biomarker's detail in its place. Once shown, the
+ * list stays mounted while hidden, so Back returns to the same search and
+ * open categories; the scroll position and focus are restored by hand.
+ * Opened on a detail from another view, the list is built only on Back, and
+ * then shows from the top with its search focused.
  */
 
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -53,11 +55,6 @@ export function DictionaryView({
     openedOnDetail ? { biomarkerKey: null, scrollY: 0 } : null
   );
 
-  // Opened from another view, which may have been scrolled down
-  useLayoutEffect(() => {
-    if (openedOnDetail) window.scrollTo(0, 0);
-  }, [openedOnDetail]);
-
   const handleSelectFromList = useCallback((biomarker: BiomarkerDefinition) => {
     listPosition.current = { biomarkerKey: biomarker.key, scrollY: window.scrollY };
     setSelected(biomarker);
@@ -83,7 +80,9 @@ export function DictionaryView({
     listPosition.current = null;
     listRef.current
       ?.querySelector<HTMLElement>(
-        biomarkerKey === null ? 'input' : `[data-biomarker-key="${biomarkerKey}"]`
+        biomarkerKey === null
+          ? 'input[aria-label="Search biomarkers"]'
+          : `[data-biomarker-key="${biomarkerKey}"]`
       )
       ?.focus({ preventScroll: true });
     window.scrollTo(0, scrollY);

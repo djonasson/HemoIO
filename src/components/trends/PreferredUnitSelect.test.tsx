@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { PreferredUnitSelect } from './PreferredUnitSelect';
 
-function renderSelect(onChange = vi.fn()) {
+function renderSelect(onChange = vi.fn(), aside?: React.ReactNode) {
   render(
     <MantineProvider env="test">
       <PreferredUnitSelect
@@ -12,6 +12,7 @@ function renderSelect(onChange = vi.fn()) {
         units={['mg/dL', 'mmol/L']}
         value="mg/dL"
         onChange={onChange}
+        aside={aside}
       />
     </MantineProvider>
   );
@@ -39,6 +40,18 @@ describe('PreferredUnitSelect', () => {
     expect(screen.getByText('Unit not supported for Glucose')).toBeInTheDocument();
     expect(input).toHaveAccessibleDescription('Unit not supported for Glucose');
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('puts what is beside it in the row of its input, above an error', async () => {
+    const { input } = renderSelect(vi.fn(), <button type="button">Beside</button>);
+    await userEvent.clear(input);
+    await userEvent.type(input, 'stones');
+
+    const beside = screen.getByRole('button', { name: 'Beside' });
+    const error = screen.getByText('Unit not supported for Glucose');
+    // The error comes after the row, so it cannot push what is beside the input
+    expect(input.closest('.mantine-Select-root')).toContainElement(beside);
+    expect(beside.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('replaces the current unit when typing after focusing', async () => {

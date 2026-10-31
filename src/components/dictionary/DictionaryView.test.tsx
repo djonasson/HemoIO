@@ -120,12 +120,11 @@ describe('DictionaryView', () => {
     expect(onOpenTrend).toHaveBeenCalledWith('glucose');
   });
 
-  it('opens on the requested biomarker at the top of the page', () => {
+  it('opens on the requested biomarker', () => {
     renderView('glucose');
 
     expect(screen.getByRole('heading', { level: 3, name: 'Glucose' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Search biomarkers' })).not.toBeInTheDocument();
-    expect(scrollTo).toHaveBeenCalledWith(0, 0);
   });
 
   it('builds the list only when Back asks for it, then focuses its search', async () => {
@@ -136,7 +135,7 @@ describe('DictionaryView', () => {
 
     const search = screen.getByRole('textbox', { name: 'Search biomarkers' });
     expect(search).toHaveValue('');
-    // Its biomarker sits in a closed category, so the search takes focus
+    // Never shown before, the list has no item of its own to return focus to
     expect(search).toHaveFocus();
     expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
   });

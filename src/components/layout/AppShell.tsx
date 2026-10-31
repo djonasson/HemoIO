@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import {
   AppShell as MantineAppShell,
   Burger,
@@ -146,6 +146,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const [opened, { toggle, close }] = useDisclosure();
   const [{ to, visit }, setNav] = useState<NavState>({ to: 'timeline', visit: 0 });
   const activeView = typeof to === 'string' ? to : to.view;
+  // Every move opens its view at the top, not at the last view's scroll
+  useLayoutEffect(() => window.scrollTo(0, 0), [visit]);
   const openView = useCallback(
     (destination: Destination) => setNav((prev) => ({ to: destination, visit: prev.visit + 1 })),
     []

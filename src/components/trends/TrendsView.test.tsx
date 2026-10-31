@@ -693,6 +693,7 @@ describe('TrendsView reference link', () => {
   });
 
   it('offers the link for a biomarker with a single unit, which has no unit choice', async () => {
+    // This file's dictionary mock gives Hemoglobin a single unit
     const onOpenReference = vi.fn();
     renderWithTwoValues('hemoglobin', 'Hemoglobin', { onOpenReference });
 
