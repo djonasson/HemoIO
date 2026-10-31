@@ -40,7 +40,7 @@ export function DictionaryView({
   const { results } = useLabResults();
   const { unitPreferences, personalTargets, setPersonalTarget } = usePreferences();
   const [selected, setSelected] = useState<BiomarkerDefinition | null>(
-    () => (initialBiomarkerKey && getBiomarkerByKey(initialBiomarkerKey)) || null
+    () => (initialBiomarkerKey ? (getBiomarkerByKey(initialBiomarkerKey) ?? null) : null)
   );
   const [editingTarget, setEditingTarget] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);

@@ -10,7 +10,13 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
-import { seedLabData } from './steps/data.steps';
+import {
+  backButton,
+  biomarkerDetail,
+  expectDetailPage,
+  goToDictionary,
+  searchField,
+} from './steps/dictionary.steps';
 import {
   GLUCOSE,
   HDL,
@@ -19,7 +25,6 @@ import {
   VITAMIN_D,
   biomarkerSelect,
   dataPoints,
-  expectReferencePage,
   goToTrends,
   pickDate,
   referenceLink,
@@ -492,9 +497,9 @@ test.describe('Reference page from a trend', () => {
 
     await referenceLink(page, 'Glucose').click();
 
-    const detail = await expectReferencePage(page, 'Glucose');
-    await detail.getByRole('button', { name: 'Back to biomarker list' }).click();
-    await expect(page.getByRole('textbox', { name: 'Search biomarkers' })).toBeVisible();
+    const detail = await expectDetailPage(page, 'Glucose');
+    await backButton(detail).click();
+    await expect(searchField(page)).toBeVisible();
   });
 
   test('follows the biomarker picked after switching', async ({ page }) => {
@@ -504,7 +509,7 @@ test.describe('Reference page from a trend', () => {
     await expect(referenceLink(page, 'Glucose')).toHaveCount(0);
     await referenceLink(page, 'Hemoglobin').click();
 
-    await expectReferencePage(page, 'Hemoglobin');
+    await expectDetailPage(page, 'Hemoglobin');
   });
 
   test('opens by keyboard', async ({ page }) => {
@@ -514,38 +519,30 @@ test.describe('Reference page from a trend', () => {
     await expect(referenceLink(page, 'Glucose')).toBeFocused();
     await page.keyboard.press('Enter');
 
-    await expectReferencePage(page, 'Glucose');
+    await expectDetailPage(page, 'Glucose');
   });
 
   test('the Biomarkers menu item still opens the list', async ({ page }) => {
     await selectBiomarker(page, 'Glucose');
     await referenceLink(page, 'Glucose').click();
-    await expectReferencePage(page, 'Glucose');
+    await expectDetailPage(page, 'Glucose');
 
     await goToTrends(page);
-    await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
+    await goToDictionary(page);
 
-    await expect(page.getByRole('textbox', { name: 'Search biomarkers' })).toBeVisible();
-    await expect(page.getByRole('main').getByRole('heading', { level: 3, name: 'Glucose', exact: true })).toHaveCount(0);
+    await expect(searchField(page)).toBeVisible();
+    await expect(biomarkerDetail(page, 'Glucose')).toHaveCount(0);
   });
 });
 
 test('a test outside the biomarker dictionary offers no reference page', async ({ page }) => {
-  const at = '2024-03-01T10:00:00.000Z';
-  const value = (id: number, labResultId: number, amount: number) => ({
-    id, labResultId, biomarkerKey: 'unknown:zorblatinindex', rawText: 'Zorblatin index',
-    value: amount, unit: 'U', confidence: 0.9, createdAt: at, updatedAt: at,
-  });
+  const zorblatin = { biomarkerKey: 'unknown:zorblatinindex', name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
   await page.goto('/');
   await setupOrUnlock(page);
-  await seedLabData(page, {
-    labResults: [
-      { id: 1, date: at, labName: 'Test Lab', createdAt: at, updatedAt: at },
-      { id: 2, date: '2024-04-01T10:00:00.000Z', labName: 'Test Lab', createdAt: at, updatedAt: at },
-    ],
-    testValues: [value(1, 1, 3), value(2, 2, 4)],
-    userNotes: [],
-  });
+  await seedVisits(page, [
+    { date: '2024-03-01', values: [{ biomarker: zorblatin, value: 3 }] },
+    { date: '2024-04-01', values: [{ biomarker: zorblatin, value: 4 }] },
+  ]);
   await goToTrends(page);
 
   await selectBiomarker(page, 'Zorblatin index');

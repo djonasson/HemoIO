@@ -66,10 +66,21 @@ import type { FolderRestoreDecision } from '@hooks';
 
 type View = 'timeline' | 'import' | 'trends' | 'alerts' | 'notes' | 'dictionary' | 'settings';
 
-interface TrendFocus {
-  biomarkerKey: string;
-  /** Date of the data point to highlight, if any */
-  date?: Date;
+/** What a view opens on when another view links to it */
+type Focus =
+  | {
+      view: 'trends';
+      biomarkerKey: string;
+      /** Date of the data point to highlight, if any */
+      date?: Date;
+    }
+  | { view: 'timeline'; labResultId: number }
+  | { view: 'dictionary'; biomarkerKey: string };
+
+/** The open view, and what it focuses on (only ever the open view's focus) */
+interface NavState {
+  view: View;
+  focus: Focus | null;
 }
 
 interface AppShellProps {
@@ -130,7 +141,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { lock } = useAuth();
   const { db, isReady } = useEncryptedDb();
   const [opened, { toggle, close }] = useDisclosure();
-  const [activeView, setActiveView] = useState<View>('timeline');
+  const [{ view: activeView, focus }, setNav] = useState<NavState>({
+    view: 'timeline',
+    focus: null,
+  });
+  const openView = useCallback((view: View) => setNav({ view, focus: null }), []);
+  const openFocus = useCallback((to: Focus) => setNav({ view: to.view, focus: to }), []);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   // While an import saves, the user stays on its confirm step: leaving would
   // drop the reviewed values a failed save needs to be tried again
@@ -151,9 +167,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { refresh: refreshLabResults } = useLabResults();
   const { reload: reloadPreferences } = usePreferences();
   const { reload: reloadAlertState } = useAlertState();
-  const [trendFocus, setTrendFocus] = useState<TrendFocus | null>(null);
-  const [timelineFocus, setTimelineFocus] = useState<number | null>(null);
-  const [dictionaryFocus, setDictionaryFocus] = useState<string | null>(null);
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
@@ -166,29 +179,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const handleNavClick = useCallback(
     (view: View) => {
       if (isSavingImport) return;
-      setActiveView(view);
-      setTrendFocus(null);
-      setTimelineFocus(null);
-      setDictionaryFocus(null);
+      openView(view);
       close();
     },
-    [close, isSavingImport]
+    [close, isSavingImport, openView]
   );
-
-  const handleOpenTrend = useCallback((biomarkerKey: string, date?: Date) => {
-    setTrendFocus({ biomarkerKey, date });
-    setActiveView('trends');
-  }, []);
-
-  const handleOpenReference = useCallback((biomarkerKey: string) => {
-    setDictionaryFocus(biomarkerKey);
-    setActiveView('dictionary');
-  }, []);
-
-  const handleOpenLabResult = useCallback((labResultId: number) => {
-    setTimelineFocus(labResultId);
-    setActiveView('timeline');
-  }, []);
 
   const handleLock = useCallback(() => {
     lock();
@@ -200,17 +195,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setIsSavingImport(true);
       try {
         // Not saved: the wizard stays on its confirm step to try again
-        if (await saveImport(results)) setActiveView('timeline');
+        if (await saveImport(results)) openView('timeline');
       } finally {
         setIsSavingImport(false);
       }
     },
-    [saveImport]
+    [saveImport, openView]
   );
 
-  const handleNavigateToImport = useCallback(() => {
-    setActiveView('import');
-  }, []);
+  const handleNavigateToImport = useCallback(() => openView('import'), [openView]);
 
   const handleOpenExport = useCallback(() => {
     setExportDialogOpen(true);
@@ -281,7 +274,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         );
 
         // Navigate to timeline to show restored data
-        setActiveView('timeline');
+        openView('timeline');
       } catch (err) {
         notifySaveFailed('Restore failed', err, 'Your data was not changed.');
         throw err;
@@ -302,6 +295,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setAnthropicModel,
       setOllamaModel,
       setApiKey,
+      openView,
     ]
   );
 
@@ -443,12 +437,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onImportComplete={handleImportComplete}
               onNavigateToImport={handleNavigateToImport}
               onNavigate={handleNavClick}
-              trendFocus={trendFocus}
-              onOpenTrend={handleOpenTrend}
-              timelineFocus={timelineFocus}
-              onOpenLabResult={handleOpenLabResult}
-              dictionaryFocus={dictionaryFocus}
-              onOpenReference={handleOpenReference}
+              focus={focus}
+              onOpen={openFocus}
               onRestore={handleRestore}
               isRestoring={isRestoring}
             />
@@ -474,12 +464,8 @@ interface MainContentProps {
   onImportComplete: (results: ReviewedResult[]) => Promise<void>;
   onNavigateToImport: () => void;
   onNavigate: (view: View) => void;
-  trendFocus: TrendFocus | null;
-  onOpenTrend: (biomarkerKey: string, date?: Date) => void;
-  timelineFocus: number | null;
-  onOpenLabResult: (labResultId: number) => void;
-  dictionaryFocus: string | null;
-  onOpenReference: (biomarkerKey: string) => void;
+  focus: Focus | null;
+  onOpen: (focus: Focus) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
   isRestoring: boolean;
 }
@@ -489,16 +475,19 @@ function MainContent({
   onImportComplete,
   onNavigateToImport,
   onNavigate,
-  trendFocus,
-  onOpenTrend,
-  timelineFocus,
-  onOpenLabResult,
-  dictionaryFocus,
-  onOpenReference,
+  focus,
+  onOpen,
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
+  const trendFocus = focus?.view === 'trends' ? focus : null;
+  const timelineFocus = focus?.view === 'timeline' ? focus.labResultId : null;
+  const dictionaryFocus = focus?.view === 'dictionary' ? focus.biomarkerKey : null;
+  const onOpenTrend = (biomarkerKey: string, date?: Date): void =>
+    onOpen({ view: 'trends', biomarkerKey, date });
+  const onOpenLabResult = (labResultId: number): void => onOpen({ view: 'timeline', labResultId });
+  const onOpenReference = (biomarkerKey: string): void => onOpen({ view: 'dictionary', biomarkerKey });
   const { hasApiKey, getApiKey, isLoading: isLoadingApiKey } = useEncryptedApiKey();
   const {
     aiProvider,

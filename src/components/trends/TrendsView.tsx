@@ -277,9 +277,9 @@ export function TrendsView({
 
   const showUnitChoice = (selectedBiomarkerData?.unitOptions.length ?? 0) > 1;
   // Only biomarkers in the dictionary have a reference page
-  const referenceKey =
+  const openReference =
     onOpenReference && selectedBiomarkerId && getBiomarkerByKey(selectedBiomarkerId)
-      ? selectedBiomarkerId
+      ? () => onOpenReference(selectedBiomarkerId)
       : null;
 
   // Filter data points by date range
@@ -431,7 +431,7 @@ export function TrendsView({
           onCompare={handleOpenCompare}
           showCompareButton={biomarkerOptions.length >= 2}
         />
-        {selectedBiomarkerData && (showUnitChoice || referenceKey) && (
+        {selectedBiomarkerData && (showUnitChoice || openReference) && (
           <Group mt="sm" align="flex-end">
             {showUnitChoice && (
               <PreferredUnitSelect
@@ -443,12 +443,12 @@ export function TrendsView({
                 onChange={handlePreferredUnitChange}
               />
             )}
-            {referenceKey && onOpenReference && (
+            {openReference && (
               <Button
                 variant="light"
                 size="xs"
                 leftSection={<IconBook size={14} aria-hidden />}
-                onClick={() => onOpenReference(referenceKey)}
+                onClick={openReference}
                 aria-label={`View reference for ${selectedBiomarkerData.name}`}
               >
                 View reference

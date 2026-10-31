@@ -107,6 +107,21 @@ beforeAll(() => {
   vi.stubGlobal('ResizeObserver', ResizeObserverMock);
 });
 
+/** useAlerts with this many unacknowledged alerts */
+function mockAlerts(unacknowledgedCount = 0): void {
+  vi.mocked(useAlerts).mockReturnValue({
+    groups: [],
+    unacknowledgedCount,
+    hiddenCount: 0,
+    assessedCount: 1,
+    isLoading: false,
+    error: null,
+    dismissGroup: vi.fn(),
+    acknowledgeGroup: vi.fn(),
+    refresh: vi.fn(),
+  });
+}
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">
@@ -165,18 +180,7 @@ describe('TrendsView', () => {
     mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
     mockShowNotification.mockReset();
 
-    // Default mock for useAlerts
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 0,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockAlerts();
   });
 
   it('should render loading state', () => {
@@ -399,17 +403,7 @@ describe('TrendsView', () => {
       deleteResult: vi.fn(),
     });
 
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 1,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockAlerts(1);
 
     const onNavigateToAlerts = vi.fn();
     renderWithProviders(<TrendsView onNavigateToAlerts={onNavigateToAlerts} />);
@@ -637,17 +631,7 @@ describe('TrendsView preferred unit', () => {
     mockUnitPreferences = {};
     mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
     mockShowNotification.mockReset();
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 0,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockAlerts();
   });
 
   const renderWithGlucose = () => renderWithTwoValues('glucose', 'Glucose');
@@ -696,17 +680,7 @@ describe('TrendsView reference link', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUnitPreferences = {};
-    vi.mocked(useAlerts).mockReturnValue({
-      groups: [],
-      unacknowledgedCount: 0,
-      hiddenCount: 0,
-      assessedCount: 1,
-      isLoading: false,
-      error: null,
-      dismissGroup: vi.fn(),
-      acknowledgeGroup: vi.fn(),
-      refresh: vi.fn(),
-    });
+    mockAlerts();
   });
 
   it("opens the chart's biomarker reference page", async () => {

@@ -2,7 +2,8 @@
  * Step definitions for features/trend-charts.feature (also used by alerts)
  *
  * Builds scenario-specific lab data for seedLabData(). Biomarker IDs refer to
- * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS); the
+ * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS), and a
+ * test outside it is given its stored key instead; the
  * display name is resolved from rawText, as it is for imported values.
  */
 
@@ -10,7 +11,9 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { seedLabData } from './data.steps';
 
 export interface BiomarkerFixture {
-  id: number;
+  /** Position in the dictionary; a test outside it has a biomarkerKey instead */
+  id?: number;
+  biomarkerKey?: string;
   name: string;
   unit: string;
   low: number;
@@ -55,6 +58,7 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
         id: testValues.length + 1,
         labResultId,
         biomarkerId: biomarker.id,
+        biomarkerKey: biomarker.biomarkerKey,
         rawText: biomarker.name,
         value,
         unit: unit ?? biomarker.unit,
@@ -132,19 +136,4 @@ export async function pickDate(page: Page, inputLabel: string, isoDate: string):
  */
 export function referenceLink(page: Page, name: string): Locator {
   return page.getByRole('main').getByRole('button', { name: `View reference for ${name}`, exact: true });
-}
-
-/**
- * Then I should see the Biomarkers page showing the detail for "<name>"
- */
-export async function expectReferencePage(page: Page, name: string): Promise<Locator> {
-  await expect(
-    page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ })
-  ).toHaveAttribute('aria-current', 'page');
-  const detail = page
-    .getByRole('main')
-    .locator('.mantine-Paper-root')
-    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
-  await expect(detail).toBeVisible();
-  return detail;
 }

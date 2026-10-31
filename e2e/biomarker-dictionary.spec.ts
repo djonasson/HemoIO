@@ -13,6 +13,7 @@ import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { waitForAnimations } from './steps/timeline.steps';
 import { biomarkerSelect, goToTrends } from './steps/trends.steps';
+import { backButton, biomarkerDetail, goToDictionary, searchField } from './steps/dictionary.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import { storeTestValueAsEarlierVersion } from './steps/dataAtRest.steps';
 import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
@@ -23,12 +24,7 @@ import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
 async function openDictionary(page: Page): Promise<void> {
   await page.goto('/');
   await setupOrUnlock(page);
-  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
-}
-
-function searchField(page: Page): Locator {
-  return page.getByRole('textbox', { name: 'Search biomarkers' });
+  await goToDictionary(page);
 }
 
 /**
@@ -75,16 +71,6 @@ async function expectBiomarkerListed(container: Locator, label: string): Promise
   await expect(item).toBeVisible();
 }
 
-/**
- * The detail panel for a biomarker, identified by its heading
- */
-function biomarkerDetail(page: Page, name: string): Locator {
-  return page
-    .getByRole('main')
-    .locator('.mantine-Paper-root')
-    .filter({ has: page.getByRole('heading', { level: 3, name, exact: true }) });
-}
-
 async function viewDetail(page: Page, name: string): Promise<Locator> {
   await searchField(page).fill(name);
   await page.getByRole('button', { name: `View details for ${name}`, exact: true }).click();
@@ -93,14 +79,6 @@ async function viewDetail(page: Page, name: string): Promise<Locator> {
   return detail;
 }
 
-async function goToDictionary(page: Page): Promise<void> {
-  await page.getByRole('navigation').getByRole('button', { name: /^Biomarkers/ }).click();
-  await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
-}
-
-function backButton(detail: Locator): Locator {
-  return detail.getByRole('button', { name: 'Back to biomarker list' });
-}
 
 test.describe('Biomarker Dictionary', () => {
   test.beforeEach(async ({ page }) => {
