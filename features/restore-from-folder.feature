@@ -44,6 +44,8 @@ Feature: Restore From the Folder Copy
     When I unlock HemoIO
     Then I should be told the folder copy cannot be opened with my password
     And I should not be offered a restore
+    And I should not be offered to replace the folder copy, as HemoIO never writes over a copy it cannot read
+    And I should be told to choose another folder to keep syncing
     And the folder copy should not have been changed
 
   Scenario: Folder copy is damaged
@@ -52,6 +54,13 @@ Feature: Restore From the Folder Copy
     When I unlock HemoIO
     Then I should be told the folder copy cannot be read
     And the folder copy should not have been changed
+
+  Scenario: An empty folder file, as an interrupted first save can leave
+    Given the folder file is empty
+    And this browser no longer has any of my lab data
+    When I unlock HemoIO
+    Then I should not be asked about the folder copy
+    And HemoIO should save to the folder again
 
   Scenario: Folder copy from a newer version of HemoIO
     Given the folder copy was saved by a newer version of HemoIO

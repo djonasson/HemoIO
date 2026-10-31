@@ -17,10 +17,10 @@ import {
   forgetFolderPermission,
   grantFolderAccess,
   installFolderPicker,
-  loseBrowserData,
   switchToFolderStorage,
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
+import { loseBrowserData } from './steps/folderSync.steps';
 
 /**
  * Background: folder storage on, holding a copy of two lab results, three
@@ -167,6 +167,8 @@ test.describe('Restore from the folder copy', () => {
     await expect(dialog.unreadable()).toBeVisible();
     await expect(dialog.dialog).toContainText('different password');
     await expect(dialog.restore).toHaveCount(0);
+    await expect(dialog.replace).toHaveCount(0);
+    await expect(dialog.dialog).toContainText('choose another folder in Settings');
     await expectFolderCopyUnchanged(page, hash);
   });
 
@@ -182,6 +184,17 @@ test.describe('Restore from the folder copy', () => {
     await expect(dialog.dialog).toContainText('damaged');
     await dialog.notNow.click();
     await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('an empty folder file is not asked about, and is saved over', async ({ page }) => {
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'empty');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    await expect.poll(() => folderCopyHash(page)).not.toBe(hash);
+    await expect(new FolderRestoreDialog(page).dialog).toHaveCount(0);
   });
 
   test('a browser that still has its data is not asked, and saves as usual', async ({ page }) => {

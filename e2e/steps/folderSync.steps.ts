@@ -79,6 +79,15 @@ export class TestFolder {
       { folderName: this.name, fileName, text }
     );
   }
+
+  /** When my folder is no longer available — deleted, as a moved folder or an unplugged drive is gone */
+  remove(): Promise<void> {
+    return this.page.evaluate(
+      async (folderName) =>
+        (await navigator.storage.getDirectory()).removeEntry(folderName, { recursive: true }),
+      this.name
+    );
+  }
 }
 
 /** Given my data is stored in a local folder — switched to in Settings > Data */
@@ -122,4 +131,9 @@ export async function loseBrowserData(page: Page): Promise<void> {
 /** The notice shown while the folder sync holds back to protect the folder copy */
 export function skippedSyncNotice(page: Page): Locator {
   return page.getByRole('alert').filter({ hasText: 'Folder sync skipped' });
+}
+
+/** The notice shown while the folder sync cannot write to the folder */
+export function failedSyncNotice(page: Page): Locator {
+  return page.getByRole('alert').filter({ hasText: 'Folder sync failed' });
 }

@@ -1,6 +1,6 @@
 /**
  * The steps that follow a restore: once the data is replaced, a failing
- * step (say, syncing to a folder) must not report the restore as failed
+ * step (say, reloading the preferences) must not report the restore as failed
  */
 export interface AfterRestoreStep {
   /** What the step does, for the message to the user */

@@ -22,10 +22,12 @@ vi.mock('@services/sync', () => ({
 // Storage provider mock
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
 const mockProviderCreated = vi.fn();
+const mockSave = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class MockFileSystemStorageProvider {
     getPermissionState = mockGetPermissionState;
+    save = mockSave;
     constructor() {
       mockProviderCreated();
     }
@@ -171,6 +173,55 @@ describe('useFilesystemSync', () => {
 
       expect(writeFolderCopy).not.toHaveBeenCalled();
     });
+
+    it('does not write when the hold begins while the folder copy is read', async () => {
+      let read!: () => void;
+      vi.mocked(writeFolderCopy).mockImplementationOnce(async (store) => {
+        // As the service does: read and decrypt the folder copy, then save
+        await new Promise<void>((resolve) => (read = resolve));
+        await store.save(new ArrayBuffer(1));
+        return WRITTEN;
+      });
+      const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: true },
+      });
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalled());
+
+      rerender({ enabled: false });
+      await act(async () => read());
+
+      expect(mockSave).not.toHaveBeenCalled();
+      // Held, not failed: nothing to tell the user
+      expect(result.current.issue).toBeNull();
+    });
+
+    it('saves through to the folder while enabled', async () => {
+      vi.mocked(writeFolderCopy).mockImplementationOnce(async (store) => {
+        await store.save(new ArrayBuffer(1));
+        return WRITTEN;
+      });
+      renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    });
+
+    it('reports nothing about the folder copy while held', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
+      const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: true },
+      });
+      await waitFor(() => expect(result.current.issue).toBe('empty'));
+
+      // The folder is looked at again (access granted, another folder): the old outcome is stale
+      rerender({ enabled: false });
+      expect(result.current.issue).toBeNull();
+
+      // Nor does it come back once the hold ends, before the next sync has found anything
+      vi.mocked(writeFolderCopy).mockImplementationOnce(() => new Promise(() => {}));
+      rerender({ enabled: true });
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(2));
+      expect(result.current.issue).toBeNull();
+    });
   });
 
   describe('protecting the folder copy', () => {
@@ -185,7 +236,7 @@ describe('useFilesystemSync', () => {
       expect(vi.mocked(writeFolderCopy).mock.calls[0][1]).toEqual(
         await mockExportAllData.mock.results[0].value
       );
-      expect(result.current.protection).toBeNull();
+      expect(result.current.issue).toBeNull();
     });
 
     it.each(['empty', 'unreadable'] as const)(
@@ -195,51 +246,51 @@ describe('useFilesystemSync', () => {
 
         const { result } = renderHook(() => useFilesystemSync());
 
-        await waitFor(() => expect(result.current.protection).toBe(reason));
+        await waitFor(() => expect(result.current.issue).toBe(reason));
       }
     );
 
     it('stops reporting once a sync writes again', async () => {
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
       const { result } = renderHook(() => useFilesystemSync());
-      await waitFor(() => expect(result.current.protection).toBe('empty'));
+      await waitFor(() => expect(result.current.issue).toBe('empty'));
 
       await act(() => result.current.syncNow());
 
-      expect(result.current.protection).toBeNull();
+      expect(result.current.issue).toBeNull();
     });
 
     it('keeps reporting while nothing has changed', async () => {
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
       const { result } = renderHook(() => useFilesystemSync());
-      await waitFor(() => expect(result.current.protection).toBe('empty'));
+      await waitFor(() => expect(result.current.issue).toBe('empty'));
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
 
       await act(() => result.current.syncNow());
 
-      expect(result.current.protection).toBe('empty');
+      expect(result.current.issue).toBe('empty');
     });
 
     it('stops reporting once the folder can no longer be written', async () => {
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'unreadable' });
       const { result } = renderHook(() => useFilesystemSync());
-      await waitFor(() => expect(result.current.protection).toBe('unreadable'));
+      await waitFor(() => expect(result.current.issue).toBe('unreadable'));
       mockGetPermissionState.mockResolvedValue('prompt');
 
       await act(() => result.current.syncNow());
 
-      expect(result.current.protection).toBeNull();
+      expect(result.current.issue).toBeNull();
     });
 
     it('stops reporting once folder storage is switched off', async () => {
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'unreadable' });
       const { result } = renderHook(() => useFilesystemSync());
-      await waitFor(() => expect(result.current.protection).toBe('unreadable'));
+      await waitFor(() => expect(result.current.issue).toBe('unreadable'));
       localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
 
       await act(() => result.current.syncNow());
 
-      expect(result.current.protection).toBeNull();
+      expect(result.current.issue).toBeNull();
     });
 
     it('reads the chosen folder afresh for every sync, so a changed folder is used', async () => {
@@ -280,6 +331,18 @@ describe('useFilesystemSync', () => {
       vi.mocked(writeFolderCopy).mockRejectedValueOnce(new Error('Disk full'));
 
       await expect(act(() => result.current.syncNow())).rejects.toThrow('Disk full');
+    });
+
+    // A sync no one waits for (periodic, or the one a hold's end starts) has only the user to tell
+    it('reports a failed sync until one succeeds', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(writeFolderCopy).mockRejectedValueOnce(new Error('Folder gone'));
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(result.current.issue).toBe('failed'));
+
+      await act(() => result.current.syncNow());
+
+      expect(result.current.issue).toBeNull();
     });
 
     it('does not run a waiting sync once the session has ended', async () => {

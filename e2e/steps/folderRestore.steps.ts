@@ -9,9 +9,9 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { FOLDER_COPY } from './folderSync.steps';
 
 export const FOLDER_NAME = 'HemoIO Sync';
-const DATA_FILE_NAME = 'hemoio-data.encrypted';
 const PERMISSION_KEY = 'e2e-folder-permission';
 
 /** Given the browser supports the File System Access API */
@@ -86,19 +86,21 @@ export function folderCopyHash(page: Page): Promise<string | null> {
         return null;
       }
     },
-    { folderName: FOLDER_NAME, fileName: DATA_FILE_NAME }
+    { folderName: FOLDER_NAME, fileName: FOLDER_COPY }
   );
 }
 
 /** Replace the folder copy with a file HemoIO did not write with this key */
 export async function writeForeignFolderCopy(
   page: Page,
-  kind: 'other-password' | 'damaged'
+  kind: 'other-password' | 'damaged' | 'empty'
 ): Promise<void> {
   await page.evaluate(
     async ({ folderName, fileName, kind }) => {
       let bytes: Uint8Array;
-      if (kind === 'damaged') {
+      if (kind === 'empty') {
+        bytes = new Uint8Array(0);
+      } else if (kind === 'damaged') {
         bytes = crypto.getRandomValues(new Uint8Array(64));
       } else {
         // As HemoIO writes it (IV, then AES-GCM), under a key this user never had
@@ -121,26 +123,8 @@ export async function writeForeignFolderCopy(
       await writable.write(bytes);
       await writable.close();
     },
-    { folderName: FOLDER_NAME, fileName: DATA_FILE_NAME, kind }
+    { folderName: FOLDER_NAME, fileName: FOLDER_COPY, kind }
   );
-}
-
-/**
- * Given this browser no longer has any of my lab data — the app's database
- * is deleted, as a browser clearing site data would; the password and the
- * remembered folder stay. Ends on the unlock screen.
- */
-export async function loseBrowserData(page: Page): Promise<void> {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        // The app's open connection closes itself when asked to, so this is not blocked
-        const request = indexedDB.deleteDatabase('HemoIO');
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      })
-  );
-  await page.reload();
 }
 
 /** The folder restore dialog, as a page object */

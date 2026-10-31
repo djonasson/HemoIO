@@ -392,6 +392,14 @@ describe('FileSystemStorageProvider', () => {
 
       expect(await provider.loadCurrent()).toBe(testData);
     });
+    // An interrupted first write can leave one: nothing to restore or protect
+    it('is null when the data file is empty', async () => {
+      mockFileHandle.getFile.mockResolvedValue({
+        arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+      });
+
+      expect(await provider.loadCurrent()).toBeNull();
+    });
   });
 
   describe('exists', () => {

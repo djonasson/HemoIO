@@ -16,6 +16,7 @@ import {
   PREVIOUS_FOLDER_COPY,
   TestFolder,
   changeFolder,
+  failedSyncNotice,
   loseBrowserData,
   skippedSyncNotice,
   storeDataInFolder,
@@ -88,9 +89,10 @@ test.describe('Folder Sync Safety', () => {
 
   /** Given my lab results have been synced to my folder */
   async function syncResults(page: Parameters<typeof seedLabData>[0]): Promise<string> {
+    // The copy written when the folder was chosen, before there were results
+    const before = await folder.read(FOLDER_COPY);
     await seedLabData(page);
-    // The sync writes once unlocking has checked the folder, maybe just after
-    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBeNull();
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(before);
     return (await folder.read(FOLDER_COPY))!;
   }
 
@@ -119,6 +121,19 @@ test.describe('Folder Sync Safety', () => {
 
     await expect(skippedSyncNotice(page)).toHaveCount(0);
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
+  });
+
+  test('I am told when the folder cannot be written', async ({ page }) => {
+    await syncResults(page);
+    await folder.remove();
+
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+
+    await expect(failedSyncNotice(page)).toBeVisible();
+    await expect(failedSyncNotice(page)).toContainText('safe in this browser');
+    // Told once: the restore that added the results, notified before the sync
+    // ran, does not report it again
+    await expect(page.getByRole('alert').filter({ hasText: 'With Problems' })).toHaveCount(0);
   });
 
   test('the previous folder copy is kept next to the new one', async ({ page }) => {

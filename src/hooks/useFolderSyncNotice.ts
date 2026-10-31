@@ -1,44 +1,61 @@
 /**
- * Tells the user when the folder sync holds back to protect the folder copy
+ * Tells the user when the folder sync holds back to protect the folder copy,
+ * or cannot write to the folder
  */
 
 import { useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
-import type { FolderProtectionReason } from '@services/sync';
+import type { FolderSyncIssue } from './useFilesystemSync';
 
-export const FOLDER_SYNC_NOTICE_ID = 'folder-sync-skipped';
+export const FOLDER_SYNC_NOTICE_ID = 'folder-sync';
 
-const MESSAGES: Record<FolderProtectionReason, string> = {
-  empty:
-    'This browser has no lab results right now, but your folder copy does. ' +
-    'HemoIO left your folder copy as it is. ' +
-    'Syncing starts again once you add or restore results.',
-  unreadable:
-    'The copy in your folder cannot be read: it was saved by a different HemoIO setup, ' +
-    'or it is damaged. HemoIO left it as it is. ' +
-    'To keep syncing, choose a different folder in Settings > Data.',
-  newer:
-    'The copy in your folder was saved by a newer version of HemoIO, ' +
-    'so this version left it as it is. Reload HemoIO to update it and keep syncing.',
+const SKIPPED = 'Folder sync skipped';
+
+const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
+  empty: {
+    title: SKIPPED,
+    message:
+      'This browser has no lab results right now, but your folder copy does. ' +
+      'HemoIO left your folder copy as it is. ' +
+      'Syncing starts again once you add or restore results.',
+  },
+  unreadable: {
+    title: SKIPPED,
+    message:
+      'The copy in your folder cannot be read: it was saved by a different HemoIO setup, ' +
+      'or it is damaged. HemoIO left it as it is. ' +
+      'To keep syncing, choose a different folder in Settings > Data.',
+  },
+  newer: {
+    title: SKIPPED,
+    message:
+      'The copy in your folder was saved by a newer version of HemoIO, ' +
+      'so this version left it as it is. Reload HemoIO to update it and keep syncing.',
+  },
+  failed: {
+    title: 'Folder sync failed',
+    message:
+      'Your data could not be saved to your folder. It is safe in this browser, ' +
+      'and HemoIO keeps trying. Check that the folder is available.',
+  },
 };
 
 /**
- * One notice per reason, kept open until dismissed: a sync every 30 seconds
+ * One notice per issue, kept open until dismissed: a sync every 30 seconds
  * must not repeat it, and one that writes again takes it away.
  */
-export function useFolderSyncNotice(protection: FolderProtectionReason | null): void {
+export function useFolderSyncNotice(issue: FolderSyncIssue | null): void {
   useEffect(() => {
-    if (!protection) return;
+    if (!issue) return;
 
     notifications.show({
       id: FOLDER_SYNC_NOTICE_ID,
-      title: 'Folder sync skipped',
-      message: MESSAGES[protection],
+      ...NOTICES[issue],
       color: 'yellow',
       autoClose: false,
     });
     return () => {
       notifications.hide(FOLDER_SYNC_NOTICE_ID);
     };
-  }, [protection]);
+  }, [issue]);
 }

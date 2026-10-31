@@ -12,7 +12,10 @@ import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvid
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { writeFolderCopy } from '@services/sync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
-import type { FolderProtectionReason } from '@services/sync';
+import type { FolderCopyStore, FolderProtectionReason } from '@services/sync';
+
+/** What the user is told about the folder sync: why it held back, or that it failed */
+export type FolderSyncIssue = FolderProtectionReason | 'failed';
 
 export interface UseFilesystemSyncOptions {
   /**
@@ -27,14 +30,17 @@ interface SyncSession {
   key: CryptoKey;
 }
 
+/** Thrown by a save the hold stopped: the sync ends without a word, as one never started would */
+class SyncHeld extends Error {}
+
 /**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
  */
 export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions = {}): {
   /** Sync now; rejects when the sync fails */
   syncNow: () => Promise<void>;
-  /** Why the last sync left the folder copy alone, or null while syncs write */
-  protection: FolderProtectionReason | null;
+  /** Why the last sync left the folder copy alone or failed; null while syncs write or are held */
+  issue: FolderSyncIssue | null;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey } = useAuth();
@@ -46,7 +52,9 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
   // for meanwhile share one: each exports the data as it is when it starts.
   const lastRef = useRef<Promise<void>>(Promise.resolve());
   const waitingRef = useRef<Promise<void> | null>(null);
-  const [protection, setProtection] = useState<FolderProtectionReason | null>(null);
+  const [issue, setIssue] = useState<FolderSyncIssue | null>(null);
+  // Held, the folder is looked at again: what the last sync found no longer applies
+  if (!enabled && issue !== null) setIssue(null);
   // A ref, so a sync asked for before the hold began is held too. Set before
   // the effects below run, so the sync a hold's end starts sees it ended.
   const enabledRef = useRef(enabled);
@@ -59,7 +67,7 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
     if (!session || !enabledRef.current) return;
     // Nothing is held back when nothing is synced, so no notice either
     if (!isFolderStorageOn()) {
-      setProtection(null);
+      setIssue(null);
       return;
     }
 
@@ -68,17 +76,26 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
       const provider = new FileSystemStorageProvider();
       // Without permission only a user action can help; Settings asks for it
       if ((await provider.getPermissionState()) !== 'granted') {
-        setProtection(null);
+        setIssue(null);
         return;
       }
 
       const data = await session.db.exportAllData();
-      // The hold may have begun while this sync was under way
+      // The hold may begin while this sync is under way: checked here, so a
+      // held sync does not decrypt the folder copy, and again at the save
       if (!enabledRef.current) return;
-      const outcome = await writeFolderCopy(provider, data, session.key);
-      setProtection(outcome.status === 'protected' ? outcome.reason : null);
+      const store: FolderCopyStore = {
+        loadCurrent: () => provider.loadCurrent(),
+        loadPrevious: () => provider.loadPrevious(),
+        save: (bytes, previous) =>
+          enabledRef.current ? provider.save(bytes, previous) : Promise.reject(new SyncHeld()),
+      };
+      const outcome = await writeFolderCopy(store, data, session.key);
+      setIssue(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
+      if (error instanceof SyncHeld) return;
       console.error('Failed to sync to filesystem:', error);
+      setIssue('failed');
       throw error;
     }
   }, []);
@@ -119,7 +136,7 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
 
   return {
     syncNow,
-    protection,
+    issue,
   };
 }
 

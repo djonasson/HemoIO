@@ -116,14 +116,19 @@ export class FileSystemStorageProvider implements StorageProvider {
     return handle;
   }
 
-  /** A file's bytes, or null when the directory does not hold it */
+  /**
+   * A file's bytes, or null when the directory does not hold it or the file is
+   * empty, as an interrupted first write can leave it: there is nothing in it
+   * to restore or to protect
+   */
   private async readFile(
     handle: FileSystemDirectoryHandle,
     name: string
   ): Promise<ArrayBuffer | null> {
     try {
       const file = await (await handle.getFileHandle(name)).getFile();
-      return await file.arrayBuffer();
+      const bytes = await file.arrayBuffer();
+      return bytes.byteLength === 0 ? null : bytes;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotFoundError') {
         // The same error for a folder that is gone (moved, an unmounted drive):

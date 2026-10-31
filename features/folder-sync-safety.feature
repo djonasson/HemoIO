@@ -25,6 +25,13 @@ Feature: Folder Sync Safety
     Then the message about the skipped folder sync should go away
     And my folder copy should be updated
 
+  Scenario: I am told when the folder cannot be written
+    Given my lab results have been synced to my folder
+    When my folder is no longer available
+    And I add lab results
+    Then I should see that the folder sync failed
+    And I should be told that my data is safe in this browser and that HemoIO keeps trying
+
   Scenario: The previous folder copy is kept next to the new one
     Given my lab results have been synced to my folder
     When I add more lab results

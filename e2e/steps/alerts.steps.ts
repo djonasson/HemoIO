@@ -31,9 +31,6 @@ export async function viewAlerts(page: Page): Promise<void> {
 }
 
 /**
- * Reload the app (a new page load), unlock it and return to the alerts
- */
-/**
  * Acknowledge a test's card and wait until the browser has stored it: the
  * card goes at once, before the save is kept
  */
@@ -45,6 +42,9 @@ export async function acknowledgeAndWaitForSave(page: Page, biomarkerName: strin
   await expect.poll(stored).not.toBe(before);
 }
 
+/**
+ * Reload the app (a new page load), unlock it and return to the alerts
+ */
 export async function reloadAndViewAlerts(page: Page): Promise<void> {
   await page.reload();
   await setupOrUnlock(page);

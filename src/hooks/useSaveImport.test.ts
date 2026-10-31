@@ -82,23 +82,22 @@ describe('useSaveImport', () => {
     await waitFor(() => expect(syncNow).toHaveBeenCalled());
   });
 
-  it('says when the folder copy cannot be written, though the import is saved', async () => {
+  // The folder sync's own notice says so, for every sync: told once, not twice
+  it('leaves a failed folder sync to the sync to report, and still counts the import saved', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
     const syncNow = vi.fn().mockRejectedValue(new Error('folder gone'));
     const { result } = renderSave(syncNow);
 
+    let saved: boolean | undefined;
     await act(async () => {
-      await result.current(REVIEWED);
+      saved = await result.current(REVIEWED);
     });
 
-    await waitFor(() =>
-      expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Folder Sync Failed',
-          message: expect.stringMatching(/^Your results are saved in this browser/),
-          color: 'yellow',
-        })
-      )
+    await waitFor(() => expect(syncNow).toHaveBeenCalled());
+    expect(saved).toBe(true);
+    expect(notifications.show).toHaveBeenCalledTimes(1);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Import Complete' })
     );
   });
 

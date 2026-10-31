@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { notifications } from '@mantine/notifications';
 import { FOLDER_SYNC_NOTICE_ID, useFolderSyncNotice } from './useFolderSyncNotice';
-import type { FolderProtectionReason } from '@services/sync';
+import type { FolderSyncIssue } from './useFilesystemSync';
 
 vi.mock('@mantine/notifications', () => ({
   notifications: { show: vi.fn(), hide: vi.fn() },
@@ -49,9 +49,21 @@ describe('useFolderSyncNotice', () => {
     expect(notice.message).toMatch(/left it as it is/);
   });
 
+  it('says when the folder could not be written, and that the browser keeps the data', () => {
+    renderHook(() => useFolderSyncNotice('failed'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.id).toBe(FOLDER_SYNC_NOTICE_ID);
+    expect(notice.title).toBe('Folder sync failed');
+    expect(notice.message).toMatch(/could not be saved to your folder/);
+    expect(notice.message).toMatch(/safe in this browser/);
+    expect(notice.message).toMatch(/Check that the folder is available/);
+    expect(notice.autoClose).toBe(false);
+  });
+
   it('shows the notice once, not again on every sync that holds back', () => {
     const { rerender } = renderHook(
-      ({ reason }: { reason: FolderProtectionReason | null }) => useFolderSyncNotice(reason),
+      ({ reason }: { reason: FolderSyncIssue | null }) => useFolderSyncNotice(reason),
       { initialProps: { reason: 'empty' } }
     );
 
@@ -62,8 +74,8 @@ describe('useFolderSyncNotice', () => {
 
   it('hides the notice once the sync writes again', () => {
     const { rerender } = renderHook(
-      ({ reason }: { reason: FolderProtectionReason | null }) => useFolderSyncNotice(reason),
-      { initialProps: { reason: 'empty' as FolderProtectionReason | null } }
+      ({ reason }: { reason: FolderSyncIssue | null }) => useFolderSyncNotice(reason),
+      { initialProps: { reason: 'empty' as FolderSyncIssue | null } }
     );
 
     rerender({ reason: null });

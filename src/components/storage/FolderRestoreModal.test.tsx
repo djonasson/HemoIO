@@ -186,14 +186,17 @@ describe('FolderRestoreModal', () => {
     ['not-a-copy', /isn't a folder copy HemoIO can read.*damaged/],
     ['newer-version', /newer version of HemoIO/],
     ['read-failed', /couldn't read the file/],
-  ] as const)('explains a copy it cannot read (%s), and offers no restore', (reason, message) => {
+  ] as const)('explains a copy it cannot read (%s), and offers neither restore nor replace', (reason, message) => {
     renderModal({ kind: 'unreadable', reason, folderName: 'Health' });
 
     const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
     expect(dialog).toHaveTextContent(message);
     expect(dialog).toHaveTextContent('has not been changed');
+    // The sync never writes over a copy it cannot read, so replacing is no choice to offer
+    expect(dialog).toHaveTextContent('HemoIO will not write over it');
+    expect(dialog).toHaveTextContent('choose another folder in Settings');
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replace folder copy…' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Replace folder copy…' })).toBeInTheDocument();
   });
 });

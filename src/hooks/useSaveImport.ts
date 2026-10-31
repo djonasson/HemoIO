@@ -70,15 +70,8 @@ export function useSaveImport(
           notifySaveFailed('Learned names not saved', err, 'The import was saved.')
         )
         .then(syncNow)
-        // The results are saved either way; a failed folder sync is retried
-        .catch(() =>
-          notifications.show({
-            title: 'Folder Sync Failed',
-            message:
-              'Your results are saved in this browser, but they could not be written to your folder. HemoIO will try again in a moment.',
-            color: 'yellow',
-          })
-        );
+        // The results are saved either way; the folder sync tells of its own failure
+        .catch(() => undefined);
       return true;
     },
     [db, isReady, refresh, learnAliases, syncNow]

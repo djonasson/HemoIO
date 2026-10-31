@@ -110,37 +110,20 @@ export function FolderRestoreModal({
       );
     }
 
-    const actions = (
-      <Group justify="flex-end">
-        <Button variant="subtle" color="red" onClick={() => setConfirmingReplace(true)} disabled={isRestoring}>
-          Replace folder copy…
-        </Button>
-        <Button
-          variant="default"
-          onClick={() => decide('hold')}
-          disabled={isRestoring}
-          data-autofocus={shown.kind === 'unreadable' || undefined}
-        >
-          Not now
-        </Button>
-        {shown.kind === 'offer' && (
-          <Button onClick={() => handleRestore(shown.data)} loading={isRestoring} data-autofocus>
-            Restore
-          </Button>
-        )}
-      </Group>
-    );
-    const until = 'Nothing is written to the folder until you choose.';
-
     if (shown.kind === 'unreadable') {
       return (
         <>
           <Text size="sm">{problemMessage(shown.reason, folder)}</Text>
           <Text size="sm">
-            The file has not been changed. {until} To keep it and sync somewhere else, choose
-            another folder in Settings, on the Data tab.
+            The file has not been changed, and HemoIO will not write over it. To keep syncing,
+            choose another folder in Settings, on the Data tab.
           </Text>
-          {actions}
+          {/* The sync never writes over a copy it cannot read: there is no replacing it */}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => decide('hold')} data-autofocus>
+              Not now
+            </Button>
+          </Group>
         </>
       );
     }
@@ -166,14 +149,24 @@ export function FolderRestoreModal({
             Restoring replaces the lab data added to this browser since you unlocked HemoIO.
           </Text>
         )}
-        <Text size="sm">{until}</Text>
+        <Text size="sm">Nothing is written to the folder until you choose.</Text>
         {restoreFailed && (
           <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
             The restore did not complete. This browser and the folder copy are as they were;
             try again, or choose &quot;Not now&quot;.
           </Alert>
         )}
-        {actions}
+        <Group justify="flex-end">
+          <Button variant="subtle" color="red" onClick={() => setConfirmingReplace(true)} disabled={isRestoring}>
+            Replace folder copy…
+          </Button>
+          <Button variant="default" onClick={() => decide('hold')} disabled={isRestoring}>
+            Not now
+          </Button>
+          <Button onClick={() => handleRestore(shown.data)} loading={isRestoring} data-autofocus>
+            Restore
+          </Button>
+        </Group>
       </>
     );
   };

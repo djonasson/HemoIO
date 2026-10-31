@@ -156,10 +156,10 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
-  const { syncNow, protection: folderProtection } = useFilesystemSync({
+  const { syncNow, issue: folderSyncIssue } = useFilesystemSync({
     enabled: folderRestore.syncAllowed,
   });
-  useFolderSyncNotice(folderProtection);
+  useFolderSyncNotice(folderSyncIssue);
   const folderSyncHeld = folderRestore.syncHeld;
 
   const handleNavClick = useCallback(
@@ -249,13 +249,14 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               ]
             : []),
           { name: 'showing the restored results', run: refreshLabResults },
-          { name: 'syncing to your folder', run: syncNow },
         ];
         const failed = await runAfterRestore(steps);
+        // The folder sync tells of its own failure, as it does for every sync
+        void syncNow().catch(() => undefined);
 
         const summary =
           `Restored ${restored.labResults} lab result(s), ${restored.testValues} test value(s), and ${restored.notes} note(s).` +
-          // The sync step "succeeds" without writing while sync is held
+          // A held sync writes nothing
           (folderSyncHeld ? ' Folder sync is paused, so your folder was not updated.' : '');
         notifications.show(
           failed.length === 0
