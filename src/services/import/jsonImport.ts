@@ -193,6 +193,14 @@ export function parseBackupJson(jsonString: string): ParsedBackupData {
     throw new Error('Invalid JSON format');
   }
 
+  return parseBackupData(data);
+}
+
+/**
+ * Validate, migrate and deserialize backup data already parsed from JSON
+ * (dates still strings)
+ */
+export function parseBackupData(data: unknown): ParsedBackupData {
   if (!isValidBackupData(data)) {
     throw new Error('Invalid backup file structure');
   }

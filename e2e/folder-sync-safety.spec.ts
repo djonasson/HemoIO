@@ -7,6 +7,7 @@
  */
 
 import { test, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { lockApp } from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
@@ -20,6 +21,7 @@ import {
   storeDataInFolder,
   useTestFolder,
 } from './steps/folderSync.steps';
+import { FolderRestoreDialog } from './steps/folderRestore.steps';
 
 const MORE_LAB_RESULTS = [
   ...SEED_LAB_RESULTS,
@@ -59,6 +61,18 @@ const EVEN_MORE_LAB_RESULTS = [
   },
 ];
 
+/**
+ * And I choose to replace the folder copy instead of restoring it — the
+ * restore offer an empty browser gets at unlock
+ */
+async function replaceFolderCopyInstead(page: Page): Promise<void> {
+  const dialog = new FolderRestoreDialog(page);
+  await expect(dialog.offer()).toBeVisible();
+  await dialog.replace.click();
+  await dialog.confirmReplace.click();
+  await expect(dialog.dialog).toHaveCount(0);
+}
+
 test.describe('Folder Sync Safety', () => {
   let folder: TestFolder;
 
@@ -68,14 +82,16 @@ test.describe('Folder Sync Safety', () => {
     await page.goto('/');
     await setupOrUnlock(page);
     await storeDataInFolder(page);
+    // Choosing the folder syncs at once: wait for that first copy
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBeNull();
   });
 
   /** Given my lab results have been synced to my folder */
   async function syncResults(page: Parameters<typeof seedLabData>[0]): Promise<string> {
     await seedLabData(page);
-    const copy = await folder.read(FOLDER_COPY);
-    expect(copy).not.toBeNull();
-    return copy!;
+    // The sync writes once unlocking has checked the folder, maybe just after
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBeNull();
+    return (await folder.read(FOLDER_COPY))!;
   }
 
   test('an empty browser does not overwrite the folder copy', async ({ page }) => {
@@ -83,6 +99,7 @@ test.describe('Folder Sync Safety', () => {
 
     await loseBrowserData(page);
     await unlockApp(page);
+    await replaceFolderCopyInstead(page);
 
     await expect(skippedSyncNotice(page)).toBeVisible();
     await expect(skippedSyncNotice(page)).toContainText('your folder copy does');
@@ -95,12 +112,13 @@ test.describe('Folder Sync Safety', () => {
     const synced = await syncResults(page);
     await loseBrowserData(page);
     await unlockApp(page);
+    await replaceFolderCopyInstead(page);
     await expect(skippedSyncNotice(page)).toBeVisible();
 
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
 
     await expect(skippedSyncNotice(page)).toHaveCount(0);
-    expect(await folder.read(FOLDER_COPY)).not.toBe(synced);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
   });
 
   test('the previous folder copy is kept next to the new one', async ({ page }) => {
@@ -108,9 +126,7 @@ test.describe('Folder Sync Safety', () => {
 
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
 
-    const current = await folder.read(FOLDER_COPY);
-    expect(current).not.toBeNull();
-    expect(current).not.toBe(synced);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(synced);
   });
 
@@ -120,6 +136,7 @@ test.describe('Folder Sync Safety', () => {
     const full = await syncResults(page);
     await loseBrowserData(page);
     await unlockApp(page);
+    await replaceFolderCopyInstead(page);
     await expect(skippedSyncNotice(page)).toBeVisible();
 
     await seedLabData(page, { labResults: [NEW_LAB_RESULT], testValues: [] });
@@ -131,8 +148,9 @@ test.describe('Folder Sync Safety', () => {
   test('opening the app without changes keeps the previous copy', async ({ page }) => {
     // Setup, a reload or relock and three restores: each unlock derives the key again
     test.slow();
-    await syncResults(page);
+    const synced = await syncResults(page);
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
     const beforeLastChange = await folder.read(FOLDER_COPY);
 
     // Unlocking syncs at once; with nothing changed it must not write
@@ -140,6 +158,7 @@ test.describe('Folder Sync Safety', () => {
     await unlockApp(page);
     await seedLabData(page, { labResults: EVEN_MORE_LAB_RESULTS });
 
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(beforeLastChange);
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(beforeLastChange);
   });
 
@@ -166,16 +185,17 @@ test.describe('Folder Sync Safety', () => {
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
 
     await expect(skippedSyncNotice(page)).toHaveCount(0);
-    expect(await otherFolder.read(FOLDER_COPY)).not.toBeNull();
+    await expect.poll(() => otherFolder.read(FOLDER_COPY)).not.toBeNull();
     expect(await folder.read(FOLDER_COPY)).toBe(foreign);
   });
 
   test('the first sync to an empty folder writes a copy', async ({ page }) => {
-    expect(await folder.read(FOLDER_COPY)).toBeNull();
+    // Written when the folder was chosen, before there were any results
+    const first = await folder.read(FOLDER_COPY);
 
     await seedLabData(page);
 
-    expect(await folder.read(FOLDER_COPY)).not.toBeNull();
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(first);
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBeNull();
     await expect(skippedSyncNotice(page)).toHaveCount(0);
   });

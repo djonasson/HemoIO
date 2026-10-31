@@ -693,6 +693,17 @@ export class EncryptedDb {
 
   // ============ Bulk Operations ============
 
+  /**
+   * Whether any lab result, test value or note is stored. Counts rows, so
+   * nothing is decrypted.
+   */
+  async hasLabData(): Promise<boolean> {
+    const counts = await Promise.all(
+      (['labResults', 'testValues', 'userNotes'] as const).map((name) => this.table(name).count())
+    );
+    return counts.some((count) => count > 0);
+  }
+
   async exportAllData(): Promise<{
     labResults: LabResult[];
     testValues: TestValue[];

@@ -1,12 +1,20 @@
 /**
  * Sync Services
  *
- * Keeping the encrypted folder copy up to date without losing data in it.
+ * Keeping the encrypted folder copy up to date without losing data in it,
+ * and reading it back.
  */
 
 export {
+  FOLDER_SYNC_FILE_VERSION,
   writeFolderCopy,
   type FolderCopyStore,
   type FolderProtectionReason,
   type FolderSyncOutcome,
 } from './folderSync';
+export {
+  assessFolderCopy,
+  type FolderCopyProblem,
+  type FolderCopySource,
+  type FolderCopyAssessment,
+} from './folderCopy';

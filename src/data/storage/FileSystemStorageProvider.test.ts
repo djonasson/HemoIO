@@ -46,6 +46,8 @@ function createFakeFolder(files: Map<string, ArrayBuffer> = new Map()) {
       }
       return fileHandle(name);
     },
+    // A folder that is there can be listed
+    keys: () => files.keys(),
   };
   return { handle, files, failingWrites };
 }
@@ -144,6 +146,7 @@ describe('FileSystemStorageProvider', () => {
     name: 'TestFolder',
     kind: 'directory' as const,
     getFileHandle: vi.fn(),
+    keys: vi.fn(),
     queryPermission: vi.fn(),
     requestPermission: vi.fn(),
     isSameEntry: vi.fn(),
@@ -181,6 +184,7 @@ describe('FileSystemStorageProvider', () => {
     mockDirectoryHandle.queryPermission.mockResolvedValue('granted');
     mockDirectoryHandle.requestPermission.mockResolvedValue('granted');
     mockDirectoryHandle.getFileHandle.mockResolvedValue(mockFileHandle);
+    mockDirectoryHandle.keys.mockReturnValue({ next: vi.fn().mockResolvedValue({ done: true }) });
     mockFileHandle.createWritable.mockResolvedValue(mockWritable);
     mockFileHandle.getFile.mockResolvedValue({
       arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(10)),
@@ -350,6 +354,43 @@ describe('FileSystemStorageProvider', () => {
 
       const result = await provider.load();
       expect(result).toBe(testData);
+    });
+  });
+
+  describe('loadCurrent', () => {
+    beforeEach(async () => {
+      window.showDirectoryPicker = vi.fn().mockResolvedValue(mockDirectoryHandle);
+      await provider.selectDirectory();
+    });
+
+    it('is null only when the folder has no data file', async () => {
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
+
+      expect(await provider.loadCurrent()).toBeNull();
+    });
+
+    it('fails, rather than reporting no file, when the folder itself is gone', async () => {
+      // Chrome says NotFoundError for a missing folder (unmounted, moved) too
+      const gone = new DOMException('Folder gone', 'NotFoundError');
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
+      mockDirectoryHandle.keys.mockReturnValue({ next: vi.fn().mockRejectedValue(gone) });
+
+      await expect(provider.loadCurrent()).rejects.toThrow('Folder gone');
+    });
+
+    it('fails, rather than reporting no file, when the file cannot be read', async () => {
+      mockDirectoryHandle.getFileHandle.mockRejectedValue(
+        new DOMException('Busy', 'NotReadableError')
+      );
+
+      await expect(provider.loadCurrent()).rejects.toThrow('Busy');
+    });
+
+    it('returns the data file', async () => {
+      const testData = new ArrayBuffer(10);
+      mockFileHandle.getFile.mockResolvedValue({ arrayBuffer: vi.fn().mockResolvedValue(testData) });
+
+      expect(await provider.loadCurrent()).toBe(testData);
     });
   });
 

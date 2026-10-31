@@ -6,6 +6,7 @@
 
 export {
   parseBackupJson,
+  parseBackupData,
   readBackupFile,
   validateBackupFile,
   createIdMapping,

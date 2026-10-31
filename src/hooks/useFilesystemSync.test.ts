@@ -120,6 +120,59 @@ describe('useFilesystemSync', () => {
     });
   });
 
+  describe('held until allowed', () => {
+    beforeEach(() => {
+      localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    });
+
+    it('writes nothing, at start or when asked, while not enabled', async () => {
+      const { result } = renderHook(() => useFilesystemSync({ enabled: false }));
+
+      await act(() => result.current.syncNow());
+
+      expect(mockExportAllData).not.toHaveBeenCalled();
+      expect(writeFolderCopy).not.toHaveBeenCalled();
+    });
+
+    it('syncs as soon as it is enabled', async () => {
+      const { rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: false },
+      });
+      expect(writeFolderCopy).not.toHaveBeenCalled();
+
+      rerender({ enabled: true });
+
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+    });
+
+    it('a sync already asked for does not write once it is no longer enabled', async () => {
+      const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: true },
+      });
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+      const syncNow = result.current.syncNow;
+
+      rerender({ enabled: false });
+      await act(() => syncNow());
+
+      expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not write when the hold begins while the data is exported', async () => {
+      let exported!: (data: unknown) => void;
+      const { rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
+        initialProps: { enabled: true },
+      });
+      mockExportAllData.mockImplementationOnce(() => new Promise((resolve) => (exported = resolve)));
+      await waitFor(() => expect(mockExportAllData).toHaveBeenCalled());
+
+      rerender({ enabled: false });
+      await act(async () => exported({ labResults: [], testValues: [], userNotes: [] }));
+
+      expect(writeFolderCopy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('protecting the folder copy', () => {
     beforeEach(() => {
       localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');

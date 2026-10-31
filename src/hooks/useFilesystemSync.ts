@@ -5,24 +5,21 @@
  * the IndexedDB data to the selected filesystem directory after changes.
  */
 
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { writeFolderCopy } from '@services/sync';
-import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderProtectionReason } from '@services/sync';
 
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
-
-/**
- * Hook that syncs database changes to the filesystem when filesystem storage is enabled
- */
-function isFilesystemEnabled(): boolean {
-  return (
-    isFileSystemAccessSupported() && localStorage.getItem(STORAGE_PROVIDER_KEY) === 'filesystem'
-  );
+export interface UseFilesystemSyncOptions {
+  /**
+   * False holds every write, the first one and the periodic ones, until the
+   * user has decided what happens to the copy in the folder. Default true.
+   */
+  enabled?: boolean;
 }
 
 interface SyncSession {
@@ -33,7 +30,7 @@ interface SyncSession {
 /**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
  */
-export function useFilesystemSync(): {
+export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions = {}): {
   /** Sync now; rejects when the sync fails */
   syncNow: () => Promise<void>;
   /** Why the last sync left the folder copy alone, or null while syncs write */
@@ -50,12 +47,18 @@ export function useFilesystemSync(): {
   const lastRef = useRef<Promise<void>>(Promise.resolve());
   const waitingRef = useRef<Promise<void> | null>(null);
   const [protection, setProtection] = useState<FolderProtectionReason | null>(null);
+  // A ref, so a sync asked for before the hold began is held too. Set before
+  // the effects below run, so the sync a hold's end starts sees it ended.
+  const enabledRef = useRef(enabled);
+  useLayoutEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const runSync = useCallback(async () => {
     const session = sessionRef.current;
-    if (!session) return;
+    if (!session || !enabledRef.current) return;
     // Nothing is held back when nothing is synced, so no notice either
-    if (!isFilesystemEnabled()) {
+    if (!isFolderStorageOn()) {
       setProtection(null);
       return;
     }
@@ -69,7 +72,10 @@ export function useFilesystemSync(): {
         return;
       }
 
-      const outcome = await writeFolderCopy(provider, await session.db.exportAllData(), session.key);
+      const data = await session.db.exportAllData();
+      // The hold may have begun while this sync was under way
+      if (!enabledRef.current) return;
+      const outcome = await writeFolderCopy(provider, data, session.key);
       setProtection(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       console.error('Failed to sync to filesystem:', error);
@@ -91,8 +97,9 @@ export function useFilesystemSync(): {
 
   // Sync on unlock and every 30 seconds as a backup. Whether folder storage
   // is on is checked at each sync, so switching it on in Settings takes effect.
+  // A hold ending syncs at once.
   useEffect(() => {
-    if (!db || !isReady || !encryptionKey) {
+    if (!db || !isReady || !encryptionKey || !enabled) {
       return;
     }
     sessionRef.current = { db, key: encryptionKey };
@@ -108,7 +115,7 @@ export function useFilesystemSync(): {
       sessionRef.current = null;
       clearInterval(intervalId);
     };
-  }, [db, isReady, syncNow, encryptionKey]);
+  }, [db, isReady, syncNow, encryptionKey, enabled]);
 
   return {
     syncNow,

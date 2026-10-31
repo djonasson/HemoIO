@@ -7,10 +7,14 @@ Feature: Folder Sync Safety
     Given I am logged into the application
     And my data is stored in a local folder
 
+  # With no lab data in the browser, unlocking first offers to restore the
+  # folder copy (see restore-from-folder.feature). Even when I choose to replace
+  # it instead, the sync does not write an empty copy over it.
   Scenario: An empty browser does not overwrite the folder copy
     Given my lab results have been synced to my folder
     When the browser loses all of its stored data
     And I unlock the app again
+    And I choose to replace the folder copy instead of restoring it
     Then I should see that the folder sync was skipped to protect my folder copy
     And my folder copy should still hold my lab results
 
@@ -31,6 +35,7 @@ Feature: Folder Sync Safety
     Given my lab results have been synced to my folder
     And the browser loses all of its stored data
     And I unlock the app again
+    And I choose to replace the folder copy instead of restoring it
     When I add one new lab result
     And I change my lab results again
     Then the previous copy should still be the full copy from before the data was lost
@@ -59,7 +64,7 @@ Feature: Folder Sync Safety
     And the copy in the first folder should be left as it was
 
   Scenario: The first sync to an empty folder writes a copy
-    Given my folder holds no copy yet
+    Given the folder I chose held no copy
     When I add lab results
     Then my folder should hold a copy of my lab results
     And there should be no previous copy yet

@@ -9,13 +9,16 @@
  */
 
 import { decrypt, encrypt } from '@data/encryption';
+import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
 /**
- * Format version of the encrypted sync file. Version 2 stores biomarker keys
- * (version 1 stored dictionary positions); a future reader must migrate v1.
+ * Format version of the encrypted sync file. Its records are those of the
+ * backup schema of the same number, so a restore reads a copy back through
+ * the backup migrations: 1 named biomarkers by dictionary position, 2 by key,
+ * and 3 has urea and urine red cells filed apart from BUN and urine blood.
  */
-export const FOLDER_SYNC_FILE_VERSION = 2;
+export const FOLDER_SYNC_FILE_VERSION = BACKUP_SCHEMA_VERSION;
 
 /** Everything a sync writes: the database as exported */
 export type FolderSyncData = Awaited<ReturnType<EncryptedDb['exportAllData']>>;

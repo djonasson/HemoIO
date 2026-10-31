@@ -56,7 +56,11 @@ export class FileSystemStorageProvider implements StorageProvider {
     await this.writeFile(handle, FOLDER_DATA_FILE_NAME, data);
   }
 
-  /** The folder copy's bytes, or null when the folder holds none */
+  /**
+   * The folder copy's bytes, or null when the folder holds none. Any other
+   * failure (no folder, no permission, an unreadable file) throws, so it is
+   * never mistaken for a folder without data.
+   */
   async loadCurrent(): Promise<ArrayBuffer | null> {
     return this.readFile(await this.getGrantedHandle(), FOLDER_DATA_FILE_NAME);
   }
@@ -121,7 +125,12 @@ export class FileSystemStorageProvider implements StorageProvider {
       const file = await (await handle.getFileHandle(name)).getFile();
       return await file.arrayBuffer();
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'NotFoundError') return null;
+      if (error instanceof DOMException && error.name === 'NotFoundError') {
+        // The same error for a folder that is gone (moved, an unmounted drive):
+        // only a folder that can be listed has no file
+        await handle.keys().next();
+        return null;
+      }
       throw error;
     }
   }
