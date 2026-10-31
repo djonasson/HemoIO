@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Box, Group, Select, rem, type ComboboxItem, type OptionsFilter } from '@mantine/core';
+import { Box, Group, Select, type ComboboxItem, type OptionsFilter } from '@mantine/core';
 import { unitsMatch } from '@services/units';
 
 export interface PreferredUnitSelectProps {
@@ -57,25 +57,17 @@ export function PreferredUnitSelect({
       searchable
       allowDeselect={false}
       error={unsupported ? `Unit not supported for ${biomarkerName}` : undefined}
-      // One line, the input giving way on narrow screens down to a usable
-      // width. The aside is centred on the input's own height: an error grows
-      // the input's box (a margin below it) and must not move it.
+      // The error's spacing goes above the error, not below the input, so the
+      // row keeps its height when the error shows and the aside stays put
+      styles={{
+        wrapper: { marginBottom: 0 },
+        error: { marginTop: 'calc(var(--mantine-spacing-xs) / 2)' },
+      }}
+      // The input narrows (from 180px to 100px) before the aside wraps below it
       inputContainer={(input) => (
-        <Group gap="sm" align="flex-start" wrap="nowrap">
-          <Box style={{ flex: '0 1 180px', minWidth: 100 }}>{input}</Box>
-          {aside && (
-            <Box
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                flexShrink: 0,
-                // The select's input height (size sm)
-                height: rem(36),
-              }}
-            >
-              {aside}
-            </Box>
-          )}
+        <Group gap="sm">
+          <Box style={{ flex: '1 1 100px', maxWidth: 180 }}>{input}</Box>
+          {aside && <Box style={{ display: 'flex', flexShrink: 0 }}>{aside}</Box>}
         </Group>
       )}
     />

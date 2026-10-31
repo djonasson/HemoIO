@@ -550,15 +550,18 @@ test.describe('A biomarker page opened from another page', () => {
   test('starts at the top, with its back button in view', async ({ page }) => {
     const link = referenceLink(page, 'Glucose');
     const header = (await page.getByRole('banner').boundingBox())!;
+    const scrollRoom = () =>
+      page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
     // Scrolled a little: further, the shorter page in between scrolls back by
-    // itself. The Trends page is tall enough to keep it.
-    expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeGreaterThan(120);
+    // itself. Both pages are tall enough to keep it, so only the app resets it.
+    await expect.poll(scrollRoom).toBeGreaterThan(120);
     await page.mouse.wheel(0, 120);
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
 
     await link.click();
 
     const detail = await expectDetailPage(page, 'Glucose');
+    await expect.poll(scrollRoom).toBeGreaterThan(120);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     const back = (await backButton(detail).boundingBox())!;
     expect(back.y).toBeGreaterThanOrEqual(header.y + header.height);

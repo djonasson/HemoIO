@@ -3,11 +3,12 @@
  *
  * A move is a menu choice or a link from one view to another. Each move to
  * another view, and each move to a view that starts fresh, is a new visit:
- * the view opens at the top, and a view keyed by the visit is built anew.
+ * the view opens at the top and, keyed by the visit, is built anew.
  */
 
 import { useCallback, useLayoutEffect, useState } from 'react';
 
+/** The views the main menu offers */
 export type AppView =
   | 'timeline'
   | 'import'
@@ -48,13 +49,23 @@ interface NavState {
 }
 
 export interface UseNavigationResult {
+  /** The open view */
   view: AppView;
+  /** What the open view was opened on, if a link opened it */
   focus: ViewFocus | null;
-  /** Changes with every visit; key a view by it to build it anew */
+  /** Changes with every visit; key the view by it to build it anew */
   visit: number;
+  /**
+   * Move to a view. Choosing an open view that keeps its state (an import,
+   * settings, alerts, notes) changes nothing.
+   */
   go: (to: Destination) => void;
 }
 
+/**
+ * The open view, its focus and its visit, with the move to another view.
+ * Every visit opens at the top of the page.
+ */
 export function useNavigation(): UseNavigationResult {
   const [{ to, visit }, setNav] = useState<NavState>({ to: 'timeline', visit: 0 });
 

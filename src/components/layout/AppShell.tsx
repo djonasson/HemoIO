@@ -443,7 +443,10 @@ interface MainContentProps {
   onNavigateToImport: () => void;
   onNavigate: (view: AppView) => void;
   focus: ViewFocus | null;
-  /** Changes with every move, which shows the view fresh */
+  /**
+   * Every view is keyed by it, so a new visit builds the view anew. When a
+   * move is a new visit is useNavigation's call.
+   */
   visit: number;
   onOpen: (focus: ViewFocus) => void;
   onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
@@ -482,7 +485,6 @@ function MainContent({
   if (view === 'timeline') {
     return (
       <TimelineView
-        // Each move here, from the menu or a link, shows the view fresh
         key={visit}
         onNavigateToImport={onNavigateToImport}
         focusLabResultId={timelineFocus ?? undefined}
@@ -539,6 +541,7 @@ function MainContent({
 
     return (
       <ImportWizard
+        key={visit}
         aiProvider={aiProvider}
         getApiKey={getApiKey}
         aiModel={aiModel}
@@ -551,7 +554,6 @@ function MainContent({
   if (view === 'trends') {
     return (
       <TrendsView
-        // Each move here, from the menu or a link, shows the view fresh
         key={visit}
         onNavigateToImport={onNavigateToImport}
         onNavigateToAlerts={() => onNavigate('alerts')}
@@ -563,23 +565,24 @@ function MainContent({
   }
 
   if (view === 'alerts') {
-    return <AlertsView onOpenTrend={onOpenTrend} />;
+    return <AlertsView key={visit} onOpenTrend={onOpenTrend} />;
   }
 
   if (view === 'notes') {
-    return <NotesView onOpenLabResult={onOpenLabResult} onOpenTrend={onOpenTrend} />;
+    return (
+      <NotesView key={visit} onOpenLabResult={onOpenLabResult} onOpenTrend={onOpenTrend} />
+    );
   }
 
   // Render SettingsPage for the settings view
   if (view === 'settings') {
-    return <SettingsPage onRestore={onRestore} isRestoring={isRestoring} />;
+    return <SettingsPage key={visit} onRestore={onRestore} isRestoring={isRestoring} />;
   }
 
   // Render BiomarkerDictionary for the dictionary view
   if (view === 'dictionary') {
     return (
       <DictionaryView
-        // Each move here, from the menu or a link, shows the view fresh
         key={visit}
         onOpenTrend={onOpenTrend}
         initialBiomarkerKey={dictionaryFocus}

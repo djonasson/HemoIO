@@ -42,17 +42,15 @@ describe('PreferredUnitSelect', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('puts what is beside it in the row of its input, above an error', async () => {
+  it('puts what is beside it after its input and before an error', async () => {
     const { input } = renderSelect(vi.fn(), <button type="button">Beside</button>);
     await userEvent.clear(input);
     await userEvent.type(input, 'stones');
 
     const beside = screen.getByRole('button', { name: 'Beside' });
     const error = screen.getByText('Unit not supported for Glucose');
-    // One row holds the input and what is beside it; the error is outside it
-    const row = beside.parentElement?.parentElement;
-    expect(row).toContainElement(input);
-    expect(row).not.toContainElement(error);
+    // Where it sits on screen is checked in the browser (trend-charts E2E)
+    expect(input.compareDocumentPosition(beside) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(beside.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
