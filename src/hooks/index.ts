@@ -12,6 +12,7 @@ export { useExportData, type UseExportDataResult } from './useExportData';
 export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncryptedApiKey';
 export { useFormKeyboardSubmit, type UseFormKeyboardSubmitOptions, type UseFormKeyboardSubmitResult } from './useFormKeyboardSubmit';
 export { useFilesystemSync, triggerGlobalSync, setGlobalSyncCallback } from './useFilesystemSync';
+export { useFolderSyncNotice } from './useFolderSyncNotice';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';

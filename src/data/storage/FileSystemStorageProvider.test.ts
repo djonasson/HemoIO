@@ -1,5 +1,59 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { FileSystemStorageProvider } from './FileSystemStorageProvider';
+import {
+  FOLDER_DATA_FILE_NAME,
+  FOLDER_PREVIOUS_FILE_NAME,
+  FileSystemStorageProvider,
+} from './FileSystemStorageProvider';
+
+/**
+ * A folder of real (in-memory) files: a write lands only when it is closed,
+ * as with the File System Access API
+ */
+function createFakeFolder(files: Map<string, ArrayBuffer> = new Map()) {
+  const failingWrites = new Set<string>();
+  const fileHandle = (name: string) => ({
+    name,
+    kind: 'file' as const,
+    getFile: async () => {
+      const bytes = files.get(name)!;
+      return { size: bytes.byteLength, arrayBuffer: async () => bytes };
+    },
+    createWritable: async () => {
+      let pending: ArrayBuffer | null = null;
+      return {
+        write: async (data: ArrayBuffer) => {
+          if (failingWrites.has(name)) throw new DOMException('Disk full', 'QuotaExceededError');
+          pending = data;
+        },
+        close: async () => {
+          if (pending) files.set(name, pending);
+        },
+        abort: async () => {
+          pending = null;
+        },
+      };
+    },
+  });
+  const handle = {
+    name: 'Fake Folder',
+    kind: 'directory' as const,
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    getFileHandle: async (name: string, options?: { create?: boolean }) => {
+      if (!files.has(name)) {
+        if (!options?.create) throw new DOMException('Not found', 'NotFoundError');
+        files.set(name, new ArrayBuffer(0));
+      }
+      return fileHandle(name);
+    },
+  };
+  return { handle, files, failingWrites };
+}
+
+const bytes = (...values: number[]): ArrayBuffer => new Uint8Array(values).buffer;
+const read = (buffer: ArrayBuffer | undefined): number[] | undefined =>
+  buffer && Array.from(new Uint8Array(buffer));
+
 
 // Create a proper mock for IndexedDB
 function createMockIndexedDB() {
@@ -191,6 +245,78 @@ describe('FileSystemStorageProvider', () => {
       );
       expect(mockWritable.write).toHaveBeenCalledWith(data);
       expect(mockWritable.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('keeping the previous copy', () => {
+    async function providerFor(folder: ReturnType<typeof createFakeFolder>) {
+      window.showDirectoryPicker = vi.fn().mockResolvedValue(folder.handle);
+      await provider.selectDirectory();
+      return provider;
+    }
+
+    it('names the copy and the previous copy for anything that reads them', () => {
+      expect(FOLDER_DATA_FILE_NAME).toBe('hemoio-data.encrypted');
+      expect(FOLDER_PREVIOUS_FILE_NAME).toBe('hemoio-data.previous.encrypted');
+    });
+
+    it('reads no copy and no previous copy from an empty folder', async () => {
+      const store = await providerFor(createFakeFolder());
+
+      expect(await store.loadCurrent()).toBeNull();
+      expect(await store.loadPrevious()).toBeNull();
+    });
+
+    it('reads the copy and the previous copy as they are', async () => {
+      const folder = createFakeFolder(
+        new Map([
+          [FOLDER_DATA_FILE_NAME, bytes(2)],
+          [FOLDER_PREVIOUS_FILE_NAME, bytes(1)],
+        ])
+      );
+      const store = await providerFor(folder);
+
+      expect(read((await store.loadCurrent())!)).toEqual([2]);
+      expect(read((await store.loadPrevious())!)).toEqual([1]);
+    });
+
+    it('writes only the copy when not told what to keep', async () => {
+      const folder = createFakeFolder(
+        new Map([
+          [FOLDER_DATA_FILE_NAME, bytes(9, 9)],
+          [FOLDER_PREVIOUS_FILE_NAME, bytes(7)],
+        ])
+      );
+
+      await (await providerFor(folder)).save(bytes(1, 2, 3));
+
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
+      expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([7]);
+    });
+
+    it('keeps the given bytes as the previous copy before writing the copy', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9, 9)]]));
+
+      await (await providerFor(folder)).save(bytes(1, 2, 3), bytes(9, 9));
+
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([1, 2, 3]);
+      expect(read(folder.files.get(FOLDER_PREVIOUS_FILE_NAME))).toEqual([9, 9]);
+    });
+
+    it('leaves the copy alone when the previous copy cannot be written', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9, 9)]]));
+      folder.failingWrites.add(FOLDER_PREVIOUS_FILE_NAME);
+
+      await expect((await providerFor(folder)).save(bytes(1), bytes(9, 9))).rejects.toThrow();
+
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([9, 9]);
+    });
+
+    it('reads nothing without folder access', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(2)]]));
+      folder.handle.queryPermission = async () => 'prompt';
+
+      await expect((await providerFor(folder)).loadCurrent()).rejects.toThrow('Permission denied');
     });
   });
 

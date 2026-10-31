@@ -10,7 +10,23 @@
 
 import type { StorageProvider } from '@/types';
 
-const DATA_FILE_NAME = 'hemoio-data.encrypted';
+/**
+ * The folder copy: the encrypted JSON sync file
+ * (`{ version, exportedAt, data }`, see `services/sync/folderSync.ts`),
+ * AES-GCM encrypted with the session data key, IV first.
+ */
+export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
+
+/**
+ * An earlier folder copy, to undo a bad write from: the bytes of a copy a
+ * write replaced, unchanged, so it has the same format and encryption as
+ * FOLDER_DATA_FILE_NAME. The sync decides which replaced copy is kept here
+ * (never one holding less than the copy already here, see
+ * `services/sync/folderSync.ts`). Only one is kept, so a synced folder does
+ * not fill up with copies of health data.
+ */
+export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
+
 const HANDLE_STORAGE_KEY = 'hemoio_filesystem_handle';
 
 /**
@@ -29,57 +45,36 @@ export class FileSystemStorageProvider implements StorageProvider {
   private directoryHandle: FileSystemDirectoryHandle | null = null;
 
   /**
-   * Save data to the selected directory
+   * Save data to the selected directory. Given `previous`, those bytes are
+   * written as FOLDER_PREVIOUS_FILE_NAME first; if that fails, nothing is replaced.
    */
-  async save(data: ArrayBuffer): Promise<void> {
-    const handle = await this.getDirectoryHandle();
-    if (!handle) {
-      throw new Error('No directory selected. Please select a folder first.');
+  async save(data: ArrayBuffer, previous?: ArrayBuffer): Promise<void> {
+    const handle = await this.getGrantedHandle();
+    if (previous) {
+      await this.writeFile(handle, FOLDER_PREVIOUS_FILE_NAME, previous);
     }
+    await this.writeFile(handle, FOLDER_DATA_FILE_NAME, data);
+  }
 
-    // Verify we have permission
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
-      throw new Error('Permission denied. Please grant folder access to continue.');
-    }
+  /** The folder copy's bytes, or null when the folder holds none */
+  async loadCurrent(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_DATA_FILE_NAME);
+  }
 
-    // Get or create the file
-    const fileHandle = await handle.getFileHandle(DATA_FILE_NAME, { create: true });
-
-    // Write the data
-    const writable = await fileHandle.createWritable();
-    try {
-      await writable.write(data);
-    } finally {
-      await writable.close();
-    }
+  /** The previous copy's bytes, or null when the folder holds none */
+  async loadPrevious(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_PREVIOUS_FILE_NAME);
   }
 
   /**
    * Load data from the selected directory
    */
   async load(): Promise<ArrayBuffer> {
-    const handle = await this.getDirectoryHandle();
-    if (!handle) {
-      throw new Error('No directory selected. Please select a folder first.');
+    const data = await this.loadCurrent();
+    if (!data) {
+      throw new Error('No backup data found');
     }
-
-    // Verify we have permission
-    const permission = await this.checkPermission(handle);
-    if (permission !== 'granted') {
-      throw new Error('Permission denied. Please grant folder access to continue.');
-    }
-
-    try {
-      const fileHandle = await handle.getFileHandle(DATA_FILE_NAME);
-      const file = await fileHandle.getFile();
-      return await file.arrayBuffer();
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'NotFoundError') {
-        throw new Error('No backup data found');
-      }
-      throw error;
-    }
+    return data;
   }
 
   /**
@@ -98,10 +93,57 @@ export class FileSystemStorageProvider implements StorageProvider {
     }
 
     try {
-      await handle.getFileHandle(DATA_FILE_NAME);
+      await handle.getFileHandle(FOLDER_DATA_FILE_NAME);
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /** The selected directory, once it may be read and written */
+  private async getGrantedHandle(): Promise<FileSystemDirectoryHandle> {
+    const handle = await this.getDirectoryHandle();
+    if (!handle) {
+      throw new Error('No directory selected. Please select a folder first.');
+    }
+    if ((await this.checkPermission(handle)) !== 'granted') {
+      throw new Error('Permission denied. Please grant folder access to continue.');
+    }
+    return handle;
+  }
+
+  /** A file's bytes, or null when the directory does not hold it */
+  private async readFile(
+    handle: FileSystemDirectoryHandle,
+    name: string
+  ): Promise<ArrayBuffer | null> {
+    try {
+      const file = await (await handle.getFileHandle(name)).getFile();
+      return await file.arrayBuffer();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') return null;
+      throw error;
+    }
+  }
+
+  /**
+   * The browser writes to a temporary file and swaps it in on close, so a
+   * failed write leaves the file as it was
+   */
+  private async writeFile(
+    handle: FileSystemDirectoryHandle,
+    name: string,
+    data: ArrayBuffer
+  ): Promise<void> {
+    const fileHandle = await handle.getFileHandle(name, { create: true });
+    const writable = await fileHandle.createWritable();
+    try {
+      await writable.write(data);
+      await writable.close();
+    } catch (error) {
+      // Abort can fail on a stream already closing; the write's error is the one to report
+      await writable.abort().catch(() => undefined);
+      throw error;
     }
   }
 

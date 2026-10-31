@@ -82,6 +82,26 @@ describe('useSaveImport', () => {
     await waitFor(() => expect(syncNow).toHaveBeenCalled());
   });
 
+  it('says when the folder copy cannot be written, though the import is saved', async () => {
+    vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
+    const syncNow = vi.fn().mockRejectedValue(new Error('folder gone'));
+    const { result } = renderSave(syncNow);
+
+    await act(async () => {
+      await result.current(REVIEWED);
+    });
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Folder Sync Failed',
+          message: expect.stringMatching(/^Your results are saved in this browser/),
+          color: 'yellow',
+        })
+      )
+    );
+  });
+
   it('says when the names it learns are not saved, though the import is', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
     learnAliases.mockRejectedValue(new SaveError('quota'));
