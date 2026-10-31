@@ -3,6 +3,7 @@
  */
 
 export type AlertSeverity = 'critical' | 'warning' | 'positive';
+export type AlertType = 'out_of_range' | 'trend' | 'improvement';
 export type TrendDirection = 'increasing' | 'decreasing';
 
 export interface ReferenceRange {
@@ -119,7 +120,7 @@ export function improvementMessage(name: string): string {
 }
 
 export function indicatorColor(alert: {
-  type: 'out_of_range' | 'trend' | 'improvement';
+  type: AlertType;
   status: string;
   direction?: TrendDirection;
 }): 'red' | 'orange' | 'green' {

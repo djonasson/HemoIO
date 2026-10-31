@@ -854,6 +854,11 @@ async function openEncryptedRestore(page: Page, backupPath: string) {
 }
 
 test.describe('Encrypted backup restores the API key', () => {
+  // Two devices each set up a password, then a backup is encrypted and
+  // decrypted: several deliberately slow key derivations, which on a busy
+  // machine outlast the default test timeout
+  test.slow();
+
   test('keeps my own API key unless I choose to restore the backup\'s', async ({ page, browser }) => {
     const backupPath = await createEncryptedBackupWithApiKey(page);
 

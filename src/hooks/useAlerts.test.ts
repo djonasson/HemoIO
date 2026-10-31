@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAlerts } from './useAlerts';
+import { useAlerts, type BiomarkerAlert, type UseAlertsResult } from './useAlerts';
 import { useLabResults } from './useLabResults';
 import type { LabResultWithDetails, EnrichedTestValue } from './useLabResults';
 
@@ -15,7 +15,7 @@ vi.mock('./useLabResults', () => ({
 
 const alertState = {
   acknowledgedThrough: {} as Record<string, Date>,
-  dismissedIds: new Set<string>() as ReadonlySet<string>,
+  dismissedThrough: {} as Record<string, Date>,
   acknowledge: vi.fn(async () => {}),
   dismiss: vi.fn(),
 };
@@ -103,11 +103,20 @@ function createMockResult(
   };
 }
 
+/** Every alert on the shown cards */
+function alertsOf(result: UseAlertsResult): BiomarkerAlert[] {
+  return result.groups.flatMap((group) => [
+    group.headline,
+    ...(group.trend ? [group.trend] : []),
+    ...group.earlier.map((r) => r.alert),
+  ]);
+}
+
 describe('useAlerts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     alertState.acknowledgedThrough = {};
-    alertState.dismissedIds = new Set();
+    alertState.dismissedThrough = {};
     mockUnitPreferences = {};
   });
 
@@ -135,7 +144,7 @@ describe('useAlerts', () => {
     );
     const { result } = renderHook(() => useAlerts());
 
-    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    const trend = alertsOf(result.current).find((a) => a.type === 'trend');
     expect(trend).toEqual(expect.objectContaining({ direction: 'increasing', unit: 'g/L' }));
   });
 
@@ -154,7 +163,7 @@ describe('useAlerts', () => {
     ]);
     const { result } = renderHook(() => useAlerts());
 
-    const alert = result.current.alerts.find((a) => a.type === 'out_of_range');
+    const alert = alertsOf(result.current).find((a) => a.type === 'out_of_range');
     expect(alert).toEqual(expect.objectContaining({ value: 6.66, unit: 'mmol/L' }));
     expect(alert?.message).toContain('Glucose is high at 6.66 mmol/L');
     expect(alert?.referenceRange?.high).toBe(5.55);
@@ -185,7 +194,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(alertsOf(result.current)).toHaveLength(0);
     expect(result.current.unacknowledgedCount).toBe(0);
   });
 
@@ -262,10 +271,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(1);
-    expect(result.current.alerts[0].status).toBe('high');
-    expect(result.current.alerts[0].type).toBe('out_of_range');
-    expect(result.current.alerts[0].message).toBe(
+    expect(alertsOf(result.current)).toHaveLength(1);
+    expect(alertsOf(result.current)[0].status).toBe('high');
+    expect(alertsOf(result.current)[0].type).toBe('out_of_range');
+    expect(alertsOf(result.current)[0].message).toBe(
       'Glucose is high at 150 mg/dL (reference ≤ 100 mg/dL)'
     );
   });
@@ -291,12 +300,12 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(1);
-    expect(result.current.alerts[0].status).toBe('low');
-    expect(result.current.alerts[0].message).toBe(
+    expect(alertsOf(result.current)).toHaveLength(1);
+    expect(alertsOf(result.current)[0].status).toBe('low');
+    expect(alertsOf(result.current)[0].message).toBe(
       'Hemoglobin is low at 10 mg/dL (reference ≥ 12 mg/dL)'
     );
-    expect(result.current.alerts[0].severity).toBe('warning');
+    expect(alertsOf(result.current)[0].severity).toBe('warning');
   });
 
   it('should not generate alert for normal values', () => {
@@ -319,10 +328,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(alertsOf(result.current)).toHaveLength(0);
   });
 
-  it('should sort alerts by severity then date', () => {
+  it('puts the card of a critical value first', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
@@ -355,39 +364,41 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    // Critical should come first
-    expect(result.current.alerts[0].severity).toBe('critical');
+    expect(result.current.groups[0].severity).toBe('critical');
   });
 
-  it('should dismiss alert through the shared state', () => {
+  it("dismisses a test's card through its latest alert in the shared state", () => {
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 140, status: 'high', referenceRangeHigh: 100 }),
+      ]),
     ]);
 
     const { result } = renderHook(() => useAlerts());
-    const alertId = result.current.alerts[0].id;
 
     act(() => {
-      result.current.dismissAlert(alertId);
+      result.current.dismissGroup(result.current.groups[0]);
     });
 
-    expect(alertState.dismiss).toHaveBeenCalledWith(alertId);
+    expect(alertState.dismiss).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
   });
 
-  it('should not return dismissed alerts', () => {
+  it('leaves dismissed cards out, and out of the count', () => {
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
-    const { result: before } = renderHook(() => useAlerts());
-    alertState.dismissedIds = new Set([before.current.alerts[0].id]);
+    alertState.dismissedThrough = { 'marker-1': new Date('2024-01-15') };
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(result.current.groups).toHaveLength(0);
+    expect(result.current.unacknowledgedCount).toBe(0);
+    expect(result.current.hiddenCount).toBe(1);
   });
 
   it('should group alerts by biomarker', () => {
@@ -424,12 +435,12 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.groupedAlerts).toHaveLength(1);
-    expect(result.current.groupedAlerts[0].alerts).toHaveLength(2);
-    expect(result.current.groupedAlerts[0].biomarkerName).toBe('Glucose');
+    expect(result.current.groups).toHaveLength(1);
+    expect(result.current.groups[0].resultCount).toBe(2);
+    expect(result.current.groups[0].headline.biomarkerName).toBe('Glucose');
   });
 
-  it('should filter by category', () => {
+  it("gives each card its test's category", () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
@@ -461,13 +472,8 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const metabolicAlerts = result.current.filterByCategory('metabolic');
-    expect(metabolicAlerts).toHaveLength(1);
-    expect(metabolicAlerts[0].category).toBe('metabolic');
-
-    const cbcAlerts = result.current.filterByCategory('cbc');
-    expect(cbcAlerts).toHaveLength(1);
-    expect(cbcAlerts[0].category).toBe('cbc');
+    const categories = result.current.groups.map((g) => g.headline.category).sort();
+    expect(categories).toEqual(['cbc', 'metabolic']);
   });
 
   it('should get alerts for specific biomarker', () => {
@@ -511,10 +517,10 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const alertsFor = (key: string) =>
-      result.current.groupedAlerts.find((group) => group.biomarkerKey === key)?.alerts;
-    expect(alertsFor('marker-1')).toHaveLength(2);
-    expect(alertsFor('marker-2')).toHaveLength(1);
+    const resultsFor = (key: string) =>
+      result.current.groups.find((group) => group.biomarkerKey === key)?.resultCount;
+    expect(resultsFor('marker-1')).toBe(2);
+    expect(resultsFor('marker-2')).toBe(1);
   });
 
   it('should detect improvement when value returns to normal', () => {
@@ -552,7 +558,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    const improvementAlert = result.current.alerts.find((a) => a.type === 'improvement');
+    const improvementAlert = alertsOf(result.current).find((a) => a.type === 'improvement');
     expect(improvementAlert).toBeDefined();
     expect(improvementAlert?.severity).toBe('positive');
     expect(improvementAlert?.message).toBe('Improved: Glucose now within range');
@@ -577,7 +583,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts[0].severity).toBe('critical');
+    expect(alertsOf(result.current)[0].severity).toBe('critical');
   });
 
   it('should not count improvement alerts in unacknowledgedCount', () => {
@@ -614,10 +620,10 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
 
     // Should only count the out_of_range alert, not the improvement
-    const outOfRangeAlerts = result.current.alerts.filter((a) => a.type === 'out_of_range');
+    const outOfRangeAlerts = alertsOf(result.current).filter((a) => a.type === 'out_of_range');
     expect(result.current.unacknowledgedCount).toBe(outOfRangeAlerts.length);
   });
-  it('hides alerts of a biomarker acknowledged through their date, but not newer ones', async () => {
+  it('counts results acknowledged through their date as not new, and newer ones as new', async () => {
     alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
@@ -631,8 +637,9 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const dates = result.current.alerts.map((a) => a.date.toISOString().slice(0, 10));
-    expect(dates).toEqual(['2024-03-10']);
+    expect(result.current.groups[0].resultCount).toBe(2);
+    expect(result.current.groups[0].newCount).toBe(1);
+    expect(result.current.unacknowledgedCount).toBe(1);
   });
 
   it('heads a group with its latest alert, not its most severe', async () => {
@@ -648,12 +655,12 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const group = result.current.groupedAlerts[0];
+    const group = result.current.groups[0];
     expect(group.severity).toBe('critical');
-    expect(group.latestAlert.date.toISOString().slice(0, 10)).toBe('2024-03-10');
+    expect(group.headline.date.toISOString().slice(0, 10)).toBe('2024-03-10');
   });
 
-  it('counts the alerts acknowledgements and dismissals hide', async () => {
+  it('counts the cards acknowledgements hide', async () => {
     alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
@@ -664,7 +671,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.alerts).toEqual([]);
+    expect(result.current.groups).toEqual([]);
     expect(result.current.hiddenCount).toBe(1);
   });
 
@@ -679,24 +686,27 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const ids = result.current.alerts.map((a) => a.id);
+    const ids = alertsOf(result.current).map((a) => a.id);
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('acknowledging an alert records its biomarker and date in the shared state', async () => {
+  it("acknowledging a card records its test through the test's latest alert", async () => {
     mockResults([
-      createMockResult(1, '2024-03-10', [
+      createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-03-10', [
+        createMockTestValue(2, 2, { value: 140, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
 
     const { result } = renderHook(() => useAlerts());
-    await waitFor(() => expect(result.current.alerts).toHaveLength(1));
+    await waitFor(() => expect(result.current.groups).toHaveLength(1));
 
-    await result.current.acknowledgeAlert(result.current.alerts[0].id);
+    await result.current.acknowledgeGroup(result.current.groups[0]);
 
-    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', result.current.alerts[0].date);
+    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
   });
 
   it('raises a trend alert for four consecutive decreasing values', async () => {
@@ -717,7 +727,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    const trend = alertsOf(result.current).find((a) => a.type === 'trend');
     expect(trend).toMatchObject({ direction: 'decreasing', severity: 'warning' });
     expect(trend?.message).toBe('Consistently decreasing over 3 months (Jan–Apr 2024)');
   });
@@ -742,7 +752,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const trend = result.current.alerts.find((a) => a.type === 'trend');
+    const trend = alertsOf(result.current).find((a) => a.type === 'trend');
     expect(trend).toMatchObject({ direction: 'increasing' });
   });
 
@@ -757,7 +767,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(false);
+    expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(false);
   });
 
   it('raises an improvement alert when the latest value is back in range', async () => {
@@ -779,7 +789,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const improvement = result.current.alerts.find((a) => a.type === 'improvement');
+    const improvement = alertsOf(result.current).find((a) => a.type === 'improvement');
     expect(improvement?.message).toBe('Improved: Glucose now within range');
     expect(improvement?.severity).toBe('positive');
   });
@@ -793,7 +803,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts[0].severity).toBe('warning');
+    expect(alertsOf(result.current)[0].severity).toBe('warning');
   });
 
   it('returns refresh from the lab results', () => {
@@ -828,7 +838,7 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts).toHaveLength(0);
+    expect(alertsOf(result.current)).toHaveLength(0);
     expect(result.current.unacknowledgedCount).toBe(0);
   });
 
@@ -843,9 +853,9 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(true);
+    expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(true);
     expect(result.current.unacknowledgedCount).toBe(4);
-    expect(result.current.groupedAlerts[0].unacknowledgedCount).toBe(4);
+    expect(result.current.groups[0].newCount).toBe(4);
   });
 
   it('compares trend values in one unit', () => {
@@ -863,6 +873,52 @@ describe('useAlerts', () => {
 
     const { result } = renderHook(() => useAlerts());
 
-    expect(result.current.alerts.some((a) => a.type === 'trend')).toBe(false);
+    expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(false);
+  });
+  it("records the test's latest status, though no improvement alert is raised", () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-02-15', [
+        createMockTestValue(2, 2, { value: 90, status: 'normal', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(3, '2024-03-15', [
+        createMockTestValue(3, 3, { value: 92, status: 'normal', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.groups[0].headline.type).toBe('out_of_range');
+    expect(result.current.groups[0].headline.latestStatus).toBe('normal');
+  });
+
+  it('does not call a test back in range while its latest value is out of range', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.groups[0].headline.latestStatus).toBe('high');
+  });
+  it('reads a day with an out-of-range value as out of range, whatever the order', () => {
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-05-20', [
+        createMockTestValue(2, 2, { value: 95, status: 'normal', referenceRangeHigh: 100 }),
+        createMockTestValue(3, 2, { value: 130, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(alertsOf(result.current).some((a) => a.type === 'improvement')).toBe(false);
+    expect(result.current.groups[0].headline.latestStatus).toBe('high');
   });
 });

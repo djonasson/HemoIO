@@ -4,6 +4,7 @@
  * Displays a table of test values with status indicators.
  */
 
+import { useId } from 'react';
 import { Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
 import {
   IconArrowUp,
@@ -22,10 +23,14 @@ import {
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
+import { isTrendable } from '@/utils/isTrendable';
+import { BiomarkerName } from './BiomarkerName';
 
 export interface TestValuesListProps {
   /** Test values to display */
   testValues: EnrichedTestValue[];
+  /** Open a test's trend; numeric values' names become links when given */
+  onOpenTrend?: (biomarkerKey: string) => void;
 }
 
 /**
@@ -217,8 +222,11 @@ function formatValue(testValue: EnrichedTestValue): string {
  */
 export function TestValuesList({
   testValues,
+  onOpenTrend,
 }: TestValuesListProps): React.ReactNode {
   const { unitPreferences } = usePreferences();
+  const idPrefix = useId();
+  const descriptions: Array<{ id: string; text: string }> = [];
 
   if (testValues.length === 0) {
     return (
@@ -228,7 +236,7 @@ export function TestValuesList({
     );
   }
 
-  return (
+  const table = (
     <Table striped highlightOnHover withTableBorder aria-label="Test values">
       <Table.Thead>
         <Table.Tr>
@@ -264,6 +272,8 @@ export function TestValuesList({
             tooltipParts.push(metadata.description);
           }
           const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
+          const descriptionId = `${idPrefix}-description-${testValue.id}`;
+          if (tooltipContent) descriptions.push({ id: descriptionId, text: tooltipContent });
 
           return (
             <Table.Tr
@@ -285,17 +295,16 @@ export function TestValuesList({
                 </Tooltip>
               </Table.Td>
               <Table.Td>
-                {tooltipContent ? (
-                  <Tooltip label={tooltipContent} multiline w={300} withArrow>
-                    <Text size="sm" fw={500} style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
-                      {metadata.cleanName || biomarkerName}
-                    </Text>
-                  </Tooltip>
-                ) : (
-                  <Text size="sm" fw={500}>
-                    {metadata.cleanName || biomarkerName}
-                  </Text>
-                )}
+                <BiomarkerName
+                  name={metadata.cleanName || biomarkerName}
+                  description={tooltipContent}
+                  descriptionId={descriptionId}
+                  onOpen={
+                    onOpenTrend && isTrendable(recorded)
+                      ? () => onOpenTrend(recorded.biomarkerKey)
+                      : undefined
+                  }
+                />
               </Table.Td>
               <Table.Td>
                 <Group gap={4}>
@@ -335,5 +344,19 @@ export function TestValuesList({
         })}
       </Table.Tbody>
     </Table>
+  );
+
+  return (
+    <>
+      {table}
+      {/* Hidden, yet still read through aria-describedby */}
+      <div hidden>
+        {descriptions.map(({ id, text }) => (
+          <span key={id} id={id}>
+            {text}
+          </span>
+        ))}
+      </div>
+    </>
   );
 }

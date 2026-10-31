@@ -6,6 +6,7 @@
  * - Lab result cards display
  * - Expand/collapse test values
  * - Abnormal value indicators
+ * - Opening a test's trend from its name
  * - Filtering
  * - Deletion with confirmation
  * - Accessibility
@@ -29,7 +30,9 @@ import {
   pickDate,
   shortDate,
   testValues,
+  trendLink,
 } from './steps/timeline.steps';
+import { biomarkerSelect } from './steps/trends.steps';
 
 // Test fixtures
 const mockLabResult = {
@@ -302,6 +305,88 @@ test.describe('Timeline with Data', () => {
     const highIcon = await glucose.getByLabel('Above reference range').locator('svg').getAttribute('class');
     const normalIcon = await creatinine.getByLabel('Within reference range').locator('svg').getAttribute('class');
     expect(new Set([lowIcon, highIcon, normalIcon]).size).toBe(3);
+  });
+
+  // Scenario: Open a test's trend from a lab result
+  test("opens a test's trend at the result's date from its name", async ({ page }) => {
+    const jan = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    const mar = labResult(2, '2024-03-20', 'LabCorp');
+    await seedLabData(page, {
+      labResults: [jan, mar],
+      testValues: [
+        ...testValues(jan, [{ biomarker: BIOMARKERS.GLUCOSE, value: 125, low: 70, high: 100 }], 1),
+        ...testValues(mar, [{ biomarker: BIOMARKERS.GLUCOSE, value: 90, low: 70, high: 100 }], 2),
+      ],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    await trendLink(card, 'Glucose').click();
+
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Trends/ })
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
+    await expect(
+      page.getByRole('main').locator('[aria-label="Jan 15, 24: 125 mg/dL (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
+  });
+
+  // Scenario: Biomarker description stays available on hover
+  test("keeps the test's description on hover", async ({ page }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: testValues(result, [{ biomarker: BIOMARKERS.GLUCOSE, value: 90, low: 70, high: 100 }], 1),
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    await trendLink(card, 'Glucose').hover();
+
+    await expect(page.getByRole('tooltip')).toContainText('Blood sugar level');
+  });
+
+  // Scenario: Open a test's trend with the keyboard
+  test("opens a test's trend with the keyboard", async ({ page }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: testValues(result, [{ biomarker: BIOMARKERS.GLUCOSE, value: 125, low: 70, high: 100 }], 1),
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    const link = trendLink(card, 'Glucose');
+    // Reached by tabbing, which is what shows the tooltip on focus
+    await link.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(link).toBeFocused();
+    // Keyboard users get the description too
+    await expect(page.getByRole('tooltip')).toContainText('Blood sugar level');
+    await page.keyboard.press('Enter');
+
+    await expect(
+      page.getByRole('navigation').getByRole('button', { name: /^Trends/ })
+    ).toHaveAttribute('aria-current', 'page');
+    await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
+  });
+
+  // Scenario: A value without a chart has no trend link
+  test('shows a qualitative value\'s test name without a trend link', async ({ page }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: [{ ...testValues(result, [{ biomarker: BIOMARKERS.GLUCOSE, value: 0 }], 1)[0], value: 'Negative', unit: '' }],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+
+    const table = card.getByRole('table', { name: 'Test values' });
+    await expect(table.getByText('Glucose', { exact: true })).toBeVisible();
+    await expect(table.getByRole('button')).toHaveCount(0);
   });
 
   test('should filter by date range', async ({ page }) => {

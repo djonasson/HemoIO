@@ -19,6 +19,8 @@ export interface TimelineViewProps {
   onNavigateToImport: () => void;
   /** Lab result to open and scroll to, e.g. when coming from a note */
   focusLabResultId?: number;
+  /** Open a test's trend at a result's date */
+  onOpenTrend?: (biomarkerKey: string, date: Date) => void;
 }
 
 /**
@@ -27,6 +29,7 @@ export interface TimelineViewProps {
 export function TimelineView({
   onNavigateToImport,
   focusLabResultId,
+  onOpenTrend,
 }: TimelineViewProps): React.ReactNode {
   const { results, isLoading, error, filters, setFilters, deleteResult, refresh } =
     useLabResults();
@@ -171,6 +174,7 @@ export function TimelineView({
               onCreateNote={handleCreateNote}
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}
+              onOpenTrend={onOpenTrend}
             />
           ))}
         </Stack>

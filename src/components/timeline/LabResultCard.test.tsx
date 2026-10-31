@@ -307,4 +307,15 @@ describe('LabResultCard', () => {
 
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
+  it("opens a test's trend at the result's date", async () => {
+    const onOpenTrend = vi.fn();
+    const result = createMockResult({ date: new Date('2024-01-15T12:00:00Z') });
+    renderWithProviders(
+      <LabResultCard result={result} onDelete={() => {}} defaultExpanded onOpenTrend={onOpenTrend} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hemoglobin, open trend' }));
+
+    expect(onOpenTrend).toHaveBeenCalledWith('marker-1', new Date('2024-01-15T12:00:00Z'));
+  });
 });

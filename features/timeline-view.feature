@@ -56,6 +56,37 @@ Feature: Timeline View
     And abnormal values should be visually distinguished not just by color
     And the lab result card should show a badge with the abnormal count
 
+  # Opening a test's trend
+  Scenario: Open a test's trend from a lab result
+    Given I have a lab result from "Quest Diagnostics" on "2024-01-15" with a glucose value of 125 mg/dL
+    And another lab result with a glucose value on a later date
+    When I navigate to the Timeline view
+    And I expand the lab result card from "2024-01-15"
+    And I click the biomarker name "Glucose"
+    Then I should be navigated to the trend view for glucose
+    And the data point from "2024-01-15" should be highlighted
+
+  Scenario: Biomarker description stays available on hover
+    Given I have a lab result with a glucose value
+    When I navigate to the Timeline view
+    And I expand the lab result card
+    And I hover over the biomarker name "Glucose"
+    Then I should see the description of glucose
+
+  Scenario: Open a test's trend with the keyboard
+    Given I have a lab result with a glucose value
+    When I navigate to the Timeline view
+    And I expand the lab result card
+    And I move keyboard focus to the biomarker name "Glucose"
+    And I press Enter
+    Then I should be navigated to the trend view for glucose
+
+  Scenario: A value without a chart has no trend link
+    Given I have a lab result with a qualitative value such as "Negative"
+    When I navigate to the Timeline view
+    And I expand the lab result card
+    Then that test's name should be shown as plain text, not a link
+
   # Filtering
   Scenario: Filter timeline by date range
     Given I have lab results from the following dates:

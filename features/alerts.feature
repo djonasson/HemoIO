@@ -29,11 +29,26 @@ Feature: Alerts
     And it should show the value and reference range
     And the alert should have an orange indicator
 
-  Scenario: Group alerts by biomarker
+  Scenario: One alert card per test
     Given I have multiple abnormal values for the same biomarker over time
     When I view the alerts
-    Then alerts should be grouped by biomarker name
-    And I should see how many occurrences are abnormal
+    Then I should see one alert card for that biomarker
+    And the card should show its latest abnormal value
+    And the card should say how many results are abnormal and how many of them are new
+
+  Scenario: Expand an alert card to see earlier results
+    Given I have three abnormal glucose values on different dates
+    When I view the alerts
+    And I expand the glucose alert card
+    Then I should see the two earlier glucose results, most recent first
+    And each earlier result should show its date, value and lab
+
+  Scenario: Open an earlier result in Trends
+    Given I have two abnormal glucose values on different dates
+    When I expand the glucose alert card
+    And I click the earlier glucose result
+    Then I should be navigated to the trend view for glucose
+    And the earlier data point should be highlighted
 
   Scenario: Most recent values shown first
     Given I have multiple abnormal values across different dates
@@ -81,11 +96,30 @@ Feature: Alerts
     Then the alert should be hidden from the current view
     And it should reappear on the next page load
 
+  Scenario: Dismissing a card hides every result of that test
+    Given I have two abnormal glucose values on different dates
+    When I dismiss the glucose alert card
+    Then no glucose alert should be shown
+    And the alert count should no longer include either glucose result
+
   Scenario: Acknowledge alert persistently
     Given I have an alert for an abnormal value
     When I click "Acknowledge" on the alert
     Then the alert should be marked as acknowledged and hidden
     And it should remain hidden until a newer abnormal value for that biomarker
+
+  Scenario: Acknowledging a card acknowledges every result of that test
+    Given I have two abnormal glucose values on different dates
+    When I acknowledge the glucose alert card
+    Then no glucose alert should be shown
+    And it should stay hidden after the next page load
+
+  Scenario: A later abnormal result makes an acknowledged test new again
+    Given I have acknowledged the alert card for two abnormal glucose values
+    When a later lab result with an abnormal glucose value is added
+    Then the glucose alert card should be shown again
+    And it should count three results, one of them new
+    And the earlier results should not be marked as new
 
   Scenario: No new alerts after acknowledging every alert
     Given I have one alert for an abnormal value
@@ -104,12 +138,18 @@ Feature: Alerts
     Then each alert should have an accessible role
     And screen readers should announce the alert severity
     And alerts should be navigable via keyboard
+    And the earlier results of a card can be expanded and opened via keyboard
 
   Scenario: Alert badge in navigation
     Given I have 3 abnormal biomarker values
     When I view the navigation bar
     Then the Alerts link should show a badge with "3"
     And the badge should be visually prominent
+
+  Scenario: Alert badge counts new results, not tests
+    Given I have two abnormal glucose values and one abnormal hemoglobin value
+    When I view the navigation bar
+    Then the Alerts link should show a badge with "3"
 
   Scenario: Rapid improvement alert
     Given I had a high glucose value of 180 mg/dL last month

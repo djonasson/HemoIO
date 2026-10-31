@@ -837,7 +837,8 @@ test.describe('Document Analysis - Performance', () => {
     await uploadFiles(page, track(createTextPdf('large.pdf', reportPages(8))));
     await recordRenderedTexts(page);
     await startAnalysis(page);
-    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
+    // Eight pages are really parsed: on a busy machine that outlasts the default wait
+    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible({ timeout: 30000 });
 
     // Page progress counts up through the document
     const pageStages = (await renderedTexts(page))

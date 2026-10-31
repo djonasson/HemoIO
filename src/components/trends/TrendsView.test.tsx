@@ -166,17 +166,15 @@ describe('TrendsView', () => {
 
     // Default mock for useAlerts
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
   });
 
@@ -401,32 +399,15 @@ describe('TrendsView', () => {
     });
 
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [
-        {
-          id: '1',
-          type: 'out_of_range',
-          severity: 'warning',
-          biomarkerKey: 'marker-1',
-          biomarkerName: 'Glucose',
-          value: 150,
-          unit: 'mg/dL',
-          status: 'high',
-          date: new Date(),
-          labName: 'Test Lab',
-          labResultId: 1,
-          message: 'Glucose is elevated',
-        },
-      ],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 1,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
 
     const onNavigateToAlerts = vi.fn();
@@ -621,17 +602,15 @@ describe('TrendsView preferred unit', () => {
     mockSetPreferredUnit.mockReset().mockResolvedValue(undefined);
     mockShowNotification.mockReset();
     vi.mocked(useAlerts).mockReturnValue({
-      alerts: [],
-      groupedAlerts: [],
+      groups: [],
       unacknowledgedCount: 0,
       hiddenCount: 0,
       assessedCount: 1,
       isLoading: false,
       error: null,
-      dismissAlert: vi.fn(),
-      acknowledgeAlert: vi.fn(),
+      dismissGroup: vi.fn(),
+      acknowledgeGroup: vi.fn(),
       refresh: vi.fn(),
-      filterByCategory: vi.fn(() => []),
     });
   });
 

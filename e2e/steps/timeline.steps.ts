@@ -231,3 +231,10 @@ export async function pickDate(page: Page, pickerLabel: string, day: string): Pr
 
   await expect(calendar).toBeHidden();
 }
+
+/** A test name in a lab result's table that opens the test's trend */
+export function trendLink(card: Locator, biomarkerName: string): Locator {
+  return card
+    .getByRole('table', { name: 'Test values' })
+    .getByRole('button', { name: `${biomarkerName}, open trend`, exact: true });
+}

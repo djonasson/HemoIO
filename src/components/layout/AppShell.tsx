@@ -498,6 +498,7 @@ function MainContent({
         key={timelineFocus ?? 'timeline'}
         onNavigateToImport={onNavigateToImport}
         focusLabResultId={timelineFocus ?? undefined}
+        onOpenTrend={onOpenTrend}
       />
     );
   }
