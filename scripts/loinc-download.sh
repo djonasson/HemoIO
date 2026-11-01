@@ -105,10 +105,6 @@ loinc_curl() {
     curl --fail --silent --show-error --location -K - "$@"
 }
 
-lower() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
-}
-
 md5_of() {
   if command -v md5sum >/dev/null; then
     md5sum "$1" | cut -d' ' -f1
@@ -148,28 +144,23 @@ is_complete() {
   version="${fields[0]:-}"
   md5="${fields[1]:-}"
   [[ "$version" == "$name" && -n "$md5" ]] || return 1
-  [[ "$(md5_of "$dir/Loinc_$name.zip")" == "$(lower "$md5")" ]]
+  [[ "$(md5_of "$dir/Loinc_$name.zip")" == "${md5,,}" ]]
 }
 
 # The latest complete release already downloaded, if any. Folders are tried
 # newest name first and the first complete one wins, so a normal run hashes
 # one zip rather than every release kept.
 latest_local() {
-  local dir name
-  local -a names=()
-  shopt -s nullglob
-  for dir in "$OUT"/*/; do
+  local dir
+  while IFS= read -r dir; do
     dir="${dir%/}"
-    names+=("${dir##*/}")
-  done
-  shopt -u nullglob
-  (( ${#names[@]} )) || return 0
-  while IFS= read -r name; do
-    if is_complete "$OUT/$name"; then
-      printf '%s\n' "$name"
+    # An empty $OUT leaves the glob unexpanded, which is no folder
+    [[ -d "$dir" ]] || continue
+    if is_complete "$dir"; then
+      printf '%s\n' "${dir##*/}"
       return 0
     fi
-  done < <(printf '%s\n' "${names[@]}" | sort -V -r)
+  done < <(printf '%s\n' "$OUT"/*/ | sort -V -r)
 }
 
 # What to remove if the script stops early, by error or Ctrl-C: the partial
@@ -189,14 +180,13 @@ trap 'exit 143' TERM
 
 mkdir -p "$OUT"
 meta="$(mktemp)"
-# mktemp makes its file private; metadata.json is not secret
-chmod 644 "$meta"
 
 echo "Asking LOINC for the current release..."
 loinc_curl -H 'Accept: application/json' "$API/Loinc" -o "$meta"
 mapfile -t fields < <(json_fields "$meta" version downloadMD5Hash releaseDate)
 version="${fields[0]:-}"
-md5="$(lower "${fields[1]:-}")"
+md5="${fields[1]:-}"
+md5="${md5,,}"
 released="${fields[2]:-}"
 # The version becomes a folder name and the MD5 is compared as hex, so
 # anything else means the answer is not what it should be
@@ -247,7 +237,8 @@ echo "Unzipping..."
 rm -rf "$dir/files"
 unzip -q "$zip" -d "$dir/files"
 # Written last: a release counts as downloaded only once it is all there
-cp "$meta" "$dir/metadata.json"
+# mktemp made the temp file private; metadata.json is not secret
+install -m 644 "$meta" "$dir/metadata.json"
 new_dir=""
 
 echo "Done: LOINC $version in $dir ($(du -sh "$dir/files" | cut -f1) unzipped)"

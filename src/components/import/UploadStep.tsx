@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from 'react';
 import {
+  Box,
   Stack,
   Group,
   Button,
@@ -26,6 +27,7 @@ import {
   IconX,
   IconAlertCircle,
 } from '@tabler/icons-react';
+import { FileName } from './FileName';
 import { isSupportedDocument, SUPPORTED_MIME_TYPES } from '../../services/ocr';
 
 /**
@@ -217,7 +219,7 @@ export function UploadStep({ onComplete, onCancel }: UploadStepProps): React.JSX
           {files.map((uploadedFile) => (
             <Paper key={uploadedFile.id} p="sm" withBorder>
               <Group justify="space-between" wrap="nowrap">
-                <Group wrap="nowrap" style={{ minWidth: 0 }}>
+                <Group wrap="nowrap" miw={0}>
                   {uploadedFile.preview ? (
                     <Image
                       src={uploadedFile.preview}
@@ -230,15 +232,12 @@ export function UploadStep({ onComplete, onCancel }: UploadStepProps): React.JSX
                   ) : (
                     getFileIcon(uploadedFile.file)
                   )}
-                  {/* A file name has no spaces to wrap at: it may wrap anywhere */}
-                  <div style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={500} style={{ overflowWrap: 'anywhere' }}>
-                      {uploadedFile.file.name}
-                    </Text>
+                  <Box miw={0}>
+                    <FileName name={uploadedFile.file.name} size="sm" />
                     <Badge size="sm" variant="light">
                       {uploadedFile.formattedSize}
                     </Badge>
-                  </div>
+                  </Box>
                 </Group>
                 <ActionIcon
                   color="red"

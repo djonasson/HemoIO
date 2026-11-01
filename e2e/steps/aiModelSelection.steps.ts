@@ -7,7 +7,8 @@
 
 import { expect, type Page, type Route } from '@playwright/test';
 import { removeTempFile, writeTempFile } from './tempFiles';
-import { openFromMenu } from './app.steps';
+import { openSettingsTab } from './app.steps';
+import { goToImport } from './importWizard.steps';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 const TEST_API_KEY = 'sk-ant-test-0000000000000000000000';
@@ -152,18 +153,10 @@ export async function unlock(page: Page): Promise<void> {
 }
 
 /**
- * When I open the AI Configuration tab in Settings
- */
-export async function openAISettings(page: Page): Promise<void> {
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: /AI Configuration/i }).click();
-}
-
-/**
  * And I have configured Anthropic as my AI provider with an API key
  */
 export async function configureAnthropic(page: Page, apiKey: string = TEST_API_KEY): Promise<void> {
-  await openAISettings(page);
+  await openSettingsTab(page, 'AI Configuration');
   await page.locator('input[aria-label="Select AI provider"]').click();
   await page.getByRole('option', { name: /Anthropic/i }).click();
   await page.locator('input[aria-label="API key"]').fill(apiKey);
@@ -179,7 +172,7 @@ export function modelSelect(page: Page) {
  * Given I have selected the model "<id>" in Settings
  */
 export async function selectModel(page: Page, modelId: string): Promise<void> {
-  await openAISettings(page);
+  await openSettingsTab(page, 'AI Configuration');
   await modelSelect(page).click();
   await page.getByRole('option', { name: modelId, exact: true }).click();
   await expect(modelSelect(page)).toHaveValue(modelId);
@@ -225,13 +218,6 @@ export function createTextLabReportPdf(): string {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
   return writeTempFile('lab-report.pdf', pdf);
-}
-
-/**
- * When I go to Import (navigates in-app, never reloads)
- */
-export async function goToImport(page: Page): Promise<void> {
-  await openFromMenu(page, 'Import');
 }
 
 /**

@@ -8,7 +8,7 @@
  * 4. Confirm - Confirm and save results
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Stepper, Title, Text, Paper } from '@mantine/core';
 import {
   IconUpload,
@@ -16,6 +16,7 @@ import {
   IconChecklist,
   IconCheck,
 } from '@tabler/icons-react';
+import { planSave } from '@services/analysis/reviewedSave';
 import { UploadStep } from './UploadStep';
 import type { UploadedFile } from './UploadStep';
 import { AnalysisStep } from './AnalysisStep';
@@ -23,7 +24,6 @@ import type { AnalysisResult } from './AnalysisStep';
 import { ReviewStep } from './ReviewStep';
 import type { ReviewedResult } from './ReviewStep';
 import { ConfirmStep } from './ConfirmStep';
-import type { SavePlan } from '@services/analysis/reviewedSave';
 
 /**
  * Props for ImportWizard
@@ -54,8 +54,6 @@ const STEPS = [
   { label: 'Confirm', description: 'Save results', icon: IconCheck },
 ];
 
-const EMPTY_PLAN: SavePlan<ReviewedResult> = { toSave: [], notSaved: [] };
-
 /**
  * Import Wizard for lab report documents
  */
@@ -70,8 +68,6 @@ export function ImportWizard({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [reviewedResults, setReviewedResults] = useState<ReviewedResult[]>([]);
-  // What the import saves, as the review worked it out on Continue
-  const [savePlan, setSavePlan] = useState<SavePlan<ReviewedResult>>(EMPTY_PLAN);
   const [isSaving, setIsSaving] = useState(false);
 
   // Step navigation
@@ -103,17 +99,12 @@ export function ImportWizard({
   }, [nextStep]);
 
   // Handler for review completion
-  // The review's edits are already held (onReviewChange); keep the plan it
-  // checked them against, so Confirm shows and saves exactly that
-  const handleReviewComplete = useCallback(
-    (_results: ReviewedResult[], plan: SavePlan<ReviewedResult>) => {
-      setSavePlan(plan);
-      nextStep();
-    },
-    [nextStep]
-  );
+  const handleReviewComplete = useCallback((results: ReviewedResult[]) => {
+    setReviewedResults(results);
+    nextStep();
+  }, [nextStep]);
 
-  const { toSave, notSaved } = savePlan;
+  const { toSave, notSaved } = useMemo(() => planSave(reviewedResults), [reviewedResults]);
 
   // Handler for final confirmation
   const handleConfirm = useCallback(async () => {

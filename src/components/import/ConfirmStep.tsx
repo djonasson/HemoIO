@@ -5,6 +5,7 @@
  */
 
 import {
+  Box,
   Stack,
   Group,
   Button,
@@ -28,20 +29,13 @@ import {
   IconInfoCircle,
 } from '@tabler/icons-react';
 import { ScrollBox } from '@components/common/ScrollBox';
+import { FileName } from './FileName';
 import { reviewedLabDate } from '@/utils/labDate';
-import { formatIntervalValue } from '@services/ai';
+import { formatReviewedValue } from '@/utils/formatReviewedValue';
+import { formatReferenceRange } from '@services/alerts/alertRules';
 import type { SetAsideValue } from '@services/analysis/reviewedSave';
 import type { ReviewedResult } from './ReviewStep';
 
-/**
- * Format a biomarker value for display, handling interval values
- */
-function formatBiomarkerValue(biomarker: ReviewedResult['editedBiomarkers'][0]): string {
-  if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
-    return formatIntervalValue(biomarker.intervalLow, biomarker.intervalHigh);
-  }
-  return String(biomarker.value);
-}
 
 /**
  * Props for ConfirmStep
@@ -175,11 +169,8 @@ export function ConfirmStep({
             {resultIndex > 0 && <Divider my="md" />}
 
             <Group justify="space-between" mb="sm">
-              {/* A file name has no spaces to wrap at: it may wrap anywhere */}
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <Text fw={500} size="sm" style={{ overflowWrap: 'anywhere' }}>
-                  {result.fileName}
-                </Text>
+              <Box miw={0} style={{ flex: 1 }}>
+                <FileName name={result.fileName} size="sm" />
                 <Group gap="xs">
                   {reviewedLabDate(result) && (
                     <Badge size="xs" variant="light">
@@ -192,7 +183,7 @@ export function ConfirmStep({
                     </Badge>
                   )}
                 </Group>
-              </div>
+              </Box>
               <Badge>{result.editedBiomarkers.length} values</Badge>
             </Group>
 
@@ -213,21 +204,15 @@ export function ConfirmStep({
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" fw={500}>
-                          {formatBiomarkerValue(biomarker)} {biomarker.unit}
+                          {formatReviewedValue(biomarker)} {biomarker.unit}
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        {biomarker.referenceRange ? (
-                          <Text size="sm" c="dimmed">
-                            {biomarker.referenceRange.low ?? '?'} -{' '}
-                            {biomarker.referenceRange.high ?? '?'}{' '}
-                            {biomarker.referenceRange.unit}
-                          </Text>
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
+                        <Text size="sm" c="dimmed">
+                          {(biomarker.referenceRange &&
+                            formatReferenceRange(biomarker.referenceRange, biomarker.referenceRange.unit)) ??
+                            '—'}
+                        </Text>
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -251,7 +236,7 @@ export function ConfirmStep({
           <List size="sm" mt={4}>
             {notSaved.map(({ fileName, biomarker }, index) => (
               <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>
-                {biomarker.name}: {formatBiomarkerValue(biomarker)} {biomarker.unit} in "{fileName}"
+                {biomarker.name}: {formatReviewedValue(biomarker)} {biomarker.unit} in "{fileName}"
               </List.Item>
             ))}
           </List>

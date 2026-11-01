@@ -70,3 +70,14 @@ export async function openFromMenu(page: Page, name: string): Promise<void> {
   await item.click();
   await expect(item).toHaveAttribute('aria-current', 'page');
 }
+
+/**
+ * When I open the given tab of Settings — through the menu, so it works on a
+ * phone too — and waits until that tab is selected
+ */
+export async function openSettingsTab(page: Page, tab: string | RegExp): Promise<void> {
+  await openFromMenu(page, 'Settings');
+  const tabButton = page.getByRole('tab', { name: tab, exact: true });
+  await tabButton.click();
+  await expect(tabButton).toHaveAttribute('aria-selected', 'true');
+}

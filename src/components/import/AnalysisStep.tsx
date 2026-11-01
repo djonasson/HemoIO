@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import {
+  Box,
   Stack,
   Group,
   Button,
@@ -25,6 +26,7 @@ import {
   IconArrowLeft,
   IconFileAnalytics,
 } from '@tabler/icons-react';
+import { FileName } from './FileName';
 import type { UploadedFile } from './UploadStep';
 import { analyzeLabReport, AnalysisError } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
@@ -373,10 +375,8 @@ export function AnalysisStep({
         {fileStatuses.map((file) => (
           <List.Item key={file.id} icon={getStatusIcon(file.status)}>
             <Group justify="space-between" wrap="nowrap">
-              <div>
-                <Text size="sm" fw={500}>
-                  {file.name}
-                </Text>
+              <Box miw={0}>
+                <FileName name={file.name} size="sm" />
                 {file.stage && file.status === 'processing' && (
                   // Announced, so screen-reader users hear when a file waits
                   <Text size="xs" c="dimmed" aria-live="polite">
@@ -389,7 +389,7 @@ export function AnalysisStep({
                   </Text>
                 )}
 
-              </div>
+              </Box>
               {file.status === 'processing' && (
                 <Progress
                   value={file.progress}

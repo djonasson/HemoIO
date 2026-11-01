@@ -513,10 +513,7 @@ describe('ReviewStep', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(onComplete).toHaveBeenCalledTimes(1);
-      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult], {
-        toSave: [mockReviewedResult],
-        notSaved: [],
-      });
+      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
     });
 
     it('disables continue button when no biomarkers', () => {
@@ -1329,10 +1326,7 @@ describe('ReviewStep', () => {
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
     // Handed back in full, so going back from Confirm keeps the empty file and its edits
-    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty], {
-      toSave: [mockReviewedResult],
-      notSaved: [],
-    });
+    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty]);
   });
 
   it('shows what the report said when its date could not be read', () => {

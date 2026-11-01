@@ -4,7 +4,7 @@
  * Main container for displaying lab results in chronological order.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Anchor, Stack, Text, Loader, Alert, Center } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
@@ -69,19 +69,15 @@ export function TimelineView({
   // it, or before it, or else the first control on the page. The delete
   // button that had focus goes with its card.
   const rootRef = useRef<HTMLDivElement>(null);
+  const toggles = useRef(new Map<number, HTMLDivElement>());
   const focusAfterDelete = useRef<{ nextId?: number } | null>(null);
-  const [deletions, setDeletions] = useState(0);
   useEffect(() => {
     const pending = focusAfterDelete.current;
-    const root = rootRef.current;
-    if (!pending || !root) return;
+    if (!pending) return;
     focusAfterDelete.current = null;
-    const next =
-      pending.nextId !== undefined
-        ? root.querySelector<HTMLElement>(`[aria-controls="lab-result-${pending.nextId}-content"]`)
-        : null;
-    (next ?? root.querySelector<HTMLElement>('button, a[href], input, [tabindex="0"]'))?.focus();
-  }, [deletions, results]);
+    const next = pending.nextId !== undefined ? toggles.current.get(pending.nextId) : undefined;
+    (next ?? rootRef.current?.querySelector<HTMLElement>('button, input'))?.focus();
+  }, [results]);
 
   // Loading state
   if (isLoading) {
@@ -128,10 +124,10 @@ export function TimelineView({
   const handleDelete = async (id: number) => {
     const index = results.findIndex((result) => result.id === id);
     const neighbour = results[index + 1] ?? results[index - 1];
+    // Set before the list changes, which may happen before deleteResult returns
+    focusAfterDelete.current = { nextId: neighbour?.id };
     try {
       await deleteResult(id);
-      focusAfterDelete.current = { nextId: neighbour?.id };
-      setDeletions((count) => count + 1);
       notifications.show({
         title: 'Lab result deleted',
         message: 'The lab result and its values were removed.',
@@ -139,6 +135,7 @@ export function TimelineView({
         icon: <IconCheck size={16} />,
       });
     } catch (err) {
+      focusAfterDelete.current = null;
       notifySaveFailed('Lab result not deleted', err);
     }
   };
@@ -172,6 +169,11 @@ export function TimelineView({
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}
               onOpenTrend={onOpenTrend}
+              toggleRef={(toggle) => {
+                if (result.id === undefined) return;
+                if (toggle) toggles.current.set(result.id, toggle);
+                else toggles.current.delete(result.id);
+              }}
             />
           ))}
         </Stack>

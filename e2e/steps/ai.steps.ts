@@ -3,7 +3,7 @@
  */
 
 import { expect, type Page, type Route } from '@playwright/test';
-import { openFromMenu } from './app.steps';
+import { openSettingsTab } from './app.steps';
 
 export const MOCK_OLLAMA_MODELS = ['llama3.2:8b', 'llava:13b'];
 
@@ -86,8 +86,7 @@ export async function mockOllama(
  * Given I have configured Ollama as my AI provider (via Settings)
  */
 export async function configureOllamaProvider(page: Page): Promise<void> {
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: /AI Configuration/i }).click();
+  await openSettingsTab(page, 'AI Configuration');
   await page.locator('input[aria-label="Select AI provider"]').click();
   await page.getByRole('option', { name: /Ollama/i }).click();
   await expect(page.getByText('Connected', { exact: true })).toBeVisible();

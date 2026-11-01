@@ -169,14 +169,19 @@ export function labResultCard(page: Page, day: string): Locator {
 }
 
 /**
+ * A lab result card's expand button, which says whether the card is open
+ */
+export function expandButton(card: Locator): Locator {
+  return card.getByRole('button', { name: /^(Expand|Collapse) lab result from / });
+}
+
+/**
  * And I expand the lab result card
  */
 export async function expandLabResult(page: Page, day: string): Promise<Locator> {
   const card = labResultCard(page, day);
   await card.getByRole('button', { name: `Expand lab result from ${longDate(day)}` }).click();
-  await expect(
-    card.getByRole('button', { name: `Collapse lab result from ${longDate(day)}` })
-  ).toHaveAttribute('aria-expanded', 'true');
+  await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'true');
   await waitForAnimations(card);
   return card;
 }

@@ -15,6 +15,7 @@ import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import {
   BIOMARKERS,
+  expandButton,
   expandLabResult,
   goToTimeline,
   labResultCard,
@@ -215,7 +216,7 @@ test.describe('Notes with Data', () => {
 
     // Clicking the indicator expands the card and shows the notes
     await badge.click();
-    await expect(jan).toHaveAttribute('aria-expanded', 'true');
+    await expect(expandButton(jan)).toHaveAttribute('aria-expanded', 'true');
     await expect(jan.getByText('First note', { exact: true })).toBeVisible();
 
     // A new note shows up in the indicator of the other result
@@ -542,7 +543,7 @@ test.describe('Notes view', () => {
       .click();
 
     const card = labResultCard(page, JAN_DAY);
-    await expect(card).toHaveAttribute('aria-expanded', 'true');
+    await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'true');
     await expect(card.getByText('Felt a headache after the fast', { exact: true })).toBeVisible();
   });
 

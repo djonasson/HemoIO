@@ -53,6 +53,8 @@ export interface LabResultCardProps {
   onDeleteNote?: (id: number) => Promise<void>;
   /** Open a test's trend at this result's date */
   onOpenTrend?: (biomarkerKey: string, date: Date) => void;
+  /** Receives the card's expand button, for the list to move focus to it */
+  toggleRef?: React.Ref<HTMLDivElement>;
 }
 
 /**
@@ -90,6 +92,7 @@ export function LabResultCard({
   onUpdateNote,
   onDeleteNote,
   onOpenTrend,
+  toggleRef,
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -173,10 +176,11 @@ export function LabResultCard({
               is the date part alone, so the delete button is not inside it. */}
           <Group justify="space-between" style={{ cursor: 'pointer' }} onClick={handleToggle}>
             <Group
+              ref={toggleRef}
               gap="md"
               wrap="nowrap"
               onKeyDown={(e) => {
-                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   handleToggle();
                 }

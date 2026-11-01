@@ -2,7 +2,7 @@
  * Tests for unit spellings: the one form each unit is compared in
  */
 import { describe, it, expect } from 'vitest';
-import { normalizeUnitForLookup, unitsMatch } from './unitSpelling';
+import { isPerHundredCounted, normalizeUnitForLookup, unitsMatch } from './unitSpelling';
 
 describe('normalizeUnitForLookup', () => {
   it.each([
@@ -56,4 +56,20 @@ describe('unitsMatch', () => {
     expect(unitsMatch('mg/gcr', 'mg/g')).toBe(true);
     expect(unitsMatch('mg/g cr', 'mg/mmol')).toBe(false);
   });
+});
+
+describe('isPerHundredCounted', () => {
+  it.each(['/100 HPF', '/100HPF', 'per100HPF', '/100campi', '/  100 HPF', '/100\u00a0HPF', '/100 WBC', 'PER 100 HPF'])(
+    'reads %s as a share of 100 of a thing counted',
+    (unit) => {
+      expect(isPerHundredCounted(unit)).toBe(true);
+    }
+  );
+
+  it.each(['/100 mL', '/100 µL', '/100mL', '/100 g', '/100 cL', '/100.000', '/100,000', '/1000', '%', 'mmol/L', '/100'])(
+    'does not read %s as one',
+    (unit) => {
+      expect(isPerHundredCounted(unit)).toBe(false);
+    }
+  );
 });

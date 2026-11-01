@@ -4,7 +4,7 @@
  */
 
 import { unitFitsBiomarker } from '@services/units/unitFit';
-import { normalizeUnitForLookup } from '@/utils/unitSpelling';
+import { isPerHundredCounted } from '@/utils/unitSpelling';
 import {
   BIOMARKER_DEFINITIONS,
   findBiomarker,
@@ -80,12 +80,6 @@ function isReady(biomarker: MatchedBiomarker): boolean {
 }
 
 /**
- * "/100 X" or "per 100 X" where X is a thing counted, not a number ("/100.000"
- * is per 100,000) or a volume ("/100 mL" is a concentration)
- */
-const UNREADABLE_SHARE = /^(?:\/|per) ?100 ?(?![\d.,])(?!(?:[mµund]?l)$)\S/i;
-
-/**
  * A share of 100 of something no test is counted per ("/100 HPF"): the same
  * test given a second time in a form the app cannot read. Any other unit no
  * test fits may be another measurement (a 24-hour amount in "mEq/24h" next
@@ -93,7 +87,7 @@ const UNREADABLE_SHARE = /^(?:\/|per) ?100 ?(?![\d.,])(?!(?:[mµund]?l)$)\S/i;
  */
 function isUnreadableShare(unit: string): boolean {
   return (
-    UNREADABLE_SHARE.test(normalizeUnitForLookup(unit)) &&
+    isPerHundredCounted(unit) &&
     !BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, unit))
   );
 }

@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useContext, useMemo } from 'react';
 import {
+  Box,
   Stack,
   Group,
   SimpleGrid,
@@ -41,6 +42,7 @@ import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysi
 import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
+import { formatReviewedValue } from '@/utils/formatReviewedValue';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
@@ -55,8 +57,8 @@ import { misfitTest, missingFields, planSave } from '@services/analysis/reviewed
 import { proposedTest } from '@services/analysis/nameMatching';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
+import { FileName } from './FileName';
 import type { SpecimenType } from '../../types';
-import type { SavePlan } from '@services/analysis/reviewedSave';
 
 /** Every dictionary name, the options of the name autocomplete */
 const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
@@ -185,8 +187,8 @@ export interface ReviewStepProps {
   reviewedResults: ReviewedResult[];
   /** Callback when review changes */
   onReviewChange: (results: ReviewedResult[]) => void;
-  /** Callback when review is complete, with what the import saves */
-  onComplete: (results: ReviewedResult[], plan: SavePlan<ReviewedResult>) => void;
+  /** Callback when review is complete */
+  onComplete: (results: ReviewedResult[]) => void;
   /** Callback to go back */
   onBack: () => void;
 }
@@ -396,7 +398,7 @@ export function ReviewStep({
     }
 
     setProblems(null);
-    onComplete(reviewedResults, plan);
+    onComplete(reviewedResults);
   }, [reviewedResults, plan, setAside, onComplete]);
 
   return (
@@ -473,13 +475,12 @@ export function ReviewStep({
           <Accordion.Item key={result.fileId} value={String(resultIndex)}>
             <Accordion.Control>
               <Group justify="space-between" wrap="nowrap" pr="md">
-                {/* A file name has no spaces to wrap at: it may wrap anywhere */}
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={500} style={{ overflowWrap: 'anywhere' }}>{result.fileName}</Text>
+                <Box miw={0}>
+                  <FileName name={result.fileName} />
                   <Text size="sm" c="dimmed">
                     {result.editedBiomarkers.length} biomarker(s)
                   </Text>
-                </div>
+                </Box>
                 {result.manualEntry ? (
                   <Badge color="gray" variant="light">
                     Entered manually
@@ -724,13 +725,7 @@ export function ReviewStep({
                                   />
                                 )
                               ) : (
-                                <Text size="sm">
-                                  {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
-                                    ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
-                                    : Number.isFinite(biomarker.value)
-                                      ? biomarker.value
-                                      : ''}
-                                </Text>
+                                <Text size="sm">{formatReviewedValue(biomarker)}</Text>
                               )}
                             </Table.Td>
                             <Table.Td>

@@ -3,7 +3,7 @@
  */
 
 import { test, expect } from './fixtures';
-import { TEST_PASSWORD, openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { goToNotes, noteCards, noteSeed, seedNotesData } from './steps/userNotes.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
@@ -50,8 +50,7 @@ test.describe('Change password', () => {
     await expect(page.getByText('Quest Diagnostics')).toBeVisible();
     const notes = await goToNotes(page);
     await expect(noteCards(notes).filter({ hasText: 'Fasted for twelve hours' })).toBeVisible();
-    await openFromMenu(page, 'Settings');
-    await page.getByRole('tab', { name: 'AI Configuration' }).click();
+    await openSettingsTab(page, 'AI Configuration');
     await expect(page.getByText('••••••••0000')).toBeVisible();
   });
 

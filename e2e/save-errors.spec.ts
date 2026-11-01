@@ -8,7 +8,7 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { openFromMenu, setupOrUnlock } from './steps/app.steps';
+import { openSettingsTab, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { continueToConfirm, saveResults } from './steps/importWizard.steps';
@@ -45,11 +45,6 @@ const PRIVATE_TEXT = /Glucose|Unit Test Laboratory|Quest Diagnostics|100 mg|lab-
 async function start(page: Page): Promise<void> {
   await page.goto('/');
   await setupOrUnlock(page);
-}
-
-async function openSettingsTab(page: Page, tab: string): Promise<void> {
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: tab }).click();
 }
 
 test.describe('Save errors', () => {

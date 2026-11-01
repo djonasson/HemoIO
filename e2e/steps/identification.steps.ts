@@ -4,7 +4,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { reviewRows } from './unitConversion.steps';
 import { continueToConfirm, main, saveResults } from './importWizard.steps';
-import { openFromMenu } from './app.steps';
+import { openSettingsTab } from './app.steps';
 
 /** The review row whose value cell shows `value` */
 export function rowFor(page: Page, value: string): Locator {
@@ -61,8 +61,7 @@ export function learnedNames(page: Page): Locator {
 }
 
 export async function openLearnedNames(page: Page): Promise<void> {
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: 'Biomarkers' }).click();
+  await openSettingsTab(page, 'Biomarkers');
 }
 
 export async function removeLearnedName(page: Page, name: string): Promise<void> {

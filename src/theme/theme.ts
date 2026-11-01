@@ -28,23 +28,36 @@ function candidates(shades: readonly string[], order: number[], toward: Rgb): Rg
   return list;
 }
 
-/** Index of the first candidate with AA contrast on every background */
-function firstReadable(list: Rgb[], backgrounds: Rgb[]): number {
+/**
+ * The candidates of `order` mixing toward `toward`, and the index of the
+ * first one with AA contrast on every background
+ */
+function firstReadable(
+  shades: readonly string[],
+  order: number[],
+  toward: Rgb,
+  backgrounds: Rgb[]
+): [Rgb[], number] {
+  const list = candidates(shades, order, toward);
   const index = list.findIndex((c) => backgrounds.every((b) => contrast(c, b) >= AA));
-  return index === -1 ? list.length - 1 : index;
+  return [list, index === -1 ? list.length - 1 : index];
 }
 
 /** The lightest of `order` (shade numbers) mixing toward `toward` that is AA on `backgrounds` */
 function readable(shades: readonly string[], order: number[], toward: Rgb, backgrounds: Rgb[]): string {
-  const list = candidates(shades, order, toward);
-  return rgbToHex(list[firstReadable(list, backgrounds)]);
+  const [list, index] = firstReadable(shades, order, toward, backgrounds);
+  return rgbToHex(list[index]);
 }
 
 /** A filled background that white text is AA on, and a darker one for hover */
 function filled(shades: readonly string[], order: number[]): [string, string] {
-  const list = candidates(shades, order, BLACK);
-  const index = firstReadable(list, [WHITE]);
+  const [list, index] = firstReadable(shades, order, BLACK, [WHITE]);
   return [rgbToHex(list[index]), rgbToHex(list[Math.min(index + 1, list.length - 1)])];
+}
+
+/** Shade numbers from `first` to the darkest */
+function shadesFrom(first: number): number[] {
+  return Array.from({ length: 10 - first }, (_, i) => first + i);
 }
 
 type Variables = Record<string, string>;
@@ -62,8 +75,8 @@ function colourVariables(t: MantineTheme): { light: Variables; dark: Variables }
   const lightShade = getPrimaryShade(t, 'light');
   const darkShade = getPrimaryShade(t, 'dark');
   const body = hexToRgb(t.colors.dark[7]);
-  const lightOrder = Array.from({ length: 10 - lightShade }, (_, i) => lightShade + i);
-  const darkFilledOrder = Array.from({ length: 10 - darkShade }, (_, i) => darkShade + i);
+  const lightOrder = shadesFrom(lightShade);
+  const darkFilledOrder = shadesFrom(darkShade);
   // Text also sits on light gray boxes, and on the darker gray of cards in dark mode
   const grayBox = blend(hexToRgb(t.colors.gray[lightShade]), 0.12, WHITE);
   const darkCard = hexToRgb(t.colors.dark[6]);

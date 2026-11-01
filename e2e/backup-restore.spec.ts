@@ -11,10 +11,10 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { openFromMenu, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { expandLabResult } from './steps/timeline.steps';
-import { configureAnthropic, mockAnthropicApi, openAISettings } from './steps/aiModelSelection.steps';
+import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { loginWithOllama } from './steps/importWizard.steps';
 
@@ -226,9 +226,7 @@ test.describe('Backup & Restore Settings', () => {
     test('should switch to AI Configuration tab', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      await page.getByRole('tab', { name: /ai configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       await expect(page.getByText(/configure your ai provider/i)).toBeVisible();
     });
@@ -236,9 +234,7 @@ test.describe('Backup & Restore Settings', () => {
     test('should switch to Display tab', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      await page.getByRole('tab', { name: /display/i }).click();
+      await openSettingsTab(page, 'Display');
 
       await expect(page.getByText(/theme/i)).toBeVisible();
     });
@@ -246,9 +242,7 @@ test.describe('Backup & Restore Settings', () => {
     test('should return to Data tab', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      await page.getByRole('tab', { name: /display/i }).click();
+      await openSettingsTab(page, 'Display');
       await page.getByRole('tab', { name: /data/i }).click();
 
       await expect(page.getByText('Backup & Restore')).toBeVisible();
@@ -828,8 +822,7 @@ async function createEncryptedBackupWithApiKey(page: Page): Promise<string> {
   await setupOrUnlock(page);
   await configureAnthropic(page);
   await seedLabData(page);
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: 'Data' }).click();
+  await openSettingsTab(page, 'Data');
   await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
   await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
   const exportDialog = page.getByRole('dialog');
@@ -844,8 +837,7 @@ async function createEncryptedBackupWithApiKey(page: Page): Promise<string> {
  * Open the restore dialog for an encrypted backup on `page` (already unlocked)
  */
 async function openEncryptedRestore(page: Page, backupPath: string) {
-  await openFromMenu(page, 'Settings');
-  await page.getByRole('tab', { name: 'Data' }).click();
+  await openSettingsTab(page, 'Data');
   await page.locator('input[type="file"]').setInputFiles(backupPath);
   const passwordDialog = page.getByRole('dialog');
   await passwordDialog.getByRole('textbox', { name: 'Backup Password' }).fill(ENCRYPTED_BACKUP_PASSWORD);
@@ -879,7 +871,7 @@ test.describe('Encrypted backup restores the API key', () => {
       await restoreDialog.getByRole('button', { name: 'Restore' }).click();
 
       await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();
-      await openAISettings(other);
+      await openSettingsTab(other, 'AI Configuration');
       await expect(other.getByText('••••••••1111')).toBeVisible();
     } finally {
       await otherContext.close();
@@ -931,7 +923,7 @@ test.describe('Encrypted backup restores the API key', () => {
       // Data restored
       await expect(other.getByRole('main').getByText('Quest Diagnostics')).toBeVisible();
       // AI provider and API key restored
-      await openAISettings(other);
+      await openSettingsTab(other, 'AI Configuration');
       await expect(other.locator('input[aria-label="Select AI provider"]')).toHaveValue(/Anthropic/);
       await expect(other.getByText('Configured', { exact: true })).toBeVisible();
       await expect(other.getByText('••••••••0000')).toBeVisible();

@@ -96,3 +96,15 @@ export function normalizeUnitForLookup(unit: string): string {
 export function unitsMatch(a: string, b: string): boolean {
   return normalizeUnitForLookup(a).toLowerCase() === normalizeUnitForLookup(b).toLowerCase();
 }
+
+/**
+ * "/100 X" or "per 100 X" where X is a thing counted: not a number
+ * ("/100.000" is per 100,000), a volume ("/100 mL") or a mass ("/100 g"),
+ * which make a concentration
+ */
+const PER_HUNDRED_COUNTED = /^(?:\/|per) ?100 ?(?![\d.,])(?!(?:[mµuncd]?[lg])$)\S/i;
+
+/** Whether a unit is a share: so many per 100 of something counted */
+export function isPerHundredCounted(unit: string): boolean {
+  return PER_HUNDRED_COUNTED.test(normalizeUnitForLookup(unit));
+}
