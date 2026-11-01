@@ -25,13 +25,14 @@ npm run dev
 
 ## Scripts
 
-| Command            | Description                 |
-|--------------------|-----------------------------|
-| `npm run dev`      | Start development server    |
-| `npm run build`    | Build for production        |
-| `npm run test`     | Run unit tests (watch mode) |
-| `npm run test:run` | Run unit tests once         |
-| `npm run e2e`      | Run end-to-end tests        |
+| Command                  | Description                                            |
+|--------------------------|--------------------------------------------------------|
+| `npm run dev`            | Start development server                               |
+| `npm run build`          | Build for production                                   |
+| `npm run test`           | Run unit tests (watch mode)                            |
+| `npm run test:run`       | Run unit tests once                                    |
+| `npm run e2e`            | Run end-to-end tests                                   |
+| `npm run loinc:download` | Download a newer LOINC release ([docs](docs/LOINC.md)) |
 
 ## AI Providers
 
@@ -78,6 +79,7 @@ OLLAMA_ORIGINS=* ollama serve
 
 - [Concept](docs/CONCEPT.md) - Product vision and features
 - [Architecture](docs/ARCHITECTURE.md) - Technical design
+- [LOINC](docs/LOINC.md) - Downloading and updating LOINC
 
 ## Author
 
