@@ -302,6 +302,15 @@ describe('TestValuesList', () => {
       expect(hemoglobinText).toHaveStyle({ cursor: 'help' });
     });
 
+    it("gives the LOINC code with LOINC's own name", () => {
+      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
+      renderWithProviders(<TestValuesList testValues={testValues} onOpenTrend={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Hemoglobin, open trend' })).toHaveAccessibleDescription(
+        /^LOINC 718-7: Hemoglobin \[Mass\/volume\] in Blood/
+      );
+    });
+
     it('should not show tooltip styling for unknown biomarkers', () => {
       const testValues = [createTestValue(1, { rawText: 'Unknown' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);

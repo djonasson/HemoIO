@@ -12,3 +12,4 @@ export { PersonalTargets, type PersonalTargetsProps } from './PersonalTargets';
 export { hasTargetRange, toPersonalTarget, type PersonalTarget } from './personalTarget';
 export { PersonalTargetModal, type PersonalTargetModalProps } from './PersonalTargetModal';
 export { ChangePassword } from './ChangePassword';
+export { AboutSettings } from './AboutSettings';

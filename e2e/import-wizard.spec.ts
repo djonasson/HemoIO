@@ -450,7 +450,7 @@ test.describe('Import Wizard', () => {
       await reviewCell(reviewRow(page, 'Glucose'), 'Biomarker').getByText('Glucose').hover();
 
       const tooltip = page.getByRole('tooltip');
-      await expect(tooltip).toContainText('LOINC: 2345-7');
+      await expect(tooltip).toContainText('LOINC 2345-7: Glucose [Mass/volume] in Serum or Plasma');
       await expect(tooltip).toContainText('Blood sugar level, primary energy source for cells.');
     });
   });

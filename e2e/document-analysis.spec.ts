@@ -482,7 +482,7 @@ test.describe('Document Analysis - AI Processing', () => {
     await expect(reviewCell(reviewRow(page, 'Hgb'), 'Specimen')).toHaveText('Whole Blood');
 
     await reviewCell(reviewRow(page, 'Hgb'), 'Biomarker').getByText('Hgb').hover();
-    await expect(page.getByRole('tooltip')).toContainText('LOINC: 718-7');
+    await expect(page.getByRole('tooltip')).toContainText('LOINC 718-7: Hemoglobin [Mass/volume] in Blood');
 
     // No dictionary warning
     await expect(main(page).getByText(/could not be matched to the dictionary/)).toBeHidden();

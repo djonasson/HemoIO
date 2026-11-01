@@ -13,6 +13,7 @@ import {
   IconSettings,
   IconTarget,
   IconBook,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { BackupRestore } from './BackupRestore';
@@ -21,6 +22,7 @@ import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets } from './PersonalTargets';
 import { LearnedAliases } from './LearnedAliases';
+import { AboutSettings } from './AboutSettings';
 import { toPersonalTarget, type PersonalTarget } from './personalTarget';
 import { StorageSettings } from './StorageSettings';
 import {
@@ -306,6 +308,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           <Tabs.Tab value="biomarkers" leftSection={<IconBook size={16} />}>
             Biomarkers
           </Tabs.Tab>
+          <Tabs.Tab value="about" leftSection={<IconInfoCircle size={16} />}>
+            About
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="data" pt="md">
@@ -367,6 +372,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
         <Tabs.Panel value="biomarkers" pt="md">
           <LearnedAliases />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="about" pt="md">
+          <AboutSettings />
         </Tabs.Panel>
       </Tabs>
     </Stack>

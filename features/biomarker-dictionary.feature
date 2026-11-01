@@ -89,7 +89,13 @@ Feature: Biomarker Dictionary
     Given I am viewing the biomarker dictionary
     When I select a biomarker with a LOINC code
     Then I should see the LOINC code displayed
+    And LOINC's own name for the code beside it
     And the LOINC code should link to the LOINC website
+
+  Scenario: Every biomarker's LOINC code is a LOINC code for that test
+    Given the biomarker dictionary
+    Then every LOINC code it gives should exist in LOINC
+    And LOINC's name for it should describe that test, measured in that specimen
 
   Scenario: View what high values mean
     Given I am viewing the detail for "Glucose"

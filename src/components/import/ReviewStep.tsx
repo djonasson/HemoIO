@@ -49,6 +49,7 @@ import {
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
+import { loincLabel } from '@data/biomarkers/loinc';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { misfitTest, planSave, targetTest } from '@services/analysis/reviewedSave';
 import { SavedAsCell } from './SavedAsCell';
@@ -92,7 +93,7 @@ function getBiomarkerTooltipContent(biomarker: MatchedBiomarker): string | null 
 
   const parts: string[] = [];
   if (match.loincCode) {
-    parts.push(`LOINC: ${match.loincCode}`);
+    parts.push(loincLabel(match.loincCode));
   }
   if (match.description) {
     parts.push(match.description);

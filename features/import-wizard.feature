@@ -80,6 +80,7 @@ Feature: Import Wizard
     Given the analysis has completed
     When I hover over a matched biomarker name
     Then I should see the LOINC code in a tooltip
+    And LOINC's own name for the code beside it
     And the tooltip should include the biomarker description
 
   Scenario: User sees confidence indicators

@@ -69,6 +69,28 @@ test.describe('Settings Page', () => {
     });
   });
 
+  test.describe('About', () => {
+    test('shows the license and the LOINC notice', async ({ page }) => {
+      // Scenario: See the notices of material the app contains
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await navigateToSettings(page);
+
+      await page.getByRole('tab', { name: 'About' }).click();
+
+      const panel = page.getByRole('tabpanel', { name: 'About' });
+      await expect(panel.getByText('HemoIO is open source under the MIT license.')).toBeVisible();
+      await expect(panel.getByText('LOINC (version 2.83)')).toBeVisible();
+      await expect(panel.getByText(/^This material contains content from LOINC/)).toContainText(
+        'LOINC® is a registered United States trademark of Regenstrief Institute, Inc.'
+      );
+      await expect(panel.getByRole('link', { name: 'Read the LOINC license' })).toHaveAttribute(
+        'href',
+        'https://loinc.org/license'
+      );
+    });
+  });
+
   test.describe('Display Settings', () => {
     test('should show theme selection options', async ({ page }) => {
       await page.goto('/');

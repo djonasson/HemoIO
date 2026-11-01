@@ -24,6 +24,7 @@ import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
+import { loincLabel } from '@data/biomarkers/loinc';
 import { BiomarkerName } from './BiomarkerName';
 
 export interface TestValuesListProps {
@@ -268,7 +269,7 @@ export function TestValuesList({
             // Build tooltip content for LOINC code and description
             const tooltipParts: string[] = [];
             if (metadata.loincCode) {
-              tooltipParts.push(`LOINC: ${metadata.loincCode}`);
+              tooltipParts.push(loincLabel(metadata.loincCode));
             }
             if (metadata.description) {
               tooltipParts.push(metadata.description);
