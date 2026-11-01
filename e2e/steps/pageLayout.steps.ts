@@ -11,18 +11,6 @@ export const PHONE_SCREEN = { width: 390, height: 844 };
 export const MENU_PAGES = ['Timeline', 'Import', 'Trends', 'Alerts', 'Notes', 'Biomarkers', 'Settings'];
 
 /**
- * When I open a page from the menu — on a phone the menu opens from the
- * burger button and closes itself once a page is chosen
- */
-export async function openFromMenu(page: Page, name: string): Promise<void> {
-  const burger = page.getByRole('button', { name: 'Toggle navigation' });
-  if (await burger.isVisible()) await burger.click();
-  const item = page.getByRole('navigation').getByRole('button', { name: new RegExp(`^${name}`) });
-  await item.click();
-  await expect(item).toHaveAttribute('aria-current', 'page');
-}
-
-/**
  * The width of the main area inside its padding, and of its widest block
  */
 async function mainWidths(page: Page): Promise<{ available: number; used: number }> {

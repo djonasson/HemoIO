@@ -8,7 +8,7 @@ import { Alert, Button, List, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
 /** Problems shown before the user asks for the rest */
-export const PROBLEMS_SHOWN_FIRST = 5;
+const PROBLEMS_SHOWN_FIRST = 5;
 
 interface ContinueProblemsProps {
   /** Each problem, as a sentence that says how to fix it */
@@ -19,7 +19,7 @@ interface ContinueProblemsProps {
 export function ContinueProblems({ problems, onClose }: ContinueProblemsProps) {
   const [showAll, setShowAll] = useState(false);
   const hidden = problems.length - PROBLEMS_SHOWN_FIRST;
-  const shown = showAll || hidden <= 0 ? problems : problems.slice(0, PROBLEMS_SHOWN_FIRST);
+  const shown = showAll ? problems : problems.slice(0, PROBLEMS_SHOWN_FIRST);
 
   return (
     <Alert

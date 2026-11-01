@@ -28,7 +28,7 @@ import {
   IconInfoCircle,
 } from '@tabler/icons-react';
 import type { ReviewedResult } from './ReviewStep';
-import type { SetAsideValue } from './resultsToSave';
+import type { SetAsideValue } from '@services/analysis/reviewedSave';
 import { reviewedLabDate } from '@/utils/labDate';
 
 /**

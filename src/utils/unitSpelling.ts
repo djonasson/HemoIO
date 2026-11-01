@@ -73,8 +73,7 @@ const UNIT_SPELLINGS = new Map<string, string>([
  * cells per 100 white cells ("/100WBC", "/100 GB", "/100 leucociti")
  */
 const UNIT_PATTERNS: ReadonlyArray<[RegExp, string]> = [
-  [/^mg\/ ?g ?(?:cr|crea|creat|creatinine|creatinina)\.?$/, 'mg/g'],
-  [/^mg\/ ?mmol ?(?:cr|crea|creat|creatinine|creatinina)\.?$/, 'mg/mmol'],
+  [/^mg\/ ?(g|mmol) ?(?:cr|crea|creat|creatinine|creatinina)\.?$/, 'mg/$1'],
   [/^(?:\/|per) ?100 ?(?:wbc|gb|leucociti|leukocytes|white cells)$/, '/100 WBC'],
 ];
 
@@ -88,7 +87,8 @@ export function normalizeUnitForLookup(unit: string): string {
   const lower = spelled.toLowerCase();
   const listed = UNIT_SPELLINGS.get(lower);
   if (listed) return listed;
-  return UNIT_PATTERNS.find(([pattern]) => pattern.test(lower))?.[1] ?? spelled;
+  const match = UNIT_PATTERNS.find(([pattern]) => pattern.test(lower));
+  return match ? lower.replace(match[0], match[1]) : spelled;
 }
 
 /** Whether two units are one unit, however each is spelled */

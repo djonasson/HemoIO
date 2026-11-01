@@ -7,7 +7,7 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { analyzeToReview, loginWithOllama, main } from './steps/importWizard.steps';
@@ -21,7 +21,6 @@ import {
   expectNoSidewaysScroll,
   expectTableScrollsOnItsOwn,
   expectShownInFull,
-  openFromMenu,
 } from './steps/pageLayout.steps';
 
 /** The seeded lab result with two tests, one of them abnormal */
@@ -96,24 +95,22 @@ test.describe('Page Layout', () => {
     });
 
     test('the lab date and name are readable on a phone', async ({ page }) => {
-      await analyzeToReview(page, pdfPath);
-
-      // On a phone the menu is folded away, so the review is reached first
       await page.setViewportSize(PHONE_SCREEN);
 
+      await analyzeToReview(page, pdfPath);
+
       await expectNoSidewaysScroll(page);
+      // One above the other, each as wide as the other
       await expect
         .poll(async () => {
           const date = await main(page).getByRole('textbox', { name: 'Lab Date' }).boundingBox();
           const name = await main(page).getByRole('textbox', { name: 'Lab Name' }).boundingBox();
-          return name!.y > date!.y + date!.height;
+          return {
+            stacked: name!.y > date!.y + date!.height,
+            sameWidth: Math.abs(name!.width - date!.width) < 1,
+          };
         })
-        .toBe(true);
-      const date = await main(page).getByRole('textbox', { name: 'Lab Date' }).boundingBox();
-      const name = await main(page).getByRole('textbox', { name: 'Lab Name' }).boundingBox();
-      // One above the other, each as wide as the other
-      expect(name!.y).toBeGreaterThan(date!.y + date!.height);
-      expect(Math.abs(name!.width - date!.width)).toBeLessThan(1);
+        .toEqual({ stacked: true, sameWidth: true });
     });
   });
 });

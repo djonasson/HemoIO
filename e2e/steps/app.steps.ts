@@ -58,3 +58,15 @@ export async function setupOrUnlock(page: Page, password: string = TEST_PASSWORD
 async function expectAppReady(page: Page): Promise<void> {
   await expect(page.locator('nav').getByText('Settings', { exact: true })).toBeVisible();
 }
+
+/**
+ * When I open a page from the menu — on a phone the menu opens from the
+ * burger button and closes itself once a page is chosen
+ */
+export async function openFromMenu(page: Page, name: string): Promise<void> {
+  const burger = page.getByRole('button', { name: 'Toggle navigation' });
+  if (await burger.isVisible()) await burger.click();
+  const item = page.getByRole('navigation').getByRole('button', { name: new RegExp(`^${name}`) });
+  await item.click();
+  await expect(item).toHaveAttribute('aria-current', 'page');
+}

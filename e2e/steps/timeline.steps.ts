@@ -7,6 +7,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 
 /**
  * Built-in dictionary entries used by the tests. IDs are 1-indexed positions
@@ -141,18 +142,14 @@ export function shortDate(day: string): string {
  * When I navigate to the Timeline view
  */
 export async function goToTimeline(page: Page): Promise<void> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Timeline/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Timeline');
 }
 
 /**
  * When I navigate to the Trends view
  */
 export async function goToTrends(page: Page): Promise<void> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Trends/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Trends');
 }
 
 /**

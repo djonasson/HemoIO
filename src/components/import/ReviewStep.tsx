@@ -4,7 +4,7 @@
  * Review and edit extracted biomarker values before saving.
  */
 
-import { useState, useCallback, useContext } from 'react';
+import { useState, useCallback, useContext, useMemo } from 'react';
 import {
   Stack,
   Group,
@@ -48,10 +48,9 @@ import {
   suggestBiomarkerNames,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
-import { proposedTest } from '@services/analysis/nameMatching';
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { isSetAside, misfitTest, resultsToSave } from './resultsToSave';
+import { misfitTest, planSave, targetTest } from '@services/analysis/reviewedSave';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import type { SpecimenType } from '../../types';
@@ -342,6 +341,13 @@ export function ReviewStep({
     0
   );
 
+  // What the import saves, and the values it leaves out
+  const plan = useMemo(() => planSave(reviewedResults), [reviewedResults]);
+  const setAside = useMemo(
+    () => new Set(plan.notSaved.map(({ biomarker }) => biomarker)),
+    [plan]
+  );
+
   // Handle continue
   const handleContinue = useCallback(() => {
     // Find biomarkers with missing required fields
@@ -356,8 +362,7 @@ export function ReviewStep({
         if (!b.unit.trim()) {
           // The test the value is saved as or proposed for (rows not analyzed: by name)
           const biomarkerDef =
-            b.dictionaryMatch ??
-            proposedTest(b) ??
+            targetTest(b) ??
             (b.identificationFlags ? undefined : findBiomarker(b.name || ''));
           // A test with a unit needs one; an analyzed value with no test may
           // have none (specific gravity, ratios), as the report gave it
@@ -373,7 +378,7 @@ export function ReviewStep({
         // one proposed (by the AI or the typed name), or the one it is saved
         // as. One left out for another value of its line needs no fix.
         const test = misfitTest(b);
-        if (missing.length === 0 && test && !isSetAside(b, r.editedBiomarkers)) {
+        if (missing.length === 0 && test && !setAside.has(b)) {
           invalidBiomarkers.push(
             `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
           );
@@ -388,7 +393,7 @@ export function ReviewStep({
 
     // Without a date a result would be saved as today: ask for it instead
     // Files left without values are not saved, so they need no date
-    const missingDates = resultsToSave(reviewedResults)
+    const missingDates = plan.toSave
       .filter((r) => !reviewedLabDate(r))
       .map((r) => `Enter the lab date for "${r.fileName}"`);
     const problems = [...missingDates, ...invalidBiomarkers];
@@ -400,7 +405,7 @@ export function ReviewStep({
 
     setProblems(null);
     onComplete(reviewedResults);
-  }, [reviewedResults, onComplete]);
+  }, [reviewedResults, plan, setAside, onComplete]);
 
   return (
     <Stack gap="lg">
@@ -654,7 +659,7 @@ export function ReviewStep({
                                   updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
                                 }
                               />
-                              {isSetAside(biomarker, result.editedBiomarkers) && (
+                              {setAside.has(biomarker) && (
                                 <Text size="xs" c="dimmed" mt={4}>
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
