@@ -9,7 +9,7 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { backButton, expectDetailPage, searchField } from './steps/dictionary.steps';
 import {
   GLUCOSE,
@@ -104,28 +104,29 @@ test.describe('Trend Charts', () => {
 
   test.describe('Navigation', () => {
     test('should be able to navigate to Trends view', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       await expect(page.getByRole('main').getByText(/no lab results yet/i)).toBeVisible();
     });
 
     test('trends nav should show active state', async ({ page }) => {
-      const trendsNav = page.getByRole('navigation').getByRole('button', { name: /^Trends/ });
-      await trendsNav.click();
+      await openFromMenu(page, 'Trends');
 
-      await expect(trendsNav).toHaveAttribute('aria-current', 'page');
+      await expect(
+        page.getByRole('navigation').getByRole('button', { name: /^Trends/ })
+      ).toHaveAttribute('aria-current', 'page');
     });
   });
 
   test.describe('Empty State', () => {
     test('should display empty state when no lab results', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       await expect(page.getByRole('main').getByText(/no lab results yet/i)).toBeVisible();
     });
 
     test('should have import CTA button in empty state', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       await expect(
         page.getByRole('main').getByRole('button', { name: /import lab results/i })
@@ -133,7 +134,7 @@ test.describe('Trend Charts', () => {
     });
 
     test('clicking import button should navigate to import view', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       await page.getByRole('main').getByRole('button', { name: /import lab results/i }).click();
 
@@ -145,7 +146,7 @@ test.describe('Trend Charts', () => {
 
   test.describe('Accessibility', () => {
     test('trends view should be keyboard navigable', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
       const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await expect(importButton).toBeVisible();
 
@@ -157,7 +158,7 @@ test.describe('Trend Charts', () => {
     });
 
     test('import button in empty state should be focusable', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await importButton.focus();
@@ -165,7 +166,7 @@ test.describe('Trend Charts', () => {
     });
 
     test('import button should be activatable with Enter key', async ({ page }) => {
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await importButton.focus();

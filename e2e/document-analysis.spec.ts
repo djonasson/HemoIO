@@ -402,12 +402,12 @@ test.describe('Document Analysis - AI Processing', () => {
     const glucose = reviewRow(page, 'Glucose');
     await expect(reviewCell(glucose, 'Value')).toHaveText('95');
     await expect(reviewCell(glucose, 'Unit')).toHaveText('mg/dL');
-    await expect(reviewCell(glucose, 'Reference Range')).toHaveText('70 - 100');
+    await expect(reviewCell(glucose, 'Reference Range')).toHaveText('70 - 100 mg/dL');
 
     const hemoglobin = reviewRow(page, 'Hemoglobin');
     await expect(reviewCell(hemoglobin, 'Value')).toHaveText('14.5');
     await expect(reviewCell(hemoglobin, 'Unit')).toHaveText('g/dL');
-    await expect(reviewCell(hemoglobin, 'Reference Range')).toHaveText('13.5 - 17.5');
+    await expect(reviewCell(hemoglobin, 'Reference Range')).toHaveText('13.5 - 17.5 g/dL');
   });
 
   test('should show confidence scores for extracted values', async ({ page }) => {

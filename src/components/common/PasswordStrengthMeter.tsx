@@ -11,11 +11,15 @@ export interface PasswordStrengthMeterProps {
   password: string;
 }
 
+/**
+ * Bar colour for a score. Hues far apart also for colour-blind people:
+ * orange, yellow, lime and green look alike to protanopes and deuteranopes.
+ */
 function getProgressColor(score: number): string {
   if (score <= 1) return 'red';
-  if (score <= 2) return 'orange';
-  if (score <= 3) return 'yellow';
-  return 'green';
+  if (score <= 2) return 'yellow';
+  if (score <= 3) return 'teal';
+  return 'blue';
 }
 
 function getStrengthLabel(score: number): string {

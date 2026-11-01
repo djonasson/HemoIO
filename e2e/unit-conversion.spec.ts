@@ -14,7 +14,7 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
 import { continueToConfirm } from './steps/importWizard.steps';
 import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
@@ -267,11 +267,11 @@ test.describe('Unit Conversion - With Data', () => {
     await openTrend(page, 'Glucose');
     await setPreferredUnit(page, 'mmol/L');
 
-    await page.getByRole('navigation').getByRole('button', { name: /^Timeline/ }).click();
+    await openFromMenu(page, 'Timeline');
     const card = await expandLabResult(page, DAY_2);
     await expect(card.getByRole('row', { name: /^Glucose: 6\.66 mmol\/L,/ })).toBeVisible();
 
-    await page.getByRole('navigation').getByRole('button', { name: /^Alerts/ }).click();
+    await openFromMenu(page, 'Alerts');
     await expect(
       page.getByRole('main').getByText(/Glucose is high at 6\.66 mmol\/L/).first()
     ).toBeVisible();

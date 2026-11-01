@@ -98,13 +98,24 @@ export function unitsMatch(a: string, b: string): boolean {
 }
 
 /**
- * "/100 X" or "per 100 X" where X is a thing counted: not a number
- * ("/100.000" is per 100,000), a volume ("/100 mL") or a mass ("/100 g"),
- * which make a concentration
+ * Units a "per 100" can be of without being a share: per 100 of a volume or
+ * a mass ("/100 mL", "/100 g") is a concentration
  */
-const PER_HUNDRED_COUNTED = /^(?:\/|per) ?100 ?(?![\d.,])(?!(?:[mµuncd]?[lg])$)\S/i;
+const VOLUMES_AND_MASSES = new Set([
+  'l', 'dl', 'cl', 'ml', 'µl', 'ul', 'mcl', 'nl', 'pl', 'fl', 'cc', 'cm³', 'cm3', 'mm³', 'mm3', 'mmc',
+  'kg', 'g', 'mg', 'µg', 'ug', 'mcg', 'ng', 'pg',
+]);
 
-/** Whether a unit is a share: so many per 100 of something counted */
+/** "/100" or "per 100", then the word it is per, up to a space or "(" */
+const PER_HUNDRED = /^(?:\/|per) ?100 ?([^\s(]+)/i;
+
+/**
+ * Whether a unit is a share: so many per 100 of something counted ("/100
+ * HPF", "per 100 cells"), not of a volume or mass, and not per a larger
+ * number ("/100.000" is per 100,000)
+ */
 export function isPerHundredCounted(unit: string): boolean {
-  return PER_HUNDRED_COUNTED.test(normalizeUnitForLookup(unit));
+  const per = PER_HUNDRED.exec(normalizeUnitForLookup(unit))?.[1];
+  if (!per || /^[\d.,]/.test(per)) return false;
+  return !VOLUMES_AND_MASSES.has(per.toLowerCase().replace(/\.$/, ''));
 }

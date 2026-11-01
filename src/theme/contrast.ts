@@ -7,10 +7,23 @@ import { luminance, toRgba } from '@mantine/core';
 /** Red, green and blue channels, 0–255 */
 export type Rgb = [number, number, number];
 
-/** Channels of a colour in any CSS form Mantine reads (hex, rgb(), hsl()) */
+const HEX = /^#([0-9a-f]{3}){1,2}([0-9a-f]{2})?$/i;
+const RGB = /^rgba?\(/i;
+
+/**
+ * Channels of a hex or rgb() colour. Mantine's toRgba reads anything else
+ * (var(), named, hsl() it can't match, oklch()) as black, which would pass
+ * for a readable colour, so those throw instead.
+ */
 export function hexToRgb(color: string): Rgb {
-  const { r, g, b } = toRgba(color);
-  return [r, g, b];
+  const value = color.trim();
+  if (!HEX.test(value) && !RGB.test(value)) throw new Error(`Cannot read colour "${color}"`);
+  const { r, g, b } = toRgba(value);
+  const channels: Rgb = [r, g, b];
+  if (!channels.every((c) => Number.isFinite(c) && c >= 0 && c <= 255)) {
+    throw new Error(`Cannot read colour "${color}"`);
+  }
+  return channels;
 }
 
 /** Hex colour of channels, rounded */

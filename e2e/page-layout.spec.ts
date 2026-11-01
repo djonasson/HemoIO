@@ -32,6 +32,9 @@ import {
   expectShownInFull,
 } from './steps/pageLayout.steps';
 
+/** A file name with no spaces to wrap at, too long for a phone */
+const LONG_FILE_NAME = 'Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf';
+
 /** The seeded lab result with two tests, one of them abnormal */
 const DAY = '2024-01-15';
 
@@ -74,6 +77,22 @@ test.describe('Page Layout', () => {
         card.getByRole('table', { name: 'Test values' }),
         'Test values, scrollable'
       );
+    });
+
+    test('a scrollable table keeps keyboard focus when the screen widens', async ({ page }) => {
+      // Scenario: A scrollable table keeps keyboard focus when the screen widens
+      await page.setViewportSize(PHONE_SCREEN);
+      const card = await expandLabResult(page, DAY);
+      const table = card.getByRole('table', { name: 'Test values' });
+      await expectTableScrollsOnItsOwn(table, 'Test values, scrollable');
+      const box = table.locator('xpath=ancestor::*[@data-scroll-box][1]');
+      await expect(box).toBeFocused();
+
+      await page.setViewportSize(WIDE_SCREEN);
+
+      // Nothing left to scroll, yet the keyboard is not sent back to the page
+      await expect.poll(() => box.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+      await expect(box).toBeFocused();
     });
 
     test("a lab result's summary is readable on a phone", async ({ page }) => {
@@ -156,29 +175,44 @@ test.describe('Page Layout', () => {
     test('a long file name wraps on a phone', async ({ page }) => {
       // Scenario: A long file name wraps on a phone
       await page.setViewportSize(NARROW_PHONE_SCREEN);
-      const fileName = 'Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf';
+      const shownName = main(page).getByText(LONG_FILE_NAME, { exact: true });
+      const expectNameInFull = async (): Promise<void> => {
+        await expectNoSidewaysScroll(page);
+        await expectShownInFull(shownName);
+      };
 
       await analyzeReport(
         page,
         [{ name: 'Glicemia', value: 90, unit: 'mg/dL', confidence: 0.95, biomarkerKey: 'glucose' }],
         1,
         {
-          fileName,
+          fileName: LONG_FILE_NAME,
           onUploaded: async () => {
-            await test.step('upload', () => expectNoSidewaysScroll(page));
-            const remove = main(page).getByRole('button', { name: `Remove ${fileName}` });
-            await remove.scrollIntoViewIfNeeded();
-            await expect(remove).toBeInViewport({ ratio: 1 });
+            await test.step('upload', async () => {
+              await expectNameInFull();
+              const remove = main(page).getByRole('button', { name: `Remove ${LONG_FILE_NAME}` });
+              await remove.scrollIntoViewIfNeeded();
+              await expect(remove).toBeInViewport({ ratio: 1 });
+            });
           },
+          onAnalyzed: () => test.step('analysis', expectNameInFull),
         }
       );
-      await test.step('review', () => expectNoSidewaysScroll(page));
+      await test.step('review', expectNameInFull);
 
       await continueToConfirm(page);
-      await test.step('confirm', () => expectNoSidewaysScroll(page));
-      const shownName = main(page).getByText(fileName, { exact: true });
-      await shownName.scrollIntoViewIfNeeded();
-      await expect(shownName).toBeInViewport({ ratio: 1 });
+      await test.step('confirm', expectNameInFull);
+    });
+
+    test('a long file name wraps on a phone when the file has no values', async ({ page }) => {
+      // Scenario: A long file name wraps on a phone when the file has no values
+      await page.setViewportSize(NARROW_PHONE_SCREEN);
+
+      await analyzeReport(page, [], 1, { fileName: LONG_FILE_NAME, toReview: false });
+
+      await expectNoSidewaysScroll(page);
+      await expectShownInFull(main(page).getByText(LONG_FILE_NAME, { exact: true }));
+      await expectShownInFull(main(page).getByText(`${LONG_FILE_NAME} has no values yet`));
     });
 
     test('the values to import do not push a phone sideways', async ({ page }) => {

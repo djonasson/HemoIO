@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from './fixtures';
-import type { Locator, Page } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import {
   BIOMARKERS,
@@ -41,13 +41,6 @@ import {
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { pickDate } from './steps/trends.steps';
 
-/**
- * Helper to navigate to timeline view
- */
-async function navigateToTimeline(page: Page) {
-  await page.getByRole('navigation').getByRole('button', { name: /^Timeline/ }).click();
-}
-
 function tagsInput(container: Locator): Locator {
   return container.locator('input[aria-label="Note tags"]');
 }
@@ -59,7 +52,7 @@ test.describe('User Notes', () => {
 
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Notes section would be visible when a lab result card is expanded
       // This test verifies the structure is ready for notes
@@ -85,7 +78,7 @@ test.describe('User Notes', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Tab through the page
       await page.keyboard.press('Tab');

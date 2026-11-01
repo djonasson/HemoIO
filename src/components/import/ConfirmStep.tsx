@@ -29,13 +29,12 @@ import {
   IconInfoCircle,
 } from '@tabler/icons-react';
 import { ScrollBox } from '@components/common/ScrollBox';
-import { FileName } from './FileName';
 import { reviewedLabDate } from '@/utils/labDate';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
 import { formatReferenceRange } from '@services/alerts/alertRules';
+import { FileName } from './FileName';
 import type { SetAsideValue } from '@services/analysis/reviewedSave';
 import type { ReviewedResult } from './ReviewStep';
-
 
 /**
  * Props for ConfirmStep
@@ -236,7 +235,7 @@ export function ConfirmStep({
           <List size="sm" mt={4}>
             {notSaved.map(({ fileName, biomarker }, index) => (
               <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>
-                {biomarker.name}: {formatReviewedValue(biomarker)} {biomarker.unit} in "{fileName}"
+                {biomarker.name}: {formatReviewedValue(biomarker) || 'no number'} {biomarker.unit} in "{fileName}"
               </List.Item>
             ))}
           </List>

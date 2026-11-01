@@ -66,7 +66,30 @@ describe('isPerHundredCounted', () => {
     }
   );
 
-  it.each(['/100 mL', '/100 µL', '/100mL', '/100 g', '/100 cL', '/100.000', '/100,000', '/1000', '%', 'mmol/L', '/100'])(
+  it.each([
+    '/100 mL',
+    '/100 µL',
+    '/100mL',
+    '/100 g',
+    '/100 cL',
+    '/100 L',
+    '/100 G',
+    '/100 cc',
+    '/100cc',
+    '/100 mcL',
+    '/100 mm³',
+    '/100mmc',
+    '/100 kg',
+    '/100 fL',
+    '/100 mL.',
+    '/100 ml (calc)',
+    '/100.000',
+    '/100,000',
+    '/1000',
+    '%',
+    'mmol/L',
+    '/100',
+  ])(
     'does not read %s as one',
     (unit) => {
       expect(isPerHundredCounted(unit)).toBe(false);

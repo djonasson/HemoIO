@@ -36,6 +36,13 @@ Feature: Page Layout
     Then the page should not scroll sideways
     But I should be able to scroll the table of its values sideways, also by keyboard
 
+  Scenario: A scrollable table keeps keyboard focus when the screen widens
+    Given my screen is the width of a phone
+    And I have opened a lab result on the timeline
+    And the keyboard focus is on the scrollable table of its values
+    When my screen widens so that the table fits
+    Then the keyboard focus should stay on the table's box
+
   Scenario: A lab result's summary is readable on a phone
     Given my screen is the width of the narrowest phone
     And a lab result has a note
@@ -52,7 +59,16 @@ Feature: Page Layout
     Given my screen is the width of the narrowest phone
     When I import a report whose file name is long and has no spaces
     Then no step of the import should scroll sideways
-    And the file name should be shown in full, with its remove button on screen
+    And the file name should be shown in full on the upload, analysis, review and confirmation steps
+    And its remove button should be on screen
+
+  Scenario: A long file name wraps on a phone when the file has no values
+    Given my screen is the width of the narrowest phone
+    When I analyze a report whose file name is long and has no spaces
+    But no values are found in it
+    Then the page should not scroll sideways
+    And the file name should be shown in full
+    And so should the note that the file has no values yet
 
   Scenario: The lab date and name are readable on a phone
     Given my screen is the width of a phone

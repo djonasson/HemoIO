@@ -178,13 +178,25 @@ export function buildTextPdf(lines: string[]): Buffer {
  * Imports `reportCount` text PDFs with a mocked local AI that extracts
  * exactly `biomarkers` from each, and ends on the review step. A single
  * report may be given its file name; `onUploaded` runs once the files are
- * chosen, before they are analyzed.
+ * chosen, before they are analyzed, and `onAnalyzed` once the analysis step
+ * is done, before going on to review. With `toReview: false` it stops on
+ * the analysis step — as it must when no file has values to review.
  */
 export async function analyzeReport(
   page: Page,
   biomarkers: ExtractedBiomarkerFixture[],
   reportCount = 1,
-  { fileName = 'lab-report.pdf', onUploaded }: { fileName?: string; onUploaded?: () => Promise<void> } = {}
+  {
+    fileName = 'lab-report.pdf',
+    onUploaded,
+    onAnalyzed,
+    toReview = true,
+  }: {
+    fileName?: string;
+    onUploaded?: () => Promise<void>;
+    onAnalyzed?: () => Promise<void>;
+    toReview?: boolean;
+  } = {}
 ): Promise<void> {
   await mockOllama(page, {
     biomarkers,
@@ -205,8 +217,14 @@ export async function analyzeReport(
     await onUploaded?.();
     await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 
+    await expect(page.getByRole('main').getByText('Processing complete', { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await onAnalyzed?.();
+    if (!toReview) return;
+
     const review = page.getByRole('button', { name: /^Review Results/ });
-    await expect(review).toBeEnabled({ timeout: 30_000 });
+    await expect(review).toBeEnabled();
     await review.click();
     await expect(page.getByText('Review Extracted Values', { exact: true })).toBeVisible();
   } finally {

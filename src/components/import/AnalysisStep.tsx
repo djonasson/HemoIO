@@ -447,7 +447,7 @@ export function AnalysisStep({
           <Button variant="light" onClick={enterManually}>
             Enter values manually
           </Button>
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="dimmed" miw={0} style={{ overflowWrap: 'anywhere' }}>
             {filesWithoutValues.length === 1
               ? `${filesWithoutValues[0].fileName} has no values yet`
               : `${filesWithoutValues.length} files have no values yet`}

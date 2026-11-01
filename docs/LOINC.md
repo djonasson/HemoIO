@@ -44,9 +44,11 @@ The script:
    left empty.
 
 The password is read from `LOINC_PASSWORD` when set, or asked for without
-being shown; without a terminal to ask on (a pipe, CI) `LOINC_PASSWORD`
-must be set. It goes to curl on its standard input, so it never appears in
-the process list or in shell history. Don't put it on the command line.
+being shown. Without a terminal to ask on (CI, or input from a pipe or a
+file) the script stops and says `LOINC_PASSWORD` must be set; a password
+piped in is not read. It goes to curl on its standard input, so it never
+appears in the process list or in shell history. Don't put it on the
+command line.
 
 ### Options
 
@@ -61,7 +63,8 @@ the process list or in shell history. Don't put it on the command line.
 Options can come in any order; at most one output dir can be given. A
 relative output dir is taken from the folder the command is run in (npm
 runs the script from the repository root but passes on where it was
-called from). A `loinc/` folder at the repository root is git-ignored, in
+called from; run directly, as `scripts/loinc-download.sh`, the current
+folder is used). A `loinc/` folder at the repository root is git-ignored, in
 case releases are put there.
 
 Pass options after `--`:

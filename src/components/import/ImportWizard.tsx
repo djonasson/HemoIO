@@ -16,7 +16,7 @@ import {
   IconChecklist,
   IconCheck,
 } from '@tabler/icons-react';
-import { planSave } from '@services/analysis/reviewedSave';
+import { planSave, type SavePlan } from '@services/analysis/reviewedSave';
 import { UploadStep } from './UploadStep';
 import type { UploadedFile } from './UploadStep';
 import { AnalysisStep } from './AnalysisStep';
@@ -53,6 +53,9 @@ const STEPS = [
   { label: 'Review', description: 'Verify results', icon: IconChecklist },
   { label: 'Confirm', description: 'Save results', icon: IconCheck },
 ];
+
+const CONFIRM_STEP = 3;
+const NOTHING_PLANNED: SavePlan<ReviewedResult> = { toSave: [], notSaved: [] };
 
 /**
  * Import Wizard for lab report documents
@@ -98,13 +101,12 @@ export function ImportWizard({
     nextStep();
   }, [nextStep]);
 
-  // Handler for review completion
-  const handleReviewComplete = useCallback((results: ReviewedResult[]) => {
-    setReviewedResults(results);
-    nextStep();
-  }, [nextStep]);
-
-  const { toSave, notSaved } = useMemo(() => planSave(reviewedResults), [reviewedResults]);
+  // What the import saves: read only on the confirm step, so worked out
+  // there rather than on every edit in review
+  const { toSave, notSaved } = useMemo(
+    () => (activeStep === CONFIRM_STEP ? planSave(reviewedResults) : NOTHING_PLANNED),
+    [activeStep, reviewedResults]
+  );
 
   // Handler for final confirmation
   const handleConfirm = useCallback(async () => {
@@ -143,11 +145,12 @@ export function ImportWizard({
             results={analysisResults}
             reviewedResults={reviewedResults}
             onReviewChange={setReviewedResults}
-            onComplete={handleReviewComplete}
+            // Its edits are already held, through onReviewChange
+            onComplete={nextStep}
             onBack={prevStep}
           />
         );
-      case 3:
+      case CONFIRM_STEP:
         return (
           <ConfirmStep
             results={toSave}

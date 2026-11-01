@@ -26,6 +26,7 @@ import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
 import { loincLabel } from '@data/biomarkers/loinc';
 import { ScrollBox } from '@components/common/ScrollBox';
+import { formatReferenceRange } from '@services/alerts/alertRules';
 import { BiomarkerName } from './BiomarkerName';
 
 export interface TestValuesListProps {
@@ -69,24 +70,6 @@ function getStatusIndicator(status: TestValueStatus): {
         label: 'No reference range available',
       };
   }
-}
-
-/**
- * Format reference range for display
- */
-function formatReferenceRange(
-  low: number | undefined,
-  high: number | undefined,
-  unit: string
-): string {
-  if (low === undefined && high === undefined) {
-    return '—';
-  }
-
-  const lowStr = low !== undefined ? low.toString() : '?';
-  const highStr = high !== undefined ? high.toString() : '?';
-
-  return `${lowStr} - ${highStr} ${unit}`;
 }
 
 /**
@@ -336,10 +319,9 @@ export function TestValuesList({
                 <Table.Td>
                   <Text size="sm" c="dimmed">
                     {formatReferenceRange(
-                      testValue.referenceRangeLow,
-                      testValue.referenceRangeHigh,
+                      { low: testValue.referenceRangeLow, high: testValue.referenceRangeHigh },
                       testValue.unit
-                    )}
+                    ) ?? '—'}
                   </Text>
                 </Table.Td>
               </Table.Tr>

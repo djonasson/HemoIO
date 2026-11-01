@@ -102,6 +102,15 @@ Feature: Import Wizard
     Then I should be able to select a biomarker
     And I should be able to enter the value and unit
 
+  Scenario: A value whose number is cleared must be filled in before saving
+    Given I am editing a value of 14.5 g/dL on the review step
+    When I clear its number
+    And I try to continue to the confirmation
+    Then I should be told that the value is missing its number
+    When I type the negative number -0.5 in its place
+    Then the field should show -0.5
+    And the confirmation should show the value as -0.5
+
   Scenario: User enters a biomarker that is not in the dictionary
     Given I am editing a value on the review step
     When I type a biomarker name that matches no dictionary entry

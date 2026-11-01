@@ -31,7 +31,10 @@ export function ScrollBox({ label, children }: ScrollBoxProps): React.JSX.Elemen
       aria-label={scrollable ? `${label}, scrollable` : undefined}
       tabIndex={scrollable ? 0 : undefined}
       onFocus={(event) => setFocused(event.target === event.currentTarget)}
-      onBlur={() => setFocused(false)}
+      // Leaving the window blurs the box too; it keeps focus to come back to
+      onBlur={() => {
+        if (document.hasFocus()) setFocused(false);
+      }}
       data-scroll-box
       style={{ overflowX: 'auto' }}
     >

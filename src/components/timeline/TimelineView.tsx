@@ -100,8 +100,8 @@ export function TimelineView({
         color="red"
         variant="light"
       >
-        {error}
-        <Anchor component="button" type="button" size="sm" underline="always" onClick={() => refresh()}>
+        <Text size="sm">{error}</Text>
+        <Anchor component="button" type="button" size="sm" underline="always" mt="xs" onClick={() => refresh()}>
           Try again
         </Anchor>
       </Alert>

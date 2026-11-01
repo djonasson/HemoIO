@@ -2,6 +2,7 @@
  * Tests for TimelineView component
  */
 
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
@@ -174,6 +175,8 @@ describe('TimelineView', () => {
 
     renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
 
+    // The error is a line of its own, not run into the link
+    expect(screen.getByText('Database error').tagName).toBe('P');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(mockRefresh).toHaveBeenCalled();
@@ -325,6 +328,66 @@ describe('TimelineView', () => {
 
     await waitFor(() => {
       expect(mockDelete).toHaveBeenCalledWith(42);
+    });
+  });
+
+  describe('focus after a delete', () => {
+    const RESULTS = [
+      createMockResult(3, '2024-03-01', 'Lab March'),
+      createMockResult(2, '2024-02-01', 'Lab February'),
+      createMockResult(1, '2024-01-15', 'Lab January'),
+    ];
+
+    /** A timeline whose delete removes the result, as the real hook does */
+    function renderDeleting(initial: LabResultWithDetails[]) {
+      vi.mocked(useLabResults).mockImplementation(() => {
+        const [results, setResults] = useState(initial);
+        return {
+          results,
+          isLoading: false,
+          error: null,
+          filters: {},
+          setFilters: vi.fn(),
+          refresh: vi.fn(),
+          deleteResult: async (id: number) => setResults((list) => list.filter((r) => r.id !== id)),
+        };
+      });
+      renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
+    }
+
+    async function deleteCard(labName: string) {
+      const region = screen
+        .getAllByRole('region', { name: /^Lab result from / })
+        .find((r) => within(r).queryByText(labName))!;
+      fireEvent.click(within(region).getByRole('button', { name: 'Delete this lab result' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+      await waitFor(() => expect(screen.queryByText(labName)).not.toBeInTheDocument());
+    }
+
+    function expandButtonOf(labName: string): HTMLElement {
+      const region = screen
+        .getAllByRole('region', { name: /^Lab result from / })
+        .find((r) => within(r).queryByText(labName))!;
+      return within(region).getByRole('button', { name: /lab result from/ });
+    }
+
+    it('moves to the next lab result', async () => {
+      renderDeleting(RESULTS);
+      await deleteCard('Lab February');
+      await waitFor(() => expect(expandButtonOf('Lab January')).toHaveFocus());
+    });
+
+    it('moves to the one before when the last was deleted', async () => {
+      renderDeleting(RESULTS);
+      await deleteCard('Lab January');
+      await waitFor(() => expect(expandButtonOf('Lab February')).toHaveFocus());
+    });
+
+    it('moves to the page when none is left', async () => {
+      renderDeleting([RESULTS[0]]);
+      await deleteCard('Lab March');
+      await waitFor(() => expect(screen.getByRole('button', { name: /import lab results/i })).toHaveFocus());
     });
   });
 

@@ -69,9 +69,15 @@ while (( $# )); do
 done
 OUT="${out:-${LOINC_DIR:-$HOME/loinc}}"
 # npm runs scripts from the repo root but records where it was called from
-# in INIT_CWD, so a relative dir means what the person typing it expects
+# in INIT_CWD, so a relative dir means what the person typing it expects.
+# npm exports INIT_CWD to everything it starts, so it is trusted only when
+# npm is running this very script; run any other way, $PWD is right.
 if [[ "$OUT" != /* ]]; then
-  OUT="${INIT_CWD:-$PWD}/$OUT"
+  if [[ "${npm_lifecycle_event:-}" == "loinc:download" && -n "${INIT_CWD:-}" ]]; then
+    OUT="$INIT_CWD/$OUT"
+  else
+    OUT="$PWD/$OUT"
+  fi
 fi
 
 missing=()
@@ -84,8 +90,9 @@ command -v md5sum >/dev/null || command -v md5 >/dev/null || missing+=("md5sum (
 
 : "${LOINC_USER:?Set LOINC_USER to your loinc.org username}"
 if [[ -z "${LOINC_PASSWORD:-}" ]]; then
-  # Without a terminal read would get nothing and the API would just answer
-  # 401, so say what is wrong instead
+  # Only a terminal can take the password hidden: from a pipe read would
+  # take the first line as it is, and on empty input it would fail and stop
+  # the script without a word. So off a terminal LOINC_PASSWORD must be set.
   [[ -t 0 ]] || die "LOINC_PASSWORD is not set and there is no terminal to ask for it on."
   read -r -s -p "loinc.org password for $LOINC_USER: " LOINC_PASSWORD
   echo
@@ -105,12 +112,16 @@ loinc_curl() {
     curl --fail --silent --show-error --location -K - "$@"
 }
 
+# Hashing stdin keeps the path out of the output: md5sum puts a \ before
+# the hash when the file name holds a backslash or a newline
 md5_of() {
+  local sum
   if command -v md5sum >/dev/null; then
-    md5sum "$1" | cut -d' ' -f1
+    sum="$(md5sum < "$1")"
   else
-    md5 -q "$1"
+    sum="$(md5 -q < "$1")"
   fi
+  printf '%s\n' "${sum%% *}"
 }
 
 # Fields of a JSON file, one per line, in the order asked for. Anything that
@@ -174,9 +185,11 @@ cleanup() {
   [[ -z "$new_dir" ]] || rmdir "$new_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
-# Exiting from the signal traps runs the EXIT trap, so cleanup always runs
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# On Ctrl-C or TERM, clean up and then die of the same signal rather than
+# exit with a status, so a calling shell or loop sees the interruption and
+# stops too
+trap 'cleanup; trap - EXIT INT; kill -INT $$' INT
+trap 'cleanup; trap - EXIT TERM; kill -TERM $$' TERM
 
 mkdir -p "$OUT"
 meta="$(mktemp)"

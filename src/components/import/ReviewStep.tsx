@@ -18,7 +18,6 @@ import {
   ActionIcon,
   TextInput,
   Autocomplete,
-  NumberInput,
   Tooltip,
   Alert,
   Accordion,
@@ -43,6 +42,7 @@ import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
+import { formatReferenceRange } from '@services/alerts/alertRules';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
@@ -57,6 +57,7 @@ import { misfitTest, missingFields, planSave } from '@services/analysis/reviewed
 import { proposedTest } from '@services/analysis/nameMatching';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
+import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { SpecimenType } from '../../types';
 
@@ -180,6 +181,26 @@ export interface ReviewedResult extends AnalysisResult {
 /**
  * Props for ReviewStep
  */
+/** A value's reference range as Confirm shows it, if it has one */
+function reviewedRange({ referenceRange: range, unit }: MatchedBiomarker): string | null {
+  return range ? formatReferenceRange(range, range.unit || unit) : null;
+}
+
+/**
+ * An interval's ends and the value saved for it, their midpoint: none
+ * while either end is missing, so the value must be filled in again
+ */
+function intervalEnds(
+  low: number | undefined,
+  high: number | undefined
+): Pick<MatchedBiomarker, 'intervalLow' | 'intervalHigh' | 'value'> {
+  return {
+    intervalLow: low,
+    intervalHigh: high,
+    value: low !== undefined && high !== undefined ? (low + high) / 2 : NaN,
+  };
+}
+
 export interface ReviewStepProps {
   /** Analysis results */
   results: AnalysisResult[];
@@ -676,34 +697,22 @@ export function ReviewStep({
                               {isEditing ? (
                                 biomarker.isInterval ? (
                                   <Group gap="xs" wrap="nowrap">
-                                    <NumberInput
+                                    <NumberField
                                       size="xs"
-                                      value={biomarker.intervalLow ?? ''}
-                                      onChange={(value) =>
-                                        updateBiomarker(resultIndex, bioIndex, {
-                                          intervalLow: value === '' ? undefined : Number(value),
-                                          // Update the midpoint value as well
-                                          value: value === '' || biomarker.intervalHigh === undefined
-                                            ? biomarker.value
-                                            : (Number(value) + biomarker.intervalHigh) / 2,
-                                        })
+                                      value={biomarker.intervalLow}
+                                      onValueChange={(low) =>
+                                        updateBiomarker(resultIndex, bioIndex, intervalEnds(low, biomarker.intervalHigh))
                                       }
                                       decimalScale={2}
                                       placeholder="Low"
                                       w={60}
                                     />
                                     <Text size="xs">-</Text>
-                                    <NumberInput
+                                    <NumberField
                                       size="xs"
-                                      value={biomarker.intervalHigh ?? ''}
-                                      onChange={(value) =>
-                                        updateBiomarker(resultIndex, bioIndex, {
-                                          intervalHigh: value === '' ? undefined : Number(value),
-                                          // Update the midpoint value as well
-                                          value: value === '' || biomarker.intervalLow === undefined
-                                            ? biomarker.value
-                                            : (biomarker.intervalLow + Number(value)) / 2,
-                                        })
+                                      value={biomarker.intervalHigh}
+                                      onValueChange={(high) =>
+                                        updateBiomarker(resultIndex, bioIndex, intervalEnds(biomarker.intervalLow, high))
                                       }
                                       decimalScale={2}
                                       placeholder="High"
@@ -711,14 +720,12 @@ export function ReviewStep({
                                     />
                                   </Group>
                                 ) : (
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
-                                    value={Number.isFinite(biomarker.value) ? biomarker.value : ''}
-                                    onChange={(value) =>
-                                      updateBiomarker(resultIndex, bioIndex, {
-                                        // A cleared number is missing, not 0
-                                        value: value === '' ? NaN : Number(value),
-                                      })
+                                    value={biomarker.value}
+                                    onValueChange={(value) =>
+                                      // A cleared number is missing, not 0
+                                      updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
                                     }
                                     decimalScale={2}
                                     placeholder="Value"
@@ -751,15 +758,14 @@ export function ReviewStep({
                             <Table.Td>
                               {isEditing ? (
                                 <Group gap="xs" wrap="nowrap">
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
-                                    value={biomarker.referenceRange?.low ?? ''}
-                                    onChange={(value) =>
+                                    value={biomarker.referenceRange?.low}
+                                    onValueChange={(low) =>
                                       updateBiomarker(resultIndex, bioIndex, {
                                         referenceRange: {
                                           ...biomarker.referenceRange,
-                                          low: value === '' ? undefined : Number(value),
-                                          high: biomarker.referenceRange?.high,
+                                          low,
                                           unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
@@ -770,15 +776,14 @@ export function ReviewStep({
                                     allowNegative={false}
                                   />
                                   <Text size="xs">-</Text>
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
-                                    value={biomarker.referenceRange?.high ?? ''}
-                                    onChange={(value) =>
+                                    value={biomarker.referenceRange?.high}
+                                    onValueChange={(high) =>
                                       updateBiomarker(resultIndex, bioIndex, {
                                         referenceRange: {
                                           ...biomarker.referenceRange,
-                                          low: biomarker.referenceRange?.low,
-                                          high: value === '' ? undefined : Number(value),
+                                          high,
                                           unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
@@ -789,15 +794,8 @@ export function ReviewStep({
                                     allowNegative={false}
                                   />
                                 </Group>
-                              ) : biomarker.referenceRange ? (
-                                <Text size="sm">
-                                  {biomarker.referenceRange.low ?? '?'} -{' '}
-                                  {biomarker.referenceRange.high ?? '?'}
-                                </Text>
                               ) : (
-                                <Text size="sm" c="dimmed">
-                                  —
-                                </Text>
+                                <Text size="sm">{reviewedRange(biomarker) ?? '—'}</Text>
                               )}
                             </Table.Td>
                             <Table.Td>

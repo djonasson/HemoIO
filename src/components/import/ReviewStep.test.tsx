@@ -262,7 +262,7 @@ describe('ReviewStep', () => {
     it('displays reference range', () => {
       renderReviewStep();
 
-      expect(screen.getByText('70 - 100')).toBeInTheDocument();
+      expect(screen.getByText('70 - 100 mg/dL')).toBeInTheDocument();
     });
 
     it('displays dash when no reference range', () => {
@@ -366,6 +366,43 @@ describe('ReviewStep', () => {
 
       // Should no longer show input fields
       expect(screen.queryByPlaceholderText('Biomarker name')).not.toBeInTheDocument();
+    });
+
+    it('keeps a negative number typed into a cleared value', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      const input = screen.getByPlaceholderText('Value');
+      await userEvent.clear(input);
+      await userEvent.type(input, '-0.5');
+
+      expect(input).toHaveValue('-0.5');
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].value).toBe(-0.5);
+    });
+
+    it('takes an interval with a cleared end as a value still to fill in', async () => {
+      const onReviewChange = vi.fn();
+      const interval = {
+        ...mockReviewedResult.editedBiomarkers[0],
+        value: 7.5,
+        isInterval: true,
+        intervalLow: 5,
+        intervalHigh: 10,
+      };
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [interval] }],
+        onReviewChange,
+      });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      // The interval's Low comes before the reference range's
+      await userEvent.clear(screen.getAllByPlaceholderText('Low')[0]);
+
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0]).toMatchObject({ intervalLow: undefined, intervalHigh: 10 });
+      expect(edited[0].editedBiomarkers[0].value).toBeNaN();
     });
 
     it('takes a cleared number as missing, not as 0', async () => {
