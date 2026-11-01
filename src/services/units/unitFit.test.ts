@@ -13,6 +13,14 @@ describe('unitFitsBiomarker', () => {
     expect(unitFitsBiomarker(findBiomarker('Creatinine')!, 'umol/L')).toBe(true);
   });
 
+  it('accepts the units Italian reports write for creatinine ratios and nucleated red cells', () => {
+    expect(unitFitsBiomarker(findBiomarker('Protein Creatinine Ratio')!, 'mg/g cr')).toBe(true);
+    expect(unitFitsBiomarker(findBiomarker('Albumin Creatinine Ratio')!, 'mg/gcr')).toBe(true);
+    expect(
+      unitFitsBiomarker(findBiomarker('Nucleated Red Blood Cells Percentage')!, '/100WBC')
+    ).toBe(true);
+  });
+
   it('rejects a unit the biomarker cannot be measured in', () => {
     expect(unitFitsBiomarker(findBiomarker('Hemoglobin A1c')!, 'g/dL')).toBe(false);
   });

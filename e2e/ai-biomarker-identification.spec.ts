@@ -5,7 +5,7 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
-import { main } from './steps/importWizard.steps';
+import { continueToConfirm, main } from './steps/importWizard.steps';
 import { expandLabResult, goToTimeline } from './steps/timeline.steps';
 import {
   changeTest,
@@ -49,6 +49,56 @@ test.describe('AI biomarker identification', () => {
     await page.getByRole('button', { name: 'Continue to Confirm' }).click();
     await expect(
       page.getByText(/Choose a fitting unit, another test, or "Not in dictionary"/)
+    ).toBeVisible();
+  });
+
+  test('leaves out a value whose unit does not fit when its line has one that fits', async ({ page }) => {
+    // Scenario: A value in a unit that doesn't fit is left out when the same line has one that fits
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.01,
+        unit: '10^9/L',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '0.01'))).toHaveText(/^Nucleated Red Blood Cells/);
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toBeVisible();
+    await expect(rowFor(page, '0.01').getByText('Not saved:')).toHaveCount(0);
+
+    await continueToConfirm(page);
+
+    const notSaved = main(page).getByRole('alert').filter({ hasText: '1 value not saved' });
+    await expect(notSaved).toContainText('Eritroblasti: 0.5 /100 HPF');
+    await expect(main(page).getByRole('cell', { name: '0.01 10^9/L' })).toBeVisible();
+    await expect(main(page).getByRole('cell', { name: '0.5 /100 HPF' })).toHaveCount(0);
+  });
+
+  test('still blocks a value whose unit does not fit when it is the only one of its line', async ({
+    page,
+  }) => {
+    // Scenario: A value in a unit that doesn't fit still blocks when it is the only one of its line
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(
+      page.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
     ).toBeVisible();
   });
 

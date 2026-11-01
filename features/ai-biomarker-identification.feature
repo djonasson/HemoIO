@@ -19,6 +19,19 @@ Feature: AI biomarker identification
     Then the row should be labelled "Unit doesn't fit"
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
 
+  Scenario: A value in a unit that doesn't fit is left out when the same line has one that fits
+    Given a report gives "Eritroblasti" twice, in a unit no test is measured in and in 10^9/L
+    When the report is analyzed
+    Then the value in 10^9/L should be saved as Nucleated Red Blood Cells
+    And the other value should be labelled "Not saved", because a value of its line is saved
+    And Continue should not be blocked by it
+    And the confirmation should list it as not saved
+
+  Scenario: A value in a unit that doesn't fit still blocks when it is the only one of its line
+    Given a report gives "Eritroblasti" once, in a unit no test is measured in
+    When the report is analyzed
+    Then Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
+
   Scenario: The printed name suggests a different test
     Given the AI identifies "BUN" in mg/dL as Urea
     When the report is analyzed

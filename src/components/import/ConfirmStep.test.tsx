@@ -114,6 +114,26 @@ describe('ConfirmStep', () => {
     expect(screen.getByRole('table').closest('.mantine-ScrollArea-viewport')).not.toBeNull();
   });
 
+  it('lists the values left out and the file each came from', () => {
+    renderConfirmStep({
+      notSaved: [
+        {
+          fileName: 'lab-report.pdf',
+          biomarker: { ...mockResult.editedBiomarkers[0], name: 'Eritroblasti', value: 0, unit: '/100 HPF' },
+        },
+      ],
+    });
+
+    expect(screen.getByText('1 value not saved')).toBeInTheDocument();
+    expect(screen.getByText('Eritroblasti: 0 /100 HPF in "lab-report.pdf"')).toBeInTheDocument();
+  });
+
+  it('says nothing about values left out when there are none', () => {
+    renderConfirmStep();
+
+    expect(screen.queryByText(/not saved/)).not.toBeInTheDocument();
+  });
+
   it('displays reference range in table', () => {
     renderConfirmStep();
 

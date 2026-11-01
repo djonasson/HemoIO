@@ -16,6 +16,7 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
+import { continueToConfirm } from './steps/importWizard.steps';
 import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
 import {
   ALT,
@@ -361,6 +362,42 @@ test.describe('Unit Conversion - International Aliases', () => {
       { value: '132.6', unit: 'mg/g' },
       { value: '120', unit: 'mg/g' },
     ]);
+  });
+
+  test('should read the units Italian reports write for creatinine ratios and nucleated red cells', async ({
+    page,
+  }) => {
+    // Scenario: Read the units Italian reports write for ratios to creatinine and cells per 100 white cells
+    // Analysis runs PDF text extraction and the (mocked) AI round trip
+    test.slow();
+    await openApp(page);
+    await analyzeReport(page, [
+      {
+        name: 'Rapporto proteine/creatinina - screening (urine)',
+        value: 132,
+        unit: 'mg/g cr',
+        confidence: 0.95,
+        biomarkerKey: 'protein-creatinine-ratio',
+      },
+      {
+        name: 'Rapporto albumina/creatinina - screening (urine)',
+        value: 12,
+        unit: 'mg/gcr',
+        confidence: 0.95,
+        biomarkerKey: 'albumin-creatinine-ratio',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '/100WBC',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+
+    await expect(reviewRows(page)).toHaveCount(3);
+    await expect(page.getByText("Unit doesn't fit")).toHaveCount(0);
+    await continueToConfirm(page);
   });
 
   test('should normalize European decimal notation', async ({ page }) => {

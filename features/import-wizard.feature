@@ -118,6 +118,13 @@ Feature: Import Wizard
     When I try to continue
     Then I should be asked to enter the lab date
 
+  Scenario: User sees every problem that stops the import
+    Given the review has more problems than the message shows at first
+    When I try to continue
+    Then I should see the first problems and how many more there are
+    When I choose to show the rest
+    Then I should see every problem
+
   Scenario: User removes an extracted value
     Given I see an incorrectly extracted value
     When I click the remove button

@@ -15,6 +15,8 @@ import {
   Divider,
   SimpleGrid,
   ThemeIcon,
+  Alert,
+  List,
 } from '@mantine/core';
 import {
   IconArrowLeft,
@@ -23,8 +25,10 @@ import {
   IconBuilding,
   IconTestPipe,
   IconFiles,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import type { ReviewedResult } from './ReviewStep';
+import type { SetAsideValue } from './resultsToSave';
 import { reviewedLabDate } from '@/utils/labDate';
 
 /**
@@ -51,6 +55,8 @@ export interface ConfirmStepProps {
   onBack: () => void;
   /** Whether the results are being saved */
   isSaving?: boolean;
+  /** Values left out because another value of their line is saved */
+  notSaved?: SetAsideValue[];
 }
 
 
@@ -62,6 +68,7 @@ export function ConfirmStep({
   onConfirm,
   onBack,
   isSaving = false,
+  notSaved = [],
 }: ConfirmStepProps): React.ReactNode {
   // Calculate totals
   const totalFiles = results.length;
@@ -229,6 +236,25 @@ export function ConfirmStep({
           </div>
         ))}
       </Paper>
+
+      {notSaved.length > 0 && (
+        <Alert
+          icon={<IconInfoCircle size={16} />}
+          title={`${notSaved.length} value${notSaved.length === 1 ? '' : 's'} not saved`}
+          color="gray"
+        >
+          <Text size="sm">
+            Their unit fits no test, and another value of the same line is saved:
+          </Text>
+          <List size="sm" mt={4}>
+            {notSaved.map(({ fileName, biomarker }, index) => (
+              <List.Item key={index}>
+                {biomarker.name}: {formatBiomarkerValue(biomarker)} {biomarker.unit} in "{fileName}"
+              </List.Item>
+            ))}
+          </List>
+        </Alert>
+      )}
 
       {/* Confirmation message */}
       <Paper p="md" bg="var(--mantine-color-blue-light)" withBorder>

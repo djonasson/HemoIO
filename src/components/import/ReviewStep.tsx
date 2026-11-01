@@ -48,12 +48,12 @@ import {
   suggestBiomarkerNames,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
-import { unitFitsBiomarker } from '@services/units/unitFit';
 import { proposedTest } from '@services/analysis/nameMatching';
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { resultsToSave } from './resultsToSave';
+import { isSetAside, misfitTest, resultsToSave } from './resultsToSave';
 import { SavedAsCell } from './SavedAsCell';
+import { ContinueProblems } from './ContinueProblems';
 import type { SpecimenType } from '../../types';
 
 /** Every dictionary name, the options of the name autocomplete */
@@ -220,7 +220,8 @@ export function ReviewStep({
     resultIndex: number;
     biomarkerIndex: number;
   } | null>(null);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  // What stops the import from continuing; null when nothing was tried
+  const [problems, setProblems] = useState<string[] | null>(null);
   // The user's learned names: an edited value is identified as the analyzer would
   const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
   const learned = useCallback(
@@ -369,9 +370,10 @@ export function ReviewStep({
         }
 
         // A value is saved under its test only in a unit of that test: the
-        // one proposed (by the AI or the typed name), or the one it is saved as
-        const test = b.savedAsUnknown ? undefined : (b.dictionaryMatch ?? proposedTest(b));
-        if (missing.length === 0 && test && !unitFitsBiomarker(test, b.unit)) {
+        // one proposed (by the AI or the typed name), or the one it is saved
+        // as. One left out for another value of its line needs no fix.
+        const test = misfitTest(b);
+        if (missing.length === 0 && test && !isSetAside(b, r.editedBiomarkers)) {
           invalidBiomarkers.push(
             `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
           );
@@ -392,11 +394,11 @@ export function ReviewStep({
     const problems = [...missingDates, ...invalidBiomarkers];
 
     if (problems.length > 0) {
-      setValidationError(`Please fix the following issues:\n${problems.slice(0, 5).join('\n')}${problems.length > 5 ? `\n...and ${problems.length - 5} more` : ''}`);
+      setProblems(problems);
       return;
     }
 
-    setValidationError(null);
+    setProblems(null);
     onComplete(reviewedResults);
   }, [reviewedResults, onComplete]);
 
@@ -652,6 +654,14 @@ export function ReviewStep({
                                   updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
                                 }
                               />
+                              {isSetAside(biomarker, result.editedBiomarkers) && (
+                                <Text size="xs" c="dimmed" mt={4}>
+                                  <Text span fw={700} size="xs" inherit>
+                                    Not saved:
+                                  </Text>{' '}
+                                  another value of {getDisplayName(biomarker)} is
+                                </Text>
+                              )}
                             </Table.Td>
                             <Table.Td>
                               <Group gap={4}>
@@ -884,21 +894,7 @@ export function ReviewStep({
       </Accordion>
 
       {/* Validation error */}
-      {validationError && (
-        <Alert
-          icon={<IconAlertTriangle size={16} />}
-          title="Cannot Continue"
-          color="red"
-          withCloseButton
-          onClose={() => setValidationError(null)}
-        >
-          {validationError.split('\n').map((line, i) => (
-            <Text key={i} size="sm">
-              {line}
-            </Text>
-          ))}
-        </Alert>
-      )}
+      {problems && <ContinueProblems problems={problems} onClose={() => setProblems(null)} />}
 
       {/* Action buttons */}
       <Group justify="space-between" mt="xl">

@@ -311,6 +311,29 @@ test.describe('Import Wizard', () => {
       ).toBeVisible();
     });
 
+    test('shows every problem that stops the import once asked', async ({ page }) => {
+      // Scenario: User sees every problem that stops the import
+      const misfits = Array.from({ length: 7 }, (_, index) => ({
+        name: `Glicemia ${index + 1}`,
+        value: index + 1,
+        unit: 'mmol/24h',
+        confidence: 0.95,
+        biomarkerKey: 'glucose',
+      }));
+      await loginWithOllama(page, [{ extraction: extraction(misfits) }]);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      const problems = main(page).getByRole('alert').filter({ hasText: 'Cannot Continue' });
+      await expect(problems.getByRole('listitem')).toHaveCount(5);
+      await expect(problems.getByText(/^Glicemia 6 in/)).toHaveCount(0);
+
+      await problems.getByRole('button', { name: 'Show 2 more' }).click();
+
+      await expect(problems.getByRole('listitem')).toHaveCount(7);
+      await expect(problems.getByText(/^Glicemia 7 in ".*": mmol\/24h is not a unit for Glucose/)).toBeVisible();
+    });
+
     test('saves a name that matches no dictionary entry as typed', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));

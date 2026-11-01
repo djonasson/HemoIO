@@ -830,6 +830,69 @@ describe('ReviewStep', () => {
     });
   });
 
+  describe('A value left out for another value of its line', () => {
+    const nrbc = {
+      key: 'nucleated-red-blood-cells',
+      name: 'Nucleated Red Blood Cells',
+      canonicalUnit: '10^9/L',
+      aliases: [],
+      category: 'cbc' as const,
+      description: '',
+      alternativeUnits: [],
+      related: [],
+    };
+    const nrbcPercentage = {
+      ...nrbc,
+      key: 'nucleated-red-blood-cells-percentage',
+      name: 'Nucleated Red Blood Cells Percentage',
+      canonicalUnit: '/100 WBC',
+      alternativeUnits: ['%'],
+    };
+    const count = {
+      name: 'Eritroblasti',
+      value: 0,
+      unit: '10^9/L',
+      confidence: 0.95,
+      isExactMatch: false,
+      normalizedUnit: '10^9/L',
+      dictionaryMatch: nrbc,
+    };
+    const misfit = {
+      ...count,
+      unit: '/100 HPF',
+      normalizedUnit: '/100 HPF',
+      dictionaryMatch: undefined,
+      identificationFlags: ['unit-mismatch' as const],
+      suggestedMatch: nrbcPercentage,
+    };
+
+    it('is labelled "Not saved" and does not stop the import', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [misfit, count] };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      expect(screen.getAllByText('Not saved:')).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('still stops the import when it is the only value of its line', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [misfit] };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      expect(screen.queryByText('Not saved:')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(
+        screen.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
+      ).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Multiple files', () => {
     it('displays multiple files in accordion', () => {
       const secondResult: ReviewedResult = {

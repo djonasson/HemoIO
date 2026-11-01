@@ -23,7 +23,7 @@ import type { AnalysisResult } from './AnalysisStep';
 import { ReviewStep } from './ReviewStep';
 import type { ReviewedResult } from './ReviewStep';
 import { ConfirmStep } from './ConfirmStep';
-import { resultsToSave } from './resultsToSave';
+import { resultsToSave, setAsideValues } from './resultsToSave';
 
 /**
  * Props for ImportWizard
@@ -106,6 +106,7 @@ export function ImportWizard({
   }, [nextStep]);
 
   const toSave = useMemo(() => resultsToSave(reviewedResults), [reviewedResults]);
+  const notSaved = useMemo(() => setAsideValues(reviewedResults), [reviewedResults]);
 
   // Handler for final confirmation
   const handleConfirm = useCallback(async () => {
@@ -152,6 +153,7 @@ export function ImportWizard({
         return (
           <ConfirmStep
             results={toSave}
+            notSaved={notSaved}
             onConfirm={handleConfirm}
             onBack={prevStep}
             isSaving={isSaving}

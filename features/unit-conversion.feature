@@ -121,6 +121,12 @@ Feature: Unit Conversion
     And urea should not be taken for blood urea nitrogen
     And no duplicate conflict warning should be shown
 
+  Scenario: Read the units Italian reports write for ratios to creatinine and cells per 100 white cells
+    Given a lab report gives the protein/creatinine ratio in "mg/g cr", the albumin/creatinine ratio in "mg/gcr" and nucleated red cells ("Eritroblasti") in "/100WBC"
+    When the values are reviewed
+    Then each unit should be read as a unit of its test
+    And nothing should stop me from saving them
+
   Scenario: Keep a share and an absolute count of the same cells apart
     Given a lab report gives nucleated red cells as 0 /100 WBC and as 0 10^9/L, and reticulocytes as 81.3 10^9/L and as 1.67 %
     When the values are analyzed
