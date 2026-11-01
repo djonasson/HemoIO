@@ -10,7 +10,14 @@ import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
-import { analyzeToReview, goToImport, loginWithOllama, main } from './steps/importWizard.steps';
+import {
+  analyzeToReview,
+  continueToConfirm,
+  goToImport,
+  loginWithOllama,
+  main,
+} from './steps/importWizard.steps';
+import { analyzeReport } from './steps/unitConversion.steps';
 import { expandLabResult, labResultCard } from './steps/timeline.steps';
 import { removeTempFile } from './steps/tempFiles';
 import { noteSeed } from './steps/userNotes.steps';
@@ -63,7 +70,10 @@ test.describe('Page Layout', () => {
       const card = await expandLabResult(page, DAY);
 
       await expectNoSidewaysScroll(page);
-      await expectTableScrollsOnItsOwn(card.getByRole('table', { name: 'Test values' }));
+      await expectTableScrollsOnItsOwn(
+        card.getByRole('table', { name: 'Test values' }),
+        'Test values, scrollable'
+      );
     });
 
     test("a lab result's summary is readable on a phone", async ({ page }) => {
@@ -71,7 +81,9 @@ test.describe('Page Layout', () => {
 
       const card = labResultCard(page, DAY);
 
-      for (const badge of [card.getByText('2 tests'), card.getByText('1 abnormal'), card.getByLabel('1 note')]) {
+      // Each badge's text, which a badge cuts off when squeezed
+      const notesCount = card.getByLabel('1 note').getByText('1', { exact: true });
+      for (const badge of [card.getByText('2 tests'), card.getByText('1 abnormal'), notesCount]) {
         await expectShownInFull(badge);
       }
     });
@@ -132,6 +144,32 @@ test.describe('Page Layout', () => {
           };
         })
         .toEqual({ stacked: true, sameWidth: true });
+    });
+  });
+
+  test.describe('import confirm step', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.goto('/');
+      await setupOrUnlock(page);
+    });
+
+    test('the values to import do not push a phone sideways', async ({ page }) => {
+      // Scenario: The values to import scroll within their own box on a phone
+      await page.setViewportSize(NARROW_PHONE_SCREEN);
+      // Long words a table cannot wrap at
+      await analyzeReport(page, [
+        { name: 'Gamma-glutamiltransferasi', value: 25, unit: 'U/L', confidence: 0.95, biomarkerKey: 'gamma-glutamyl-transferase' },
+        { name: 'Rapporto albumina/creatinina', value: 12, unit: 'mg/g', confidence: 0.95, biomarkerKey: 'albumin-creatinine-ratio' },
+        { name: 'eGFR', value: 95, unit: 'mL/min/1.73m²', confidence: 0.95, biomarkerKey: 'egfr' },
+      ]);
+
+      await continueToConfirm(page);
+
+      await expectNoSidewaysScroll(page);
+      await expectTableScrollsOnItsOwn(
+        main(page).getByRole('table'),
+        'Values of lab-report.pdf, scrollable'
+      );
     });
   });
 });

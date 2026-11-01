@@ -5,7 +5,7 @@
  */
 
 import { useId } from 'react';
-import { Box, Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
+import { Table, Text, Group, Tooltip, ThemeIcon } from '@mantine/core';
 import {
   IconArrowUp,
   IconArrowDown,
@@ -25,7 +25,7 @@ import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
 import { loincLabel } from '@data/biomarkers/loinc';
-import { useOverflowsX } from '@hooks/useOverflowsX';
+import { ScrollBox } from '@components/common/ScrollBox';
 import { BiomarkerName } from './BiomarkerName';
 
 export interface TestValuesListProps {
@@ -229,7 +229,6 @@ export function TestValuesList({
   const { unitPreferences } = usePreferences();
   const idPrefix = useId();
   const descriptions: Array<{ id: string; text: string }> = [];
-  const [scrollBox, overflows] = useOverflowsX<HTMLDivElement>();
 
   if (testValues.length === 0) {
     return (
@@ -239,17 +238,8 @@ export function TestValuesList({
     );
   }
 
-  // On a narrow screen the table scrolls on its own instead of widening the
-  // page; while it does, the box takes focus so the keyboard can scroll it
   const table = (
-    <Box
-      ref={scrollBox}
-      role={overflows ? 'region' : undefined}
-      aria-label={overflows ? 'Test values, scrollable' : undefined}
-      tabIndex={overflows ? 0 : undefined}
-      data-scroll-box
-      style={{ overflowX: 'auto' }}
-    >
+    <ScrollBox label="Test values">
       <Table striped highlightOnHover withTableBorder aria-label="Test values">
         <Table.Thead>
           <Table.Tr>
@@ -357,7 +347,7 @@ export function TestValuesList({
           })}
         </Table.Tbody>
       </Table>
-    </Box>
+    </ScrollBox>
   );
 
   return (

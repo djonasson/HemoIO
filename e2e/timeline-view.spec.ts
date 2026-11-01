@@ -493,6 +493,19 @@ test.describe('Timeline with Data', () => {
     await expect(labResultCard(page, '2024-02-20')).toBeVisible();
   });
 
+  test('deletes a result from the keyboard', async ({ page }) => {
+    // Scenario: Delete a lab result with the keyboard
+    await seedLabData(page);
+    await goToTimeline(page);
+
+    const card = labResultCard(page, '2024-01-15');
+    await card.getByRole('button', { name: 'Delete this lab result' }).focus();
+    await page.keyboard.press('Enter');
+
+    await expect(page.getByRole('dialog', { name: 'Delete Lab Result' })).toBeVisible();
+    await expect(card.getByRole('button', { name: /^Expand lab result/ })).toBeVisible();
+  });
+
   test('should show a success notification after deleting a result', async ({ page }) => {
     await seedLabData(page);
     await goToTimeline(page);

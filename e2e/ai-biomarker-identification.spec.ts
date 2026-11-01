@@ -55,7 +55,7 @@ test.describe('AI biomarker identification', () => {
   test('saves a test given twice once, leaving out the value in a unit no test is measured in', async ({
     page,
   }) => {
-    // Scenario: A test given twice, once in a unit no test is measured in, is saved once
+    // Scenario: A test given twice, once as a share the app cannot read, is saved once
     await analyzeReport(page, [
       {
         name: 'Eritroblasti',
@@ -79,7 +79,7 @@ test.describe('AI biomarker identification', () => {
 
     await continueToConfirm(page);
 
-    const notSaved = main(page).getByRole('status').filter({ hasText: '1 value not saved' });
+    const notSaved = main(page).getByRole('alert').filter({ hasText: '1 value not saved' });
     await expect(notSaved).toContainText('Eritroblasti: 0.5 /100 HPF');
     await expect(main(page).getByRole('cell', { name: '0.2 %' })).toBeVisible();
     await expect(main(page).getByRole('cell', { name: '0.5 /100 HPF' })).toHaveCount(0);
@@ -123,6 +123,43 @@ test.describe('AI biomarker identification', () => {
     await expect(rowFor(page, '180').getByText('Not saved:')).toHaveCount(0);
     await page.getByRole('button', { name: 'Continue to Confirm' }).click();
     await expect(page.getByText(/mmol\/24h is not a unit for Sodium/)).toBeVisible();
+  });
+
+  test('still blocks a value in another unit the app does not know', async ({ page }) => {
+    // Scenario: A value in another unit the app does not know still blocks, as it may be another measurement
+    await analyzeReport(page, [
+      { name: 'Sodio', value: 140, unit: 'mmol/L', confidence: 0.95, biomarkerKey: 'sodium' },
+      { name: 'Sodio', value: 180, unit: 'mEq/24h', confidence: 0.95, biomarkerKey: 'sodium' },
+    ]);
+    await expect(rowFor(page, '180').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText(/mEq\/24h is not a unit for Sodium/)).toBeVisible();
+  });
+
+  test('asks no fix of a value it leaves out', async ({ page }) => {
+    // Scenario: A value set aside needs no fixing
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '%',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await rowFor(page, '0.5').getByRole('button', { name: 'Edit biomarker' }).click();
+    await editingRow(page).getByPlaceholder('Value', { exact: true }).clear();
+    await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+
+    await continueToConfirm(page);
+    await expect(main(page).getByRole('cell', { name: '0.2 %' })).toBeVisible();
   });
 
   test('still blocks a value whose unit does not fit when it is the only one of its line', async ({

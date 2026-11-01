@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
-import { AboutSettings } from './AboutSettings';
 import { LOINC_NOTICE } from '@data/biomarkers/loinc';
+import { AboutSettings } from './AboutSettings';
 
 function renderAbout() {
   render(

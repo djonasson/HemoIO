@@ -68,4 +68,17 @@ describe('theme', () => {
     expect(contrast(text, blend(blue, 0.1, white))).toBeGreaterThanOrEqual(4.5);
     expect(contrast(text, blend(blue, 0.12, white))).toBeGreaterThanOrEqual(4.5);
   });
+
+  it('gives links AA contrast on the page and on light blue boxes, in light mode', () => {
+    const link = rgb(resolved.light['--mantine-color-anchor']);
+    const white = rgb(merged.white);
+    expect(contrast(link, white)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(link, blend(rgb(merged.colors.blue[6]), 0.1, white))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('gives links AA contrast on the page, in dark mode', () => {
+    // Mantine's dark-mode link colour is blue.4
+    const link = rgb(resolved.dark['--mantine-color-anchor'] ?? merged.colors.blue[4]);
+    expect(contrast(link, rgb(merged.colors.dark[7]))).toBeGreaterThanOrEqual(4.5);
+  });
 });

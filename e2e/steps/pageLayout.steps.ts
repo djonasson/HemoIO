@@ -67,13 +67,17 @@ export async function expectShownInFull(locator: Locator): Promise<void> {
 }
 
 /**
- * Then I should be able to scroll the table of its values sideways — the
- * table's own scroll box is narrower than the table
+ * Then I should be able to scroll the table sideways, also by keyboard: the
+ * table's own scroll box is narrower than the table, takes focus under its
+ * name, and scrolls with the arrow keys
  */
-export async function expectTableScrollsOnItsOwn(table: Locator): Promise<void> {
+export async function expectTableScrollsOnItsOwn(table: Locator, boxName: string): Promise<void> {
   const box = table.locator('xpath=ancestor::*[@data-scroll-box][1]');
   await expect.poll(() => isWiderThanShown(box)).toBe(true);
-  // The keyboard can reach it to scroll it
-  await expect(box).toHaveAttribute('tabindex', '0');
-  await expect(box).toHaveAccessibleName('Test values, scrollable');
+  await expect(box).toHaveAccessibleName(boxName);
+
+  await box.focus();
+  await expect(box).toBeFocused();
+  await box.page().keyboard.press('ArrowRight');
+  await expect.poll(() => box.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
 }

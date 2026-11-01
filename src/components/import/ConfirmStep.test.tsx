@@ -118,8 +118,15 @@ describe('ConfirmStep', () => {
       ],
     });
 
-    expect(screen.getByText('1 value not saved')).toBeInTheDocument();
+    // An alert, so a screen reader says it as the step appears
+    expect(screen.getByRole('alert')).toHaveTextContent('1 value not saved');
     expect(screen.getByText('Eritroblasti: 0 /100 HPF in "lab-report.pdf"')).toBeInTheDocument();
+  });
+
+  it("holds each file's values in their own scroll box, so a phone scrolls only the table", () => {
+    renderConfirmStep();
+
+    expect(screen.getByRole('table').closest('[data-scroll-box]')).toHaveStyle({ overflowX: 'auto' });
   });
 
   it('says nothing about values left out when there are none', () => {

@@ -56,6 +56,7 @@ import { proposedTest } from '@services/analysis/nameMatching';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import type { SpecimenType } from '../../types';
+import type { SavePlan } from '@services/analysis/reviewedSave';
 
 /** Every dictionary name, the options of the name autocomplete */
 const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
@@ -184,8 +185,8 @@ export interface ReviewStepProps {
   reviewedResults: ReviewedResult[];
   /** Callback when review changes */
   onReviewChange: (results: ReviewedResult[]) => void;
-  /** Callback when review is complete */
-  onComplete: (results: ReviewedResult[]) => void;
+  /** Callback when review is complete, with what the import saves */
+  onComplete: (results: ReviewedResult[], plan: SavePlan<ReviewedResult>) => void;
   /** Callback to go back */
   onBack: () => void;
 }
@@ -223,6 +224,8 @@ export function ReviewStep({
   } | null>(null);
   // What stops the import from continuing; null when nothing was tried
   const [problems, setProblems] = useState<string[] | null>(null);
+  // Each Continue that finds problems lists them afresh, folded again
+  const [continueAttempt, setContinueAttempt] = useState(0);
   // The user's learned names: an edited value is identified as the analyzer would
   const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
   const learned = useCallback(
@@ -357,13 +360,15 @@ export function ReviewStep({
 
     reviewedResults.forEach((r) => {
       r.editedBiomarkers.forEach((b, index) => {
+        // One left out for another value of its line is not saved: no fix
+        if (setAside.has(b)) return;
         const missing = missingFields(b);
 
         // A value is saved under its test only in a unit of that test: the
         // one proposed (by the AI or the typed name), or the one it is saved
-        // as. One left out for another value of its line needs no fix.
+        // as
         const test = misfitTest(b);
-        if (missing.length === 0 && test && !setAside.has(b)) {
+        if (missing.length === 0 && test) {
           invalidBiomarkers.push(
             `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
           );
@@ -385,11 +390,12 @@ export function ReviewStep({
 
     if (problems.length > 0) {
       setProblems(problems);
+      setContinueAttempt((attempt) => attempt + 1);
       return;
     }
 
     setProblems(null);
-    onComplete(reviewedResults);
+    onComplete(reviewedResults, plan);
   }, [reviewedResults, plan, setAside, onComplete]);
 
   return (
@@ -886,7 +892,7 @@ export function ReviewStep({
       </Accordion>
 
       {/* Validation error */}
-      {problems && <ContinueProblems problems={problems} onClose={() => setProblems(null)} />}
+      {problems && <ContinueProblems key={continueAttempt} problems={problems} onClose={() => setProblems(null)} />}
 
       {/* Action buttons */}
       <Group justify="space-between" mt="xl">

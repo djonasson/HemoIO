@@ -31,10 +31,17 @@ if [[ -z "${LOINC_PASSWORD:-}" ]]; then
   echo
 fi
 
+# A value for a double-quoted curl config string: curl reads \ and " there
+# as escapes, so a password holding either would be sent altered
+config_quote() {
+  local value="${1//\\/\\\\}"
+  printf '%s' "${value//\"/\\\"}"
+}
+
 # curl reads the credentials from a config on stdin (-K -), so they never
 # show in the process list or in shell history
 loinc_curl() {
-  printf 'user = "%s:%s"\n' "$LOINC_USER" "$LOINC_PASSWORD" |
+  printf 'user = "%s:%s"\n' "$(config_quote "$LOINC_USER")" "$(config_quote "$LOINC_PASSWORD")" |
     curl --fail --silent --show-error --location -K - "$@"
 }
 
@@ -56,9 +63,10 @@ is_complete() {
 # The latest complete release already downloaded, if any
 latest_local() {
   local dir
+  shopt -s nullglob
   for dir in "$OUT"/*/; do
     dir="${dir%/}"
-    is_complete "$dir" && basename "$dir"
+    if is_complete "$dir"; then basename "$dir"; fi
   done | sort -V | tail -n 1
 }
 

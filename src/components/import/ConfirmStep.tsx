@@ -27,9 +27,10 @@ import {
   IconFiles,
   IconInfoCircle,
 } from '@tabler/icons-react';
-import type { ReviewedResult } from './ReviewStep';
-import type { SetAsideValue } from '@services/analysis/reviewedSave';
+import { ScrollBox } from '@components/common/ScrollBox';
 import { reviewedLabDate } from '@/utils/labDate';
+import type { SetAsideValue } from '@services/analysis/reviewedSave';
+import type { ReviewedResult } from './ReviewStep';
 
 /**
  * Format a biomarker value for display, handling interval values
@@ -195,42 +196,44 @@ export function ConfirmStep({
               <Badge>{result.editedBiomarkers.length} values</Badge>
             </Group>
 
-            <Table withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Biomarker</Table.Th>
-                  <Table.Th>Value</Table.Th>
-                  <Table.Th>Reference Range</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {result.editedBiomarkers.map((biomarker, bioIndex) => (
-                  <Table.Tr key={bioIndex}>
-                    <Table.Td>
-                      <Text size="sm">{biomarker.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={500}>
-                        {formatBiomarkerValue(biomarker)} {biomarker.unit}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {biomarker.referenceRange ? (
-                        <Text size="sm" c="dimmed">
-                          {biomarker.referenceRange.low ?? '?'} -{' '}
-                          {biomarker.referenceRange.high ?? '?'}{' '}
-                          {biomarker.referenceRange.unit}
-                        </Text>
-                      ) : (
-                        <Text size="sm" c="dimmed">
-                          —
-                        </Text>
-                      )}
-                    </Table.Td>
+            <ScrollBox label={`Values of ${result.fileName}`}>
+              <Table withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Biomarker</Table.Th>
+                    <Table.Th>Value</Table.Th>
+                    <Table.Th>Reference Range</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {result.editedBiomarkers.map((biomarker, bioIndex) => (
+                    <Table.Tr key={bioIndex}>
+                      <Table.Td>
+                        <Text size="sm">{biomarker.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={500}>
+                          {formatBiomarkerValue(biomarker)} {biomarker.unit}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {biomarker.referenceRange ? (
+                          <Text size="sm" c="dimmed">
+                            {biomarker.referenceRange.low ?? '?'} -{' '}
+                            {biomarker.referenceRange.high ?? '?'}{' '}
+                            {biomarker.referenceRange.unit}
+                          </Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </ScrollBox>
           </div>
         ))}
       </Paper>
@@ -240,8 +243,6 @@ export function ConfirmStep({
           icon={<IconInfoCircle size={16} />}
           title={`${notSaved.length} value${notSaved.length === 1 ? '' : 's'} not saved`}
           color="blue"
-          // A note to read, not an error to interrupt with
-          role="status"
         >
           <Text size="sm">
             Their unit fits no test in the dictionary, and the same test is saved from another
@@ -249,7 +250,7 @@ export function ConfirmStep({
           </Text>
           <List size="sm" mt={4}>
             {notSaved.map(({ fileName, biomarker }, index) => (
-              <List.Item key={index}>
+              <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>
                 {biomarker.name}: {formatBiomarkerValue(biomarker)} {biomarker.unit} in "{fileName}"
               </List.Item>
             ))}

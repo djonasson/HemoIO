@@ -46,6 +46,8 @@ export function ContinueProblems({ problems, onClose }: ContinueProblemsProps): 
             key={index}
             ref={index === PROBLEMS_SHOWN_FIRST ? firstRevealed : undefined}
             tabIndex={index === PROBLEMS_SHOWN_FIRST ? -1 : undefined}
+            // A file name has no spaces to wrap at, and the alert clips
+            style={{ overflowWrap: 'anywhere' }}
           >
             {problem}
           </List.Item>

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { BIOMARKER_DEFINITIONS, findBiomarker } from '@data/biomarkers/dictionary';
 import { unitFitsBiomarker } from '@services/units/unitFit';
 import { chooseTest } from '@/utils/biomarkerSuggestions';
-import type { MatchedBiomarker } from './LabReportAnalyzer';
 import { misfitTest, missingFields, planSave, targetTest } from './reviewedSave';
+import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 const NRBC = findBiomarker('Nucleated Red Blood Cells')!;
 const NRBC_PERCENTAGE = findBiomarker('Nucleated Red Blood Cells Percentage')!;
@@ -148,6 +148,23 @@ describe('planSave', () => {
 
       expect(leftOut([urine, serum])).toEqual([]);
     });
+
+    it.each([
+      ['Sodio', 180, 'mEq/24h', SODIUM, 'Sodio', 140, 'mmol/L'],
+      ['Sodio', 180, 'mmol/die', SODIUM, 'Sodio', 140, 'mmol/L'],
+      ['Creatinina', 1.2, 'g/die', findBiomarker('Creatinine')!, 'Creatinina', 0.9, 'mg/dL'],
+      ['Leucociti', 2, '/campo', findBiomarker('White Blood Cells')!, 'Leucociti', 6.1, '10^9/L'],
+    ])(
+      'when its unit, %s in %s, is one no test knows: it may be another measurement',
+      (name, value, unit, test, savedName, savedValue, savedUnit) => {
+        const other = proposal(test, { name, value, unit, normalizedUnit: unit });
+        const saved = analyzed({ name: savedName, value: savedValue, unit: savedUnit, dictionaryMatch: test });
+
+        expect(BIOMARKER_DEFINITIONS.some((t) => unitFitsBiomarker(t, unit))).toBe(false);
+        expect(unitFitsBiomarker(test, savedUnit)).toBe(true);
+        expect(leftOut([other, saved])).toEqual([]);
+      }
+    );
 
     it('when the other value of its line is not complete', () => {
       expect(leftOut([TWIN, { ...SHARE, unit: '' }])).toEqual([]);

@@ -42,6 +42,12 @@ Feature: Page Layout
     When I look at the lab result on the timeline
     Then its number of tests, of abnormal values and of notes should be shown in full
 
+  Scenario: The values to import scroll within their own box on a phone
+    Given my screen is the width of the narrowest phone
+    When I continue to the confirmation of a report with long test names
+    Then the page should not scroll sideways
+    But I should be able to scroll the table of its values sideways, also by keyboard
+
   Scenario: The lab date and name are readable on a phone
     Given my screen is the width of a phone
     When I review the values found in a lab report

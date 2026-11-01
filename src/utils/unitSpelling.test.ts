@@ -27,7 +27,16 @@ describe('normalizeUnitForLookup', () => {
     }
   );
 
-  it.each(['/100WBC', '/100 WBC', '/ 100 WBC', 'per 100 WBC', '/100 GB', '/100 leucociti'])(
+  it.each([
+    '/100WBC',
+    '/100 WBC',
+    '/ 100 WBC',
+    'per 100 WBC',
+    '/100 GB',
+    '/100 leucociti',
+    '/100 globuli bianchi',
+    '/100 white blood cells',
+  ])(
     'reads %s as per 100 white cells',
     (unit) => {
       expect(normalizeUnitForLookup(unit)).toBe('/100 WBC');

@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { LabResultCard } from './LabResultCard';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
@@ -177,6 +178,24 @@ describe('LabResultCard', () => {
     await waitFor(() => {
       expect(screen.getByRole('table')).toBeInTheDocument();
     });
+  });
+
+  it.each(['{Enter}', ' '])('opens the delete confirmation from the keyboard (%s)', async (key) => {
+    const result = createMockResult();
+    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+
+    screen.getByRole('button', { name: 'Delete this lab result' }).focus();
+    await userEvent.keyboard(key);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('keeps the delete button out of the expand button', () => {
+    renderWithProviders(<LabResultCard result={createMockResult()} onDelete={() => {}} />);
+
+    const expandButton = screen.getByRole('button', { name: /expand/i });
+    expect(within(expandButton).queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('should open delete confirmation when delete button is clicked', async () => {

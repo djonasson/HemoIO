@@ -486,7 +486,10 @@ describe('ReviewStep', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(onComplete).toHaveBeenCalledTimes(1);
-      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
+      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult], {
+        toSave: [mockReviewedResult],
+        notSaved: [],
+      });
     });
 
     it('disables continue button when no biomarkers', () => {
@@ -526,6 +529,26 @@ describe('ReviewStep', () => {
       expect(screen.getByText('Cannot Continue')).toBeInTheDocument();
       expect(screen.getByText(/missing: name/i)).toBeInTheDocument();
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('folds the list of problems again each time Continue finds some', () => {
+      const unnamed = Array.from({ length: 7 }, (_, index) => ({
+        name: '',
+        value: index,
+        unit: 'mg/dL',
+        confidence: 0.9,
+        isExactMatch: false,
+        normalizedUnit: 'mg/dL',
+      }));
+      renderReviewStep({ reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: unnamed }] });
+      const continueButton = screen.getByRole('button', { name: /Continue to Confirm/i });
+
+      fireEvent.click(continueButton);
+      fireEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
+      expect(screen.queryByRole('button', { name: /more$/ })).not.toBeInTheDocument();
+
+      fireEvent.click(continueButton);
+      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeInTheDocument();
     });
 
     it('shows validation error when biomarker has no unit (for non-unitless biomarkers)', () => {
@@ -1265,7 +1288,10 @@ describe('ReviewStep', () => {
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
     // Handed back in full, so going back from Confirm keeps the empty file and its edits
-    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty]);
+    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty], {
+      toSave: [mockReviewedResult],
+      notSaved: [],
+    });
   });
 
   it('shows what the report said when its date could not be read', () => {

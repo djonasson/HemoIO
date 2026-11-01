@@ -24,12 +24,6 @@ import { unitFitsBiomarker } from '../units/unitFit';
 import type { AnalyzedValue, MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
- * Units of a share of cells: a percentage, per mille, or a count per 100
- * white cells (however a report spells it, normalizeUnit writes it so)
- */
-const SHARE_UNIT = /^(%|‰|\/100 WBC)$/;
-
-/**
  * A 24-hour urine collection's amount per day and its concentration, which
  * reports name alike ("Creatinina (urine, 24h)" in g/24h and in µmol/L)
  */
@@ -51,10 +45,10 @@ export const UNIT_PAIRS: Readonly<Record<string, string>> = Object.fromEntries(
  */
 export function readWithUnit(definition: BiomarkerDefinition, unit: string): BiomarkerDefinition {
   if (unitFitsBiomarker(definition, unit)) return definition;
-  const share = SHARE_UNIT.test(normalizeUnit(unit).trim());
   const pair = UNIT_PAIRS[definition.key];
+  // A percentage test lists only shares, so a unit that fits it is a share
   return (
-    [share && percentageOf(definition), pair && getBiomarkerByKey(pair)]
+    [percentageOf(definition), pair && getBiomarkerByKey(pair)]
       .find((alike) => alike && unitFitsBiomarker(alike, unit)) || definition
   );
 }

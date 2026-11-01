@@ -79,11 +79,23 @@ function isReady(biomarker: MatchedBiomarker): boolean {
 }
 
 /**
+ * A share of 100 of something no test is counted per ("/100 HPF"): the same
+ * test given a second time in a form the app cannot read. Any other unit no
+ * test fits may be another measurement (a 24-hour amount in "mEq/24h" next
+ * to a concentration), so it still asks for a fix.
+ */
+function isUnreadableShare(unit: string): boolean {
+  return (
+    /^(?:\/|per) ?100\b/i.test(unit.trim()) &&
+    !BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, unit))
+  );
+}
+
+/**
  * Whether a value is a twin the import may leave out on its own: a test
- * the analysis proposed, unchanged by the user, in a unit no test in the
- * dictionary is measured in. A unit some test fits may be another
- * measurement (a 24-hour amount next to a concentration), and a test or row
- * the user chose is theirs, so those still ask for a fix.
+ * the analysis proposed, unchanged by the user, given as a share no test is
+ * counted per. A test or row the user chose is theirs, so it still asks
+ * for a fix.
  */
 function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
   const { analyzed } = biomarker;
@@ -94,7 +106,7 @@ function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
     !!misfitTest(biomarker) &&
     nameKey(biomarker.name) === nameKey(analyzed.name) &&
     biomarker.unit === analyzed.unit &&
-    !BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, biomarker.unit))
+    isUnreadableShare(biomarker.unit)
   );
 }
 

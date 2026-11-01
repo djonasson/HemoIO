@@ -168,24 +168,24 @@ export function LabResultCard({
         aria-expanded={expanded}
       >
         <Stack gap="sm">
-          {/* Header - clickable to expand */}
-          {/* Wraps on a narrow screen so the badges keep their full width */}
-          <Group
-            justify="space-between"
-            style={{ cursor: 'pointer' }}
-            onClick={handleToggle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleToggle();
-              }
-            }}
-            tabIndex={0}
-            role="button"
-            aria-controls={`lab-result-${result.id}-content`}
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
-          >
-            <Group gap="md" wrap="nowrap">
+          {/* Header: a click anywhere on it expands. Wraps on a narrow screen
+              so the badges keep their full width. The keyboard's expand button
+              is the date part alone, so the delete button is not inside it. */}
+          <Group justify="space-between" style={{ cursor: 'pointer' }} onClick={handleToggle}>
+            <Group
+              gap="md"
+              wrap="nowrap"
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  handleToggle();
+                }
+              }}
+              tabIndex={0}
+              role="button"
+              aria-controls={`lab-result-${result.id}-content`}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
+            >
               {/* Expand/collapse icon */}
               <ActionIcon
                 variant="subtle"

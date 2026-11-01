@@ -19,8 +19,8 @@ Feature: AI biomarker identification
     Then the row should be labelled "Unit doesn't fit"
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
 
-  Scenario: A test given twice, once in a unit no test is measured in, is saved once
-    Given the AI identifies "Eritroblasti" twice as Nucleated Red Blood Cells Percentage, in % and in a unit no test is measured in
+  Scenario: A test given twice, once as a share the app cannot read, is saved once
+    Given the AI identifies "Eritroblasti" twice as Nucleated Red Blood Cells Percentage, in % and per 100 of something no test is counted per ("/100 HPF")
     When the report is analyzed
     Then the value in % should be saved as Nucleated Red Blood Cells Percentage
     And the other value should be labelled "Not saved", with how to keep it
@@ -37,6 +37,17 @@ Feature: AI biomarker identification
     When the report is analyzed
     Then the value in mmol/24h should not be left out
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
+
+  Scenario: A value in another unit the app does not know still blocks, as it may be another measurement
+    Given the AI identifies "Sodio" in mmol/L and "Sodio" in mEq/24h both as Sodium
+    When the report is analyzed
+    Then the value in mEq/24h should not be left out
+    And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
+
+  Scenario: A value set aside needs no fixing
+    Given a value of a test given twice was left out
+    When I clear its number
+    Then Continue should not be blocked by it
 
   Scenario: A test I choose is never left out
     Given a value of a test given twice was left out
