@@ -14,6 +14,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openFromMenu } from './app.steps';
+import { expectAnalysisFinished } from './importWizard.steps';
 import { configureOllamaProvider, mockOllama, type ExtractedBiomarkerFixture } from './ai.steps';
 import { seedLabData } from './data.steps';
 import { removeTempFile, writeTempFile } from './tempFiles';
@@ -217,9 +218,7 @@ export async function analyzeReport(
     await onUploaded?.();
     await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 
-    await expect(page.getByRole('main').getByText('Processing complete', { exact: true })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expectAnalysisFinished(page);
     await onAnalyzed?.();
     if (!toReview) return;
 

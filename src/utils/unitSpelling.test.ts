@@ -59,7 +59,7 @@ describe('unitsMatch', () => {
 });
 
 describe('isPerHundredCounted', () => {
-  it.each(['/100 HPF', '/100HPF', 'per100HPF', '/100campi', '/  100 HPF', '/100\u00a0HPF', '/100 WBC', 'PER 100 HPF'])(
+  it.each(['/100 HPF', '/100HPF', 'per100HPF', '/100campi', '/  100 HPF', '/100\u00a0HPF', '/100 WBC', 'PER 100 HPF', '/100 (HPF)', '/100(HPF)'])(
     'reads %s as a share of 100 of a thing counted',
     (unit) => {
       expect(isPerHundredCounted(unit)).toBe(true);
@@ -89,6 +89,10 @@ describe('isPerHundredCounted', () => {
     '%',
     'mmol/L',
     '/100',
+    '/100 cg',
+    '/100 dg',
+    '/100 ΜL',
+    '/100 μl',
   ])(
     'does not read %s as one',
     (unit) => {

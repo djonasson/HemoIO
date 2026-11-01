@@ -2,6 +2,7 @@
  * The app's Mantine theme
  */
 import {
+  Anchor,
   createTheme,
   getPrimaryShade,
   isVirtualColor,
@@ -18,6 +19,9 @@ function shadedColours(t: MantineTheme): string[] {
 
 export const theme = createTheme({
   components: {
+    // In dark mode no link colour meets AA on the page and also stands 3:1
+    // apart from the body text, so links are underlined, not marked by colour alone
+    Anchor: Anchor.extend({ defaultProps: { underline: 'always' } }),
     // Progress bars carry no text, so they use the indicator colours, which
     // stand out from the track, instead of the dark filled colours white text needs
     Progress: Progress.extend({
@@ -37,7 +41,7 @@ export const theme = createTheme({
 const AA = 4.5;
 /** WCAG 1.4.11 contrast for graphics, such as progress bars, on what is next to them */
 const NON_TEXT = 3;
-/** NavLink shows its description at this opacity, in the active link's colour */
+/** The active NavLink shows its description at this opacity, in its light variant colour */
 const DESCRIPTION_OPACITY = 0.9;
 /** Mantine's light variant fill opacity, at rest and on hover */
 const LIGHT_FILL = { light: [0.1, 0.12], dark: [0.15, 0.2] } as const;
@@ -100,6 +104,19 @@ function shadesDownFrom(first: number): number[] {
 type Variables = Record<string, string>;
 
 /**
+ * The shaded colour the primary colour stands for in `scheme`: itself, or
+ * for a virtual primary colour its light or dark source. Undefined when there
+ * is none (a source missing, or itself virtual), so checks on the primary
+ * colour's fills are skipped instead of reading `var()` shades.
+ */
+function primarySource(t: MantineTheme, scheme: 'light' | 'dark'): string | undefined {
+  const colour = t.colors[t.primaryColor];
+  const name = isVirtualColor(colour) ? colour[scheme] : t.primaryColor;
+  const source = t.colors[name];
+  return source && !isVirtualColor(source) ? name : undefined;
+}
+
+/**
  * Text, light-variant, outline, filled and indicator colours of every theme
  * colour, moved along its shades only as far as WCAG needs. Mantine uses
  * shade 6 in light mode, which is under 4.5:1 on white for every colour but
@@ -109,7 +126,9 @@ type Variables = Record<string, string>;
  * Coloured text is checked on the page, gray boxes and cards, on its own
  * light fill, and on the primary colour's light fill (the active NavLink, a
  * selected card) with its own fill on top (a light badge in that card). The
- * primary colour's text is also checked at the NavLink description's opacity.
+ * primary colour's light variant colour is also checked at the NavLink
+ * description's opacity; its text colour, which links use, is not, so links
+ * keep as much contrast as they can against the surrounding body text.
  */
 function colourVariables(t: MantineTheme): { light: Variables; dark: Variables } {
   const light: Variables = {};
@@ -119,7 +138,7 @@ function colourVariables(t: MantineTheme): { light: Variables; dark: Variables }
   const body = hexToRgb(t.colors.dark[7]);
   const lightOrder = shadesFrom(lightShade);
   const darkFilledOrder = shadesFrom(darkShade);
-  const primary = t.colors[t.primaryColor];
+  const primary = { light: primarySource(t, 'light'), dark: primarySource(t, 'dark') };
   // Text also sits on light gray boxes, and on the darker gray of cards in dark mode
   const grayBox = blend(hexToRgb(t.colors.gray[lightShade]), 0.12, WHITE);
   const darkCard = hexToRgb(t.colors.dark[6]);
@@ -132,26 +151,36 @@ function colourVariables(t: MantineTheme): { light: Variables; dark: Variables }
     const shade = scheme === 'light' ? lightShade : Math.max(0, darkShade - 2);
     return LIGHT_FILL[scheme].map((alpha) => blend(hexToRgb(shades[shade]), alpha, under));
   };
-  const primaryLight = lightFills(primary, 'light', WHITE);
-  const primaryDark = lightFills(primary, 'dark', body);
+  const primaryFills = (scheme: 'light' | 'dark', under: Rgb): Rgb[] => {
+    const name = primary[scheme];
+    return name ? lightFills(t.colors[name], scheme, under) : [];
+  };
+  const primaryLight = primaryFills('light', WHITE);
+  const primaryDark = primaryFills('dark', body);
+  /** Fills a colour's own light badge makes inside a primary light fill (a selected card) */
+  const nestedFills = (shades: readonly string[], scheme: 'light' | 'dark', fills: Rgb[]): Rgb[] =>
+    fills.length > 0 ? lightFills(shades, scheme, fills[0]) : [];
 
   for (const name of shadedColours(t)) {
     const shades = t.colors[name];
     const v = `--mantine-color-${name}`;
-    const opacity = name === t.primaryColor ? DESCRIPTION_OPACITY : 1;
 
     const lightBackgrounds = [
       WHITE,
       grayBox,
       ...lightFills(shades, 'light', WHITE),
       ...primaryLight,
-      ...lightFills(shades, 'light', primaryLight[0]),
+      ...nestedFills(shades, 'light', primaryLight),
     ];
-    const lightText = passing(shades, lightOrder, BLACK, lightBackgrounds, AA, opacity);
+    const lightText = passing(shades, lightOrder, BLACK, lightBackgrounds);
+    const lightColor =
+      name === primary.light
+        ? passing(shades, lightOrder, BLACK, lightBackgrounds, AA, DESCRIPTION_OPACITY)
+        : lightText;
     const [lightFilled, lightFilledHover] = filled(shades, lightOrder);
     Object.assign(light, {
       [`${v}-text`]: lightText,
-      [`${v}-light-color`]: lightText,
+      [`${v}-light-color`]: lightColor,
       [`${v}-outline`]: lightText,
       [`${v}-filled`]: lightFilled,
       [`${v}-filled-hover`]: lightFilledHover,
@@ -163,14 +192,15 @@ function colourVariables(t: MantineTheme): { light: Variables; dark: Variables }
       darkCard,
       ...lightFills(shades, 'dark', body),
       ...primaryDark,
-      ...lightFills(shades, 'dark', primaryDark[0]),
+      ...nestedFills(shades, 'dark', primaryDark),
     ];
     // Mantine's own choices (shade 4 for text, 3 for light variants) come first
-    const darkText = passing(shades, [4, 3, 2, 1, 0], WHITE, darkBackgrounds, AA, opacity);
+    const darkText = passing(shades, [4, 3, 2, 1, 0], WHITE, darkBackgrounds);
+    const descriptionOpacity = name === primary.dark ? DESCRIPTION_OPACITY : 1;
     const [darkFilled, darkFilledHover] = filled(shades, darkFilledOrder);
     Object.assign(dark, {
       [`${v}-text`]: darkText,
-      [`${v}-light-color`]: passing(shades, [3, 2, 1, 0], WHITE, darkBackgrounds, AA, opacity),
+      [`${v}-light-color`]: passing(shades, [3, 2, 1, 0], WHITE, darkBackgrounds, AA, descriptionOpacity),
       [`${v}-outline`]: darkText,
       [`${v}-filled`]: darkFilled,
       [`${v}-filled-hover`]: darkFilledHover,
@@ -200,14 +230,16 @@ export const cssVariablesResolver: CSSVariablesResolver = (t) => {
   const cached = resolvedByTheme.get(t);
   if (cached) return cached;
   const colours = colourVariables(t);
-  const links = {
-    '--mantine-color-anchor': `var(--mantine-color-${t.primaryColor}-text)`,
+  // A virtual primary colour's own text variable points at its filled colour,
+  // so links follow its source colour's text instead
+  const links = (scheme: 'light' | 'dark') => ({
+    '--mantine-color-anchor': `var(--mantine-color-${primarySource(t, scheme) ?? t.primaryColor}-text)`,
     '--mantine-color-error': 'var(--mantine-color-red-text)',
-  };
+  });
   const resolved = {
     variables: {},
-    light: { ...colours.light, ...links, '--mantine-color-dimmed': t.colors.gray[7] },
-    dark: { ...colours.dark, ...links, '--mantine-color-dimmed': t.colors.dark[1] },
+    light: { ...colours.light, ...links('light'), '--mantine-color-dimmed': t.colors.gray[7] },
+    dark: { ...colours.dark, ...links('dark'), '--mantine-color-dimmed': t.colors.dark[1] },
   };
   resolvedByTheme.set(t, resolved);
   return resolved;

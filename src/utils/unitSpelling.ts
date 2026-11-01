@@ -103,11 +103,11 @@ export function unitsMatch(a: string, b: string): boolean {
  */
 const VOLUMES_AND_MASSES = new Set([
   'l', 'dl', 'cl', 'ml', 'µl', 'ul', 'mcl', 'nl', 'pl', 'fl', 'cc', 'cm³', 'cm3', 'mm³', 'mm3', 'mmc',
-  'kg', 'g', 'mg', 'µg', 'ug', 'mcg', 'ng', 'pg',
+  'kg', 'g', 'dg', 'cg', 'mg', 'µg', 'ug', 'mcg', 'ng', 'pg',
 ]);
 
-/** "/100" or "per 100", then the word it is per, up to a space or "(" */
-const PER_HUNDRED = /^(?:\/|per) ?100 ?([^\s(]+)/i;
+/** "/100" or "per 100", then the word it is per, which may be in brackets ("/100 (HPF)") */
+const PER_HUNDRED = /^(?:\/|per) ?100 ?\(?([^\s()]+)/i;
 
 /**
  * Whether a unit is a share: so many per 100 of something counted ("/100
@@ -117,5 +117,7 @@ const PER_HUNDRED = /^(?:\/|per) ?100 ?([^\s(]+)/i;
 export function isPerHundredCounted(unit: string): boolean {
   const per = PER_HUNDRED.exec(normalizeUnitForLookup(unit))?.[1];
   if (!per || /^[\d.,]/.test(per)) return false;
-  return !VOLUMES_AND_MASSES.has(per.toLowerCase().replace(/\.$/, ''));
+  // Greek mu (μ, and Μ in upper case) is written for the micro sign µ
+  const word = per.toLowerCase().replace(/μ/g, 'µ').replace(/\.$/, '');
+  return !VOLUMES_AND_MASSES.has(word);
 }

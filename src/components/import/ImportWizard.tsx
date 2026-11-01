@@ -101,8 +101,9 @@ export function ImportWizard({
     nextStep();
   }, [nextStep]);
 
-  // What the import saves: read only on the confirm step, so worked out
-  // there rather than on every edit in review
+  // What the import saves, shown and saved by the confirm step. Review
+  // works out its own plan for its checks; this one is made only once the
+  // confirm step is open, so it is not made again on every review edit.
   const { toSave, notSaved } = useMemo(
     () => (activeStep === CONFIRM_STEP ? planSave(reviewedResults) : NOTHING_PLANNED),
     [activeStep, reviewedResults]

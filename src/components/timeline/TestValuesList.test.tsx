@@ -67,6 +67,14 @@ describe('TestValuesList', () => {
       expect(within(row).getByText(/ - 5\.55 mmol\/L$/)).toBeInTheDocument();
     });
 
+    it.each([
+      [{ referenceRangeHigh: 100 }, '≤ 100 mg/dL'],
+      [{ referenceRangeLow: 70 }, '≥ 70 mg/dL'],
+    ])('shows a range with one end as ≤ or ≥ (%o)', (range, shown) => {
+      renderWithProviders(<TestValuesList testValues={[glucose({ value: 90, unit: 'mg/dL', ...range })]} />);
+      expect(screen.getByText(shown)).toBeInTheDocument();
+    });
+
     it('shows a value as recorded without a preference', () => {
       renderWithProviders(<TestValuesList testValues={[glucose({ value: 100, unit: 'mg/dL' })]} />);
       expect(screen.getByRole('row', { name: /^Glucose: 100 mg\/dL,/ })).toBeInTheDocument();

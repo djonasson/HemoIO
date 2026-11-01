@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatReviewedValue } from './formatReviewedValue';
+import { formatReviewedRange, formatReviewedValue } from './formatReviewedValue';
 
 describe('formatReviewedValue', () => {
   it('reads a number as it is', () => {
@@ -13,5 +13,25 @@ describe('formatReviewedValue', () => {
 
   it('reads a value with no number as nothing', () => {
     expect(formatReviewedValue({ value: NaN })).toBe('');
+  });
+});
+
+describe('formatReviewedRange', () => {
+  it('reads a range in its own unit, or else in the value\'s', () => {
+    expect(formatReviewedRange({ unit: 'mg/dL', referenceRange: { low: 70, high: 100, unit: 'mmol/L' } })).toBe(
+      '70 - 100 mmol/L'
+    );
+    expect(formatReviewedRange({ unit: 'mg/dL', referenceRange: { low: 70, high: 100, unit: '' } })).toBe(
+      '70 - 100 mg/dL'
+    );
+  });
+
+  it('reads a range with one end as ≤ or ≥', () => {
+    expect(formatReviewedRange({ unit: 'mg/dL', referenceRange: { high: 100, unit: 'mg/dL' } })).toBe('≤ 100 mg/dL');
+    expect(formatReviewedRange({ unit: 'mg/dL', referenceRange: { low: 70, unit: 'mg/dL' } })).toBe('≥ 70 mg/dL');
+  });
+
+  it('is null without a range', () => {
+    expect(formatReviewedRange({ unit: 'mg/dL' })).toBeNull();
   });
 });

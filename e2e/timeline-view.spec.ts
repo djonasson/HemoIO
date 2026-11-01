@@ -15,11 +15,11 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { test, expect } from './fixtures';
-import type { Locator, Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {
   BIOMARKERS,
+  deleteWithKeyboard,
   expandButton,
   expandLabResult,
   goToTimeline,
@@ -499,22 +499,6 @@ test.describe('Timeline with Data', () => {
       await goToTimeline(page);
       await expect(labResultCards(page)).toHaveCount(3);
     });
-
-    /**
-     * When I press Enter on a lab result's delete button and confirm with
-     * the keyboard
-     */
-    async function deleteWithKeyboard(page: Page, card: Locator): Promise<void> {
-      await card.getByRole('button', { name: 'Delete this lab result' }).focus();
-      await page.keyboard.press('Enter');
-      const dialog = page.getByRole('dialog', { name: 'Delete Lab Result' });
-      await expect(dialog).toBeVisible();
-      // Enter on the delete button does not also toggle the card
-      await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
-
-      await dialog.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
-      await expect(card).toHaveCount(0);
-    }
 
     test('deletes a result from the keyboard', async ({ page }) => {
       // Scenario: Delete a lab result with the keyboard

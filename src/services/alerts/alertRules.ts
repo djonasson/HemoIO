@@ -2,6 +2,8 @@
  * Alert rules: pure functions deciding severity, trends, wording and colour.
  */
 
+import { formatRange } from '@/utils/formatRange';
+
 export type AlertSeverity = 'critical' | 'warning' | 'positive';
 export type AlertType = 'out_of_range' | 'trend' | 'improvement';
 export type TrendDirection = 'increasing' | 'decreasing';
@@ -93,10 +95,8 @@ export function formatTimeframe(start: Date, end: Date): string {
 }
 
 export function formatReferenceRange(range: ReferenceRange | undefined, unit: string): string | null {
-  if (range?.low !== undefined && range.high !== undefined) return `${range.low} - ${range.high} ${unit}`;
-  if (range?.high !== undefined) return `≤ ${range.high} ${unit}`;
-  if (range?.low !== undefined) return `≥ ${range.low} ${unit}`;
-  return null;
+  if (!range || (range.low === undefined && range.high === undefined)) return null;
+  return `${formatRange(range.low, range.high)} ${unit}`.trimEnd();
 }
 
 export function outOfRangeMessage(

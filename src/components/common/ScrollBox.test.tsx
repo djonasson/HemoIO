@@ -84,4 +84,22 @@ describe('ScrollBox', () => {
 
     expect(box).toHaveAttribute('tabindex', '0');
   });
+
+  // jsdom's document.hasFocus() is false even while the page has focus, so
+  // these tests say which one they mean
+  it('is no stop for the keyboard once focus moves on within the page and nothing scrolls', () => {
+    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300);
+    const resize = stubResizeObserver();
+    const box = renderBox();
+    act(() => box.focus());
+    scrollWidth.mockReturnValue(300);
+    act(() => resize.forEach((callback) => callback()));
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    act(() => box.blur());
+
+    expect(box).not.toHaveAttribute('tabindex');
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  });
 });

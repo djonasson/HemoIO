@@ -29,7 +29,10 @@ import {
   expectFullWidth,
   expectNoSidewaysScroll,
   expectTableScrollsOnItsOwn,
+  expectNotATabStop,
   expectShownInFull,
+  leaveWindow,
+  scrollBoxOf,
 } from './steps/pageLayout.steps';
 
 /** A file name with no spaces to wrap at, too long for a phone */
@@ -85,7 +88,7 @@ test.describe('Page Layout', () => {
       const card = await expandLabResult(page, DAY);
       const table = card.getByRole('table', { name: 'Test values' });
       await expectTableScrollsOnItsOwn(table, 'Test values, scrollable');
-      const box = table.locator('xpath=ancestor::*[@data-scroll-box][1]');
+      const box = scrollBoxOf(table);
       await expect(box).toBeFocused();
 
       await page.setViewportSize(WIDE_SCREEN);
@@ -93,6 +96,41 @@ test.describe('Page Layout', () => {
       // Nothing left to scroll, yet the keyboard is not sent back to the page
       await expect.poll(() => box.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
       await expect(box).toBeFocused();
+    });
+
+    test('a table that fits again leaves the Tab order once the keyboard moves on', async ({
+      page,
+    }) => {
+      // Scenario: A table that fits again leaves the Tab order once the keyboard has moved on
+      await page.setViewportSize(PHONE_SCREEN);
+      const card = await expandLabResult(page, DAY);
+      const table = card.getByRole('table', { name: 'Test values' });
+      await expectTableScrollsOnItsOwn(table, 'Test values, scrollable');
+      const box = scrollBoxOf(table);
+
+      await page.keyboard.press('Tab');
+      await expect(box).not.toBeFocused();
+      await expect(page.locator(':focus')).toHaveCount(1);
+      await page.setViewportSize(WIDE_SCREEN);
+
+      await expectNotATabStop(box);
+    });
+
+    test('a scrollable table keeps keyboard focus while in another window', async ({ page }) => {
+      // Scenario: A scrollable table keeps keyboard focus while I am in another window
+      await page.setViewportSize(PHONE_SCREEN);
+      const card = await expandLabResult(page, DAY);
+      const table = card.getByRole('table', { name: 'Test values' });
+      await expectTableScrollsOnItsOwn(table, 'Test values, scrollable');
+      const box = scrollBoxOf(table);
+
+      const comeBack = await leaveWindow(page);
+      await page.setViewportSize(WIDE_SCREEN);
+      await expect.poll(() => box.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(false);
+      await comeBack();
+
+      await expect(box).toBeFocused();
+      await expect(box).toHaveAttribute('tabindex', '0');
     });
 
     test("a lab result's summary is readable on a phone", async ({ page }) => {

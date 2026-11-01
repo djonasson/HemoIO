@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { NumberField } from './NumberField';
@@ -34,7 +34,32 @@ describe('NumberField', () => {
     expect(onValueChange).toHaveBeenLastCalledWith(undefined);
   });
 
-  it('shows the number it opens with, and a blank for none', () => {
+  it('shows the number it opens with', () => {
     expect(renderField(7.5).input).toHaveValue('7.5');
+  });
+
+  it('opens blank for no number, or for one that is not a number', () => {
+    expect(renderField(undefined).input).toHaveValue('');
+    cleanup();
+    expect(renderField(NaN).input).toHaveValue('');
+  });
+
+  it('keeps "-0" when the field loses focus', async () => {
+    const { input, onValueChange } = renderField(undefined);
+
+    await userEvent.type(input, '-0');
+    const reports = onValueChange.mock.calls.length;
+    await userEvent.tab();
+
+    expect(input).toHaveValue('-0');
+    expect(onValueChange).toHaveBeenCalledTimes(reports);
+  });
+
+  it('reports "1." as 1', async () => {
+    const { input, onValueChange } = renderField(undefined);
+
+    await userEvent.type(input, '1.');
+
+    expect(onValueChange).toHaveBeenLastCalledWith(1);
   });
 });

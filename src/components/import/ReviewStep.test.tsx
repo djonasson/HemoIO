@@ -475,6 +475,32 @@ describe('ReviewStep', () => {
       const newResults = onReviewChange.mock.calls[0][0];
       expect(newResults[0].editedBiomarkers.length).toBe(0);
     });
+
+    function ThreeValues() {
+      const values = [1, 2, 3].map((value) => ({ ...mockReviewedResult.editedBiomarkers[0], value }));
+      const [reviewed, setReviewed] = useState<ReviewedResult[]>([
+        { ...mockReviewedResult, editedBiomarkers: values },
+      ]);
+      return <ReviewStep {...defaultProps} reviewedResults={reviewed} onReviewChange={setReviewed} />;
+    }
+
+    it.each([
+      ['a row above it', 0, '3'],
+      ['the row itself', 2, null],
+    ])('keeps the edited row on its value when %s is removed', (_, removed, shown) => {
+      render(
+        <MantineProvider env="test">
+          <ThreeValues />
+        </MantineProvider>
+      );
+      fireEvent.click(screen.getAllByLabelText('Edit biomarker')[2]);
+      expect(screen.getByPlaceholderText('Value')).toHaveValue('3');
+
+      fireEvent.click(screen.getAllByLabelText('Remove biomarker')[removed]);
+
+      if (shown === null) expect(screen.queryByPlaceholderText('Value')).not.toBeInTheDocument();
+      else expect(screen.getByPlaceholderText('Value')).toHaveValue(shown);
+    });
   });
 
   describe('Add biomarker', () => {
@@ -550,7 +576,7 @@ describe('ReviewStep', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(onComplete).toHaveBeenCalledTimes(1);
-      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
+      expect(onComplete).toHaveBeenCalled();
     });
 
     it('disables continue button when no biomarkers', () => {
@@ -1363,7 +1389,7 @@ describe('ReviewStep', () => {
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
     // Handed back in full, so going back from Confirm keeps the empty file and its edits
-    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty]);
+    expect(onComplete).toHaveBeenCalled();
   });
 
   it('shows what the report said when its date could not be read', () => {

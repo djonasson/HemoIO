@@ -17,16 +17,45 @@ describe('contrast', () => {
 });
 
 describe('hexToRgb', () => {
-  it('reads hex and rgb() colours', () => {
-    expect(hexToRgb('#1864ab')).toEqual([24, 100, 171]);
-    expect(hexToRgb('#fff')).toEqual([255, 255, 255]);
-    expect(hexToRgb('rgb(24, 100, 171)')).toEqual([24, 100, 171]);
+  it.each([
+    ['#1864ab', [24, 100, 171]],
+    ['#1864AB', [24, 100, 171]],
+    ['#1864abff', [24, 100, 171]],
+    ['#fff', [255, 255, 255]],
+    ['#fffF', [255, 255, 255]],
+    ['  #000  ', [0, 0, 0]],
+    ['rgb(24, 100, 171)', [24, 100, 171]],
+    ['RGB(24, 100, 171)', [24, 100, 171]],
+    ['rgba(24,100,171,1)', [24, 100, 171]],
+    ['hsl(200, 50%, 50%)', [64, 149, 191]],
+    ['HSLA(200, 50%, 50%, 1)', [64, 149, 191]],
+    ['hsl(360, 100%, 50%)', [255, 0, 0]],
+  ])('reads %s', (color, channels) => {
+    expect(hexToRgb(color)).toEqual(channels);
   });
 
-  it.each(['var(--mantine-color-teal-6)', 'red', 'oklch(0.6 0.1 200)', 'hsl(200 50% 50%)', '#zzz', 'rgb(var(--x))'])(
-    'throws on %s, which Mantine would read as black',
+  it.each([
+    'var(--mantine-color-teal-6)',
+    'red',
+    'oklch(0.6 0.1 200)',
+    'hsl(200 50% 50%)',
+    'hsl(420, 100%, 50%)',
+    'hsl(200, 50.5%, 50%)',
+    'rgb(24 100 171)',
+    'rgb(10%, 20%, 30%)',
+    'rgb(300, 0, 0)',
+    'rgb(var(--x))',
+    '#zzz',
+    '#12345',
+    '#1234567',
+  ])('throws on %s, which Mantine would read as black or as the wrong colour', (color) => {
+    expect(() => hexToRgb(color)).toThrow(/Cannot read colour/);
+  });
+
+  it.each(['#fff8', '#00000080', 'rgba(0, 0, 0, 0.5)', 'rgba(0, 0, 0, 0)', 'hsla(1, 2%, 3%, 0)'])(
+    'throws on translucent %s, whose contrast depends on what is under it',
     (color) => {
-      expect(() => hexToRgb(color)).toThrow(/Cannot read colour/);
+      expect(() => hexToRgb(color)).toThrow(/translucent/);
     }
   );
 });

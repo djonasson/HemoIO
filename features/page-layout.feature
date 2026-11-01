@@ -43,6 +43,23 @@ Feature: Page Layout
     When my screen widens so that the table fits
     Then the keyboard focus should stay on the table's box
 
+  Scenario: A table that fits again leaves the Tab order once the keyboard has moved on
+    Given my screen is the width of a phone
+    And I have opened a lab result on the timeline
+    And the keyboard focus is on the scrollable table of its values
+    When I press Tab to move on within the page
+    And my screen widens so that the table fits
+    Then the table's box should no longer be a stop for the Tab key
+
+  Scenario: A scrollable table keeps keyboard focus while I am in another window
+    Given my screen is the width of a phone
+    And I have opened a lab result on the timeline
+    And the keyboard focus is on the scrollable table of its values
+    When I switch to another window
+    And my screen widens so that the table fits
+    And I come back to the window
+    Then the keyboard focus should still be on the table's box
+
   Scenario: A lab result's summary is readable on a phone
     Given my screen is the width of the narrowest phone
     And a lab result has a note

@@ -111,6 +111,16 @@ Feature: Import Wizard
     Then the field should show -0.5
     And the confirmation should show the value as -0.5
 
+  Scenario: An interval with a cleared end must be filled in before saving
+    Given the AI read a value of "5-10" from a report
+    And I am editing that value on the review step, shown with its low and high ends
+    When I clear either end of the interval
+    And I try to continue to the confirmation
+    Then I should be told that the value is missing its number
+    When I fill in both ends again
+    Then I should be able to continue to the confirmation
+    And the confirmation should show the value as the interval "5-10"
+
   Scenario: User enters a biomarker that is not in the dictionary
     Given I am editing a value on the review step
     When I type a biomarker name that matches no dictionary entry

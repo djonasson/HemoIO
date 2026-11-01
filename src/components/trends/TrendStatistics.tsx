@@ -12,6 +12,7 @@ import {
   IconChartBar,
   IconCalendar,
 } from '@tabler/icons-react';
+import { formatReferenceRange } from '@services/alerts/alertRules';
 import type { TrendStatistics as TrendStats, RateOfChange } from '@services/statistics/trendAnalysis';
 
 /**
@@ -221,15 +222,14 @@ export function TrendStatistics({
         </Paper>
       )}
 
-      {referenceRange && (referenceRange.low !== undefined || referenceRange.high !== undefined) && (
+      {referenceRange && formatReferenceRange(referenceRange, statistics.unit) && (
         <Paper p="sm" withBorder bg="var(--mantine-color-gray-light)">
           <Group gap="md">
             <Text size="sm" c="dimmed">
               Reference Range:
             </Text>
             <Badge variant="outline" color="green">
-              {referenceRange.low !== undefined ? referenceRange.low : '—'} -{' '}
-              {referenceRange.high !== undefined ? referenceRange.high : '—'} {statistics.unit}
+              {formatReferenceRange(referenceRange, statistics.unit)}
             </Badge>
           </Group>
         </Paper>

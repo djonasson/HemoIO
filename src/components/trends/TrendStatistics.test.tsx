@@ -171,16 +171,16 @@ describe('TrendStatistics', () => {
       expect(screen.getByText(/70 - 100 mg\/dL/)).toBeInTheDocument();
     });
 
-    it('shows dash for undefined low value', () => {
+    it('shows a range without a low end as ≤', () => {
       renderTrendStatistics({ referenceRange: { high: 100 } });
 
-      expect(screen.getByText(/— - 100/)).toBeInTheDocument();
+      expect(screen.getByText(/≤ 100/)).toBeInTheDocument();
     });
 
-    it('shows dash for undefined high value', () => {
+    it('shows a range without a high end as ≥', () => {
       renderTrendStatistics({ referenceRange: { low: 70 } });
 
-      expect(screen.getByText(/70 - —/)).toBeInTheDocument();
+      expect(screen.getByText(/≥ 70/)).toBeInTheDocument();
     });
 
     it('does not render reference range when not provided', () => {

@@ -30,8 +30,7 @@ import {
 } from '@tabler/icons-react';
 import { ScrollBox } from '@components/common/ScrollBox';
 import { reviewedLabDate } from '@/utils/labDate';
-import { formatReviewedValue } from '@/utils/formatReviewedValue';
-import { formatReferenceRange } from '@services/alerts/alertRules';
+import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewedValue';
 import { FileName } from './FileName';
 import type { SetAsideValue } from '@services/analysis/reviewedSave';
 import type { ReviewedResult } from './ReviewStep';
@@ -51,7 +50,6 @@ export interface ConfirmStepProps {
   /** Values left out because another value of their line is saved */
   notSaved?: SetAsideValue[];
 }
-
 
 /**
  * Confirm Step - final confirmation before saving
@@ -208,9 +206,7 @@ export function ConfirmStep({
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm" c="dimmed">
-                          {(biomarker.referenceRange &&
-                            formatReferenceRange(biomarker.referenceRange, biomarker.referenceRange.unit)) ??
-                            '—'}
+                          {formatReviewedRange(biomarker) ?? '—'}
                         </Text>
                       </Table.Td>
                     </Table.Tr>

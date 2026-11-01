@@ -242,3 +242,19 @@ export function trendLink(card: Locator, biomarkerName: string): Locator {
     .getByRole('table', { name: 'Test values' })
     .getByRole('button', { name: `${biomarkerName}, open trend`, exact: true });
 }
+
+/**
+ * When I press Enter on a lab result's delete button and confirm with the
+ * keyboard
+ */
+export async function deleteWithKeyboard(page: Page, card: Locator): Promise<void> {
+  await card.getByRole('button', { name: 'Delete this lab result' }).focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Delete Lab Result' });
+  await expect(dialog).toBeVisible();
+  // Enter on the delete button does not also toggle the card
+  await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
+
+  await dialog.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
+  await expect(card).toHaveCount(0);
+}

@@ -41,8 +41,7 @@ import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysi
 import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
-import { formatReviewedValue } from '@/utils/formatReviewedValue';
-import { formatReferenceRange } from '@services/alerts/alertRules';
+import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewedValue';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
@@ -179,14 +178,6 @@ export interface ReviewedResult extends AnalysisResult {
 }
 
 /**
- * Props for ReviewStep
- */
-/** A value's reference range as Confirm shows it, if it has one */
-function reviewedRange({ referenceRange: range, unit }: MatchedBiomarker): string | null {
-  return range ? formatReferenceRange(range, range.unit || unit) : null;
-}
-
-/**
  * An interval's ends and the value saved for it, their midpoint: none
  * while either end is missing, so the value must be filled in again
  */
@@ -201,6 +192,9 @@ function intervalEnds(
   };
 }
 
+/**
+ * Props for ReviewStep
+ */
 export interface ReviewStepProps {
   /** Analysis results */
   results: AnalysisResult[];
@@ -208,8 +202,8 @@ export interface ReviewStepProps {
   reviewedResults: ReviewedResult[];
   /** Callback when review changes */
   onReviewChange: (results: ReviewedResult[]) => void;
-  /** Callback when review is complete */
-  onComplete: (results: ReviewedResult[]) => void;
+  /** Called when the review is complete and the import may continue */
+  onComplete: () => void;
   /** Callback to go back */
   onBack: () => void;
 }
@@ -285,6 +279,13 @@ export function ReviewStep({
           (_, i) => i !== biomarkerIndex
         ),
       };
+      // Rows are kept by position: the row being edited moves up with the
+      // rows below the removed one, and stops being edited if it is removed
+      setEditingBiomarker((editing) => {
+        if (editing?.resultIndex !== resultIndex || editing.biomarkerIndex < biomarkerIndex) return editing;
+        if (editing.biomarkerIndex === biomarkerIndex) return null;
+        return { resultIndex, biomarkerIndex: editing.biomarkerIndex - 1 };
+      });
       onReviewChange(newResults);
     },
     [reviewedResults, onReviewChange]
@@ -419,7 +420,7 @@ export function ReviewStep({
     }
 
     setProblems(null);
-    onComplete(reviewedResults);
+    onComplete();
   }, [reviewedResults, plan, setAside, onComplete]);
 
   return (
@@ -795,7 +796,7 @@ export function ReviewStep({
                                   />
                                 </Group>
                               ) : (
-                                <Text size="sm">{reviewedRange(biomarker) ?? '—'}</Text>
+                                <Text size="sm">{formatReviewedRange(biomarker) ?? '—'}</Text>
                               )}
                             </Table.Td>
                             <Table.Td>

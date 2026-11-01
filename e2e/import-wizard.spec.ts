@@ -18,6 +18,7 @@ import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, labResultCard, goToTimeline } from './steps/timeline.steps';
+import { editingRow } from './steps/identification.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import {
   createTextPdf,
@@ -272,9 +273,7 @@ test.describe('Import Wizard', () => {
 
       const glucose = reviewRow(page, 'Glucose');
       await glucose.getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
 
       await editing.getByPlaceholder('Value', { exact: true }).fill('5.3');
       await editing.getByPlaceholder('Unit', { exact: true }).fill('mmol/L');
@@ -295,9 +294,7 @@ test.describe('Import Wizard', () => {
 
       // Typing passes through other biomarkers' names ("Hb" is Hemoglobin)
       await reviewRow(page, 'Glucose').getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
       const name = editing.getByPlaceholder('Biomarker name');
       await name.clear();
       await name.pressSequentially('HbA1c');
@@ -345,9 +342,7 @@ test.describe('Import Wizard', () => {
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
       await editing.getByPlaceholder('Biomarker name').fill('Zorblatin');
       await editing.getByRole('button', { name: 'Save changes' }).click();
 
@@ -363,9 +358,7 @@ test.describe('Import Wizard', () => {
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await main(page).getByRole('button', { name: 'Add Biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
 
       await editing.getByPlaceholder('Value', { exact: true }).fill('180');
       await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
@@ -386,9 +379,7 @@ test.describe('Import Wizard', () => {
       await loginWithOllama(page);
       const pdfPath = track(createTextLabReportPdf());
       await analyzeToReview(page, pdfPath);
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
       const number = editing.getByPlaceholder('Value', { exact: true });
 
       await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
@@ -412,6 +403,50 @@ test.describe('Import Wizard', () => {
         main(page).getByRole('row').filter({ hasText: 'Hemoglobin' }).getByText('-0.5')
       ).toBeVisible();
     });
+
+    for (const end of ['Low', 'High'] as const) {
+      test(`asks for an interval whose ${end.toLowerCase()} end is cleared`, async ({ page }) => {
+        // Scenario: An interval with a cleared end must be filled in before saving
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Erythrocytes', value: '5-10', unit: '/HPF', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        const pdfPath = track(createTextLabReportPdf());
+        await analyzeToReview(page, pdfPath);
+        const row = reviewRow(page, 'Erythrocytes');
+        await expect(reviewCell(row, 'Value')).toHaveText('5-10');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        // The interval's ends come before the reference range's
+        const low = editing.getByPlaceholder('Low', { exact: true }).first();
+        const high = editing.getByPlaceholder('High', { exact: true }).first();
+        await expect(low).toHaveValue('5');
+        await expect(high).toHaveValue('10');
+        await (end === 'Low' ? low : high).clear();
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+        await expect(
+          main(page).getByText(`Erythrocytes in "${path.basename(pdfPath)}" is missing: value`, {
+            exact: true,
+          })
+        ).toBeVisible();
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await low.fill('5');
+        await high.fill('10');
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('5-10');
+
+        await continueToConfirm(page);
+        await expect(
+          main(page).getByRole('row').filter({ hasText: 'Erythrocytes' }).getByText('5-10')
+        ).toBeVisible();
+      });
+    }
 
     test('should show date picker for lab date', async ({ page }) => {
       await loginWithOllama(page);

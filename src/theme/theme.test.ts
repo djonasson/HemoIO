@@ -131,6 +131,35 @@ describe('theme', () => {
     }
   });
 
+  it('keeps links 3:1 from the black body text around them, in light mode', () => {
+    // Inline links are not underlined, so colour alone marks them (WCAG 1.4.1),
+    // also in light alerts, whose message text is black
+    const link = colour('--mantine-color-anchor', 'light');
+    expect(contrast(link, hexToRgb(merged.black))).toBeGreaterThanOrEqual(3);
+    for (const background of [white, lightBox('yellow', 'light'), lightBox('yellow', 'light', true)]) {
+      expect(contrast(link, background)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps links in dark mode at the darkest Mantine shade that is AA, farthest from the body text', () => {
+    // dark.0 body text is too light for any AA link to also be 3:1 from it,
+    // so links stay as far from it as AA allows
+    const link = colour('--mantine-color-anchor', 'dark');
+    const text = hexToRgb(merged.colors.dark[0]);
+    expect(link).toEqual(hexToRgb(merged.colors.blue[3]));
+    const darker = hexToRgb(merged.colors.blue[4]);
+    expect(contrast(darker, text)).toBeGreaterThan(contrast(link, text));
+    // The active NavLink, and a blue light badge in a selected card
+    const fill = lightBox('blue', 'dark');
+    const backgrounds = [body, card, fill, lightBox('blue', 'dark', true), lightBox('blue', 'dark', false, fill)];
+    expect(backgrounds.some((background) => contrast(darker, background) < 4.5)).toBe(true);
+  });
+
+  it('checks the NavLink description opacity on the light variant colour only, not on links', () => {
+    expect(resolved.light['--mantine-color-blue-text']).toBe(merged.colors.blue[9]);
+    expect(resolved.light['--mantine-color-blue-light-color']).not.toBe(resolved.light['--mantine-color-blue-text']);
+  });
+
   it('gives the active NavLink description, at 0.9 opacity, AA contrast on its fill, in both modes', () => {
     for (const scheme of ['light', 'dark'] as const) {
       const text = colour('--mantine-color-blue-light-color', scheme);
@@ -163,6 +192,32 @@ describe('theme', () => {
     }
   });
 
+  it('resolves a virtual primary colour through its light and dark source colours', () => {
+    const withVirtual = mergeMantineTheme(DEFAULT_THEME, {
+      ...theme,
+      primaryColor: 'accent',
+      colors: { accent: virtualColor({ name: 'accent', light: 'teal', dark: 'grape' }) },
+    });
+    const result = cssVariablesResolver(withVirtual);
+    expect(result.light['--mantine-color-anchor']).toBe('var(--mantine-color-teal-text)');
+    expect(result.dark['--mantine-color-anchor']).toBe('var(--mantine-color-grape-text)');
+    // The active NavLink's description is checked on the source colour's fill
+    const fills = {
+      light: blend(hexToRgb(withVirtual.colors.teal[6]), 0.12, white),
+      dark: blend(hexToRgb(withVirtual.colors.grape[6]), 0.2, body),
+    };
+    expect(contrastAt(hexToRgb(result.light['--mantine-color-teal-light-color']), 0.9, fills.light)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastAt(hexToRgb(result.dark['--mantine-color-grape-light-color']), 0.9, fills.dark)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('skips primary fill checks when a virtual primary colour has no shaded source', () => {
+    const broken = mergeMantineTheme(DEFAULT_THEME, {
+      primaryColor: 'accent',
+      colors: { accent: virtualColor({ name: 'accent', light: 'missing', dark: 'missing' }) },
+    });
+    expect(() => cssVariablesResolver(broken)).not.toThrow();
+  });
+
   it('resolves each theme once', () => {
     expect(cssVariablesResolver(merged)).toBe(resolved);
   });
@@ -170,5 +225,11 @@ describe('theme', () => {
   it('gives error messages AA contrast on the page, in both modes', () => {
     expect(contrast(colour('--mantine-color-error', 'light'), white)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(colour('--mantine-color-error', 'dark'), body)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('links', () => {
+  it('are underlined, so they are not marked by colour alone', () => {
+    expect(theme.components?.Anchor?.defaultProps).toMatchObject({ underline: 'always' });
   });
 });
