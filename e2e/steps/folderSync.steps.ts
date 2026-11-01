@@ -8,6 +8,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 
 export const TEST_FOLDER_NAME = 'Lab Folder';
 /** Where the picker looks for the folder a test chooses next */
@@ -92,7 +93,7 @@ export class TestFolder {
 
 /** Given my data is stored in a local folder — switched to in Settings > Data */
 export async function storeDataInFolder(page: Page): Promise<void> {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: 'Data' }).click();
   await page.getByText('Local Directory', { exact: true }).click();
   await page.getByRole('button', { name: 'Select Folder & Switch' }).click();
@@ -105,7 +106,7 @@ export async function changeFolder(page: Page, folder: TestFolder): Promise<void
     ({ key, name }) => sessionStorage.setItem(key, name),
     { key: NEXT_FOLDER_KEY, name: folder.name }
   );
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: 'Data' }).click();
   await page.getByRole('button', { name: 'Change', exact: true }).click();
   await expect(page.getByText(folder.name, { exact: true })).toBeVisible();

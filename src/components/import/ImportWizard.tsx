@@ -65,7 +65,7 @@ export function ImportWizard({
   aiProvider,
   getApiKey,
   aiModel,
-}: ImportWizardProps) {
+}: ImportWizardProps): React.JSX.Element {
   const [activeStep, setActiveStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
@@ -103,9 +103,10 @@ export function ImportWizard({
   }, [nextStep]);
 
   // Handler for review completion
+  // The review's edits are already held (onReviewChange); keep the plan it
+  // checked them against, so Confirm shows and saves exactly that
   const handleReviewComplete = useCallback(
-    (results: ReviewedResult[], plan: SavePlan<ReviewedResult>) => {
-      setReviewedResults(results);
+    (_results: ReviewedResult[], plan: SavePlan<ReviewedResult>) => {
       setSavePlan(plan);
       nextStep();
     },

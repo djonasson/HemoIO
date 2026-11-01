@@ -217,7 +217,7 @@ export function ReviewStep({
   onReviewChange,
   onComplete,
   onBack,
-}: ReviewStepProps) {
+}: ReviewStepProps): React.JSX.Element {
   const [editingBiomarker, setEditingBiomarker] = useState<{
     resultIndex: number;
     biomarkerIndex: number;
@@ -273,7 +273,8 @@ export function ReviewStep({
       const newResults = [...reviewedResults];
       const newBiomarker: MatchedBiomarker = {
         name: '',
-        value: 0,
+        // No number until one is typed: 0 is a reading of its own
+        value: NaN,
         unit: '',
         confidence: 1.0,
         isExactMatch: false,
@@ -472,8 +473,9 @@ export function ReviewStep({
           <Accordion.Item key={result.fileId} value={String(resultIndex)}>
             <Accordion.Control>
               <Group justify="space-between" wrap="nowrap" pr="md">
-                <div>
-                  <Text fw={500}>{result.fileName}</Text>
+                {/* A file name has no spaces to wrap at: it may wrap anywhere */}
+                <div style={{ minWidth: 0 }}>
+                  <Text fw={500} style={{ overflowWrap: 'anywhere' }}>{result.fileName}</Text>
                   <Text size="sm" c="dimmed">
                     {result.editedBiomarkers.length} biomarker(s)
                   </Text>
@@ -710,10 +712,11 @@ export function ReviewStep({
                                 ) : (
                                   <NumberInput
                                     size="xs"
-                                    value={biomarker.value}
+                                    value={Number.isFinite(biomarker.value) ? biomarker.value : ''}
                                     onChange={(value) =>
                                       updateBiomarker(resultIndex, bioIndex, {
-                                        value: Number(value) || 0,
+                                        // A cleared number is missing, not 0
+                                        value: value === '' ? NaN : Number(value),
                                       })
                                     }
                                     decimalScale={2}
@@ -724,7 +727,9 @@ export function ReviewStep({
                                 <Text size="sm">
                                   {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
                                     ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
-                                    : biomarker.value}
+                                    : Number.isFinite(biomarker.value)
+                                      ? biomarker.value
+                                      : ''}
                                 </Text>
                               )}
                             </Table.Td>

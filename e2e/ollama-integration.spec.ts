@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import type { Page, Route } from '@playwright/test';
+import { openFromMenu } from './steps/app.steps';
 
 // Mock Ollama API responses
 const mockOllamaModels = {
@@ -99,7 +100,7 @@ async function setupOllamaMocks(
 
 // Helper to open the AI Configuration tab in Settings
 async function openAISettings(page: Page) {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: /AI Configuration/i }).click();
 }
 

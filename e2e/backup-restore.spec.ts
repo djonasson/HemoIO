@@ -11,7 +11,7 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { expandLabResult } from './steps/timeline.steps';
 import { configureAnthropic, mockAnthropicApi, openAISettings } from './steps/aiModelSelection.steps';
@@ -110,7 +110,7 @@ const ENCRYPTED_BACKUP_PASSWORD = 'SecureBackup123!';
  */
 async function navigateToSettings(page: Page) {
   // Use nav text selector for more reliable selection
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
 }
 
 /**
@@ -828,7 +828,7 @@ async function createEncryptedBackupWithApiKey(page: Page): Promise<string> {
   await setupOrUnlock(page);
   await configureAnthropic(page);
   await seedLabData(page);
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: 'Data' }).click();
   await page.locator('.mantine-SegmentedControl-root').getByText('Encrypted', { exact: true }).click();
   await page.getByRole('button', { name: 'Create Encrypted Backup' }).click();
@@ -844,7 +844,7 @@ async function createEncryptedBackupWithApiKey(page: Page): Promise<string> {
  * Open the restore dialog for an encrypted backup on `page` (already unlocked)
  */
 async function openEncryptedRestore(page: Page, backupPath: string) {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: 'Data' }).click();
   await page.locator('input[type="file"]').setInputFiles(backupPath);
   const passwordDialog = page.getByRole('dialog');

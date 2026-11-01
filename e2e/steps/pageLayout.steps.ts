@@ -75,6 +75,8 @@ export async function expectTableScrollsOnItsOwn(table: Locator, boxName: string
   const box = table.locator('xpath=ancestor::*[@data-scroll-box][1]');
   await expect.poll(() => isWiderThanShown(box)).toBe(true);
   await expect(box).toHaveAccessibleName(boxName);
+  // In the Tab order, not only focusable by script
+  await expect(box).toHaveAttribute('tabindex', '0');
 
   await box.focus();
   await expect(box).toBeFocused();

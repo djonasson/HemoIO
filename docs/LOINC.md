@@ -18,6 +18,15 @@ Downloading LOINC needs a free loinc.org account:
 The script uses the account's username and password with the
 [LOINC Download API](https://loinc.regenstrief.org/api/v1).
 
+## Prerequisites
+
+- bash 4.3 or newer. macOS ships bash 3.2: install a newer one with
+  `brew install bash`.
+- `curl`, `unzip` and `python3`.
+- `md5sum` (Linux) or `md5` (macOS and the BSDs), to check the download.
+
+The script checks for these first and names any that are missing.
+
 ## Downloading
 
 ```bash
@@ -30,10 +39,13 @@ The script:
 2. Compares it with the latest release already downloaded.
 3. Stops with "Up to date; nothing to download." when there is nothing newer.
 4. Otherwise downloads the release, checks it against the MD5 and unzips it.
-   A download that fails the check is thrown away.
+   A download that fails the check, fails part way or is stopped with
+   Ctrl-C is thrown away, together with its version folder if that is
+   left empty.
 
 The password is read from `LOINC_PASSWORD` when set, or asked for without
-being shown. It goes to curl on its standard input, so it never appears in
+being shown; without a terminal to ask on (a pipe, CI) `LOINC_PASSWORD`
+must be set. It goes to curl on its standard input, so it never appears in
 the process list or in shell history. Don't put it on the command line.
 
 ### Options
@@ -42,8 +54,15 @@ the process list or in shell history. Don't put it on the command line.
 |-------------------|--------------------------------------------------------------|
 | `--force`         | Download the current release again, even if already present |
 | `[output-dir]`    | Where releases go (default `~/loinc`)                       |
+| `-h`, `--help`    | Show the usage                                               |
 | `LOINC_DIR`       | Same as `output-dir`, when no argument is given             |
 | `LOINC_PASSWORD`  | The password, instead of being asked for it                 |
+
+Options can come in any order; at most one output dir can be given. A
+relative output dir is taken from the folder the command is run in (npm
+runs the script from the repository root but passes on where it was
+called from). A `loinc/` folder at the repository root is git-ignored, in
+case releases are put there.
 
 Pass options after `--`:
 
@@ -68,9 +87,13 @@ Each release goes in its own folder named after its version:
         └── LoincReadMe.txt
 ```
 
-A release counts as downloaded once `metadata.json` is written, which
-happens last, and its zip still matches the MD5. An interrupted download is
-therefore fetched again on the next run.
+A release counts as downloaded only when its folder holds `metadata.json`
+naming the folder's own version, the zip still matches the MD5 and
+`files/` is there. `metadata.json` is written last, and an existing one is
+removed before a new download replaces the zip and unzips it, so a folder
+left part way (a failed or stopped download or unzip, even with `--force`)
+does not count and is fetched again on the next run. Copies under other
+names, such as `current/`, are ignored.
 
 ## Updating the app to a new release
 
@@ -78,9 +101,11 @@ When a new release is downloaded:
 
 1. Check that the dictionary's codes are still active and their long common
    names unchanged in `files/LoincTable/Loinc.csv`.
-2. Update `LONG_COMMON_NAME` and `LOINC_VERSION` in
-   `src/data/biomarkers/loinc.ts`.
-3. Update the version in the README's Third-Party Notices.
+2. In `src/data/biomarkers/loinc.ts`, update the names in `LOINC_NAMES`
+   (long common names by LOINC code) and `LOINC_VERSION`.
+3. In `src/data/biomarkers/loinc.test.ts`, update the expected names in
+   `TERMS` to match.
+4. Update the version in the README's Third-Party Notices.
 
 ## License
 

@@ -7,6 +7,7 @@
 
 import { expect, type Page, type Route } from '@playwright/test';
 import { removeTempFile, writeTempFile } from './tempFiles';
+import { openFromMenu } from './app.steps';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 const TEST_API_KEY = 'sk-ant-test-0000000000000000000000';
@@ -154,7 +155,7 @@ export async function unlock(page: Page): Promise<void> {
  * When I open the AI Configuration tab in Settings
  */
 export async function openAISettings(page: Page): Promise<void> {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: /AI Configuration/i }).click();
 }
 
@@ -230,7 +231,7 @@ export function createTextLabReportPdf(): string {
  * When I go to Import (navigates in-app, never reloads)
  */
 export async function goToImport(page: Page): Promise<void> {
-  await page.locator('nav').getByText('Import', { exact: true }).click();
+  await openFromMenu(page, 'Import');
 }
 
 /**

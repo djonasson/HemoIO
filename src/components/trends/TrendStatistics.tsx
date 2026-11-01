@@ -97,7 +97,7 @@ export function TrendStatistics({
   statistics,
   rateOfChange,
   referenceRange,
-}: TrendStatisticsProps) {
+}: TrendStatisticsProps): React.JSX.Element {
   // Determine if latest value is in range
   const latestInRange =
     referenceRange?.low !== undefined && referenceRange?.high !== undefined
@@ -163,11 +163,11 @@ export function TrendStatistics({
               </Text>
               <Group gap="xs">
                 {changeDirection === 'up' ? (
-                  <IconArrowUp size={20} color="var(--mantine-color-blue-6)" />
+                  <IconArrowUp size={20} color="var(--mantine-color-blue-text)" />
                 ) : changeDirection === 'down' ? (
-                  <IconArrowDown size={20} color="var(--mantine-color-orange-6)" />
+                  <IconArrowDown size={20} color="var(--mantine-color-orange-text)" />
                 ) : (
-                  <IconMinus size={20} color="var(--mantine-color-gray-6)" />
+                  <IconMinus size={20} color="var(--mantine-color-gray-text)" />
                 )}
                 <Text size="lg" fw={500}>
                   {Math.abs(rateOfChange.percentageChange).toFixed(1)}%

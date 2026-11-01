@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 import { ScrollBox } from '@components/common/ScrollBox';
 import { reviewedLabDate } from '@/utils/labDate';
+import { formatIntervalValue } from '@services/ai';
 import type { SetAsideValue } from '@services/analysis/reviewedSave';
 import type { ReviewedResult } from './ReviewStep';
 
@@ -36,11 +37,9 @@ import type { ReviewedResult } from './ReviewStep';
  * Format a biomarker value for display, handling interval values
  */
 function formatBiomarkerValue(biomarker: ReviewedResult['editedBiomarkers'][0]): string {
-  // Check if this is an interval value
   if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
-    return `${biomarker.intervalLow}-${biomarker.intervalHigh}`;
+    return formatIntervalValue(biomarker.intervalLow, biomarker.intervalHigh);
   }
-  // Regular value
   return String(biomarker.value);
 }
 
@@ -176,8 +175,9 @@ export function ConfirmStep({
             {resultIndex > 0 && <Divider my="md" />}
 
             <Group justify="space-between" mb="sm">
-              <div>
-                <Text fw={500} size="sm">
+              {/* A file name has no spaces to wrap at: it may wrap anywhere */}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Text fw={500} size="sm" style={{ overflowWrap: 'anywhere' }}>
                   {result.fileName}
                 </Text>
                 <Group gap="xs">

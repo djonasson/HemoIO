@@ -176,12 +176,15 @@ export function buildTextPdf(lines: string[]): Buffer {
  * Given a lab report contains <biomarkers> / When the values are analyzed.
  *
  * Imports `reportCount` text PDFs with a mocked local AI that extracts
- * exactly `biomarkers` from each, and ends on the review step.
+ * exactly `biomarkers` from each, and ends on the review step. A single
+ * report may be given its file name; `onUploaded` runs once the files are
+ * chosen, before they are analyzed.
  */
 export async function analyzeReport(
   page: Page,
   biomarkers: ExtractedBiomarkerFixture[],
-  reportCount = 1
+  reportCount = 1,
+  { fileName = 'lab-report.pdf', onUploaded }: { fileName?: string; onUploaded?: () => Promise<void> } = {}
 ): Promise<void> {
   await mockOllama(page, {
     biomarkers,
@@ -194,11 +197,12 @@ export async function analyzeReport(
   const reportText = biomarkers.map((b) => `${b.name} ${b.value} ${b.unit.replace('µ', 'u')}`);
   const pdf = buildTextPdf(['Laboratory report', ...reportText]);
   const pdfPaths = Array.from({ length: reportCount }, (_, i) =>
-    writeTempFile(reportCount === 1 ? 'lab-report.pdf' : `lab-report-${i + 1}.pdf`, pdf)
+    writeTempFile(reportCount === 1 ? fileName : `lab-report-${i + 1}.pdf`, pdf)
   );
   try {
     await openFromMenu(page, 'Import');
     await page.locator('input[type="file"]').setInputFiles(pdfPaths);
+    await onUploaded?.();
     await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 
     const review = page.getByRole('button', { name: /^Review Results/ });

@@ -48,6 +48,12 @@ Feature: Page Layout
     Then the page should not scroll sideways
     But I should be able to scroll the table of its values sideways, also by keyboard
 
+  Scenario: A long file name wraps on a phone
+    Given my screen is the width of the narrowest phone
+    When I import a report whose file name is long and has no spaces
+    Then no step of the import should scroll sideways
+    And the file name should be shown in full, with its remove button on screen
+
   Scenario: The lab date and name are readable on a phone
     Given my screen is the width of a phone
     When I review the values found in a lab report

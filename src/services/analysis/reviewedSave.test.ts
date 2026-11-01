@@ -9,7 +9,7 @@ const NRBC = findBiomarker('Nucleated Red Blood Cells')!;
 const NRBC_PERCENTAGE = findBiomarker('Nucleated Red Blood Cells Percentage')!;
 const SODIUM = findBiomarker('Sodium')!;
 
-/** A unit no test in the dictionary is measured in */
+/** A share no test in the dictionary is counted per */
 const NO_TEST_UNIT = '/100 HPF';
 
 /** A value as the analysis gives it: the AI's test, the printed name and unit */
@@ -42,7 +42,7 @@ function proposal(test: typeof NRBC, overrides: Partial<MatchedBiomarker>): Matc
 /** Eritroblasti as a share, saved as the percentage */
 const SHARE = analyzed({});
 
-/** Eritroblasti in a unit no test is measured in, proposed as the percentage */
+/** Eritroblasti as a share no test is counted per, proposed as the percentage */
 const TWIN = proposal(NRBC_PERCENTAGE, { value: 0.5, unit: NO_TEST_UNIT, normalizedUnit: NO_TEST_UNIT });
 
 function file(editedBiomarkers: MatchedBiomarker[], fileName = 'a.pdf') {
@@ -53,7 +53,7 @@ function leftOut(values: MatchedBiomarker[]): MatchedBiomarker[] {
   return planSave([file(values)]).notSaved.map(({ biomarker }) => biomarker);
 }
 
-it(`${NO_TEST_UNIT} is a unit no test in the dictionary is measured in`, () => {
+it(`${NO_TEST_UNIT} is a share no test in the dictionary is counted per`, () => {
   expect(BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, NO_TEST_UNIT))).toBe(false);
 });
 
@@ -110,12 +110,29 @@ describe('planSave', () => {
     expect(planSave([withValues, empty])).toEqual({ toSave: [withValues], notSaved: [] });
   });
 
-  it('leaves out the twin of a value saved as the same test, in a unit no test is measured in', () => {
+  it('leaves out the twin of a value saved as the same test, given as a share no test is counted per', () => {
     expect(planSave([file([TWIN, SHARE])])).toEqual({
       toSave: [file([SHARE])],
       notSaved: [{ fileName: 'a.pdf', biomarker: TWIN }],
     });
   });
+
+  it.each(['/100HPF', 'per100HPF', '/100campi', '/  100 HPF', '/100 HPF', 'PER 100 HPF'])(
+    'leaves out a twin given as a share however it is spaced or cased: %s',
+    (unit) => {
+      const twin = proposal(NRBC_PERCENTAGE, { value: 0.5, unit, normalizedUnit: unit });
+      expect(leftOut([twin, SHARE])).toEqual([twin]);
+    }
+  );
+
+  it.each(['/100 mL', '/100 µL', '/100mL', '/100.000', '/100,000', '/1000'])(
+    'keeps a value per 100 of a volume, or per a larger number, asking for a fix: %s',
+    (unit) => {
+      const other = proposal(NRBC_PERCENTAGE, { value: 0.5, unit, normalizedUnit: unit });
+      expect(BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, unit))).toBe(false);
+      expect(leftOut([other, SHARE])).toEqual([]);
+    }
+  );
 
   it('matches the line by its printed name, whatever its case, spacing or accent encoding', () => {
     const name = 'Eritroblastí';
@@ -155,7 +172,7 @@ describe('planSave', () => {
       ['Creatinina', 1.2, 'g/die', findBiomarker('Creatinine')!, 'Creatinina', 0.9, 'mg/dL'],
       ['Leucociti', 2, '/campo', findBiomarker('White Blood Cells')!, 'Leucociti', 6.1, '10^9/L'],
     ])(
-      'when its unit, %s in %s, is one no test knows: it may be another measurement',
+      'when its unit is another one no test knows (%s %d %s): it may be another measurement',
       (name, value, unit, test, savedName, savedValue, savedUnit) => {
         const other = proposal(test, { name, value, unit, normalizedUnit: unit });
         const saved = analyzed({ name: savedName, value: savedValue, unit: savedUnit, dictionaryMatch: test });

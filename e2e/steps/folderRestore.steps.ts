@@ -10,6 +10,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FOLDER_COPY } from './folderSync.steps';
+import { openFromMenu } from './app.steps';
 
 export const FOLDER_NAME = 'HemoIO Sync';
 const PERMISSION_KEY = 'e2e-folder-permission';
@@ -47,7 +48,7 @@ export async function forgetFolderPermission(page: Page): Promise<void> {
 }
 
 async function openDataSettings(page: Page): Promise<void> {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: 'Data' }).click();
 }
 

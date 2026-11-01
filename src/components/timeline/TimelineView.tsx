@@ -4,8 +4,8 @@
  * Main container for displaying lab results in chronological order.
  */
 
-import { useCallback } from 'react';
-import { Stack, Text, Loader, Alert, Center } from '@mantine/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Anchor, Stack, Text, Loader, Alert, Center } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
 import { useLabResults } from '@hooks/useLabResults';
@@ -65,6 +65,24 @@ export function TimelineView({
     [deleteNote]
   );
 
+  // Where keyboard focus goes once a deleted card is gone: the card after
+  // it, or before it, or else the first control on the page. The delete
+  // button that had focus goes with its card.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const focusAfterDelete = useRef<{ nextId?: number } | null>(null);
+  const [deletions, setDeletions] = useState(0);
+  useEffect(() => {
+    const pending = focusAfterDelete.current;
+    const root = rootRef.current;
+    if (!pending || !root) return;
+    focusAfterDelete.current = null;
+    const next =
+      pending.nextId !== undefined
+        ? root.querySelector<HTMLElement>(`[aria-controls="lab-result-${pending.nextId}-content"]`)
+        : null;
+    (next ?? root.querySelector<HTMLElement>('button, a[href], input, [tabindex="0"]'))?.focus();
+  }, [deletions, results]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -87,21 +105,9 @@ export function TimelineView({
         variant="light"
       >
         {error}
-        <Text
-          size="sm"
-          c="blue"
-          style={{ cursor: 'pointer', textDecoration: 'underline' }}
-          onClick={() => refresh()}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              refresh();
-            }
-          }}
-        >
+        <Anchor component="button" type="button" size="sm" underline="always" onClick={() => refresh()}>
           Try again
-        </Text>
+        </Anchor>
       </Alert>
     );
   }
@@ -111,13 +117,21 @@ export function TimelineView({
 
   // Empty state (no results and no filters applied)
   if (!hasAnyResults) {
-    return <EmptyTimeline onImportClick={onNavigateToImport} />;
+    return (
+      <div ref={rootRef}>
+        <EmptyTimeline onImportClick={onNavigateToImport} />
+      </div>
+    );
   }
 
   // Handle delete with error handling
   const handleDelete = async (id: number) => {
+    const index = results.findIndex((result) => result.id === id);
+    const neighbour = results[index + 1] ?? results[index - 1];
     try {
       await deleteResult(id);
+      focusAfterDelete.current = { nextId: neighbour?.id };
+      setDeletions((count) => count + 1);
       notifications.show({
         title: 'Lab result deleted',
         message: 'The lab result and its values were removed.',
@@ -130,7 +144,7 @@ export function TimelineView({
   };
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" ref={rootRef}>
       <TimelineFilters filters={filters} onFiltersChange={setFilters} />
 
       {results.length === 0 ? (
@@ -138,21 +152,9 @@ export function TimelineView({
         <Center py="xl">
           <Stack align="center" gap="sm">
             <Text c="dimmed">No lab results match your filters.</Text>
-            <Text
-              size="sm"
-              c="blue"
-              style={{ cursor: 'pointer', textDecoration: 'underline' }}
-              onClick={() => setFilters({})}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  setFilters({});
-                }
-              }}
-            >
+            <Anchor component="button" type="button" size="sm" underline="always" onClick={() => setFilters({})}>
               Clear filters
-            </Text>
+            </Anchor>
           </Stack>
         </Center>
       ) : (

@@ -125,6 +125,8 @@ Feature: Import Wizard
     Then I should see the first problems and how many more there are
     When I choose to show the rest
     Then I should see every problem
+    When I try to continue again
+    Then I should again see the first problems and how many more there are
 
   Scenario: User removes an extracted value
     Given I see an incorrectly extracted value

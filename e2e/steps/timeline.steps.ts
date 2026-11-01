@@ -174,7 +174,9 @@ export function labResultCard(page: Page, day: string): Locator {
 export async function expandLabResult(page: Page, day: string): Promise<Locator> {
   const card = labResultCard(page, day);
   await card.getByRole('button', { name: `Expand lab result from ${longDate(day)}` }).click();
-  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    card.getByRole('button', { name: `Collapse lab result from ${longDate(day)}` })
+  ).toHaveAttribute('aria-expanded', 'true');
   await waitForAnimations(card);
   return card;
 }

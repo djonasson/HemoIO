@@ -11,7 +11,7 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
   configureAnthropic,
@@ -23,7 +23,7 @@ import {
  * Helper to navigate to settings page
  */
 async function navigateToSettings(page: Page) {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
 }
 
 function glucoseTargetRow(page: Page) {

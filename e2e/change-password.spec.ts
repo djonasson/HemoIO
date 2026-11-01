@@ -3,7 +3,7 @@
  */
 
 import { test, expect } from './fixtures';
-import { TEST_PASSWORD, setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { goToNotes, noteCards, noteSeed, seedNotesData } from './steps/userNotes.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
@@ -46,11 +46,11 @@ test.describe('Change password', () => {
     await lockApp(page);
     await unlockApp(page, NEW_PASSWORD);
 
-    await page.locator('nav').getByText('Timeline', { exact: true }).click();
+    await openFromMenu(page, 'Timeline');
     await expect(page.getByText('Quest Diagnostics')).toBeVisible();
     const notes = await goToNotes(page);
     await expect(noteCards(notes).filter({ hasText: 'Fasted for twelve hours' })).toBeVisible();
-    await page.locator('nav').getByText('Settings', { exact: true }).click();
+    await openFromMenu(page, 'Settings');
     await page.getByRole('tab', { name: 'AI Configuration' }).click();
     await expect(page.getByText('••••••••0000')).toBeVisible();
   });
@@ -123,7 +123,7 @@ test.describe('Change password', () => {
     await expectPasswordRejected(page, TEST_PASSWORD);
     await unlockApp(page, NEW_PASSWORD);
 
-    await page.locator('nav').getByText('Timeline', { exact: true }).click();
+    await openFromMenu(page, 'Timeline');
     await expect(page.getByText('Quest Diagnostics')).toBeVisible();
   });
 

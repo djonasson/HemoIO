@@ -174,7 +174,7 @@ describe('TimelineView', () => {
 
     renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
 
-    fireEvent.click(screen.getByText(/try again/i));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
     expect(mockRefresh).toHaveBeenCalled();
   });
@@ -288,7 +288,7 @@ describe('TimelineView', () => {
 
     renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
 
-    fireEvent.click(screen.getByText(/clear filters/i));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
 
     expect(mockSetFilters).toHaveBeenCalledWith({});
   });
@@ -367,6 +367,8 @@ describe('TimelineView', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete this lab result' }));
       const dialog = await screen.findByRole('dialog');
       fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+      // Let the dialog's closing transition finish inside act, so its state updates don't warn under load
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     }
 
     it('shows a success notification after deleting', async () => {
@@ -418,7 +420,9 @@ describe('TimelineView', () => {
     renderWithProviders(<TimelineView onNavigateToImport={() => {}} focusLabResultId={2} />);
 
     const regions = screen.getAllByRole('region', { name: /^Lab result from / });
-    const expanded = regions.filter((r) => r.getAttribute('aria-expanded') === 'true');
+    const expanded = regions.filter(
+      (r) => within(r).getByRole('button', { name: /lab result from/ }).getAttribute('aria-expanded') === 'true'
+    );
     expect(expanded).toHaveLength(1);
     expect(expanded[0]).toHaveTextContent('LabCorp');
     expect(expanded[0]).toHaveFocus();

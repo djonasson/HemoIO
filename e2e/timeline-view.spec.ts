@@ -227,7 +227,10 @@ test.describe('Timeline with Data', () => {
 
     await goToTimeline(page);
 
-    await expect(card).toHaveAttribute('aria-expanded', 'false');
+    await expect(card.getByRole('button', { name: /^Expand lab result/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
   });
 
   test('should expand card to show test values', async ({ page }) => {
@@ -502,8 +505,20 @@ test.describe('Timeline with Data', () => {
     await card.getByRole('button', { name: 'Delete this lab result' }).focus();
     await page.keyboard.press('Enter');
 
-    await expect(page.getByRole('dialog', { name: 'Delete Lab Result' })).toBeVisible();
-    await expect(card.getByRole('button', { name: /^Expand lab result/ })).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: 'Delete Lab Result' });
+    await expect(dialog).toBeVisible();
+    await expect(card.getByRole('button', { name: /^Expand lab result/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
+
+    // Focus moves on to the lab result left, not back to the top of the page
+    await expect(card).toHaveCount(0);
+    await expect(
+      labResultCard(page, '2024-02-20').getByRole('button', { name: /^Expand lab result/ })
+    ).toBeFocused();
   });
 
   test('should show a success notification after deleting a result', async ({ page }) => {

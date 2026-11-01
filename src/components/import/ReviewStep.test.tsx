@@ -49,6 +49,7 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
       .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
       .map((name) => ({ name, aliases: [] }))
   ),
+  percentageOf: () => undefined,
 }));
 
 const mockAnalysisResult: AnalysisResult = {
@@ -367,6 +368,31 @@ describe('ReviewStep', () => {
       expect(screen.queryByPlaceholderText('Biomarker name')).not.toBeInTheDocument();
     });
 
+    it('takes a cleared number as missing, not as 0', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      await userEvent.clear(screen.getByPlaceholderText('Value'));
+
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].value).toBeNaN();
+    });
+
+    it('shows a value with no number as blank, and asks for it on Continue', () => {
+      const onComplete = vi.fn();
+      const blank = { ...mockReviewedResult.editedBiomarkers[0], value: NaN };
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [blank] }],
+        onComplete,
+      });
+
+      expect(screen.queryByText('NaN')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.getByText(/Glucose in "lab-report.pdf" is missing: value/)).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('updates biomarker name when edited', () => {
       const onReviewChange = vi.fn();
       renderReviewStep({ onReviewChange });
@@ -432,7 +458,8 @@ describe('ReviewStep', () => {
       const newResults = onReviewChange.mock.calls[0][0];
       expect(newResults[0].editedBiomarkers.length).toBe(2);
       expect(newResults[0].editedBiomarkers[1].name).toBe('');
-      expect(newResults[0].editedBiomarkers[1].value).toBe(0);
+      // No number until one is typed: 0 would be a reading of its own
+      expect(newResults[0].editedBiomarkers[1].value).toBeNaN();
     });
   });
 
@@ -876,7 +903,7 @@ describe('ReviewStep', () => {
       dictionaryMatch: nrbcPercentage,
       analyzed: { name: 'Eritroblasti', unit: '%' },
     };
-    // The same test in a unit no test is measured in
+    // The same test as a share no test is counted per
     const twin = {
       ...share,
       value: 0.5,
@@ -898,6 +925,20 @@ describe('ReviewStep', () => {
       expect(
         screen.getByText(/another Eritroblasti value is saved as Nucleated Red Blood Cells Percentage\. To keep this one, choose "Not in dictionary"\./)
       ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('asks no fix of it, even with no number, as it is not saved', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [{ ...twin, value: NaN }, share],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
       expect(onComplete).toHaveBeenCalled();

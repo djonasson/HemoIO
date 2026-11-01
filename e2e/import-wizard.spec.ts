@@ -332,6 +332,11 @@ test.describe('Import Wizard', () => {
 
       await expect(problems.getByRole('listitem')).toHaveCount(7);
       await expect(problems.getByText(/^Glicemia 7 in ".*": mmol\/24h is not a unit for Glucose/)).toBeVisible();
+
+      // Each try lists the problems afresh, folded again
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      await expect(problems.getByRole('listitem')).toHaveCount(5);
+      await expect(problems.getByRole('button', { name: 'Show 2 more' })).toBeVisible();
     });
 
     test('saves a name that matches no dictionary entry as typed', async ({ page }) => {

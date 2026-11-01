@@ -8,7 +8,7 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { continueToConfirm, saveResults } from './steps/importWizard.steps';
@@ -48,7 +48,7 @@ async function start(page: Page): Promise<void> {
 }
 
 async function openSettingsTab(page: Page, tab: string): Promise<void> {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
   await page.getByRole('tab', { name: tab }).click();
 }
 

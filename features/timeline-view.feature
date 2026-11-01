@@ -141,6 +141,9 @@ Feature: Timeline View
     And I press Enter on the delete button of the lab result card
     Then I should see a confirmation dialog
     And the lab result should stay as it was, not expanded
+    When I confirm the deletion with the keyboard
+    Then the lab result should be removed from the timeline
+    And the keyboard focus should move to the next lab result
 
   Scenario: Cancel lab result deletion
     Given I have a lab result from "Quest Diagnostics" on "2024-01-15"

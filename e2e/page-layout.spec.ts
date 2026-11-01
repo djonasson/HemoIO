@@ -153,6 +153,34 @@ test.describe('Page Layout', () => {
       await setupOrUnlock(page);
     });
 
+    test('a long file name wraps on a phone', async ({ page }) => {
+      // Scenario: A long file name wraps on a phone
+      await page.setViewportSize(NARROW_PHONE_SCREEN);
+      const fileName = 'Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf';
+
+      await analyzeReport(
+        page,
+        [{ name: 'Glicemia', value: 90, unit: 'mg/dL', confidence: 0.95, biomarkerKey: 'glucose' }],
+        1,
+        {
+          fileName,
+          onUploaded: async () => {
+            await test.step('upload', () => expectNoSidewaysScroll(page));
+            const remove = main(page).getByRole('button', { name: `Remove ${fileName}` });
+            await remove.scrollIntoViewIfNeeded();
+            await expect(remove).toBeInViewport({ ratio: 1 });
+          },
+        }
+      );
+      await test.step('review', () => expectNoSidewaysScroll(page));
+
+      await continueToConfirm(page);
+      await test.step('confirm', () => expectNoSidewaysScroll(page));
+      const shownName = main(page).getByText(fileName, { exact: true });
+      await shownName.scrollIntoViewIfNeeded();
+      await expect(shownName).toBeInViewport({ ratio: 1 });
+    });
+
     test('the values to import do not push a phone sideways', async ({ page }) => {
       // Scenario: The values to import scroll within their own box on a phone
       await page.setViewportSize(NARROW_PHONE_SCREEN);

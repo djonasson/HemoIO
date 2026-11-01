@@ -52,7 +52,7 @@ test.describe('AI biomarker identification', () => {
     ).toBeVisible();
   });
 
-  test('saves a test given twice once, leaving out the value in a unit no test is measured in', async ({
+  test('saves a test given twice once, leaving out the value as a share no test is counted per', async ({
     page,
   }) => {
     // Scenario: A test given twice, once as a share the app cannot read, is saved once

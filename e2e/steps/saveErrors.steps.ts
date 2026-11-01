@@ -9,7 +9,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
-import { unlockApp } from './app.steps';
+import { openFromMenu, unlockApp } from './app.steps';
 import { createBackupData, writeBackupFile, type SeedData } from './data.steps';
 import { removeTempFile } from './tempFiles';
 import { goToTimeline, labResultCards } from './timeline.steps';
@@ -145,7 +145,7 @@ export async function expectEmptyTimeline(page: Page): Promise<void> {
 export async function startRestore(page: Page, data: SeedData): Promise<void> {
   const backupPath = writeBackupFile(createBackupData(data));
   try {
-    await page.locator('nav').getByText('Settings', { exact: true }).click();
+    await openFromMenu(page, 'Settings');
     await page.getByRole('tab', { name: 'Data' }).click();
     await page.locator('input[type="file"]').setInputFiles(backupPath);
     const dialog = page.getByRole('dialog', { name: 'Restore from Backup' });

@@ -218,7 +218,7 @@ export function AlertGroupCard({
               ) : (
                 <IconChevronDown size={14} aria-hidden="true" />
               )}
-              <Text size="xs" c="blue">
+              <Text size="xs" c="var(--mantine-color-anchor)">
                 {opened ? 'Hide earlier results' : `Show ${plural(earlier.length, 'earlier result')}`}
               </Text>
             </Group>

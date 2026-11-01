@@ -12,6 +12,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  ThemeIcon,
   Collapse,
   Tooltip,
   Modal,
@@ -165,7 +166,6 @@ export function LabResultCard({
         shadow={expanded ? 'sm' : undefined}
         role="region"
         aria-label={`Lab result from ${formatDate(result.date)}`}
-        aria-expanded={expanded}
       >
         <Stack gap="sm">
           {/* Header: a click anywhere on it expands. Wraps on a narrow screen
@@ -183,22 +183,14 @@ export function LabResultCard({
               }}
               tabIndex={0}
               role="button"
+              aria-expanded={expanded}
               aria-controls={`lab-result-${result.id}-content`}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
             >
-              {/* Expand/collapse icon */}
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                aria-hidden="true"
-                tabIndex={-1}
-              >
-                {expanded ? (
-                  <IconChevronUp size={20} />
-                ) : (
-                  <IconChevronDown size={20} />
-                )}
-              </ActionIcon>
+              {/* Expand/collapse icon: the header is the button */}
+              <ThemeIcon variant="transparent" color="gray" aria-hidden="true">
+                {expanded ? <IconChevronUp size={20} /> : <IconChevronDown size={20} />}
+              </ThemeIcon>
 
               {/* Date and lab info */}
               <Stack gap={4}>
