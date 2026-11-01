@@ -108,6 +108,14 @@ describe('TestValuesList', () => {
     expect(screen.getByRole('columnheader', { name: /reference range/i })).toBeInTheDocument();
   });
 
+  it('holds the table in its own scroll box, so a narrow screen scrolls only the table', () => {
+    const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+    renderWithProviders(<TestValuesList testValues={testValues} />);
+
+    const table = screen.getByRole('table', { name: 'Test values' });
+    expect(table.closest('.mantine-ScrollArea-viewport')).not.toBeNull();
+  });
+
   it('should display biomarker name from raw text', () => {
     const testValues = [
       createTestValue(1, { rawText: 'Hemoglobin', value: 14.5 }),

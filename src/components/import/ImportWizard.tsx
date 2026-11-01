@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Stepper, Container, Title, Text, Paper } from '@mantine/core';
+import { Stepper, Title, Text, Paper } from '@mantine/core';
 import {
   IconUpload,
   IconAnalyze,
@@ -163,35 +163,33 @@ export function ImportWizard({
   };
 
   return (
-    <Container size="lg" py="xl">
-      <Paper shadow="sm" p="xl" radius="md" withBorder>
-        <Title order={2} mb="md">
-          Import Lab Results
-        </Title>
-        <Text c="dimmed" mb="xl">
-          Upload your lab report documents and we'll extract the values automatically.
-        </Text>
+    <Paper shadow="sm" p="xl" radius="md" withBorder>
+      <Title order={2} mb="md">
+        Import Lab Results
+      </Title>
+      <Text c="dimmed" mb="xl">
+        Upload your lab report documents and we'll extract the values automatically.
+      </Text>
 
-        <Stepper
-          active={activeStep}
-          onStepClick={setActiveStep}
-          allowNextStepsSelect={false}
-          mb="xl"
-        >
-          {STEPS.map((step, index) => (
-            <Stepper.Step
-              key={step.label}
-              label={step.label}
-              description={step.description}
-              icon={<step.icon size={18} />}
-              // Not while saving: the confirm step must stay to report the outcome
-              allowStepSelect={!isSaving && index < activeStep}
-            />
-          ))}
-        </Stepper>
+      <Stepper
+        active={activeStep}
+        onStepClick={setActiveStep}
+        allowNextStepsSelect={false}
+        mb="xl"
+      >
+        {STEPS.map((step, index) => (
+          <Stepper.Step
+            key={step.label}
+            label={step.label}
+            description={step.description}
+            icon={<step.icon size={18} />}
+            // Not while saving: the confirm step must stay to report the outcome
+            allowStepSelect={!isSaving && index < activeStep}
+          />
+        ))}
+      </Stepper>
 
-        {renderStepContent()}
-      </Paper>
-    </Container>
+      {renderStepContent()}
+    </Paper>
   );
 }

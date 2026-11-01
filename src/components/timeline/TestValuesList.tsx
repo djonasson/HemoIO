@@ -236,114 +236,117 @@ export function TestValuesList({
     );
   }
 
+  // On a narrow screen the table scrolls on its own instead of widening the page
   const table = (
-    <Table striped highlightOnHover withTableBorder aria-label="Test values">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Status</Table.Th>
-          <Table.Th>Biomarker</Table.Th>
-          <Table.Th>Specimen</Table.Th>
-          <Table.Th>Value</Table.Th>
-          <Table.Th>Unit</Table.Th>
-          <Table.Th>Reference Range</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {testValues.map((recorded) => {
-          // Shown in the preferred unit when one is set and the value converts
-          const definition = getBiomarkerForTestValue(recorded);
-          const testValue = convertForDisplay(
-            definition?.name ?? '',
-            recorded,
-            preferredUnitFor(definition, unitPreferences[recorded.biomarkerKey])
-          );
-          const indicator = getStatusIndicator(testValue.status);
-          const biomarkerName = getBiomarkerName(testValue);
-          // By the stored key only: a value saved as not in the dictionary is
-          // not the test its name is
-          const metadata = getBiomarkerMetadata(testValue, definition);
+    <Table.ScrollContainer minWidth={560}>
+      <Table striped highlightOnHover withTableBorder aria-label="Test values">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Status</Table.Th>
+            <Table.Th>Biomarker</Table.Th>
+            <Table.Th>Specimen</Table.Th>
+            <Table.Th>Value</Table.Th>
+            <Table.Th>Unit</Table.Th>
+            <Table.Th>Reference Range</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {testValues.map((recorded) => {
+            // Shown in the preferred unit when one is set and the value converts
+            const definition = getBiomarkerForTestValue(recorded);
+            const testValue = convertForDisplay(
+              definition?.name ?? '',
+              recorded,
+              preferredUnitFor(definition, unitPreferences[recorded.biomarkerKey])
+            );
+            const indicator = getStatusIndicator(testValue.status);
+            const biomarkerName = getBiomarkerName(testValue);
+            // By the stored key only: a value saved as not in the dictionary is
+            // not the test its name is
+            const metadata = getBiomarkerMetadata(testValue, definition);
 
-          // Build tooltip content for LOINC code and description
-          const tooltipParts: string[] = [];
-          if (metadata.loincCode) {
-            tooltipParts.push(`LOINC: ${metadata.loincCode}`);
-          }
-          if (metadata.description) {
-            tooltipParts.push(metadata.description);
-          }
-          const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
-          const descriptionId = `${idPrefix}-description-${testValue.id}`;
-          if (tooltipContent) descriptions.push({ id: descriptionId, text: tooltipContent });
+            // Build tooltip content for LOINC code and description
+            const tooltipParts: string[] = [];
+            if (metadata.loincCode) {
+              tooltipParts.push(`LOINC: ${metadata.loincCode}`);
+            }
+            if (metadata.description) {
+              tooltipParts.push(metadata.description);
+            }
+            const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
+            const descriptionId = `${idPrefix}-description-${testValue.id}`;
+            if (tooltipContent) descriptions.push({ id: descriptionId, text: tooltipContent });
 
-          return (
-            <Table.Tr
-              key={testValue.id}
-              data-status={testValue.status}
-              aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}, ${indicator.label}`}
-            >
-              <Table.Td>
-                <Tooltip label={indicator.label}>
-                  <ThemeIcon
-                    size="sm"
-                    color={indicator.color}
-                    variant="light"
-                    radius="xl"
-                    aria-label={indicator.label}
-                  >
-                    {indicator.icon}
-                  </ThemeIcon>
-                </Tooltip>
-              </Table.Td>
-              <Table.Td>
-                <BiomarkerName
-                  name={metadata.cleanName || biomarkerName}
-                  description={tooltipContent}
-                  descriptionId={descriptionId}
-                  onOpen={
-                    onOpenTrend && isTrendable(recorded)
-                      ? () => onOpenTrend(recorded.biomarkerKey)
-                      : undefined
-                  }
-                />
-              </Table.Td>
-              <Table.Td>
-                <Group gap={4}>
-                  <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+            return (
+              <Table.Tr
+                key={testValue.id}
+                data-status={testValue.status}
+                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}, ${indicator.label}`}
+              >
+                <Table.Td>
+                  <Tooltip label={indicator.label}>
+                    <ThemeIcon
+                      size="sm"
+                      color={indicator.color}
+                      variant="light"
+                      radius="xl"
+                      aria-label={indicator.label}
+                    >
+                      {indicator.icon}
+                    </ThemeIcon>
+                  </Tooltip>
+                </Table.Td>
+                <Table.Td>
+                  <BiomarkerName
+                    name={metadata.cleanName || biomarkerName}
+                    description={tooltipContent}
+                    descriptionId={descriptionId}
+                    onOpen={
+                      onOpenTrend && isTrendable(recorded)
+                        ? () => onOpenTrend(recorded.biomarkerKey)
+                        : undefined
+                    }
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                    <Text size="sm" c="dimmed">
+                      {getSpecimenLabel(metadata.specimenType)}
+                    </Text>
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    <Text
+                      size="sm"
+                      fw={testValue.status !== 'normal' && testValue.status !== 'unknown' ? 600 : 400}
+                      c={testValue.status === 'high' ? 'red' : testValue.status === 'low' ? 'orange' : undefined}
+                    >
+                      {formatValue(testValue)}
+                    </Text>
+                  </Group>
+                </Table.Td>
+                <Table.Td>
                   <Text size="sm" c="dimmed">
-                    {getSpecimenLabel(metadata.specimenType)}
+                    {testValue.unit}
                   </Text>
-                </Group>
-              </Table.Td>
-              <Table.Td>
-                <Group gap={4}>
-                  <Text
-                    size="sm"
-                    fw={testValue.status !== 'normal' && testValue.status !== 'unknown' ? 600 : 400}
-                    c={testValue.status === 'high' ? 'red' : testValue.status === 'low' ? 'orange' : undefined}
-                  >
-                    {formatValue(testValue)}
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm" c="dimmed">
+                    {formatReferenceRange(
+                      testValue.referenceRangeLow,
+                      testValue.referenceRangeHigh,
+                      testValue.unit
+                    )}
                   </Text>
-                </Group>
-              </Table.Td>
-              <Table.Td>
-                <Text size="sm" c="dimmed">
-                  {testValue.unit}
-                </Text>
-              </Table.Td>
-              <Table.Td>
-                <Text size="sm" c="dimmed">
-                  {formatReferenceRange(
-                    testValue.referenceRangeLow,
-                    testValue.referenceRangeHigh,
-                    testValue.unit
-                  )}
-                </Text>
-              </Table.Td>
-            </Table.Tr>
-          );
-        })}
-      </Table.Tbody>
-    </Table>
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 
   return (

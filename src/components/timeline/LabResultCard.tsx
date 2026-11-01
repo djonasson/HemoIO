@@ -169,9 +169,9 @@ export function LabResultCard({
       >
         <Stack gap="sm">
           {/* Header - clickable to expand */}
+          {/* Wraps on a narrow screen so the badges keep their full width */}
           <Group
             justify="space-between"
-            wrap="nowrap"
             style={{ cursor: 'pointer' }}
             onClick={handleToggle}
             onKeyDown={(e) => {

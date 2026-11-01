@@ -8,6 +8,7 @@ import { useState, useCallback, useContext } from 'react';
 import {
   Stack,
   Group,
+  SimpleGrid,
   Button,
   Text,
   Paper,
@@ -493,7 +494,8 @@ export function ReviewStep({
             <Accordion.Panel>
               <Stack gap="md">
                 {/* Lab info */}
-                <Group grow>
+                {/* Side by side when there is room, stacked on a phone */}
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
                   <DateInput
                     label="Lab Date"
                     leftSection={<IconCalendar size={16} />}
@@ -526,7 +528,7 @@ export function ReviewStep({
                       updateLabName(resultIndex, e.target.value || undefined)
                     }
                   />
-                </Group>
+                </SimpleGrid>
 
                 {/* Warnings */}
                 {result.warnings.length > 0 && (

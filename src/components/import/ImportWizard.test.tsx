@@ -47,6 +47,16 @@ describe('ImportWizard', () => {
     expect(screen.getByText('Import Lab Results')).toBeInTheDocument();
   });
 
+  it('is not held to a fixed width, so it uses all the room beside the menu', () => {
+    const { container } = render(
+      <TestWrapper>
+        <ImportWizard {...defaultProps} />
+      </TestWrapper>
+    );
+
+    expect(container.querySelector('.mantine-Container-root')).toBeNull();
+  });
+
   it('renders all step labels', () => {
     render(
       <TestWrapper>

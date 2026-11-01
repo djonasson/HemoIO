@@ -188,42 +188,44 @@ export function ConfirmStep({
               <Badge>{result.editedBiomarkers.length} values</Badge>
             </Group>
 
-            <Table withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Biomarker</Table.Th>
-                  <Table.Th>Value</Table.Th>
-                  <Table.Th>Reference Range</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {result.editedBiomarkers.map((biomarker, bioIndex) => (
-                  <Table.Tr key={bioIndex}>
-                    <Table.Td>
-                      <Text size="sm">{biomarker.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={500}>
-                        {formatBiomarkerValue(biomarker)} {biomarker.unit}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {biomarker.referenceRange ? (
-                        <Text size="sm" c="dimmed">
-                          {biomarker.referenceRange.low ?? '?'} -{' '}
-                          {biomarker.referenceRange.high ?? '?'}{' '}
-                          {biomarker.referenceRange.unit}
-                        </Text>
-                      ) : (
-                        <Text size="sm" c="dimmed">
-                          —
-                        </Text>
-                      )}
-                    </Table.Td>
+            <Table.ScrollContainer minWidth={480}>
+              <Table withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Biomarker</Table.Th>
+                    <Table.Th>Value</Table.Th>
+                    <Table.Th>Reference Range</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {result.editedBiomarkers.map((biomarker, bioIndex) => (
+                    <Table.Tr key={bioIndex}>
+                      <Table.Td>
+                        <Text size="sm">{biomarker.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={500}>
+                          {formatBiomarkerValue(biomarker)} {biomarker.unit}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {biomarker.referenceRange ? (
+                          <Text size="sm" c="dimmed">
+                            {biomarker.referenceRange.low ?? '?'} -{' '}
+                            {biomarker.referenceRange.high ?? '?'}{' '}
+                            {biomarker.referenceRange.unit}
+                          </Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </div>
         ))}
       </Paper>
