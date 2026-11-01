@@ -13,6 +13,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 import { configureOllamaProvider, mockOllama, type ExtractedBiomarkerFixture } from './ai.steps';
 import { seedLabData } from './data.steps';
 import { removeTempFile, writeTempFile } from './tempFiles';
@@ -196,7 +197,7 @@ export async function analyzeReport(
     writeTempFile(reportCount === 1 ? 'lab-report.pdf' : `lab-report-${i + 1}.pdf`, pdf)
   );
   try {
-    await page.getByRole('navigation').getByRole('button', { name: /^Import/ }).click();
+    await openFromMenu(page, 'Import');
     await page.locator('input[type="file"]').setInputFiles(pdfPaths);
     await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 

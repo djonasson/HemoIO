@@ -25,9 +25,9 @@ import type { AnalyzedValue, MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
  * Units of a share of cells: a percentage, per mille, or a count per 100
- * white cells
+ * white cells (however a report spells it, normalizeUnit writes it so)
  */
-const SHARE_UNIT = /^(%|‰|\/100\s*(wbc|leucociti|leukocytes|gb))$/i;
+const SHARE_UNIT = /^(%|‰|\/100 WBC)$/;
 
 /**
  * A 24-hour urine collection's amount per day and its concentration, which

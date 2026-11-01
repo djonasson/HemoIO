@@ -112,8 +112,10 @@ describe('TestValuesList', () => {
     const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
-    const table = screen.getByRole('table', { name: 'Test values' });
-    expect(table.closest('.mantine-ScrollArea-viewport')).not.toBeNull();
+    const box = screen.getByRole('table', { name: 'Test values' }).closest('[data-scroll-box]');
+    expect(box).toHaveStyle({ overflowX: 'auto' });
+    // Nothing to scroll here, so no extra stop for the keyboard
+    expect(box).not.toHaveAttribute('tabindex');
   });
 
   it('should display biomarker name from raw text', () => {

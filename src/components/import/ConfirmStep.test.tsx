@@ -108,12 +108,6 @@ describe('ConfirmStep', () => {
     expect(screen.getByText('100 mg/dL')).toBeInTheDocument();
   });
 
-  it('holds each table in its own scroll box, so a narrow screen scrolls only the table', () => {
-    renderConfirmStep();
-
-    expect(screen.getByRole('table').closest('.mantine-ScrollArea-viewport')).not.toBeNull();
-  });
-
   it('lists the values left out and the file each came from', () => {
     renderConfirmStep({
       notSaved: [

@@ -215,8 +215,8 @@ export function LabResultCard({
               </Stack>
             </Group>
 
-            {/* Badges and actions */}
-            <Group gap="sm" wrap="nowrap">
+            {/* Badges and actions; on a very narrow screen they wrap rather than shrink */}
+            <Group gap="sm">
               {/* Biomarker count badge */}
               <Badge variant="light" color="blue">
                 {result.totalCount} test{result.totalCount !== 1 ? 's' : ''}

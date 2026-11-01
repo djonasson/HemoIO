@@ -38,7 +38,7 @@ import {
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
-import { BIOMARKER_DEFINITIONS, findBiomarker } from '../../data/biomarkers/dictionary';
+import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import {
@@ -51,7 +51,8 @@ import {
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
 import { loincLabel } from '@data/biomarkers/loinc';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { misfitTest, planSave, targetTest } from '@services/analysis/reviewedSave';
+import { misfitTest, missingFields, planSave } from '@services/analysis/reviewedSave';
+import { proposedTest } from '@services/analysis/nameMatching';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import type { SpecimenType } from '../../types';
@@ -356,24 +357,7 @@ export function ReviewStep({
 
     reviewedResults.forEach((r) => {
       r.editedBiomarkers.forEach((b, index) => {
-        const missing: string[] = [];
-        if (!b.name) missing.push('name');
-        if (b.value === undefined || b.value === null) missing.push('value');
-        // Check if unit is required - some biomarkers like pH are unitless
-        if (!b.unit.trim()) {
-          // The test the value is saved as or proposed for (rows not analyzed: by name)
-          const biomarkerDef =
-            targetTest(b) ??
-            (b.identificationFlags ? undefined : findBiomarker(b.name || ''));
-          // A test with a unit needs one; an analyzed value with no test may
-          // have none (specific gravity, ratios), as the report gave it
-          const unitRequired = biomarkerDef
-            ? biomarkerDef.canonicalUnit !== ''
-            : !b.identificationFlags;
-          if (unitRequired) {
-            missing.push('unit');
-          }
-        }
+        const missing = missingFields(b);
 
         // A value is saved under its test only in a unit of that test: the
         // one proposed (by the AI or the typed name), or the one it is saved
@@ -665,7 +649,9 @@ export function ReviewStep({
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
                                   </Text>{' '}
-                                  another value of {getDisplayName(biomarker)} is
+                                  another {getDisplayName(biomarker)} value is saved as{' '}
+                                  {proposedTest(biomarker)?.name}. To keep this one, choose
+                                  &quot;Not in dictionary&quot;.
                                 </Text>
                               )}
                             </Table.Td>

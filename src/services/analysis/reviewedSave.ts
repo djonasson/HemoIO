@@ -4,7 +4,12 @@
  */
 
 import { unitFitsBiomarker } from '@services/units/unitFit';
-import { nameKey, type BiomarkerDefinition } from '@data/biomarkers/dictionary';
+import {
+  BIOMARKER_DEFINITIONS,
+  findBiomarker,
+  nameKey,
+  type BiomarkerDefinition,
+} from '@data/biomarkers/dictionary';
 import { proposedTest } from './nameMatching';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -26,23 +31,41 @@ export interface SavePlan<T extends ReviewedFile> {
   notSaved: SetAsideValue[];
 }
 
+/** What a value lacks to be saved */
+export type MissingField = 'name' | 'value' | 'unit';
+
 /**
- * The test a value is saved under: the one chosen for it, or the one
- * proposed (by the AI or the typed name). None for "Not in dictionary".
+ * The test a value is checked against: the one it is saved as, or the one
+ * proposed for it (by the AI or the typed name), which it is saved as once
+ * its unit fits. None for "Not in dictionary".
  */
 export function targetTest(biomarker: MatchedBiomarker): BiomarkerDefinition | undefined {
   if (biomarker.savedAsUnknown) return undefined;
   return biomarker.dictionaryMatch ?? proposedTest(biomarker);
 }
 
-/** Whether a value has a name and a number, as every saved value must */
-export function hasNameAndValue(biomarker: MatchedBiomarker): boolean {
-  return !!biomarker.name && biomarker.value !== undefined && biomarker.value !== null;
+/**
+ * What a value lacks to be saved: a name, a number, or a unit when its test
+ * has one. An analyzed value with no test may have none (specific gravity,
+ * ratios), as the report gave it; a row added by hand is read by its name.
+ */
+export function missingFields(biomarker: MatchedBiomarker): MissingField[] {
+  const missing: MissingField[] = [];
+  if (!biomarker.name) missing.push('name');
+  if (!Number.isFinite(biomarker.value)) missing.push('value');
+  if (!biomarker.unit.trim()) {
+    const test =
+      targetTest(biomarker) ??
+      (biomarker.identificationFlags ? undefined : findBiomarker(biomarker.name || ''));
+    const unitRequired = test ? test.canonicalUnit !== '' : !biomarker.identificationFlags;
+    if (unitRequired) missing.push('unit');
+  }
+  return missing;
 }
 
 /**
- * The test a value would be saved under when its unit is not a unit of
- * that test
+ * The test a value would be saved as when its unit is not a unit of that
+ * test
  */
 export function misfitTest(biomarker: MatchedBiomarker): BiomarkerDefinition | undefined {
   if (!biomarker.unit.trim()) return undefined;
@@ -50,21 +73,50 @@ export function misfitTest(biomarker: MatchedBiomarker): BiomarkerDefinition | u
   return test && !unitFitsBiomarker(test, biomarker.unit) ? test : undefined;
 }
 
+/** Whether a value is saved as it stands: nothing missing, its unit fits */
+function isReady(biomarker: MatchedBiomarker): boolean {
+  return missingFields(biomarker).length === 0 && !misfitTest(biomarker);
+}
+
 /**
- * The values of a file the import leaves out: those whose unit fits no
- * test they could be saved under, when another value of their line (a
- * report that gives one test in two units) is saved. That value is kept,
- * so nothing is lost, and the user need not remove the other by hand.
+ * Whether a value is a twin the import may leave out on its own: a test
+ * the analysis proposed, unchanged by the user, in a unit no test in the
+ * dictionary is measured in. A unit some test fits may be another
+ * measurement (a 24-hour amount next to a concentration), and a test or row
+ * the user chose is theirs, so those still ask for a fix.
+ */
+function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
+  const { analyzed } = biomarker;
+  return (
+    !!analyzed &&
+    biomarker.identifiedBy !== 'user' &&
+    !biomarker.dictionaryMatch &&
+    !!misfitTest(biomarker) &&
+    nameKey(biomarker.name) === nameKey(analyzed.name) &&
+    biomarker.unit === analyzed.unit &&
+    !BIOMARKER_DEFINITIONS.some((test) => unitFitsBiomarker(test, biomarker.unit))
+  );
+}
+
+/**
+ * The values of a file the import leaves out: twins (see mayLeaveOut) of a
+ * value of the same printed name saved as the same test. A report that gives
+ * one test in two units keeps the one in a unit of that test, and the user
+ * need not remove the other by hand.
  */
 function setAside(values: readonly MatchedBiomarker[]): Set<MatchedBiomarker> {
-  const misfits = values.filter((value) => misfitTest(value));
-  if (misfits.length === 0) return new Set();
-  const savedLines = new Set(
+  const candidates = values.filter(mayLeaveOut);
+  if (candidates.length === 0) return new Set();
+  const saved = new Set(
     values
-      .filter((value) => hasNameAndValue(value) && !misfitTest(value))
-      .map((value) => nameKey(value.name))
+      .filter(isReady)
+      .map((value) => `${nameKey(value.name)}\u0000${targetTest(value)?.key ?? ''}`)
   );
-  return new Set(misfits.filter((value) => savedLines.has(nameKey(value.name))));
+  return new Set(
+    candidates.filter((value) =>
+      saved.has(`${nameKey(value.name)}\u0000${targetTest(value)!.key}`)
+    )
+  );
 }
 
 /**

@@ -6,6 +6,8 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export const WIDE_SCREEN = { width: 1920, height: 1000 };
 export const PHONE_SCREEN = { width: 390, height: 844 };
+/** The narrowest width pages must reflow to (WCAG 1.4.10) */
+export const NARROW_PHONE_SCREEN = { width: 320, height: 640 };
 
 /** The pages the main menu opens, by the start of their menu label */
 export const MENU_PAGES = ['Timeline', 'Import', 'Trends', 'Alerts', 'Notes', 'Biomarkers', 'Settings'];
@@ -69,7 +71,9 @@ export async function expectShownInFull(locator: Locator): Promise<void> {
  * table's own scroll box is narrower than the table
  */
 export async function expectTableScrollsOnItsOwn(table: Locator): Promise<void> {
-  const box = table.locator('xpath=ancestor::*[contains(@class, "mantine-ScrollArea-viewport")][1]');
-  await expect(box).toHaveCount(1);
+  const box = table.locator('xpath=ancestor::*[@data-scroll-box][1]');
   await expect.poll(() => isWiderThanShown(box)).toBe(true);
+  // The keyboard can reach it to scroll it
+  await expect(box).toHaveAttribute('tabindex', '0');
+  await expect(box).toHaveAccessibleName('Test values, scrollable');
 }

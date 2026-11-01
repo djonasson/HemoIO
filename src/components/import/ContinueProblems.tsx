@@ -3,7 +3,7 @@
  * rest a click away
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, List, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
@@ -16,10 +16,19 @@ interface ContinueProblemsProps {
   onClose: () => void;
 }
 
-export function ContinueProblems({ problems, onClose }: ContinueProblemsProps) {
+/**
+ * The "Cannot Continue" alert: the first problems, and a button that shows
+ * the rest and moves focus to the first of them, as the button goes
+ */
+export function ContinueProblems({ problems, onClose }: ContinueProblemsProps): React.ReactNode {
   const [showAll, setShowAll] = useState(false);
+  const firstRevealed = useRef<HTMLLIElement>(null);
   const hidden = problems.length - PROBLEMS_SHOWN_FIRST;
   const shown = showAll ? problems : problems.slice(0, PROBLEMS_SHOWN_FIRST);
+
+  useEffect(() => {
+    if (showAll) firstRevealed.current?.focus();
+  }, [showAll]);
 
   return (
     <Alert
@@ -33,7 +42,13 @@ export function ContinueProblems({ problems, onClose }: ContinueProblemsProps) {
       <Text size="sm">Please fix the following issues:</Text>
       <List size="sm" mt={4}>
         {shown.map((problem, index) => (
-          <List.Item key={index}>{problem}</List.Item>
+          <List.Item
+            key={index}
+            ref={index === PROBLEMS_SHOWN_FIRST ? firstRevealed : undefined}
+            tabIndex={index === PROBLEMS_SHOWN_FIRST ? -1 : undefined}
+          >
+            {problem}
+          </List.Item>
         ))}
       </List>
       {!showAll && hidden > 0 && (

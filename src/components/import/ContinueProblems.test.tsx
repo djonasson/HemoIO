@@ -34,6 +34,14 @@ describe('ContinueProblems', () => {
     expect(screen.queryByRole('button', { name: /more/ })).not.toBeInTheDocument();
   });
 
+  it('moves focus to the first problem it reveals, as its button goes', async () => {
+    renderProblems(problems);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show 3 more' }));
+
+    expect(screen.getByText('Problem 6').closest('li')).toHaveFocus();
+  });
+
   it('offers no more when every problem is shown', () => {
     renderProblems(problems.slice(0, 5));
 

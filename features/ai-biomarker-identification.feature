@@ -19,11 +19,11 @@ Feature: AI biomarker identification
     Then the row should be labelled "Unit doesn't fit"
     And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
 
-  Scenario: A value in a unit that doesn't fit is left out when the same line has one that fits
-    Given a report gives "Eritroblasti" twice, in a unit no test is measured in and in 10^9/L
+  Scenario: A test given twice, once in a unit no test is measured in, is saved once
+    Given the AI identifies "Eritroblasti" twice as Nucleated Red Blood Cells Percentage, in % and in a unit no test is measured in
     When the report is analyzed
-    Then the value in 10^9/L should be saved as Nucleated Red Blood Cells
-    And the other value should be labelled "Not saved", because a value of its line is saved
+    Then the value in % should be saved as Nucleated Red Blood Cells Percentage
+    And the other value should be labelled "Not saved", with how to keep it
     And Continue should not be blocked by it
     And the confirmation should list it as not saved
 
@@ -31,6 +31,18 @@ Feature: AI biomarker identification
     Given a report gives "Eritroblasti" once, in a unit no test is measured in
     When the report is analyzed
     Then Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
+
+  Scenario: A value whose unit fits another test still blocks, as it may be another measurement
+    Given the AI identifies "Sodio" in mmol/L and "Sodio" in mmol/24h both as Sodium
+    When the report is analyzed
+    Then the value in mmol/24h should not be left out
+    And Continue should be blocked until I choose a fitting unit, another test, or "Not in dictionary"
+
+  Scenario: A test I choose is never left out
+    Given a value of a test given twice was left out
+    When I choose its test myself
+    Then it should no longer be labelled "Not saved"
+    And Continue should be blocked until its unit fits the test I chose
 
   Scenario: The printed name suggests a different test
     Given the AI identifies "BUN" in mg/dL as Urea

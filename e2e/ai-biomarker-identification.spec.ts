@@ -52,8 +52,10 @@ test.describe('AI biomarker identification', () => {
     ).toBeVisible();
   });
 
-  test('leaves out a value whose unit does not fit when its line has one that fits', async ({ page }) => {
-    // Scenario: A value in a unit that doesn't fit is left out when the same line has one that fits
+  test('saves a test given twice once, leaving out the value in a unit no test is measured in', async ({
+    page,
+  }) => {
+    // Scenario: A test given twice, once in a unit no test is measured in, is saved once
     await analyzeReport(page, [
       {
         name: 'Eritroblasti',
@@ -64,22 +66,63 @@ test.describe('AI biomarker identification', () => {
       },
       {
         name: 'Eritroblasti',
-        value: 0.01,
-        unit: '10^9/L',
+        value: 0.2,
+        unit: '%',
         confidence: 0.95,
-        biomarkerKey: 'nucleated-red-blood-cells',
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
       },
     ]);
-    await expect(savedAsCell(rowFor(page, '0.01'))).toHaveText(/^Nucleated Red Blood Cells/);
+    await expect(savedAsCell(rowFor(page, '0.2'))).toHaveText('Nucleated Red Blood Cells Percentage');
     await expect(rowFor(page, '0.5').getByText('Not saved:')).toBeVisible();
-    await expect(rowFor(page, '0.01').getByText('Not saved:')).toHaveCount(0);
+    await expect(rowFor(page, '0.5')).toContainText('To keep this one, choose "Not in dictionary".');
+    await expect(rowFor(page, '0.2').getByText('Not saved:')).toHaveCount(0);
 
     await continueToConfirm(page);
 
-    const notSaved = main(page).getByRole('alert').filter({ hasText: '1 value not saved' });
+    const notSaved = main(page).getByRole('status').filter({ hasText: '1 value not saved' });
     await expect(notSaved).toContainText('Eritroblasti: 0.5 /100 HPF');
-    await expect(main(page).getByRole('cell', { name: '0.01 10^9/L' })).toBeVisible();
+    await expect(main(page).getByRole('cell', { name: '0.2 %' })).toBeVisible();
     await expect(main(page).getByRole('cell', { name: '0.5 /100 HPF' })).toHaveCount(0);
+  });
+
+  test('never leaves out a value whose test I chose', async ({ page }) => {
+    // Scenario: A test I choose is never left out
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '%',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toBeVisible();
+
+    await changeTest(page, rowFor(page, '0.5'), 'Nucleated Red Blood Cells Percentage');
+
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(
+      page.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
+    ).toBeVisible();
+  });
+
+  test('still blocks a value whose unit fits another test', async ({ page }) => {
+    // Scenario: A value whose unit fits another test still blocks, as it may be another measurement
+    await analyzeReport(page, [
+      { name: 'Sodio', value: 140, unit: 'mmol/L', confidence: 0.95, biomarkerKey: 'sodium' },
+      { name: 'Sodio', value: 180, unit: 'mmol/24h', confidence: 0.95, biomarkerKey: 'sodium' },
+    ]);
+    await expect(rowFor(page, '180').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText(/mmol\/24h is not a unit for Sodium/)).toBeVisible();
   });
 
   test('still blocks a value whose unit does not fit when it is the only one of its line', async ({

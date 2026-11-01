@@ -5,7 +5,8 @@
 import { Anchor, Stack, Text, Title } from '@mantine/core';
 import { LOINC_NOTICE, LOINC_VERSION } from '@data/biomarkers/loinc';
 
-export function AboutSettings() {
+/** The About tab: the app's license and the LOINC notice */
+export function AboutSettings(): React.ReactNode {
   return (
     <Stack gap="sm">
       <Title order={4}>About HemoIO</Title>

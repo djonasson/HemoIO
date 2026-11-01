@@ -831,48 +831,50 @@ describe('ReviewStep', () => {
   });
 
   describe('A value left out for another value of its line', () => {
-    const nrbc = {
-      key: 'nucleated-red-blood-cells',
-      name: 'Nucleated Red Blood Cells',
-      canonicalUnit: '10^9/L',
-      aliases: [],
-      category: 'cbc' as const,
-      description: '',
-      alternativeUnits: [],
-      related: [],
-    };
     const nrbcPercentage = {
-      ...nrbc,
       key: 'nucleated-red-blood-cells-percentage',
       name: 'Nucleated Red Blood Cells Percentage',
       canonicalUnit: '/100 WBC',
+      aliases: [],
+      category: 'cbc' as const,
+      description: '',
       alternativeUnits: ['%'],
+      related: [],
     };
-    const count = {
+    const share = {
       name: 'Eritroblasti',
-      value: 0,
-      unit: '10^9/L',
+      value: 0.2,
+      unit: '%',
       confidence: 0.95,
       isExactMatch: false,
-      normalizedUnit: '10^9/L',
-      dictionaryMatch: nrbc,
+      normalizedUnit: '%',
+      identifiedBy: 'ai' as const,
+      identificationFlags: [],
+      dictionaryMatch: nrbcPercentage,
+      analyzed: { name: 'Eritroblasti', unit: '%' },
     };
-    const misfit = {
-      ...count,
+    // The same test in a unit no test is measured in
+    const twin = {
+      ...share,
+      value: 0.5,
       unit: '/100 HPF',
       normalizedUnit: '/100 HPF',
       dictionaryMatch: undefined,
       identificationFlags: ['unit-mismatch' as const],
       suggestedMatch: nrbcPercentage,
+      analyzed: { name: 'Eritroblasti', unit: '/100 HPF' },
     };
 
-    it('is labelled "Not saved" and does not stop the import', () => {
+    it('is labelled "Not saved", says how to keep it, and does not stop the import', () => {
       const onComplete = vi.fn();
-      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [misfit, count] };
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [twin, share] };
 
       renderReviewStep({ reviewedResults: [reviewed], onComplete });
 
       expect(screen.getAllByText('Not saved:')).toHaveLength(1);
+      expect(
+        screen.getByText(/another Eritroblasti value is saved as Nucleated Red Blood Cells Percentage\. To keep this one, choose "Not in dictionary"\./)
+      ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
       expect(onComplete).toHaveBeenCalled();
@@ -880,7 +882,7 @@ describe('ReviewStep', () => {
 
     it('still stops the import when it is the only value of its line', () => {
       const onComplete = vi.fn();
-      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [misfit] };
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [twin] };
 
       renderReviewStep({ reviewedResults: [reviewed], onComplete });
 

@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 import { seedLabData } from './data.steps';
 import {
   BIOMARKERS,
@@ -152,9 +153,7 @@ export { isoDate } from './timeline.steps';
  * When I navigate to the Notes view
  */
 export async function goToNotes(page: Page): Promise<Locator> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Notes/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Notes');
   return page.getByRole('main');
 }
 

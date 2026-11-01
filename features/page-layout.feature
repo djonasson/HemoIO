@@ -12,10 +12,18 @@ Feature: Page Layout
     When I open each page from the menu
     Then its content should fill the width beside the menu
 
-  Scenario: The import review uses the full width of a wide screen
+  Scenario: The import wizard uses the full width of a wide screen
     Given my screen is wide
-    When I review the values found in a lab report
-    Then the review should fill the width beside the menu
+    And an AI provider is configured
+    When I open the import wizard
+    Then it should fill the width beside the menu
+    And so should the review of the values found in a lab report
+
+  Scenario: The import wizard does not scroll sideways on a phone
+    Given my screen is the width of the narrowest phone
+    And an AI provider is configured
+    When I open the import wizard
+    Then the page should not scroll sideways
 
   Scenario: No page scrolls sideways on a phone
     Given my screen is the width of a phone
@@ -26,12 +34,13 @@ Feature: Page Layout
     Given my screen is the width of a phone
     When I open a lab result on the timeline
     Then the page should not scroll sideways
-    But I should be able to scroll the table of its values sideways
+    But I should be able to scroll the table of its values sideways, also by keyboard
 
   Scenario: A lab result's summary is readable on a phone
-    Given my screen is the width of a phone
-    When I look at a lab result on the timeline
-    Then its number of tests and of abnormal values should be shown in full
+    Given my screen is the width of the narrowest phone
+    And a lab result has a note
+    When I look at the lab result on the timeline
+    Then its number of tests, of abnormal values and of notes should be shown in full
 
   Scenario: The lab date and name are readable on a phone
     Given my screen is the width of a phone

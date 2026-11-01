@@ -10,11 +10,13 @@ import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
-import { analyzeToReview, loginWithOllama, main } from './steps/importWizard.steps';
+import { analyzeToReview, goToImport, loginWithOllama, main } from './steps/importWizard.steps';
 import { expandLabResult, labResultCard } from './steps/timeline.steps';
 import { removeTempFile } from './steps/tempFiles';
+import { noteSeed } from './steps/userNotes.steps';
 import {
   MENU_PAGES,
+  NARROW_PHONE_SCREEN,
   PHONE_SCREEN,
   WIDE_SCREEN,
   expectFullWidth,
@@ -29,7 +31,8 @@ const DAY = '2024-01-15';
 async function openWithResults(page: Page): Promise<void> {
   await page.goto('/');
   await setupOrUnlock(page);
-  await seedLabData(page);
+  // A note on the lab result adds a badge to its summary
+  await seedLabData(page, { userNotes: [noteSeed(1, { labResultId: 1 }, 'Fasting')] });
 }
 
 test.describe('Page Layout', () => {
@@ -64,11 +67,11 @@ test.describe('Page Layout', () => {
     });
 
     test("a lab result's summary is readable on a phone", async ({ page }) => {
-      await page.setViewportSize(PHONE_SCREEN);
+      await page.setViewportSize(NARROW_PHONE_SCREEN);
 
       const card = labResultCard(page, DAY);
 
-      for (const badge of [card.getByText('2 tests'), card.getByText('1 abnormal')]) {
+      for (const badge of [card.getByText('2 tests'), card.getByText('1 abnormal'), card.getByLabel('1 note')]) {
         await expectShownInFull(badge);
       }
     });
@@ -78,8 +81,26 @@ test.describe('Page Layout', () => {
     let pdfPath: string;
 
     test.beforeEach(async ({ page }) => {
-      await loginWithOllama(page);
       pdfPath = createTextLabReportPdf();
+      await loginWithOllama(page);
+    });
+
+    test('the import wizard uses the full width of a wide screen from its first step', async ({
+      page,
+    }) => {
+      await page.setViewportSize(WIDE_SCREEN);
+
+      await goToImport(page);
+
+      await expectFullWidth(page);
+    });
+
+    test('the import wizard does not scroll sideways on a phone', async ({ page }) => {
+      await page.setViewportSize(NARROW_PHONE_SCREEN);
+
+      await goToImport(page);
+
+      await expectNoSidewaysScroll(page);
     });
 
     test.afterEach(() => {

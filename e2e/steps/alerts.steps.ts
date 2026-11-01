@@ -5,7 +5,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
-import { setupOrUnlock } from './app.steps';
+import { openFromMenu, setupOrUnlock } from './app.steps';
 import { waitForAnimations } from './timeline.steps';
 import { seedVisits, type LabVisit } from './trends.steps';
 import { readStoredRows } from './dataAtRest.steps';
@@ -27,7 +27,7 @@ export async function seedAlertData(page: Page, visits: LabVisit[]): Promise<voi
  * When I view the alerts
  */
 export async function viewAlerts(page: Page): Promise<void> {
-  await page.getByRole('navigation').getByRole('button', { name: /^Alerts/ }).click();
+  await openFromMenu(page, 'Alerts');
 }
 
 /**
