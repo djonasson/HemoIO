@@ -6,7 +6,7 @@
  */
 import { BIOMARKER_DEFINITIONS } from '@data/biomarkers/dictionary';
 import { buildTestList } from './testList';
-import type { AnalysisOptions } from './types';
+import type { AnalysisOptions, TestChoiceRequest } from './types';
 
 /**
  * System prompt for lab report analysis
@@ -212,3 +212,56 @@ ${buildTestList(BIOMARKER_DEFINITIONS)}
 export const ENHANCED_SYSTEM_PROMPT = `${LAB_REPORT_SYSTEM_PROMPT}
 
 ${IDENTIFICATION_CONTEXT}`;
+
+
+/**
+ * System prompt for choosing the LOINC test of printed values among candidates
+ */
+export const TEST_CHOICE_SYSTEM_PROMPT = `You match laboratory test names printed on a lab report to LOINC tests.
+
+For each value you get the printed name, its unit, the sample the report names (if any) and a list of candidate LOINC tests (code and long name).
+
+RULES:
+1. Choose ONLY a code from that value's own candidate list, or null when none fits. Never invent a code and never use a code from another value's list.
+2. Judge by the printed name, the unit and the sample together: a concentration (per litre) differs from an amount per day, and a count from a percentage; urine differs from blood.
+3. Set "confident" to false when two or more candidates fit equally well, or when you are unsure. Set it to true only when one candidate clearly fits.
+4. Answer every value, using the same "id" it was given.
+
+OUTPUT FORMAT:
+Respond with a JSON object only: {"choices": [{"id": string, "code": string or null, "confident": boolean}]}`;
+
+/**
+ * Expected JSON schema for the test choice response
+ */
+export const TEST_CHOICE_SCHEMA = {
+  type: 'object',
+  properties: {
+    choices: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          code: { type: ['string', 'null'] },
+          confident: { type: 'boolean' },
+        },
+        required: ['id', 'code', 'confident'],
+      },
+    },
+  },
+  required: ['choices'],
+};
+
+/**
+ * The user prompt for one report's values: every value with all its candidates
+ */
+export function createTestChoicePrompt(requests: TestChoiceRequest[]): string {
+  const values = requests.map((request) => ({
+    id: request.id,
+    name: request.name,
+    unit: request.unit,
+    ...(request.specimenHint ? { specimen: request.specimenHint } : {}),
+    candidates: request.candidates.map(({ code, name }) => ({ code, name })),
+  }));
+  return `Choose the LOINC test for each value below.\n\nVALUES:\n${JSON.stringify(values, null, 2)}`;
+}

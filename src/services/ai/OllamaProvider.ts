@@ -12,12 +12,17 @@ import {
   type AnalysisOptions,
   type LabReportAnalysisResult,
   type ExtractedBiomarker,
+  type TestChoice,
+  type TestChoiceRequest,
   AIAnalysisError,
 } from './types';
 import {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
+  createTestChoicePrompt,
+  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
+import { parseTestChoices } from './testChoice';
 import {
   OLLAMA_DEFAULTS,
   isOllamaRunning,
@@ -134,6 +139,44 @@ export class OllamaProvider implements AIProvider {
       }
       throw new AIAnalysisError(
         `Ollama analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+        'ollama'
+      );
+    }
+  }
+
+  /**
+   * Choose the test of each printed value among its candidates, in one call
+   */
+  async chooseTests(
+    requests: TestChoiceRequest[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
+  ): Promise<TestChoice[]> {
+    if (requests.length === 0) return [];
+
+    const modelToUse = await this.ensureModel();
+    const messages: ChatMessage[] = [
+      { role: 'system', content: TEST_CHOICE_SYSTEM_PROMPT },
+      { role: 'user', content: createTestChoicePrompt(requests) },
+    ];
+    const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
+    // About 40 tokens of answer per value, never below the configured limit
+    const { size, answerRoom } = ollamaContext(
+      characters,
+      Math.max(this.maxTokens, requests.length * 40),
+      0,
+      CONTEXT_SLACK
+    );
+
+    try {
+      const response = await this.chat(messages, modelToUse, options, size, answerRoom);
+      // A cut-off or empty answer has no readable choices: no choice for any value
+      return parseTestChoices(response.message?.content, requests);
+    } catch (error) {
+      if (error instanceof AIAnalysisError) {
+        throw error;
+      }
+      throw new AIAnalysisError(
+        `Ollama test choice failed: ${error instanceof Error ? error.message : String(error)}`,
         'ollama'
       );
     }

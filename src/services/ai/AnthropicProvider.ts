@@ -11,12 +11,17 @@ import type {
   AnalysisOptions,
   LabReportAnalysisResult,
   ExtractedBiomarker,
+  TestChoice,
+  TestChoiceRequest,
 } from './types';
 import { AIAnalysisError, AIConfigurationError } from './types';
 import {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
+  createTestChoicePrompt,
+  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
+import { parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withBiomarkerKey } from './biomarkerKey';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -162,6 +167,41 @@ export class AnthropicProvider implements AIProvider {
       }
       throw new AIAnalysisError(
         `Anthropic analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+        'anthropic'
+      );
+    }
+  }
+
+  /**
+   * Choose the test of each printed value among its candidates, in one call
+   */
+  async chooseTests(
+    requests: TestChoiceRequest[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
+  ): Promise<TestChoice[]> {
+    if (requests.length === 0) return [];
+
+    const messages: AnthropicMessage[] = [
+      { role: 'user', content: createTestChoicePrompt(requests) },
+    ];
+
+    try {
+      const response = await this.makeRequest(
+        messages,
+        TEST_CHOICE_SYSTEM_PROMPT,
+        options.rateLimit,
+        options.signal
+      );
+      // Thinking blocks may come first; a refusal or cut-off has no readable
+      // choices, which is no choice for any value
+      const content = response.content.find((block) => block.type === 'text')?.text;
+      return parseTestChoices(content, requests);
+    } catch (error) {
+      if (error instanceof AIAnalysisError) {
+        throw error;
+      }
+      throw new AIAnalysisError(
+        `Anthropic test choice failed: ${error instanceof Error ? error.message : String(error)}`,
         'anthropic'
       );
     }

@@ -11,13 +11,18 @@ import {
   type AnalysisOptions,
   type LabReportAnalysisResult,
   type ExtractedBiomarker,
+  type TestChoice,
+  type TestChoiceRequest,
   AIAnalysisError,
   AIConfigurationError,
 } from './types';
 import {
   ENHANCED_SYSTEM_PROMPT,
   createAnalysisPrompt,
+  createTestChoicePrompt,
+  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
+import { parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withBiomarkerKey } from './biomarkerKey';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -157,6 +162,34 @@ export class OpenAIProvider implements AIProvider {
       }
       throw new AIAnalysisError(
         `OpenAI analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+        'openai'
+      );
+    }
+  }
+
+  /**
+   * Choose the test of each printed value among its candidates, in one call
+   */
+  async chooseTests(
+    requests: TestChoiceRequest[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
+  ): Promise<TestChoice[]> {
+    if (requests.length === 0) return [];
+
+    const messages: OpenAIMessage[] = [
+      { role: 'system', content: TEST_CHOICE_SYSTEM_PROMPT },
+      { role: 'user', content: createTestChoicePrompt(requests) },
+    ];
+
+    try {
+      const response = await this.makeRequest(messages, options);
+      return parseTestChoices(response.choices[0]?.message?.content, requests);
+    } catch (error) {
+      if (error instanceof AIAnalysisError) {
+        throw error;
+      }
+      throw new AIAnalysisError(
+        `OpenAI test choice failed: ${error instanceof Error ? error.message : String(error)}`,
         'openai'
       );
     }

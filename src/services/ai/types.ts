@@ -130,6 +130,36 @@ export interface AnalysisOptions {
 }
 
 /**
+ * A test the AI may choose for a printed value. Structurally the analysis
+ * layer's `Candidate` without its score, so the AI layer does not depend on it.
+ */
+export interface TestCandidate {
+  code: string;
+  /** LOINC long common name */
+  name: string;
+}
+
+/** One printed value whose test the AI is asked to choose */
+export interface TestChoiceRequest {
+  /** Identifies the value in the answer */
+  id: string;
+  name: string;
+  unit: string;
+  /** The sample the report section names: "urine", "24h urine" */
+  specimenHint?: string;
+  candidates: TestCandidate[];
+}
+
+/** The AI's choice for one value */
+export interface TestChoice {
+  id: string;
+  /** One of the request's candidate codes, or null when none fits */
+  code: string | null;
+  /** False when two candidates fit or the model is unsure */
+  confident: boolean;
+}
+
+/**
  * Interface for AI providers
  */
 export interface AIProvider {
@@ -171,6 +201,18 @@ export interface AIProvider {
    * @returns true if vision/image analysis is available
    */
   supportsVision?(): boolean;
+
+  /**
+   * Choose the test each printed value is among its candidates, in one call.
+   * An answer that cannot be read is no choice for any value, not an error.
+   *
+   * @param requests - The values and their candidate tests
+   * @param options - Rate-limit hooks and cancellation
+   */
+  chooseTests(
+    requests: TestChoiceRequest[],
+    options?: Pick<AnalysisOptions, 'rateLimit' | 'signal'>
+  ): Promise<TestChoice[]>;
 
   /**
    * Validate that the provider is configured correctly

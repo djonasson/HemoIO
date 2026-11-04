@@ -335,6 +335,7 @@ describe('LabReportAnalyzer', () => {
         }),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
       const stages: string[] = [];
       const file = createMockFile('report.pdf', 'application/pdf');
@@ -373,6 +374,7 @@ describe('LabReportAnalyzer', () => {
         analyzeLabReport: vi.fn().mockRejectedValue(new Error('API error')),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
 
       const file = createMockFile('report.pdf', 'application/pdf');
@@ -573,6 +575,7 @@ describe('LabReportAnalyzer', () => {
         analyzeLabReport: analyze,
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
 
       const result = await analyzeLabReport(createMockFile('scan.pdf', 'application/pdf'), {
@@ -621,6 +624,7 @@ describe('LabReportAnalyzer', () => {
         analyzeLabReport: analyze,
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
 
       const result = await analyzeLabReport(createMockFile('scan.pdf', 'application/pdf'), {
@@ -659,6 +663,7 @@ describe('LabReportAnalyzer', () => {
         }),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
     }
 
@@ -724,6 +729,7 @@ describe('LabReportAnalyzer', () => {
         }),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
 
       const file = createMockFile('report.pdf', 'application/pdf');
@@ -756,6 +762,7 @@ describe('LabReportAnalyzer', () => {
         }),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
     }
 
@@ -814,6 +821,7 @@ describe('LabReportAnalyzer', () => {
         }),
         validateConfiguration: vi.fn(),
         testConnection: vi.fn(),
+        chooseTests: vi.fn(),
       });
 
       const file = createMockFile('report.pdf', 'application/pdf');

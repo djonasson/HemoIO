@@ -457,4 +457,82 @@ describe('AnthropicProvider prompt caching', () => {
       { type: 'text', text: expect.stringContaining('KNOWN TESTS'), cache_control: { type: 'ephemeral' } },
     ]);
   });
+
+  describe('chooseTests', () => {
+    const requests = [
+      {
+        id: 'v1',
+        name: 'Glucosio',
+        unit: 'mg/dL',
+        specimenHint: 'urine',
+        candidates: [
+          { code: '2350-7', name: 'Glucose [Mass/volume] in Urine' },
+          { code: '2345-7', name: 'Glucose [Mass/volume] in Serum or Plasma' },
+        ],
+      },
+      { id: 'v2', name: 'Creatinina', unit: 'mg/dL', candidates: [{ code: '2160-0', name: 'Creatinine [Mass/volume] in Serum or Plasma' }] },
+    ];
+    const answer = JSON.stringify({
+      choices: [
+        { id: 'v1', code: '2350-7', confident: true },
+        { id: 'v2', code: '9999-9', confident: true },
+      ],
+    });
+
+    it('sends one request per report with every candidate\'s code and name', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ content: [{ type: 'text', text: answer }], stop_reason: 'end_turn' }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+      const result = await provider.chooseTests(requests);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const body = JSON.stringify(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string).messages);
+      for (const request of requests) {
+        expect(body).toContain(request.name);
+        for (const candidate of request.candidates) {
+          expect(body).toContain(candidate.code);
+          expect(body).toContain(candidate.name);
+        }
+      }
+      expect(result).toEqual([
+        { id: 'v1', code: '2350-7', confident: true },
+        { id: 'v2', code: null, confident: false },
+      ]);
+    });
+
+    it('makes no call without requests', async () => {
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+      expect(await provider.chooseTests([])).toEqual([]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('gives no choice for an answer it cannot read', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ content: [{ type: 'text', text: "not json" }], stop_reason: 'end_turn' }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+      const result = await provider.chooseTests(requests);
+
+      expect(result.map((c) => c.code)).toEqual([null, null]);
+    });
+
+    it('reports an API error without the key', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: { message: 'Invalid key', type: 'x', code: 'invalid_api_key' } }),
+      } as Response);
+
+      const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+      const error = await provider.chooseTests(requests).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(AIAnalysisError);
+      expect((error as Error).message).not.toContain('sk-');
+    });
+  });
 });
