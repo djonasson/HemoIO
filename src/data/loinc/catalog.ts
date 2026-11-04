@@ -51,6 +51,12 @@ export interface CatalogSearchFilter {
   systems?: string[];
 }
 
+/** A test found by a search, with how well its names fit the query (0 to 1) */
+export interface ScoredTest {
+  test: CatalogTest;
+  score: number;
+}
+
 export interface Catalog {
   /** The LOINC release the catalog was generated from */
   version: string;
@@ -60,6 +66,8 @@ export interface Catalog {
    * scores 1, shared words score below 1; ties go to the more common test.
    */
   search(query: string, filter?: CatalogSearchFilter): CatalogTest[];
+  /** The same search, with each test's score */
+  scoredSearch(query: string, filter?: CatalogSearchFilter): ScoredTest[];
   /**
    * What a code trends with: the group joining its mass and molar codes,
    * else the group joining its blood, serum and plasma codes, else the code
@@ -219,7 +227,7 @@ export function createCatalog(file: CatalogFile): Catalog {
     else codesByTrendGroup.set(trend, [test.code]);
   }
 
-  function search(query: string, filter: CatalogSearchFilter = {}): CatalogTest[] {
+  function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
     const phrase = normalise(query);
     // A query of sample, quantity or other generic words alone names no test
     const words = [...new Set(wordsOf(phrase))].filter(tellsTest).map((word) => ({
@@ -235,7 +243,7 @@ export function createCatalog(file: CatalogFile): Catalog {
     const candidates = new Set(
       words.flatMap(({ matches }) => matches.flatMap((match) => testsByWord.get(match.word) ?? []))
     );
-    const scored: { test: CatalogTest; score: number }[] = [];
+    const scored: ScoredTest[] = [];
     for (const index of candidates) {
       const test = file.tests[index];
       if (filter.properties && !filter.properties.includes(test.property)) continue;
@@ -249,13 +257,14 @@ export function createCatalog(file: CatalogFile): Catalog {
       scored.push({ test, score });
     }
     scored.sort((a, b) => b.score - a.score || byRank(a.test, b.test));
-    return scored.map(({ test }) => test);
+    return scored;
   }
 
   return {
     version: file.version,
     test: (code) => tests.get(code),
-    search,
+    search: (query, filter) => scoredSearch(query, filter).map(({ test }) => test),
+    scoredSearch,
     trendGroup: (code) => trendGroups.get(code) ?? code,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
     groupCodes: (trendGroup) =>

@@ -12,3 +12,4 @@
 "770-8","Neutrofili/Leucociti","NFr","Pt","Sangue","Qn","Conta automatica","EMATOLOGIA/EMOCROMO","","","Ematologia (coagulazione) conta differenziale Frazione numerica Punto nel tempo (episodio) Sangue","",""
 "100746-7","Glucosio","SCnc","Pt","Sangue ven mis","Qn","","CHIM","","","Chimica Concentrazione di Sostanza Punto nel tempo (episodio) Sangue venoso misto","",""
 "10157-6","Anamnesi familiare, nota","Hx,Storia,Anamnesi","Pt","^membro della famiglia","Doc","","ANAMNESI","","","Anamnesi Nota sulla storia delle malattie dei familiari Nota sull''anamnesi familiare Punto nel tempo (episodio) Storia di malattie di membri della famiglia","",""
+"2885-2","Proteina","MCnc","Pt","Siero/Plasma","Qn","","CHIM","","","Chimica Concentrazione di Massa Plasma Punto nel tempo (episodio) Siero Siero o Plasma","",""

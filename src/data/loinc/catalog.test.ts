@@ -111,6 +111,14 @@ describe('search', () => {
   });
 });
 
+describe('scoredSearch', () => {
+  it('gives the same tests as search, each with its score', () => {
+    const scored = catalog.scoredSearch('glucosio', { properties: ['MCnc'] });
+    expect(scored.map(({ test }) => test)).toEqual(catalog.search('glucosio', { properties: ['MCnc'] }));
+    expect(scored[0]).toMatchObject({ test: { code: '2345-7' }, score: 1 });
+  });
+});
+
 describe('trendGroup', () => {
   it('joins the mass and molar codes of a substance in one sample', () => {
     // 14749-6 is Glucose [Moles/volume] in Serum or Plasma
