@@ -90,8 +90,35 @@ const GENERIC_SHARE = 0.05;
 /** ...but a small catalog has no generic words */
 const MIN_GENERIC_COUNT = 50;
 
+/**
+ * Words that name a sample, a kind of quantity or a kind of result rather
+ * than a test, in English and Italian. The share rule above misses some:
+ * Italian names are only components, so "sangue" or "siero" are rare in
+ * the catalog although they say nothing about the test.
+ */
+const STOP_WORDS: ReadonlySet<string> = new Set([
+  // English
+  'blood', 'serum', 'plasma', 'urine', 'total', 'level', 'test', 'tests', 'presence', 'present',
+  'ratio', 'count', 'counts', 'concentration', 'mass', 'volume', 'fraction', 'quantitative',
+  'qualitative', 'screen', 'panel', 'value', 'result', 'chemistry', 'acid', 'in', 'of', 'by', 'or', 'and',
+  // Italian
+  'sangue', 'siero', 'plasma', 'urina', 'urine', 'totale', 'totali', 'livello', 'livelli', 'presenza',
+  'rapporto', 'conta', 'conteggio', 'concentrazione', 'massa', 'frazione', 'chimica', 'esame', 'valore',
+  'acido', 'di', 'del', 'della', 'nel', 'nelle', 'nei', 'su', 'e', 'o',
+]);
+
 /** Score of a test whose words cover the whole query without a name equal to it */
 const OVERLAP_CEILING = 0.9;
+
+/**
+ * A query word found only as a close form of a name word ("urico" for
+ * "uric") counts for this much of that word
+ */
+const CLOSE_FORM_FACTOR = 0.8;
+/** Shortest stem a close form is read from */
+const MIN_STEM = 4;
+/** Most letters a close form may add to its stem (Italian endings) */
+const MAX_ENDING = 2;
 
 /** A name as the generator normalised it (same rule as nameKey in the dictionary) */
 function normalise(name: string): string {
@@ -100,6 +127,12 @@ function normalise(name: string): string {
 
 function wordsOf(name: string): string[] {
   return name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+/** Whether one word is the other with a short ending: "uric" and "urico" */
+function isCloseForm(a: string, b: string): boolean {
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= MIN_STEM && long.length - short.length <= MAX_ENDING && long.startsWith(short);
 }
 
 /**
@@ -135,7 +168,9 @@ export function createCatalog(file: CatalogFile): Catalog {
   const tests = new Map(file.tests.map((test) => [test.code, test]));
   const groups = new Map(file.groups.map((group) => [group.id, group]));
 
-  const wordSets = file.tests.map((test) => new Set(test.names.flatMap(wordsOf)));
+  // The long common name's words count too ("Hematocrit", "Specific gravity")
+  const exactNames = file.tests.map((test) => new Set([...test.names, normalise(test.name)]));
+  const wordSets = exactNames.map((names) => new Set([...names].flatMap(wordsOf)));
   const testsByWord = new Map<string, number[]>();
   wordSets.forEach((words, index) => {
     for (const word of words) {
@@ -145,9 +180,27 @@ export function createCatalog(file: CatalogFile): Catalog {
     }
   });
   const genericCount = Math.max(MIN_GENERIC_COUNT, file.tests.length * GENERIC_SHARE);
+  const tellsTest = (word: string): boolean =>
+    !STOP_WORDS.has(word) && (testsByWord.get(word)?.length ?? 0) <= genericCount;
   // Rarer words tell more about the test: inverse document frequency
   const weightOf = (word: string): number =>
     Math.log(1 + file.tests.length / (testsByWord.get(word)?.length ?? 1));
+
+  // Name words by their first letters, for finding close forms
+  const wordsByStem = new Map<string, string[]>();
+  for (const word of testsByWord.keys()) {
+    if (word.length < MIN_STEM || !tellsTest(word)) continue;
+    const stem = word.slice(0, MIN_STEM);
+    wordsByStem.set(stem, [...(wordsByStem.get(stem) ?? []), word]);
+  }
+
+  /** The name words a query word stands for, with how much each counts */
+  function matchesOf(word: string): { word: string; factor: number }[] {
+    if (testsByWord.has(word)) return [{ word, factor: 1 }];
+    return (wordsByStem.get(word.slice(0, MIN_STEM)) ?? [])
+      .filter((candidate) => isCloseForm(word, candidate))
+      .map((candidate) => ({ word: candidate, factor: CLOSE_FORM_FACTOR }));
+  }
 
   const trendGroups = new Map<string, string>();
   const codesByTrendGroup = new Map<string, string[]>();
@@ -168,23 +221,31 @@ export function createCatalog(file: CatalogFile): Catalog {
 
   function search(query: string, filter: CatalogSearchFilter = {}): CatalogTest[] {
     const phrase = normalise(query);
-    const words = [...new Set(wordsOf(phrase))].filter(
-      (word) => (testsByWord.get(word)?.length ?? 0) <= genericCount
-    );
+    // A query of sample, quantity or other generic words alone names no test
+    const words = [...new Set(wordsOf(phrase))].filter(tellsTest).map((word) => ({
+      word,
+      matches: matchesOf(word),
+    }));
     if (words.length === 0) return [];
-    const totalWeight = words.reduce((sum, word) => sum + weightOf(word), 0);
+    // A word matching nothing still counts against the fit, as a rare word would
+    const fullWeight = (matches: { word: string }[]): number =>
+      matches.length ? Math.max(...matches.map((match) => weightOf(match.word))) : weightOf('');
+    const totalWeight = words.reduce((sum, { matches }) => sum + fullWeight(matches), 0);
 
-    const candidates = new Set(words.flatMap((word) => testsByWord.get(word) ?? []));
+    const candidates = new Set(
+      words.flatMap(({ matches }) => matches.flatMap((match) => testsByWord.get(match.word) ?? []))
+    );
     const scored: { test: CatalogTest; score: number }[] = [];
     for (const index of candidates) {
       const test = file.tests[index];
       if (filter.properties && !filter.properties.includes(test.property)) continue;
       if (filter.systems && !filter.systems.includes(test.system)) continue;
-      const score = test.names.includes(phrase)
-        ? 1
-        : (OVERLAP_CEILING *
-            words.filter((word) => wordSets[index].has(word)).reduce((sum, word) => sum + weightOf(word), 0)) /
-          totalWeight;
+      let covered = 0;
+      for (const { matches } of words) {
+        const present = matches.filter((match) => wordSets[index].has(match.word));
+        if (present.length) covered += Math.max(...present.map((m) => m.factor * weightOf(m.word)));
+      }
+      const score = exactNames[index].has(phrase) ? 1 : (OVERLAP_CEILING * covered) / totalWeight;
       scored.push({ test, score });
     }
     scored.sort((a, b) => b.score - a.score || byRank(a.test, b.test));

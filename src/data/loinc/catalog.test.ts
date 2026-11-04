@@ -85,6 +85,26 @@ describe('search', () => {
     expect(generic.search('serum analyte7').map((test) => test.code)).toEqual(['7-0']);
   });
 
+  it('reads a word no name has as a close form of one with a short ending', () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [madeUpTest('1-1', ['uric acid']), madeUpTest('2-2', ['urate'])],
+    };
+    // "urico" is in no name, but is "uric" with an Italian ending
+    expect(createCatalog(file).search('urico').map((test) => test.code)).toEqual(['1-1']);
+    expect(createCatalog(file).search('ur').map((test) => test.code)).toEqual([]);
+  });
+
+  it('finds a test by the words of its long common name', () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [{ ...madeUpTest('1-1', ['hct']), name: 'Hematocrit [Volume Fraction] of Blood' }],
+    };
+    expect(createCatalog(file).search('hematocrit').map((test) => test.code)).toEqual(['1-1']);
+  });
+
   it('finds nothing for an empty query or unknown words', () => {
     expect(catalog.search('')).toEqual([]);
     expect(catalog.search('zzzz')).toEqual([]);
@@ -142,6 +162,27 @@ describe('classLabel', () => {
 
   it('shows a class it has no name for as its code', () => {
     expect(catalog.classLabel('ALLERGY')).toBe('ALLERGY');
+  });
+});
+
+describe('search in the generated catalog', () => {
+  it.each(['sangue', 'siero', 'chimica', 'totale', 'acido', 'test', 'presence', 'ratio', 'count'])(
+    'identifies no test by the generic word %s alone',
+    async (word) => {
+      expect((await loadCatalog()).search(word)).toEqual([]);
+    }
+  );
+
+  it('finds uric acid by its Italian name', async () => {
+    expect((await loadCatalog()).search('acido urico')[0].code).toBe('3084-1');
+  });
+
+  it('finds the hematocrit by its long name', async () => {
+    expect((await loadCatalog()).search('Hematocrit')[0].code).toBe('4544-3');
+  });
+
+  it('finds a specific gravity test', async () => {
+    expect((await loadCatalog()).search('Specific gravity')[0].property).toBe('SpGrav');
   });
 });
 
