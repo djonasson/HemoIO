@@ -61,7 +61,7 @@ const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
 
 /** The urinalysis section prefix, read before the plain "U-" */
 const URINALYSIS_PREFIX = /^U\s*-\s*Esame standard\b[\s\-.:]*/i;
-const URINE_WORD = /\burin(?:e|ario)\b/gi;
+const URINE_WORD = /\burin(?:a|e|ari[oa])\b/gi;
 const DAY_WORD = /\b24\s*(?:h|ore)\b/gi;
 
 /** A LOINC long common name of a 24-hour urine test: "... in 24 hour Urine" */
@@ -81,7 +81,7 @@ function stripPrefix(name: string): { name: string; systems?: string[] } {
 
 /**
  * A printed test name without its sample prefix ("S-", "P.", "U:", "U-Esame
- * standard") or urine words ("urine", "urinario", "24h", "24 ore"), and the
+ * standard") or urine words ("urina", "urinario", "24h", "24 ore"), and the
  * LOINC systems they name. "24H urine" stands for 24-hour urine. A name
  * naming no sample has no systems.
  */
@@ -106,6 +106,30 @@ export function splitSamplePrefix(name: string): { name: string; systems?: strin
 /** The key a value's code is remembered under: its printed name and unit */
 export function learnedKey(value: PrintedValue): string {
   return `${nameKey(value.name)}|${toUcum(value.unit) ?? nameKey(value.unit)}`;
+}
+
+interface Found {
+  test: CatalogTest;
+  score: number;
+  /** Index of the test's sample among the samples searched: lower is likelier */
+  preference: number;
+}
+
+/** Tests whose names fit, of the given samples and properties, best first */
+function findTests(catalog: Catalog, name: string, systems: string[], properties: string[]): Found[] {
+  return catalog
+    .scoredSearch(name, {
+      systems: [...new Set(systems.map((system) => (system === DAY_URINE ? 'Urine' : system)))],
+      properties: properties.length ? properties : undefined,
+    })
+    .map(({ test, score }) => ({
+      test,
+      score,
+      preference: systems.findIndex((system) => fitsSystem(test, system)),
+    }))
+    .filter(({ preference }) => preference !== -1)
+    // Stable: equal scores in equally likely samples keep the search's order
+    .sort((a, b) => b.score - a.score || a.preference - b.preference);
 }
 
 /** Whether a test is from a sample the matcher names, with 24-hour urine apart */
@@ -143,26 +167,20 @@ export function matchLocally(
   const ucum = toUcum(value.unit);
   const properties = ucum ? ucumProperties(ucum) : [];
 
-  const found = catalog
-    .scoredSearch(name, {
-      systems: [...new Set(systems.map((system) => (system === DAY_URINE ? 'Urine' : system)))],
-      properties: properties.length ? properties : undefined,
-    })
-    .map(({ test, score }) => ({
-      test,
-      score,
-      preference: systems.findIndex((system) => fitsSystem(test, system)),
-    }))
-    .filter(({ preference }) => preference !== -1)
-    // Stable: equal scores in equally likely samples keep the search's order
-    .sort((a, b) => b.score - a.score || a.preference - b.preference);
+  let found = findTests(catalog, name, systems, properties);
+  // What looked like a prefix may be part of the name: "B-HCG", "P-ANCA"
+  if (found.length === 0 && name !== value.name.trim()) {
+    found = findTests(catalog, value.name, DEFAULT_SYSTEMS, properties);
+  }
 
   const candidates = found.slice(0, MAX_CANDIDATES).map(({ test, score }) => toCandidate(test, score));
   const [top] = found;
   if (!top) return { status: 'none', candidates };
 
-  // A test from a less likely sample does not make a likelier one ambiguous
-  const rival = found.slice(1).find(({ preference }) => preference <= top.preference);
+  // Tests in the top's trend group (its mass and molar, or blood, serum and
+  // plasma, codes) are one fit; any other test that fits as well is a rival
+  const topGroup = catalog.trendGroup(top.test.code);
+  const rival = found.slice(1).find(({ test }) => catalog.trendGroup(test.code) !== topGroup);
   const clear =
     properties.length > 0 &&
     top.score >= MATCH_SCORE &&

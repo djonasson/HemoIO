@@ -18,6 +18,8 @@ describe('toUcum', () => {
     ['cells/µL', '{cells}/uL'],
     ['mIU/L', 'm[IU]/L'],
     ['µIU/mL', 'u[IU]/mL'],
+    ['mUI/mL', 'm[IU]/mL'],
+    ['UI/L', '[IU]/L'],
     ['mEq/L', 'meq/L'],
     ['mL/min/1.73m²', 'mL/min/(1.73.m2)'],
     ['g/24h', 'g/(24.h)'],

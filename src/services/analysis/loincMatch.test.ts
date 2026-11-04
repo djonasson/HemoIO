@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { createCatalog } from '@data/loinc/catalog';
+import { createCatalog, loadCatalog } from '@data/loinc/catalog';
 import { learnedKey, matchLocally, splitSamplePrefix } from './loincMatch';
 import type { CatalogTest } from '@data/loinc/catalog';
 
@@ -31,8 +31,15 @@ describe('matchLocally', () => {
     expect(result).toMatchObject({ status: 'match', code: '2345-7' });
   });
 
-  it('matches a test in mmol/L to its molar code', () => {
+  it('offers the molar codes for a test in mmol/L, ambiguous between serum and blood', () => {
+    // 14749-6 (serum or plasma) and 15074-8 (blood) trend apart in the fixture release
     const result = matchLocally(catalog, { name: 'Glucosio', unit: 'mmol/L' });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates.map((candidate) => candidate.code)).toEqual(['14749-6', '15074-8']);
+  });
+
+  it('matches a test in mmol/L in serum to its molar code', () => {
+    const result = matchLocally(catalog, { name: 'S-Glucosio', unit: 'mmol/L' });
     expect(result).toMatchObject({ status: 'match', code: '14749-6' });
   });
 
@@ -97,16 +104,39 @@ describe('matchLocally', () => {
     expect(result.candidates.map((candidate) => candidate.code)).toEqual(['1-1', '2-2']);
   });
 
-  it('does not let a whole-blood test make a serum test ambiguous without a sample', () => {
+  it('is ambiguous between serum, plasma and blood tests that trend apart', () => {
     const file = {
       version: 't',
       groups: [],
-      tests: [madeUpTest('1-1', ['ferritina'], 'Bld'), madeUpTest('2-2', ['ferritina'])],
+      tests: [
+        madeUpTest('1-1', ['emoglobina'], 'Ser'),
+        madeUpTest('2-2', ['emoglobina'], 'Plas'),
+        madeUpTest('3-3', ['emoglobina'], 'Bld'),
+      ],
+    };
+    const result = matchLocally(createCatalog(file), { name: 'Emoglobina', unit: 'g/dL' });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates.map((candidate) => candidate.code).sort()).toEqual(['1-1', '2-2', '3-3']);
+  });
+
+  it('matches when the tests that fit as well trend together', () => {
+    const file = {
+      version: 't',
+      groups: [{ id: 'LG1-1', parentId: 'LG0-0', parentName: '', name: 'Ferritin|MCnc|Pt|ANYBldSerPl' }],
+      tests: [
+        { ...madeUpTest('1-1', ['ferritina']), groups: ['LG1-1'] },
+        { ...madeUpTest('2-2', ['ferritina'], 'Bld'), groups: ['LG1-1'] },
+      ],
     };
     expect(matchLocally(createCatalog(file), { name: 'Ferritina', unit: 'ng/mL' })).toMatchObject({
       status: 'match',
-      code: '2-2',
+      code: '1-1',
     });
+  });
+
+  it('reads the Italian urine words', () => {
+    const result = matchLocally(catalog, { name: 'Glucosio urina', unit: 'mg/dL' });
+    expect(result).toMatchObject({ status: 'match', code: '2350-7' });
   });
 
   it('offers at most eight candidates, with their LOINC names and scores', () => {
@@ -143,6 +173,8 @@ describe('splitSamplePrefix', () => {
 
   it('reads urine and 24-hour words anywhere in the name', () => {
     expect(splitSamplePrefix('Glucosio urinario')).toEqual({ name: 'Glucosio', systems: ['Urine'] });
+    expect(splitSamplePrefix('Glucosio urina')).toEqual({ name: 'Glucosio', systems: ['Urine'] });
+    expect(splitSamplePrefix('Glucosio urinaria')).toEqual({ name: 'Glucosio', systems: ['Urine'] });
     expect(splitSamplePrefix('Proteine urine 24 ore')).toEqual({ name: 'Proteine', systems: ['24H urine'] });
     expect(splitSamplePrefix('Creatinina 24h')).toEqual({ name: 'Creatinina', systems: ['24H urine'] });
   });
@@ -156,5 +188,24 @@ describe('learnedKey', () => {
 
   it('keeps a unit UCUM does not read as printed', () => {
     expect(learnedKey({ name: 'Colore', unit: ' Paglierino ' })).toBe('colore|paglierino');
+  });
+});
+
+describe('matchLocally in the generated catalog', () => {
+  it.each([
+    ['Hb', 'g/dL', '718-7'],
+    ['Piastrine', '10^9/L', '777-3'],
+  ])('does not take a serum or plasma test for %s in %s, a blood count', async (name, unit, code) => {
+    const result = matchLocally(await loadCatalog(), { name, unit });
+    if (result.status === 'match') expect(result.code).toBe(code);
+    expect(result.candidates.map((candidate) => candidate.code)).toContain(code);
+  });
+
+  it.each([
+    ['B-HCG', 'mUI/mL'],
+    ['P-ANCA', 'U/mL'],
+  ])('reads %s whole when its prefix-looking start finds nothing', async (name, unit) => {
+    const result = matchLocally(await loadCatalog(), { name, unit });
+    expect(result.candidates.length).toBeGreaterThan(0);
   });
 });

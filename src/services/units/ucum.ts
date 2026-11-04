@@ -22,6 +22,8 @@ const UCUM_REWRITES: ReadonlyArray<[RegExp, string | ((...groups: string[]) => s
   [/\bmEq\b/, 'meq'],
   // International units are an arbitrary unit in brackets, with a prefix outside
   [/(^|\/)([mµ]?)IU\b/, (_all, start, prefix) => `${start}${prefix}[IU]`],
+  // The Italian spelling: "mUI/mL"
+  [/(^|\/)([mµ]?)UI\b/, (_all, start, prefix) => `${start}${prefix}[IU]`],
   [/\/hpf$/i, '/[HPF]'],
   [/\/24 ?h$/i, '/(24.h)'],
   [/\/1\.73 ?m[²2]$/, '/(1.73.m2)'],
