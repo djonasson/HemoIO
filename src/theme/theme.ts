@@ -117,6 +117,28 @@ function primarySource(t: MantineTheme, scheme: 'light' | 'dark'): string | unde
 }
 
 /**
+ * A virtual colour's variables in `scheme`, pointing at its source colour's
+ * checked ones. Mantine's own point at the source's raw shades (its text at
+ * the filled shade), which this resolver does not check.
+ */
+function virtualColourVariables(
+  t: MantineTheme,
+  scheme: 'light' | 'dark',
+  checked: Record<string, string>
+): Record<string, string> {
+  const variables: Record<string, string> = {};
+  for (const [name, colour] of Object.entries(t.colors)) {
+    if (!isVirtualColor(colour)) continue;
+    const prefix = `--mantine-color-${colour[scheme]}-`;
+    for (const key of Object.keys(checked)) {
+      const part = key.startsWith(prefix) ? key.slice(prefix.length) : '';
+      if (part && !/^\d+$/.test(part)) variables[`--mantine-color-${name}-${part}`] = `var(${key})`;
+    }
+  }
+  return variables;
+}
+
+/**
  * Text, light-variant, outline, filled and indicator colours of every theme
  * colour, moved along its shades only as far as WCAG needs. Mantine uses
  * shade 6 in light mode, which is under 4.5:1 on white for every colour but
@@ -230,16 +252,24 @@ export const cssVariablesResolver: CSSVariablesResolver = (t) => {
   const cached = resolvedByTheme.get(t);
   if (cached) return cached;
   const colours = colourVariables(t);
-  // A virtual primary colour's own text variable points at its filled colour,
-  // so links follow its source colour's text instead
-  const links = (scheme: 'light' | 'dark') => ({
-    '--mantine-color-anchor': `var(--mantine-color-${primarySource(t, scheme) ?? t.primaryColor}-text)`,
+  const links = {
+    '--mantine-color-anchor': `var(--mantine-color-${t.primaryColor}-text)`,
     '--mantine-color-error': 'var(--mantine-color-red-text)',
-  });
+  };
   const resolved = {
     variables: {},
-    light: { ...colours.light, ...links('light'), '--mantine-color-dimmed': t.colors.gray[7] },
-    dark: { ...colours.dark, ...links('dark'), '--mantine-color-dimmed': t.colors.dark[1] },
+    light: {
+      ...colours.light,
+      ...virtualColourVariables(t, 'light', colours.light),
+      ...links,
+      '--mantine-color-dimmed': t.colors.gray[7],
+    },
+    dark: {
+      ...colours.dark,
+      ...virtualColourVariables(t, 'dark', colours.dark),
+      ...links,
+      '--mantine-color-dimmed': t.colors.dark[1],
+    },
   };
   resolvedByTheme.set(t, resolved);
   return resolved;

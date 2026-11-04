@@ -111,6 +111,10 @@ Feature: Application Settings
     And I should see the LOINC notice its license asks for, with the LOINC version
     And I should be able to open the LOINC license
 
+  Scenario: Links are underlined
+    When I open the About tab
+    Then the link to the LOINC license should be underlined, so it is not told apart by colour alone
+
   # Settings Persistence
   Scenario: Settings persist after logout
     Given I have customized my settings

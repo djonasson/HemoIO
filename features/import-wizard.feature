@@ -172,6 +172,14 @@ Feature: Import Wizard
     And I should see the lab date and name
     And I should see the total number of values
 
+  Scenario: A reference range with only one end
+    Given I am on the review step
+    When I give a value a reference range with only a high end of 17.5
+    Then the review should show its range as "≤ 17.5" in the value's unit
+    And the confirm step should show it the same way
+    When I give it only a low end of 12 instead
+    Then the review and the confirm step should show "≥ 12" in the value's unit
+
   Scenario: User confirms and saves the import
     Given I am on the confirm step
     When I click "Save Results"

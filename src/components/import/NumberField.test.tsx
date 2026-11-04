@@ -44,15 +44,16 @@ describe('NumberField', () => {
     expect(renderField(NaN).input).toHaveValue('');
   });
 
-  it('keeps "-0" when the field loses focus', async () => {
+  it.each(['-0', '-0.', '-00.'])('keeps a half-typed "%s" when the field loses focus', async (typed) => {
     const { input, onValueChange } = renderField(undefined);
 
-    await userEvent.type(input, '-0');
-    const reports = onValueChange.mock.calls.length;
+    await userEvent.type(input, typed);
     await userEvent.tab();
+    await userEvent.click(input);
+    await userEvent.type(input, '5');
 
-    expect(input).toHaveValue('-0');
-    expect(onValueChange).toHaveBeenCalledTimes(reports);
+    expect(input).toHaveValue(`${typed}5`);
+    expect(onValueChange).toHaveBeenLastCalledWith(Number(`${typed}5`));
   });
 
   it('reports "1." as 1', async () => {

@@ -548,6 +548,29 @@ test.describe('Import Wizard', () => {
       await expect(main(page).getByText('2 values', { exact: true })).toBeVisible();
     });
 
+    test('shows a reference range with only one end as ≤ or ≥', async ({ page }) => {
+      // Scenario: A reference range with only one end
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+      const confirmRow = () => main(page).getByRole('table').getByRole('row').filter({ hasText: 'Hemoglobin' });
+
+      for (const [end, other, number, shown] of [
+        ['High', 'Low', '17.5', '≤ 17.5 g/dL'],
+        ['Low', 'High', '12', '≥ 12 g/dL'],
+      ]) {
+        await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await editing.getByPlaceholder(other).clear();
+        await editing.getByPlaceholder(end).fill(number);
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(reviewRow(page, 'Hemoglobin'), 'Reference Range')).toHaveText(shown);
+
+        await continueToConfirm(page);
+        await expect(confirmRow()).toContainText(shown);
+        await main(page).getByRole('button', { name: 'Back to Review' }).click();
+      }
+    });
+
     test('should save results and redirect to timeline', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));

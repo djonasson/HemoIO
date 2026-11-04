@@ -87,6 +87,16 @@ test.describe('Settings Page', () => {
         'https://loinc.org/license'
       );
     });
+
+    test('underlines links', async ({ page }) => {
+      // Scenario: Links are underlined
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await openSettingsTab(page, 'About');
+
+      const link = page.getByRole('tabpanel', { name: 'About' }).getByRole('link', { name: 'Read the LOINC license' });
+      await expect(link).toHaveCSS('text-decoration-line', 'underline');
+    });
   });
 
   test.describe('Display Settings', () => {

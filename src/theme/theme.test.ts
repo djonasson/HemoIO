@@ -132,7 +132,7 @@ describe('theme', () => {
   });
 
   it('keeps links 3:1 from the black body text around them, in light mode', () => {
-    // Inline links are not underlined, so colour alone marks them (WCAG 1.4.1),
+    // Links are underlined too, but keep the 3:1 where a colour can give it,
     // also in light alerts, whose message text is black
     const link = colour('--mantine-color-anchor', 'light');
     expect(contrast(link, hexToRgb(merged.black))).toBeGreaterThanOrEqual(3);
@@ -181,13 +181,18 @@ describe('theme', () => {
     expect(Object.keys(vars?.root ?? {})).toHaveLength(colourNames.length);
   });
 
-  it('skips virtual colours, which have no shades of their own', () => {
+  it('gives virtual colours no shades of their own, only pointers to their source colours', () => {
     const withVirtual = mergeMantineTheme(DEFAULT_THEME, {
       colors: { accent: virtualColor({ name: 'accent', light: 'teal', dark: 'grape' }) },
     });
     const result = cssVariablesResolver(withVirtual);
     for (const scheme of ['light', 'dark'] as const) {
-      expect(Object.keys(result[scheme]).some((key) => key.includes('-accent-'))).toBe(false);
+      const accent = Object.entries(result[scheme]).filter(([key]) => key.includes('-accent-'));
+      expect(accent.length).toBeGreaterThan(0);
+      for (const [key, value] of accent) {
+        expect(key).not.toMatch(/-\d+$/);
+        expect(value).toMatch(/^var\(--mantine-color-(teal|grape)-/);
+      }
       expect(Object.values(result[scheme])).not.toContain('#000000');
     }
   });
@@ -199,8 +204,13 @@ describe('theme', () => {
       colors: { accent: virtualColor({ name: 'accent', light: 'teal', dark: 'grape' }) },
     });
     const result = cssVariablesResolver(withVirtual);
-    expect(result.light['--mantine-color-anchor']).toBe('var(--mantine-color-teal-text)');
-    expect(result.dark['--mantine-color-anchor']).toBe('var(--mantine-color-grape-text)');
+    // Its own variables, which links and the active NavLink read, follow the checked source ones
+    expect(result.light['--mantine-color-anchor']).toBe('var(--mantine-color-accent-text)');
+    expect(result.light['--mantine-color-accent-text']).toBe('var(--mantine-color-teal-text)');
+    expect(result.dark['--mantine-color-accent-text']).toBe('var(--mantine-color-grape-text)');
+    expect(result.light['--mantine-color-accent-light-color']).toBe('var(--mantine-color-teal-light-color)');
+    expect(result.dark['--mantine-color-accent-light-color']).toBe('var(--mantine-color-grape-light-color)');
+    expect(result.light['--mantine-color-accent-filled']).toBe('var(--mantine-color-teal-filled)');
     // The active NavLink's description is checked on the source colour's fill
     const fills = {
       light: blend(hexToRgb(withVirtual.colors.teal[6]), 0.12, white),

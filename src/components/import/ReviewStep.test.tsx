@@ -1388,7 +1388,7 @@ describe('ReviewStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
-    // Handed back in full, so going back from Confirm keeps the empty file and its edits
+    // The empty file needs no date, so the import continues
     expect(onComplete).toHaveBeenCalled();
   });
 
