@@ -40,7 +40,12 @@ import {
   getBiomarkerDisplayName,
   getBiomarkerForTestValue,
 } from '@data/biomarkers/dictionary';
-import { convertMeasurement, preferredUnitOptions, resolveDisplayUnit } from '@services/units';
+import {
+  componentForBiomarker,
+  convertMeasurement,
+  preferredUnitOptions,
+  resolveDisplayUnit,
+} from '@services/units';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
 import { isTrendable } from '@/utils/isTrendable';
@@ -224,7 +229,7 @@ export function TrendsView({
         // Convert to the biomarker's chart unit; values that cannot be
         // converted keep the unit they were measured in
         const converted = convertMeasurement(
-          entry.name,
+          componentForBiomarker(entry.name),
           {
             value: testValue.value,
             unit: testValue.unit,

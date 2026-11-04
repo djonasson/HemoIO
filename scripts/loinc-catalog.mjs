@@ -5,7 +5,8 @@
 // Usage: node scripts/loinc-catalog.mjs [--from <files dir>] [--out <path>]
 //
 // This is plain Node (no TypeScript, no dependencies) so it runs without a
-// build step; the JSON shape is mirrored by the types in src/types.
+// build step; the JSON shape is mirrored by the types in
+// src/data/loinc/catalog.ts (and scripts/loinc-catalog.d.mts).
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -21,6 +22,13 @@ const DEFAULT_OUT = path.join(
   'loinc',
   'catalog.generated.json',
 );
+
+/**
+ * Codes kept although LOINC gives them no common-test rank, because the app's
+ * add-on table (src/data/loinc/addons.ts) describes them: eGFR by CKD-EPI
+ * 2021 and the total sperm count.
+ */
+const EXTRA_CODES = new Set(['98979-8', '107184-4']);
 
 /**
  * Parse CSV text into rows, one object per record keyed by the header.
@@ -141,8 +149,10 @@ export function buildCatalog(dir) {
   const tests = [];
   for (const row of readRows(path.join(dir, 'LoincTable', 'Loinc.csv'))) {
     // CLASSTYPE 1 is laboratory; a rank of 0 or none marks a rarely used code
-    const rank = Number.parseInt(row.COMMON_TEST_RANK, 10);
-    if (row.STATUS !== 'ACTIVE' || row.CLASSTYPE !== '1' || !(rank > 0)) continue;
+    const parsedRank = Number.parseInt(row.COMMON_TEST_RANK, 10);
+    const rank = parsedRank > 0 ? parsedRank : 0;
+    if (row.STATUS !== 'ACTIVE' || row.CLASSTYPE !== '1') continue;
+    if (rank === 0 && !EXTRA_CODES.has(row.LOINC_NUM)) continue;
     const names = new Set();
     for (const raw of [
       row.COMPONENT,

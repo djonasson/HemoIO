@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
+import { loadCatalog } from '@data/loinc/catalog';
 import { BIOMARKER_DEFINITIONS, getBiomarkerByKey } from './dictionary';
 import { LOINC_NOTICE, loincLabel, loincName } from './loinc';
 
@@ -15,6 +16,11 @@ function checkDigit(number: string): number {
   });
   return (10 - (sum % 10)) % 10;
 }
+
+// loincName reads the catalog once it has loaded, as in the unlocked app
+beforeAll(async () => {
+  await loadCatalog();
+});
 
 const CODED = BIOMARKER_DEFINITIONS.filter((definition) => definition.loincCode);
 
@@ -224,6 +230,12 @@ describe('LOINC codes of the biomarker dictionary', () => {
 describe('loincLabel', () => {
   it("shows a code with LOINC's name for it", () => {
     expect(loincLabel('2345-7')).toBe('LOINC 2345-7: Glucose [Mass/volume] in Serum or Plasma');
+  });
+
+  it('shows a code alone before the catalog has loaded', async () => {
+    vi.resetModules();
+    const fresh = await import('./loinc');
+    expect(fresh.loincLabel('2345-7')).toBe('LOINC 2345-7');
   });
 
   it('shows a code it has no name for alone', () => {

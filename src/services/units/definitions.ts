@@ -4,12 +4,12 @@
  * This module defines conversion factors between different units
  * used in laboratory medicine.
  *
- * Conversion factors are organized by biomarker or biomarker group
- * since the same unit names can have different conversion factors
- * for different substances (e.g., mg/dL to mmol/L varies by substance).
+ * Conversion factors are organized by substance, the LOINC component
+ * ("Glucose", "Creatinine"), since the same unit names can have different
+ * conversion factors for different substances (e.g., mg/dL to mmol/L varies
+ * by molar mass). One substance has one set, whatever the sample.
  */
 
-import { findBiomarker } from '../../data/biomarkers/dictionary';
 import { unitsMatch } from '../../utils/unitSpelling';
 
 export { normalizeUnitForLookup, unitsMatch } from '../../utils/unitSpelling';
@@ -29,13 +29,11 @@ export interface UnitConversion {
 }
 
 /**
- * Biomarker-specific conversion definitions
+ * The unit conversions of one substance
  */
-export interface BiomarkerConversions {
-  /** Biomarker name or group identifier */
-  biomarker: string;
-  /** Alternative names that use these same conversions */
-  aliases: string[];
+export interface SubstanceConversions {
+  /** LOINC component, e.g. "Glucose" or "Cholesterol" */
+  component: string;
   /** Available unit conversions */
   conversions: UnitConversion[];
 }
@@ -45,9 +43,8 @@ export interface BiomarkerConversions {
  * Molecular weight: ~180.16 g/mol
  * Conversion: mg/dL × 0.0555 = mmol/L
  */
-const glucoseConversions: BiomarkerConversions = {
-  biomarker: 'Glucose',
-  aliases: ['Blood Sugar', 'Fasting Glucose', 'FBG', 'Blood Glucose'],
+const glucoseConversions: SubstanceConversions = {
+  component: 'Glucose',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.0555 },
     { from: 'mmol/L', to: 'mg/dL', factor: 18.018 },
@@ -59,15 +56,8 @@ const glucoseConversions: BiomarkerConversions = {
  * Molecular weight: ~386.65 g/mol
  * Conversion: mg/dL × 0.0259 = mmol/L
  */
-const cholesterolConversions: BiomarkerConversions = {
-  biomarker: 'Cholesterol',
-  aliases: [
-    'Total Cholesterol', 'TC', 'Chol',
-    'LDL Cholesterol', 'LDL', 'LDL-C',
-    'HDL Cholesterol', 'HDL', 'HDL-C',
-    'VLDL Cholesterol', 'VLDL', 'VLDL-C',
-    'Non-HDL Cholesterol', 'Non-HDL', 'Non-HDL-C',
-  ],
+const cholesterolConversions: SubstanceConversions = {
+  component: 'Cholesterol',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.0259 },
     { from: 'mmol/L', to: 'mg/dL', factor: 38.61 },
@@ -79,9 +69,8 @@ const cholesterolConversions: BiomarkerConversions = {
  * Average molecular weight: ~885 g/mol (varies by composition)
  * Conversion: mg/dL × 0.0113 = mmol/L
  */
-const triglyceridesConversions: BiomarkerConversions = {
-  biomarker: 'Triglycerides',
-  aliases: ['TG', 'Trigs', 'TRIG'],
+const triglyceridesConversions: SubstanceConversions = {
+  component: 'Triglyceride',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.0113 },
     { from: 'mmol/L', to: 'mg/dL', factor: 88.5 },
@@ -94,14 +83,16 @@ const triglyceridesConversions: BiomarkerConversions = {
  * Conversion: g/dL × 10 = g/L
  * Conversion: g/dL × 0.6206 = mmol/L (using tetramer MW ~64,500)
  */
-const hemoglobinConversions: BiomarkerConversions = {
-  biomarker: 'Hemoglobin',
-  aliases: ['Hgb', 'Hb', 'HGB'],
+const hemoglobinConversions: SubstanceConversions = {
+  component: 'Hemoglobin',
   conversions: [
     { from: 'g/dL', to: 'g/L', factor: 10 },
     { from: 'g/L', to: 'g/dL', factor: 0.1 },
     { from: 'g/dL', to: 'mmol/L', factor: 0.6206 },
     { from: 'mmol/L', to: 'g/dL', factor: 1.611 },
+    // MCH: the hemoglobin in one red cell
+    { from: 'pg', to: 'fmol', factor: 1 / 16.1145 },
+    { from: 'fmol', to: 'pg', factor: 16.1145 },
   ],
 };
 
@@ -110,12 +101,33 @@ const hemoglobinConversions: BiomarkerConversions = {
  * Molecular weight: 113.12 g/mol
  * Conversion: mg/dL × 88.4 = µmol/L
  */
-const creatinineConversions: BiomarkerConversions = {
-  biomarker: 'Creatinine',
-  aliases: ['Creat', 'Serum Creatinine'],
+const creatinineConversions: SubstanceConversions = {
+  component: 'Creatinine',
   conversions: [
     { from: 'mg/dL', to: 'µmol/L', factor: 88.4 },
     { from: 'µmol/L', to: 'mg/dL', factor: 0.0113 },
+    // Units urine creatinine is reported in
+    // mg/dL conversions
+    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
+    { from: 'mg/dL', to: 'mmol/L', factor: 0.0884 },
+    // µmol/L conversions
+    { from: 'µmol/L', to: 'g/L', factor: 0.00011312 },
+    { from: 'µmol/L', to: 'mmol/L', factor: 0.001 },
+    // g/L conversions
+    { from: 'g/L', to: 'mg/dL', factor: 100 },
+    { from: 'g/L', to: 'µmol/L', factor: 8840 },
+    { from: 'g/L', to: 'mmol/L', factor: 8.84 },
+    // mmol/L conversions
+    { from: 'mmol/L', to: 'mg/dL', factor: 11.312 },
+    { from: 'mmol/L', to: 'µmol/L', factor: 1000 },
+    { from: 'mmol/L', to: 'g/L', factor: 0.11312 },
+    // Output in 24-hour urine
+    { from: 'g/24h', to: 'mmol/24h', factor: 8.84 },
+    { from: 'mmol/24h', to: 'g/24h', factor: 0.11312 },
+    { from: 'g/24h', to: 'µmol/24h', factor: 8840 },
+    { from: 'µmol/24h', to: 'g/24h', factor: 0.00011312 },
+    { from: 'g/24h', to: 'mg/24h', factor: 1000 },
+    { from: 'mg/24h', to: 'g/24h', factor: 0.001 },
   ],
 };
 
@@ -124,9 +136,8 @@ const creatinineConversions: BiomarkerConversions = {
  * Molecular weight of urea: 60.06 g/mol, BUN is the nitrogen portion
  * Conversion: mg/dL × 0.357 = mmol/L
  */
-const bunConversions: BiomarkerConversions = {
-  biomarker: 'Blood Urea Nitrogen',
-  aliases: ['BUN', 'Urea Nitrogen'],
+const bunConversions: SubstanceConversions = {
+  component: 'Urea nitrogen',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.357 },
     { from: 'mmol/L', to: 'mg/dL', factor: 2.8 },
@@ -138,12 +149,19 @@ const bunConversions: BiomarkerConversions = {
  * Molecular weight: 60.06 g/mol
  * Conversion: mg/dL × 0.1665 = mmol/L
  */
-const ureaConversions: BiomarkerConversions = {
-  biomarker: 'Urea',
-  aliases: ['Serum Urea'],
+const ureaConversions: SubstanceConversions = {
+  component: 'Urea',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.1665 },
     { from: 'mmol/L', to: 'mg/dL', factor: 6.006 },
+    // Units urine urea is reported in
+    { from: 'g/L', to: 'mmol/L', factor: 16.65 },
+    { from: 'mmol/L', to: 'g/L', factor: 0.06006 },
+    { from: 'g/L', to: 'mg/dL', factor: 100 },
+    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
+    // Output in 24-hour urine
+    { from: 'g/24h', to: 'mmol/24h', factor: 16.65 },
+    { from: 'mmol/24h', to: 'g/24h', factor: 0.06006 },
   ],
 };
 
@@ -152,9 +170,8 @@ const ureaConversions: BiomarkerConversions = {
  * Molecular weight: 40.08 g/mol
  * Conversion: mg/dL × 0.25 = mmol/L
  */
-const calciumConversions: BiomarkerConversions = {
-  biomarker: 'Calcium',
-  aliases: ['Ca', 'Ca++', 'Serum Calcium', 'Total Calcium'],
+const calciumConversions: SubstanceConversions = {
+  component: 'Calcium',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.25 },
     { from: 'mmol/L', to: 'mg/dL', factor: 4.0 },
@@ -166,9 +183,8 @@ const calciumConversions: BiomarkerConversions = {
  * Molecular weight: 400.64 g/mol (25-hydroxyvitamin D)
  * Conversion: ng/mL × 2.496 = nmol/L
  */
-const vitaminDConversions: BiomarkerConversions = {
-  biomarker: 'Vitamin D',
-  aliases: ['25-OH Vitamin D', '25-Hydroxyvitamin D', 'Calcidiol', 'Vitamin D Total'],
+const vitaminDConversions: SubstanceConversions = {
+  component: 'Calcidiol+ercalcidiol',
   conversions: [
     { from: 'ng/mL', to: 'nmol/L', factor: 2.496 },
     { from: 'nmol/L', to: 'ng/mL', factor: 0.401 },
@@ -180,9 +196,8 @@ const vitaminDConversions: BiomarkerConversions = {
  * Molecular weight: 1355.37 g/mol
  * Conversion: pg/mL × 0.738 = pmol/L
  */
-const vitaminB12Conversions: BiomarkerConversions = {
-  biomarker: 'Vitamin B12',
-  aliases: ['B12', 'Cobalamin', 'Cyanocobalamin'],
+const vitaminB12Conversions: SubstanceConversions = {
+  component: 'Cobalamins',
   conversions: [
     { from: 'pg/mL', to: 'pmol/L', factor: 0.738 },
     { from: 'pmol/L', to: 'pg/mL', factor: 1.355 },
@@ -196,9 +211,8 @@ const vitaminB12Conversions: BiomarkerConversions = {
  * Molecular weight: 441.4 g/mol
  * Conversion: ng/mL × 2.266 = nmol/L
  */
-const folateConversions: BiomarkerConversions = {
-  biomarker: 'Folate',
-  aliases: ['Folic Acid', 'Vitamin B9', 'Serum Folate'],
+const folateConversions: SubstanceConversions = {
+  component: 'Folate',
   conversions: [
     { from: 'ng/mL', to: 'nmol/L', factor: 2.266 },
     { from: 'nmol/L', to: 'ng/mL', factor: 0.441 },
@@ -210,9 +224,8 @@ const folateConversions: BiomarkerConversions = {
  * mIU/L and µIU/mL are equivalent
  * (μUI/mL, uIU/mL and mU/L are spellings of these, see UNIT_SPELLINGS)
  */
-const tshConversions: BiomarkerConversions = {
-  biomarker: 'Thyroid Stimulating Hormone',
-  aliases: ['TSH', 'Thyrotropin'],
+const tshConversions: SubstanceConversions = {
+  component: 'Thyrotropin',
   conversions: [
     { from: 'mIU/L', to: 'µIU/mL', factor: 1 },
     { from: 'µIU/mL', to: 'mIU/L', factor: 1 },
@@ -224,9 +237,8 @@ const tshConversions: BiomarkerConversions = {
  * Molecular weight: 776.87 g/mol
  * Conversion: ng/dL × 12.87 = pmol/L
  */
-const freeT4Conversions: BiomarkerConversions = {
-  biomarker: 'Free T4',
-  aliases: ['FT4', 'Free Thyroxine', 'Thyroxine Free'],
+const freeT4Conversions: SubstanceConversions = {
+  component: 'Thyroxine.free',
   conversions: [
     { from: 'ng/dL', to: 'pmol/L', factor: 12.87 },
     { from: 'pmol/L', to: 'ng/dL', factor: 0.0777 },
@@ -237,9 +249,8 @@ const freeT4Conversions: BiomarkerConversions = {
  * Total T4 conversions
  * Conversion: µg/dL × 12.87 = nmol/L
  */
-const totalT4Conversions: BiomarkerConversions = {
-  biomarker: 'Total T4',
-  aliases: ['T4', 'Thyroxine', 'Serum T4'],
+const totalT4Conversions: SubstanceConversions = {
+  component: 'Thyroxine',
   conversions: [
     { from: 'µg/dL', to: 'nmol/L', factor: 12.87 },
     { from: 'nmol/L', to: 'µg/dL', factor: 0.0777 },
@@ -251,9 +262,8 @@ const totalT4Conversions: BiomarkerConversions = {
  * Molecular weight: 650.97 g/mol
  * Conversion: pg/mL × 1.536 = pmol/L
  */
-const freeT3Conversions: BiomarkerConversions = {
-  biomarker: 'Free T3',
-  aliases: ['FT3', 'Free Triiodothyronine'],
+const freeT3Conversions: SubstanceConversions = {
+  component: 'Triiodothyronine.free',
   conversions: [
     { from: 'pg/mL', to: 'pmol/L', factor: 1.536 },
     { from: 'pmol/L', to: 'pg/mL', factor: 0.651 },
@@ -264,9 +274,8 @@ const freeT3Conversions: BiomarkerConversions = {
  * Total T3 conversions
  * Conversion: ng/dL × 0.01536 = nmol/L
  */
-const totalT3Conversions: BiomarkerConversions = {
-  biomarker: 'Total T3',
-  aliases: ['T3', 'Triiodothyronine'],
+const totalT3Conversions: SubstanceConversions = {
+  component: 'Triiodothyronine',
   conversions: [
     { from: 'ng/dL', to: 'nmol/L', factor: 0.01536 },
     { from: 'nmol/L', to: 'ng/dL', factor: 65.1 },
@@ -278,9 +287,8 @@ const totalT3Conversions: BiomarkerConversions = {
  * Molecular weight: 55.845 g/mol
  * Conversion: µg/dL × 0.179 = µmol/L
  */
-const ironConversions: BiomarkerConversions = {
-  biomarker: 'Serum Iron',
-  aliases: ['Iron', 'Fe', 'Iron Level'],
+const ironConversions: SubstanceConversions = {
+  component: 'Iron',
   conversions: [
     { from: 'µg/dL', to: 'µmol/L', factor: 0.179 },
     { from: 'µmol/L', to: 'µg/dL', factor: 5.587 },
@@ -292,9 +300,8 @@ const ironConversions: BiomarkerConversions = {
  * Conversion: ng/mL = µg/L (equivalent)
  * Conversion to pmol/L uses MW ~450,000 (approximate)
  */
-const ferritinConversions: BiomarkerConversions = {
-  biomarker: 'Ferritin',
-  aliases: ['Serum Ferritin'],
+const ferritinConversions: SubstanceConversions = {
+  component: 'Ferritin',
   conversions: [
     { from: 'ng/mL', to: 'µg/L', factor: 1 },
     { from: 'µg/L', to: 'ng/mL', factor: 1 },
@@ -308,9 +315,8 @@ const ferritinConversions: BiomarkerConversions = {
  * Molecular weight: 584.66 g/mol
  * Conversion: mg/dL × 17.1 = µmol/L
  */
-const bilirubinConversions: BiomarkerConversions = {
-  biomarker: 'Bilirubin',
-  aliases: ['Total Bilirubin', 'TBIL', 'Bilirubin Total', 'Direct Bilirubin', 'DBIL'],
+const bilirubinConversions: SubstanceConversions = {
+  component: 'Bilirubin',
   conversions: [
     { from: 'mg/dL', to: 'µmol/L', factor: 17.1 },
     { from: 'µmol/L', to: 'mg/dL', factor: 0.0585 },
@@ -321,12 +327,16 @@ const bilirubinConversions: BiomarkerConversions = {
  * Albumin conversions
  * Conversion: g/dL × 10 = g/L
  */
-const albuminConversions: BiomarkerConversions = {
-  biomarker: 'Albumin',
-  aliases: ['Serum Albumin', 'ALB'],
+const albuminConversions: SubstanceConversions = {
+  component: 'Albumin',
   conversions: [
     { from: 'g/dL', to: 'g/L', factor: 10 },
     { from: 'g/L', to: 'g/dL', factor: 0.1 },
+    // Urine albumin (microalbumin)
+    // mg/L ↔ µg/min (assuming 1440 min/day and ~1.5L urine/day average)
+    // This is an approximation: mg/L × 1.04 ≈ µg/min
+    { from: 'mg/L', to: 'µg/min', factor: 1.04 },
+    { from: 'µg/min', to: 'mg/L', factor: 0.96 },
   ],
 };
 
@@ -335,9 +345,8 @@ const albuminConversions: BiomarkerConversions = {
  * NGSP (%) to IFCC (mmol/mol), the IFCC–NGSP master equation:
  * IFCC = (NGSP − 2.15) × 10.929, so NGSP = IFCC / 10.929 + 2.15
  */
-const hba1cConversions: BiomarkerConversions = {
-  biomarker: 'Hemoglobin A1c',
-  aliases: ['HbA1c', 'A1C', 'Glycated Hemoglobin', 'Glycohemoglobin'],
+const hba1cConversions: SubstanceConversions = {
+  component: 'Hemoglobin A1c/Hemoglobin.total',
   conversions: [
     { from: '%', to: 'mmol/mol', factor: 10.929, offset: -2.15 * 10.929 },
     { from: 'mmol/mol', to: '%', factor: 1 / 10.929, offset: 2.15 },
@@ -349,9 +358,8 @@ const hba1cConversions: BiomarkerConversions = {
  * Molecular weight: 168.11 g/mol
  * Conversion: mg/dL × 59.48 = µmol/L
  */
-const uricAcidConversions: BiomarkerConversions = {
-  biomarker: 'Uric Acid',
-  aliases: ['Urate', 'Serum Uric Acid'],
+const uricAcidConversions: SubstanceConversions = {
+  component: 'Urate',
   conversions: [
     { from: 'mg/dL', to: 'µmol/L', factor: 59.48 },
     { from: 'µmol/L', to: 'mg/dL', factor: 0.0168 },
@@ -363,9 +371,8 @@ const uricAcidConversions: BiomarkerConversions = {
  * 10^3/μL = 10^9/L (equivalent units)
  * Also known as: k/μL, K/uL, thousand/μL
  */
-const wbcConversions: BiomarkerConversions = {
-  biomarker: 'White Blood Cell Count',
-  aliases: ['WBC', 'Leukocytes', 'White Blood Cells', 'WBC Count'],
+const wbcConversions: SubstanceConversions = {
+  component: 'Leukocytes',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -387,9 +394,8 @@ const wbcConversions: BiomarkerConversions = {
  * 10^6/μL = 10^12/L (equivalent units)
  * Also known as: M/μL, million/μL
  */
-const rbcConversions: BiomarkerConversions = {
-  biomarker: 'Red Blood Cell Count',
-  aliases: ['RBC', 'Erythrocytes', 'Red Blood Cells', 'RBC Count'],
+const rbcConversions: SubstanceConversions = {
+  component: 'Erythrocytes',
   conversions: [
     { from: '10^6/μL', to: '10^12/L', factor: 1 },
     { from: '10^12/L', to: '10^6/μL', factor: 1 },
@@ -405,9 +411,8 @@ const rbcConversions: BiomarkerConversions = {
  * 10^3/μL = 10^9/L (equivalent units)
  * Also known as: k/μL, K/uL, thousand/μL
  */
-const plateletConversions: BiomarkerConversions = {
-  biomarker: 'Platelet Count',
-  aliases: ['PLT', 'Platelets', 'Thrombocytes', 'PLT Count'],
+const plateletConversions: SubstanceConversions = {
+  component: 'Platelets',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -421,9 +426,8 @@ const plateletConversions: BiomarkerConversions = {
 /**
  * Neutrophil Count conversions
  */
-const neutrophilConversions: BiomarkerConversions = {
-  biomarker: 'Neutrophil Count',
-  aliases: ['Neutrophils', 'Absolute Neutrophil Count', 'ANC', 'Neutrophils Absolute'],
+const neutrophilConversions: SubstanceConversions = {
+  component: 'Neutrophils',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -437,9 +441,8 @@ const neutrophilConversions: BiomarkerConversions = {
 /**
  * Lymphocyte Count conversions
  */
-const lymphocyteConversions: BiomarkerConversions = {
-  biomarker: 'Lymphocyte Count',
-  aliases: ['Lymphocytes', 'Absolute Lymphocyte Count', 'Lymphocytes Absolute'],
+const lymphocyteConversions: SubstanceConversions = {
+  component: 'Lymphocytes',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -453,9 +456,8 @@ const lymphocyteConversions: BiomarkerConversions = {
 /**
  * Monocyte Count conversions
  */
-const monocyteConversions: BiomarkerConversions = {
-  biomarker: 'Monocyte Count',
-  aliases: ['Monocytes', 'Absolute Monocyte Count', 'Monocytes Absolute'],
+const monocyteConversions: SubstanceConversions = {
+  component: 'Monocytes',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -469,9 +471,8 @@ const monocyteConversions: BiomarkerConversions = {
 /**
  * Eosinophil Count conversions
  */
-const eosinophilConversions: BiomarkerConversions = {
-  biomarker: 'Eosinophil Count',
-  aliases: ['Eosinophils', 'Absolute Eosinophil Count', 'Eosinophils Absolute'],
+const eosinophilConversions: SubstanceConversions = {
+  component: 'Eosinophils',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -485,9 +486,8 @@ const eosinophilConversions: BiomarkerConversions = {
 /**
  * Basophil Count conversions
  */
-const basophilConversions: BiomarkerConversions = {
-  biomarker: 'Basophil Count',
-  aliases: ['Basophils', 'Absolute Basophil Count', 'Basophils Absolute'],
+const basophilConversions: SubstanceConversions = {
+  component: 'Basophils',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -501,9 +501,8 @@ const basophilConversions: BiomarkerConversions = {
 /**
  * Reticulocyte Count conversions
  */
-const reticulocyteConversions: BiomarkerConversions = {
-  biomarker: 'Reticulocyte Count',
-  aliases: ['Reticulocytes', 'Retics', 'Reticulocyte Absolute'],
+const reticulocyteConversions: SubstanceConversions = {
+  component: 'Reticulocytes',
   conversions: [
     { from: '10^3/μL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/μL', factor: 1 },
@@ -517,9 +516,8 @@ const reticulocyteConversions: BiomarkerConversions = {
 /**
  * Reticulocytes as a share of red cells: per mille is a tenth of a percent
  */
-const reticulocytePercentageConversions: BiomarkerConversions = {
-  biomarker: 'Reticulocytes Percentage',
-  aliases: [],
+const reticulocytePercentageConversions: SubstanceConversions = {
+  component: 'Reticulocytes/Erythrocytes',
   conversions: [
     { from: '‰', to: '%', factor: 0.1 },
     { from: '%', to: '‰', factor: 10 },
@@ -532,9 +530,8 @@ const reticulocytePercentageConversions: BiomarkerConversions = {
  * Conversion: mg/dL × 0.4114 = mmol/L
  * Also: mEq/L × 0.5 = mmol/L (since Mg2+ is divalent)
  */
-const magnesiumConversions: BiomarkerConversions = {
-  biomarker: 'Magnesium',
-  aliases: ['Mg', 'Serum Magnesium', 'Mg++'],
+const magnesiumConversions: SubstanceConversions = {
+  component: 'Magnesium',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.4114 },
     { from: 'mmol/L', to: 'mg/dL', factor: 2.431 },
@@ -549,9 +546,8 @@ const magnesiumConversions: BiomarkerConversions = {
  * Potassium conversions
  * mEq/L = mmol/L for monovalent ions
  */
-const potassiumConversions: BiomarkerConversions = {
-  biomarker: 'Potassium',
-  aliases: ['K', 'K+', 'Serum Potassium'],
+const potassiumConversions: SubstanceConversions = {
+  component: 'Potassium',
   conversions: [
     { from: 'mEq/L', to: 'mmol/L', factor: 1 },
     { from: 'mmol/L', to: 'mEq/L', factor: 1 },
@@ -562,9 +558,8 @@ const potassiumConversions: BiomarkerConversions = {
  * Sodium conversions
  * mEq/L = mmol/L for monovalent ions
  */
-const sodiumConversions: BiomarkerConversions = {
-  biomarker: 'Sodium',
-  aliases: ['Na', 'Na+', 'Serum Sodium'],
+const sodiumConversions: SubstanceConversions = {
+  component: 'Sodium',
   conversions: [
     { from: 'mEq/L', to: 'mmol/L', factor: 1 },
     { from: 'mmol/L', to: 'mEq/L', factor: 1 },
@@ -575,9 +570,8 @@ const sodiumConversions: BiomarkerConversions = {
  * Chloride conversions
  * mEq/L = mmol/L for monovalent ions
  */
-const chlorideConversions: BiomarkerConversions = {
-  biomarker: 'Chloride',
-  aliases: ['Cl', 'Cl-', 'Serum Chloride'],
+const chlorideConversions: SubstanceConversions = {
+  component: 'Chloride',
   conversions: [
     { from: 'mEq/L', to: 'mmol/L', factor: 1 },
     { from: 'mmol/L', to: 'mEq/L', factor: 1 },
@@ -589,9 +583,8 @@ const chlorideConversions: BiomarkerConversions = {
  * Molecular weight: 30.97 g/mol
  * Conversion: mg/dL × 0.3229 = mmol/L
  */
-const phosphorusConversions: BiomarkerConversions = {
-  biomarker: 'Phosphorus',
-  aliases: ['Phosphate', 'P', 'Inorganic Phosphorus', 'Serum Phosphorus'],
+const phosphorusConversions: SubstanceConversions = {
+  component: 'Phosphate',
   conversions: [
     { from: 'mg/dL', to: 'mmol/L', factor: 0.3229 },
     { from: 'mmol/L', to: 'mg/dL', factor: 3.097 },
@@ -603,9 +596,8 @@ const phosphorusConversions: BiomarkerConversions = {
  * Molecular weight: 288.42 g/mol
  * Conversion: ng/dL × 0.0347 = nmol/L
  */
-const testosteroneConversions: BiomarkerConversions = {
-  biomarker: 'Testosterone',
-  aliases: ['Total Testosterone', 'Testosterone Total', 'Free Testosterone', 'Testosterone Free'],
+const testosteroneConversions: SubstanceConversions = {
+  component: 'Testosterone',
   conversions: [
     { from: 'ng/dL', to: 'nmol/L', factor: 0.0347 },
     { from: 'nmol/L', to: 'ng/dL', factor: 28.84 },
@@ -619,9 +611,8 @@ const testosteroneConversions: BiomarkerConversions = {
  * Molecular weight: 272.38 g/mol
  * Conversion: pg/mL × 3.671 = pmol/L
  */
-const estradiolConversions: BiomarkerConversions = {
-  biomarker: 'Estradiol',
-  aliases: ['E2', 'Estrogen', '17-beta Estradiol'],
+const estradiolConversions: SubstanceConversions = {
+  component: 'Estradiol',
   conversions: [
     { from: 'pg/mL', to: 'pmol/L', factor: 3.671 },
     { from: 'pmol/L', to: 'pg/mL', factor: 0.272 },
@@ -632,9 +623,8 @@ const estradiolConversions: BiomarkerConversions = {
  * PSA (Prostate Specific Antigen) conversions
  * ng/mL = μg/L (equivalent)
  */
-const psaConversions: BiomarkerConversions = {
-  biomarker: 'Prostate Specific Antigen',
-  aliases: ['PSA', 'Total PSA', 'PSA Total', 'Free PSA'],
+const psaConversions: SubstanceConversions = {
+  component: 'Prostate specific Ag',
   conversions: [
     { from: 'ng/mL', to: 'µg/L', factor: 1 },
     { from: 'µg/L', to: 'ng/mL', factor: 1 },
@@ -645,9 +635,8 @@ const psaConversions: BiomarkerConversions = {
  * CRP (C-Reactive Protein) conversions
  * mg/L = mg/dL × 10
  */
-const crpConversions: BiomarkerConversions = {
-  biomarker: 'C-Reactive Protein',
-  aliases: ['CRP', 'hs-CRP', 'High Sensitivity CRP'],
+const crpConversions: SubstanceConversions = {
+  component: 'C reactive protein',
   conversions: [
     { from: 'mg/L', to: 'mg/dL', factor: 0.1 },
     { from: 'mg/dL', to: 'mg/L', factor: 10 },
@@ -660,9 +649,8 @@ const crpConversions: BiomarkerConversions = {
  * ESR (Erythrocyte Sedimentation Rate) conversions
  * mm/hr is the standard unit - just handle variations
  */
-const esrConversions: BiomarkerConversions = {
-  biomarker: 'Erythrocyte Sedimentation Rate',
-  aliases: ['ESR', 'Sed Rate', 'Sedimentation Rate'],
+const esrConversions: SubstanceConversions = {
+  component: 'Erythrocyte',
   conversions: [
     { from: 'mm/hr', to: 'mm/h', factor: 1 },
     { from: 'mm/h', to: 'mm/hr', factor: 1 },
@@ -673,9 +661,8 @@ const esrConversions: BiomarkerConversions = {
  * Hematocrit conversions
  * % to L/L (ratio): divide by 100
  */
-const hematocritConversions: BiomarkerConversions = {
-  biomarker: 'Hematocrit',
-  aliases: ['Hct', 'HCT', 'PCV', 'Packed Cell Volume', 'Ematocrito'],
+const hematocritConversions: SubstanceConversions = {
+  component: 'Erythrocyte/Blood',
   conversions: [
     { from: '%', to: 'L/L', factor: 0.01 },
     { from: '%', to: 'ratio', factor: 0.01 },
@@ -690,40 +677,11 @@ const hematocritConversions: BiomarkerConversions = {
  * Mean Corpuscular Volume (MCV) conversions
  * fL and µm³ are equivalent (1 fL = 1 µm³)
  */
-const mcvConversions: BiomarkerConversions = {
-  biomarker: 'Mean Corpuscular Volume',
-  aliases: ['MCV', 'Volume Globulare Medio', 'Volume Corpuscolare Medio'],
+const mcvConversions: SubstanceConversions = {
+  component: 'Observation',
   conversions: [
     { from: 'fL', to: 'µm³', factor: 1 },
     { from: 'µm³', to: 'fL', factor: 1 },
-  ],
-};
-
-/**
- * Mean Corpuscular Hemoglobin (MCH) conversions
- * pg to fmol: MCH in fmol counts haemoglobin monomers, MW 16,114.5 g/mol
- * 1 pg = 1/16.1145 fmol ≈ 0.06206 fmol
- */
-const mchConversions: BiomarkerConversions = {
-  biomarker: 'Mean Corpuscular Hemoglobin',
-  aliases: ['MCH', 'Contenuto Medio di Hb', 'Contenuto Emoglobinico Corpuscolare Medio'],
-  conversions: [
-    { from: 'pg', to: 'fmol', factor: 1 / 16.1145 },
-    { from: 'fmol', to: 'pg', factor: 16.1145 },
-  ],
-};
-
-/**
- * Mean Corpuscular Hemoglobin Concentration (MCHC) conversions
- * g/dL × 10 = g/L
- * Note: % conversion is complex and context-dependent, so only handling g/dL ↔ g/L
- */
-const mchcConversions: BiomarkerConversions = {
-  biomarker: 'Mean Corpuscular Hemoglobin Concentration',
-  aliases: ['MCHC', 'Concentrazione Media di Hb', 'Concentrazione Emoglobinica Corpuscolare Media'],
-  conversions: [
-    { from: 'g/dL', to: 'g/L', factor: 10 },
-    { from: 'g/L', to: 'g/dL', factor: 0.1 },
   ],
 };
 
@@ -732,9 +690,8 @@ const mchcConversions: BiomarkerConversions = {
  * IU/mL, UI/mL, U/mL are equivalent
  * kIU/L = IU/mL (since 1 kIU/L = 1000 IU/L = 1 IU/mL)
  */
-const tpoAntibodiesConversions: BiomarkerConversions = {
-  biomarker: 'TPO Antibodies',
-  aliases: ['Anti-TPO', 'Thyroid Peroxidase Antibodies', 'TPOAb', 'Anticorpi anti Tireoperossidasi'],
+const tpoAntibodiesConversions: SubstanceConversions = {
+  component: 'Thyroperoxidase Ab',
   conversions: [
     { from: 'IU/mL', to: 'U/mL', factor: 1 },
     { from: 'IU/mL', to: 'kIU/L', factor: 1 },
@@ -749,63 +706,18 @@ const tpoAntibodiesConversions: BiomarkerConversions = {
  * Enzyme unit conversions (ALT, AST, ALP, GGT, Amylase)
  * U/L and IU/L are equivalent
  */
-const enzymeConversions: BiomarkerConversions = {
-  biomarker: 'Alanine Aminotransferase',
-  aliases: ['ALT', 'SGPT', 'Alanine Transaminase', 'GPT', 'ALT (GPT)',
-            'Aspartate Aminotransferase', 'AST', 'SGOT', 'Aspartate Transaminase', 'GOT', 'AST (GOT)',
-            'Alkaline Phosphatase', 'ALP', 'Alk Phos',
-            'Gamma-Glutamyl Transferase', 'GGT', 'Gamma GT', 'GGTP',
-            'Amylase', 'S-Amilasi', 'Amilasi'],
-  conversions: [
-    { from: 'U/L', to: 'IU/L', factor: 1 },
-    { from: 'IU/L', to: 'U/L', factor: 1 },
-  ],
-};
+const ENZYME_UNITS: UnitConversion[] = [
+  { from: 'U/L', to: 'IU/L', factor: 1 },
+  { from: 'IU/L', to: 'U/L', factor: 1 },
+];
 
-/**
- * Urine Glucose conversions
- * Glucose MW: 180.16 g/mol
- * mg/dL × 0.0555 = mmol/L
- */
-const urineGlucoseConversions: BiomarkerConversions = {
-  biomarker: 'Urine Glucose',
-  aliases: ['U-Glucosio', 'Glucosio Urinario', 'Glucosio (urine)', 'Glycosuria'],
-  conversions: [
-    { from: 'mg/dL', to: 'mmol/L', factor: 0.0555 },
-    { from: 'mmol/L', to: 'mg/dL', factor: 18.02 },
-  ],
-};
-
-/**
- * Urine Protein conversions
- * mg/dL × 0.01 = g/L; mg/dL × 10 = mg/L
- */
-const urineProteinConversions: BiomarkerConversions = {
-  biomarker: 'Urine Protein',
-  aliases: ['U-Proteine', 'Proteine (urine)', 'Proteinuria', 'U-Proteine totali'],
-  conversions: [
-    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
-    { from: 'mg/dL', to: 'mg/L', factor: 10 },
-    { from: 'g/L', to: 'mg/dL', factor: 100 },
-    { from: 'g/L', to: 'mg/L', factor: 1000 },
-    { from: 'mg/L', to: 'mg/dL', factor: 0.1 },
-    { from: 'mg/L', to: 'g/L', factor: 0.001 },
-  ],
-};
-
-/**
- * Urine Bilirubin conversions
- * Bilirubin MW: 584.66 g/mol
- * mg/dL × 17.1 = µmol/L
- */
-const urineBilirubinConversions: BiomarkerConversions = {
-  biomarker: 'Urine Bilirubin',
-  aliases: ['U-Bilirubina', 'Bilirubina (urine)', 'Bilirubina urinaria'],
-  conversions: [
-    { from: 'mg/dL', to: 'µmol/L', factor: 17.1 },
-    { from: 'µmol/L', to: 'mg/dL', factor: 0.0585 },
-  ],
-};
+const enzymeConversions: SubstanceConversions[] = [
+  'Alanine aminotransferase',
+  'Aspartate aminotransferase',
+  'Alkaline phosphatase',
+  'Gamma glutamyl transferase',
+  'Amylase',
+].map((component) => ({ component, conversions: ENZYME_UNITS }));
 
 /**
  * Urine Urobilinogen conversions
@@ -813,9 +725,8 @@ const urineBilirubinConversions: BiomarkerConversions = {
  * mg/dL × 16.9 = µmol/L
  * EU/dL (Ehrlich Units) - approximately equivalent to mg/dL
  */
-const urineUrobilinogenConversions: BiomarkerConversions = {
-  biomarker: 'Urine Urobilinogen',
-  aliases: ['U-Urobilinogeno', 'Urobilinogeno', 'Urobilinogeno (urine)'],
+const urineUrobilinogenConversions: SubstanceConversions = {
+  component: 'Urobilinogen',
   conversions: [
     { from: 'mg/dL', to: 'µmol/L', factor: 16.9 },
     { from: 'mg/dL', to: 'EU/dL', factor: 1 },
@@ -827,30 +738,21 @@ const urineUrobilinogenConversions: BiomarkerConversions = {
 };
 
 /**
- * Microalbumin / Urine Albumin conversions
- * mg/L is the base unit; also handle ratio units
- */
-const microalbuminConversions: BiomarkerConversions = {
-  biomarker: 'Microalbumin',
-  aliases: ['Urine Microalbumin', 'MAU', 'Microalbumina', 'U-Albumina', 'U-ALBUMINA'],
-  conversions: [
-    // mg/L ↔ µg/min (assuming 1440 min/day and ~1.5L urine/day average)
-    // This is an approximation: mg/L × 1.04 ≈ µg/min
-    { from: 'mg/L', to: 'µg/min', factor: 1.04 },
-    { from: 'µg/min', to: 'mg/L', factor: 0.96 },
-  ],
-};
-
-/**
  * Total Protein conversions
  * g/dL × 10 = g/L
  */
-const totalProteinConversions: BiomarkerConversions = {
-  biomarker: 'Total Protein',
-  aliases: ['Protein Total', 'TP', 'Serum Protein', 'Proteine totali', 'Protidemia'],
+const totalProteinConversions: SubstanceConversions = {
+  component: 'Protein',
   conversions: [
     { from: 'g/dL', to: 'g/L', factor: 10 },
     { from: 'g/L', to: 'g/dL', factor: 0.1 },
+    // Units urine protein is reported in
+    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
+    { from: 'mg/dL', to: 'mg/L', factor: 10 },
+    { from: 'g/L', to: 'mg/dL', factor: 100 },
+    { from: 'g/L', to: 'mg/L', factor: 1000 },
+    { from: 'mg/L', to: 'mg/dL', factor: 0.1 },
+    { from: 'mg/L', to: 'g/L', factor: 0.001 },
   ],
 };
 
@@ -858,9 +760,8 @@ const totalProteinConversions: BiomarkerConversions = {
  * TIBC (Total Iron Binding Capacity) conversions
  * Iron: 1 µg/dL = 0.179 µmol/L (based on Fe atomic weight 55.845)
  */
-const tibcConversions: BiomarkerConversions = {
-  biomarker: 'Total Iron Binding Capacity',
-  aliases: ['TIBC', 'Iron Binding Capacity'],
+const tibcConversions: SubstanceConversions = {
+  component: 'Iron binding capacity',
   conversions: [
     { from: 'µg/dL', to: 'µmol/L', factor: 0.179 },
     { from: 'µmol/L', to: 'µg/dL', factor: 5.587 },
@@ -871,9 +772,8 @@ const tibcConversions: BiomarkerConversions = {
  * Transferrin conversions
  * mg/dL × 0.01 = g/L
  */
-const transferrinConversions: BiomarkerConversions = {
-  biomarker: 'Transferrin',
-  aliases: ['Serum Transferrin'],
+const transferrinConversions: SubstanceConversions = {
+  component: 'Transferrin',
   conversions: [
     { from: 'mg/dL', to: 'g/L', factor: 0.01 },
     { from: 'g/L', to: 'mg/dL', factor: 100 },
@@ -885,9 +785,8 @@ const transferrinConversions: BiomarkerConversions = {
  * Retinol MW: 286.45 g/mol
  * µg/dL × 0.0349 = µmol/L
  */
-const vitaminAConversions: BiomarkerConversions = {
-  biomarker: 'Vitamin A',
-  aliases: ['Retinol', 'Serum Retinol'],
+const vitaminAConversions: SubstanceConversions = {
+  component: 'Retinol',
   conversions: [
     { from: 'µg/dL', to: 'µmol/L', factor: 0.0349 },
     { from: 'µmol/L', to: 'µg/dL', factor: 28.65 },
@@ -895,99 +794,19 @@ const vitaminAConversions: BiomarkerConversions = {
 };
 
 /**
- * Urine Creatinine conversions
- * Molecular weight: 113.12 g/mol
- * Conversion factors:
- * - mg/dL × 88.4 = µmol/L
- * - mg/dL × 0.01 = g/L
- * - µmol/L × 0.00011312 = g/L (since 113.12 µg = 1 µmol)
- */
-const urineCreatinineConversions: BiomarkerConversions = {
-  biomarker: 'Urine Creatinine',
-  aliases: ['U-Creatinina', 'Creatinina urinaria', 'U-Creatinina (urine)'],
-  conversions: [
-    // mg/dL conversions
-    { from: 'mg/dL', to: 'µmol/L', factor: 88.4 },
-    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
-    { from: 'mg/dL', to: 'mmol/L', factor: 0.0884 },
-    // µmol/L conversions
-    { from: 'µmol/L', to: 'mg/dL', factor: 0.0113 },
-    { from: 'µmol/L', to: 'g/L', factor: 0.00011312 },
-    { from: 'µmol/L', to: 'mmol/L', factor: 0.001 },
-    // g/L conversions
-    { from: 'g/L', to: 'mg/dL', factor: 100 },
-    { from: 'g/L', to: 'µmol/L', factor: 8840 },
-    { from: 'g/L', to: 'mmol/L', factor: 8.84 },
-    // mmol/L conversions
-    { from: 'mmol/L', to: 'mg/dL', factor: 11.312 },
-    { from: 'mmol/L', to: 'µmol/L', factor: 1000 },
-    { from: 'mmol/L', to: 'g/L', factor: 0.11312 },
-  ],
-};
-
-/**
- * Urine Urea conversions (concentration)
- * Molecular weight: 60.06 g/mol
- */
-const urineUreaConversions: BiomarkerConversions = {
-  biomarker: 'Urine Urea',
-  aliases: [],
-  conversions: [
-    { from: 'g/L', to: 'mmol/L', factor: 16.65 },
-    { from: 'mmol/L', to: 'g/L', factor: 0.06006 },
-    { from: 'g/L', to: 'mg/dL', factor: 100 },
-    { from: 'mg/dL', to: 'g/L', factor: 0.01 },
-    { from: 'mmol/L', to: 'mg/dL', factor: 6.006 },
-    { from: 'mg/dL', to: 'mmol/L', factor: 0.1665 },
-  ],
-};
-
-/**
- * 24-hour urine creatinine conversions (amount per day)
- * Molecular weight: 113.12 g/mol
- */
-const urineCreatinine24hConversions: BiomarkerConversions = {
-  biomarker: '24-Hour Urine Creatinine',
-  aliases: [],
-  conversions: [
-    { from: 'g/24h', to: 'mmol/24h', factor: 8.84 },
-    { from: 'mmol/24h', to: 'g/24h', factor: 0.11312 },
-    { from: 'g/24h', to: 'µmol/24h', factor: 8840 },
-    { from: 'µmol/24h', to: 'g/24h', factor: 0.00011312 },
-    { from: 'g/24h', to: 'mg/24h', factor: 1000 },
-    { from: 'mg/24h', to: 'g/24h', factor: 0.001 },
-  ],
-};
-
-/**
- * 24-hour urine urea conversions (amount per day)
- * Molecular weight: 60.06 g/mol
- */
-const urineUrea24hConversions: BiomarkerConversions = {
-  biomarker: '24-Hour Urine Urea',
-  aliases: [],
-  conversions: [
-    { from: 'g/24h', to: 'mmol/24h', factor: 16.65 },
-    { from: 'mmol/24h', to: 'g/24h', factor: 0.06006 },
-  ],
-};
-
-/**
  * Nucleated red blood cell conversions: per 100 white cells is a percentage,
  * and 10^3/µL is 10^9/L
  */
-const nrbcPercentageConversions: BiomarkerConversions = {
-  biomarker: 'Nucleated Red Blood Cells Percentage',
-  aliases: [],
+const nrbcPercentageConversions: SubstanceConversions = {
+  component: 'Erythrocytes.nucleated/Leukocytes',
   conversions: [
     { from: '/100 WBC', to: '%', factor: 1 },
     { from: '%', to: '/100 WBC', factor: 1 },
   ],
 };
 
-const nrbcConversions: BiomarkerConversions = {
-  biomarker: 'Nucleated Red Blood Cells',
-  aliases: [],
+const nrbcConversions: SubstanceConversions = {
+  component: 'Erythrocytes.nucleated',
   conversions: [
     { from: '10^3/µL', to: '10^9/L', factor: 1 },
     { from: '10^9/L', to: '10^3/µL', factor: 1 },
@@ -1000,9 +819,8 @@ const nrbcConversions: BiomarkerConversions = {
  * Conversion: mg/mmol × (1000/113.12) = mg/g
  * Factor: 8.84 (approximately)
  */
-const proteinCreatinineRatioConversions: BiomarkerConversions = {
-  biomarker: 'Protein Creatinine Ratio',
-  aliases: ['PCR', 'U-Proteine/Creatinina', 'Proteine/Creatinina'],
+const proteinCreatinineRatioConversions: SubstanceConversions = {
+  component: 'Protein/Creatinine',
   conversions: [
     { from: 'mg/mmol', to: 'mg/g', factor: 8.84 },
     { from: 'mg/g', to: 'mg/mmol', factor: 0.1131 },
@@ -1013,9 +831,8 @@ const proteinCreatinineRatioConversions: BiomarkerConversions = {
  * Albumin Creatinine Ratio conversions
  * Same as Protein Creatinine Ratio - based on creatinine MW 113.12 g/mol
  */
-const albuminCreatinineRatioConversions: BiomarkerConversions = {
-  biomarker: 'Albumin Creatinine Ratio',
-  aliases: ['ACR', 'UACR', 'Albumina/Creatinina', 'U-Albumina/Creatinina'],
+const albuminCreatinineRatioConversions: SubstanceConversions = {
+  component: 'Albumin/Creatinine',
   conversions: [
     { from: 'mg/mmol', to: 'mg/g', factor: 8.84 },
     { from: 'mg/g', to: 'mg/mmol', factor: 0.1131 },
@@ -1026,9 +843,8 @@ const albuminCreatinineRatioConversions: BiomarkerConversions = {
  * Time unit conversions (for semen analysis parameters like Sexual Abstinence)
  * giorni = Italian for "days"
  */
-const timeConversions: BiomarkerConversions = {
-  biomarker: 'Sexual Abstinence',
-  aliases: ['Astinenza sessuale', 'Abstinence'],
+const timeConversions: SubstanceConversions = {
+  component: 'Sexual abstinence duration',
   conversions: [
     { from: 'giorni', to: 'days', factor: 1 },
     { from: 'days', to: 'giorni', factor: 1 },
@@ -1036,26 +852,11 @@ const timeConversions: BiomarkerConversions = {
 };
 
 /**
- * Sperm count conversions
- * mil. = million (abbreviation variant)
- * M/mL = million/mL
- */
-const spermCountConversions: BiomarkerConversions = {
-  biomarker: 'Total Sperm Count',
-  aliases: ['Sperm Count', 'Spermatozoi totali', 'Conta spermatozoi'],
-  conversions: [
-    { from: 'M', to: 'million', factor: 1 },
-    { from: 'million', to: 'M', factor: 1 },
-  ],
-};
-
-/**
- * Sperm concentration conversions
+ * Sperm concentration and count conversions
  * mil/mL = million/mL = 10^6/mL
  */
-const spermConcentrationConversions: BiomarkerConversions = {
-  biomarker: 'Sperm Concentration',
-  aliases: ['Concentrazione spermatozoi', 'Sperm Density'],
+const spermConcentrationConversions: SubstanceConversions = {
+  component: 'Spermatozoa',
   conversions: [
     { from: 'mil/mL', to: 'M/mL', factor: 1 },
     { from: 'M/mL', to: 'mil/mL', factor: 1 },
@@ -1063,13 +864,16 @@ const spermConcentrationConversions: BiomarkerConversions = {
     { from: '10^6/mL', to: 'mil/mL', factor: 1 },
     { from: 'M/mL', to: '10^6/mL', factor: 1 },
     { from: '10^6/mL', to: 'M/mL', factor: 1 },
+    // Total count
+    { from: 'M', to: 'million', factor: 1 },
+    { from: 'million', to: 'M', factor: 1 },
   ],
 };
 
 /**
  * All conversion definitions
  */
-export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
+export const UNIT_CONVERSIONS: SubstanceConversions[] = [
   glucoseConversions,
   cholesterolConversions,
   triglyceridesConversions,
@@ -1121,23 +925,13 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   // CBC indices
   hematocritConversions,
   mcvConversions,
-  mchConversions,
-  mchcConversions,
   // Thyroid antibodies
   tpoAntibodiesConversions,
   // Kidney function
   // Enzyme conversions
-  enzymeConversions,
+  ...enzymeConversions,
   // Urinalysis
-  urineCreatinineConversions,
-  urineUreaConversions,
-  urineCreatinine24hConversions,
-  urineUrea24hConversions,
-  urineGlucoseConversions,
-  urineProteinConversions,
-  urineBilirubinConversions,
   urineUrobilinogenConversions,
-  microalbuminConversions,
   // Urinalysis ratios
   proteinCreatinineRatioConversions,
   albuminCreatinineRatioConversions,
@@ -1151,42 +945,24 @@ export const UNIT_CONVERSIONS: BiomarkerConversions[] = [
   // Time/duration
   timeConversions,
   // Semen analysis
-  spermCountConversions,
   spermConcentrationConversions,
 ];
 
+const BY_COMPONENT = new Map(
+  UNIT_CONVERSIONS.map((definition) => [definition.component.toLowerCase(), definition])
+);
+
 /**
- * Find conversion definition for a biomarker
- * Also checks the biomarker dictionary for aliases to find the canonical name
+ * The conversions for a LOINC component. A component with a subpart uses its
+ * substance's conversions when it has none of its own: "Cholesterol.in LDL"
+ * and "Glucose^2H post 75 g glucose PO" convert as cholesterol and glucose.
+ * A ratio of two substances ("Albumin/Creatinine") has only its own.
  */
-export function findConversionDefinition(
-  biomarkerName: string
-): BiomarkerConversions | undefined {
-  const searchTerm = biomarkerName.toLowerCase().trim();
-
-  // First, try direct lookup in conversion definitions
-  const directMatch = UNIT_CONVERSIONS.find(
-    (conv) =>
-      conv.biomarker.toLowerCase() === searchTerm ||
-      conv.aliases.some((a) => a.toLowerCase() === searchTerm)
-  );
-
-  if (directMatch) return directMatch;
-
-  // If not found, try to find the canonical name via the biomarker dictionary
-  // This handles cases where Italian aliases like "P-Creatinina (metodo enzimatico)"
-  // need to be mapped to "Creatinine" for conversion lookup
-  const biomarkerDef = findBiomarker(biomarkerName);
-  if (biomarkerDef) {
-    const canonicalName = biomarkerDef.name.toLowerCase();
-    return UNIT_CONVERSIONS.find(
-      (conv) =>
-        conv.biomarker.toLowerCase() === canonicalName ||
-        conv.aliases.some((a) => a.toLowerCase() === canonicalName)
-    );
-  }
-
-  return undefined;
+export function findConversionDefinition(component: string): SubstanceConversions | undefined {
+  const key = component.trim().toLowerCase();
+  const own = BY_COMPONENT.get(key);
+  if (own || key.includes('/')) return own;
+  return BY_COMPONENT.get(key.split(/[.^]/)[0]);
 }
 
 /** A conversion between two units: converted = value × factor + offset */
@@ -1196,16 +972,16 @@ export interface LinearConversion {
 }
 
 /**
- * The conversion between two units for a biomarker
+ * The conversion between two units for a substance (LOINC component)
  */
 export function getConversion(
-  biomarkerName: string,
+  component: string,
   fromUnit: string,
   toUnit: string
 ): LinearConversion | undefined {
   // Same unit, however spelled: no conversion needed, even for a test with none
   if (unitsMatch(fromUnit, toUnit)) return { factor: 1, offset: 0 };
-  const definition = findConversionDefinition(biomarkerName);
+  const definition = findConversionDefinition(component);
   if (!definition) return undefined;
 
   const direct = definition.conversions.find(
@@ -1235,10 +1011,10 @@ export function getConversion(
  * ratios; undefined when there is no conversion or it has an offset
  */
 export function getConversionFactor(
-  biomarkerName: string,
+  component: string,
   fromUnit: string,
   toUnit: string
 ): number | undefined {
-  const conversion = getConversion(biomarkerName, fromUnit, toUnit);
+  const conversion = getConversion(component, fromUnit, toUnit);
   return conversion && conversion.offset === 0 ? conversion.factor : undefined;
 }

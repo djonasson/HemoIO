@@ -2,7 +2,7 @@
  * Summary of one biomarker's recorded values: how many there are, and the
  * newest one (in the display unit when it converts).
  */
-import { convertForDisplay } from '@services/units';
+import { componentForBiomarker, convertForDisplay } from '@services/units';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -44,7 +44,7 @@ export function summarizeBiomarkerResults(
       if (testValue.biomarkerKey !== biomarker.key) continue;
       count += 1;
       if (latest && latest.date.getTime() >= result.date.getTime()) continue;
-      const shown = convertForDisplay(biomarker.name, testValue, displayUnit);
+      const shown = convertForDisplay(componentForBiomarker(biomarker.name), testValue, displayUnit);
       latest = {
         value: shown.value,
         unit: shown.unit,

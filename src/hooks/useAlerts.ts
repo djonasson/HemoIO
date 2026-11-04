@@ -26,6 +26,7 @@ import {
 } from '@services/alerts';
 import { getBiomarkerDisplayName, getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
 import {
+  componentForBiomarker,
   convertForDisplay,
   convertMeasurement,
   preferredUnitFor,
@@ -193,6 +194,7 @@ export function useAlerts(): UseAlertsResult {
           dateOf(b).getTime() - dateOf(a).getTime() || Number(outOfRange(b)) - Number(outOfRange(a))
       );
 
+      const component = componentForBiomarker(biomarkerName);
       // Alerts state values in the preferred unit when one is set
       const preferredUnit = preferredUnitFor(biomarkerDef, unitPreferences[biomarkerKey]);
 
@@ -204,7 +206,7 @@ export function useAlerts(): UseAlertsResult {
         type: AlertType,
         status: BiomarkerAlert['status']
       ): Omit<BiomarkerAlert, 'severity' | 'message'> => {
-        const display = convertForDisplay(biomarkerName, tv, preferredUnit);
+        const display = convertForDisplay(component, tv, preferredUnit);
         const info = labInfo.get(tv.labResultId)!;
         return {
           id: generateAlertId(biomarkerKey, tv.id ?? tv.labResultId, type),
@@ -254,7 +256,7 @@ export function useAlerts(): UseAlertsResult {
       const converted = sortedValues.map((tv) => ({
         date: dateOf(tv),
         ...convertMeasurement(
-          biomarkerName,
+          component,
           { value: tv.value as number, unit: tv.unit },
           trendUnit
         ),

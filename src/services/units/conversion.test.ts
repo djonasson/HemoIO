@@ -25,25 +25,30 @@ describe('Unit Conversion Service', () => {
         expect(result.targetUnit).toBe('mg/dL');
       });
 
-      it('works with alias "Blood Sugar"', () => {
-        const result = convertValue('Blood Sugar', 100, 'mg/dL', 'mmol/L');
-        expect(result.convertedValue).toBeCloseTo(5.55, 1);
+      it('converts by LOINC component', () => {
+        const result = convertValue('Glucose', 100, 'mg/dL', 'mmol/L');
+        expect(result.convertedValue).toBeCloseTo(5.55, 2);
+      });
+
+      it('converts a glucose component with a subpart as glucose', () => {
+        const result = convertValue('Glucose^2H post 75 g glucose PO', 100, 'mg/dL', 'mmol/L');
+        expect(result.convertedValue).toBeCloseTo(5.55, 2);
       });
     });
 
     describe('Cholesterol conversions', () => {
       it('converts total cholesterol from mg/dL to mmol/L', () => {
-        const result = convertValue('Total Cholesterol', 200, 'mg/dL', 'mmol/L');
+        const result = convertValue('Cholesterol', 200, 'mg/dL', 'mmol/L');
         expect(result.convertedValue).toBeCloseTo(5.18, 1);
       });
 
       it('converts LDL from mg/dL to mmol/L', () => {
-        const result = convertValue('LDL', 100, 'mg/dL', 'mmol/L');
+        const result = convertValue('Cholesterol.in LDL', 100, 'mg/dL', 'mmol/L');
         expect(result.convertedValue).toBeCloseTo(2.59, 1);
       });
 
       it('converts HDL from mmol/L to mg/dL', () => {
-        const result = convertValue('HDL', 1.5, 'mmol/L', 'mg/dL');
+        const result = convertValue('Cholesterol.in HDL', 1.5, 'mmol/L', 'mg/dL');
         expect(result.convertedValue).toBeCloseTo(58, 0);
       });
     });
@@ -55,7 +60,7 @@ describe('Unit Conversion Service', () => {
       });
 
       it('converts from g/L to g/dL', () => {
-        const result = convertValue('Hgb', 140, 'g/L', 'g/dL');
+        const result = convertValue('Hemoglobin', 140, 'g/L', 'g/dL');
         expect(result.convertedValue).toBe(14);
       });
     });
@@ -71,29 +76,28 @@ describe('Unit Conversion Service', () => {
         expect(result.convertedValue).toBeCloseTo(1.0, 1);
       });
 
-      it('converts using Italian alias P-Creatinina (metodo enzimatico)', () => {
-        // This tests that aliases from the biomarker dictionary are used for conversion lookup
+      it('converts µmol/L to mg/dL at two decimals', () => {
         // Use precision of 2 to avoid rounding issues (default for mg/dL is 0)
-        const result = convertValue('P-Creatinina (metodo enzimatico)', 67, 'µmol/L', 'mg/dL', 2);
+        const result = convertValue('Creatinine', 67, 'µmol/L', 'mg/dL', 2);
         expect(result.convertedValue).toBeCloseTo(0.76, 1);
       });
     });
 
     describe('Vitamin D conversions', () => {
       it('converts from ng/mL to nmol/L', () => {
-        const result = convertValue('Vitamin D', 30, 'ng/mL', 'nmol/L');
+        const result = convertValue('Calcidiol+ercalcidiol', 30, 'ng/mL', 'nmol/L');
         expect(result.convertedValue).toBeCloseTo(74.9, 0);
       });
 
       it('converts from nmol/L to ng/mL', () => {
-        const result = convertValue('Vitamin D', 75, 'nmol/L', 'ng/mL');
+        const result = convertValue('Calcidiol+ercalcidiol', 75, 'nmol/L', 'ng/mL');
         expect(result.convertedValue).toBeCloseTo(30, 0);
       });
     });
 
     describe('TSH conversions', () => {
       it('converts between equivalent units', () => {
-        const result = convertValue('TSH', 2.5, 'mIU/L', 'µIU/mL');
+        const result = convertValue('Thyrotropin', 2.5, 'mIU/L', 'µIU/mL');
         expect(result.convertedValue).toBe(2.5);
       });
     });
@@ -116,38 +120,38 @@ describe('Unit Conversion Service', () => {
       });
     });
 
-    describe('Urine Creatinine conversions', () => {
+    describe('Creatinine conversions in urine units', () => {
       it('converts from µmol/L to g/L', () => {
         // 3780 µmol/L should be approximately 0.42 g/L
-        const result = convertValue('Urine Creatinine', 3780, 'µmol/L', 'g/L', 2);
+        const result = convertValue('Creatinine', 3780, 'µmol/L', 'g/L', 2);
         expect(result.convertedValue).toBeCloseTo(0.43, 1);
       });
 
       it('converts from g/L to µmol/L', () => {
-        const result = convertValue('Urine Creatinine', 0.42, 'g/L', 'µmol/L', 0);
+        const result = convertValue('Creatinine', 0.42, 'g/L', 'µmol/L', 0);
         expect(result.convertedValue).toBeCloseTo(3713, -1);
       });
 
-      it('converts using Italian alias U-Creatinina', () => {
-        const result = convertValue('U-Creatinina', 3780, 'µmol/L', 'g/L', 2);
+      it('converts urine units under the one creatinine entry', () => {
+        const result = convertValue('Creatinine', 3780, 'µmol/L', 'g/L', 2);
         expect(result.convertedValue).toBeCloseTo(0.43, 1);
       });
     });
 
-    describe('Protein Creatinine Ratio conversions', () => {
+    describe('Protein/Creatinine conversions', () => {
       it('converts from mg/mmol to mg/g', () => {
         // 15 mg/mmol should be approximately 132 mg/g
-        const result = convertValue('Protein Creatinine Ratio', 15, 'mg/mmol', 'mg/g', 0);
+        const result = convertValue('Protein/Creatinine', 15, 'mg/mmol', 'mg/g', 0);
         expect(result.convertedValue).toBeCloseTo(133, 0);
       });
 
       it('converts from mg/gcreat. to mg/mmol', () => {
-        const result = convertValue('Protein Creatinine Ratio', 132, 'mg/gcreat.', 'mg/mmol', 1);
+        const result = convertValue('Protein/Creatinine', 132, 'mg/gcreat.', 'mg/mmol', 1);
         expect(result.convertedValue).toBeCloseTo(14.9, 0);
       });
 
-      it('converts using Italian alias U-Proteine/Creatinina', () => {
-        const result = convertValue('U-Proteine/Creatinina', 15, 'mg/mmolcreat.', 'mg/gcreat.', 0);
+      it('converts between creatinine-ratio spellings', () => {
+        const result = convertValue('Protein/Creatinine', 15, 'mg/mmolcreat.', 'mg/gcreat.', 0);
         expect(result.convertedValue).toBeCloseTo(133, 0);
       });
     });
@@ -204,18 +208,18 @@ describe('Unit Conversion Service', () => {
   describe('HbA1c (NGSP % ↔ IFCC mmol/mol)', () => {
     // IFCC = (NGSP − 2.15) × 10.929: an offset, not a plain ratio
     it('converts % to mmol/mol with the master equation', () => {
-      expect(convertValue('Hemoglobin A1c', 6.5, '%', 'mmol/mol', 1).convertedValue).toBe(47.5);
-      expect(convertValue('HbA1c', 5.7, '%', 'mmol/mol', 0).convertedValue).toBe(39);
+      expect(convertValue('Hemoglobin A1c/Hemoglobin.total', 6.5, '%', 'mmol/mol', 1).convertedValue).toBe(47.5);
+      expect(convertValue('Hemoglobin A1c/Hemoglobin.total', 5.7, '%', 'mmol/mol', 0).convertedValue).toBe(39);
     });
 
     it('converts mmol/mol to % with the master equation', () => {
-      expect(convertValue('Hemoglobin A1c', 48, 'mmol/mol', '%', 1).convertedValue).toBe(6.5);
-      expect(convertValue('HbA1c', 42, 'mmol/mol', '%', 1).convertedValue).toBe(6);
+      expect(convertValue('Hemoglobin A1c/Hemoglobin.total', 48, 'mmol/mol', '%', 1).convertedValue).toBe(6.5);
+      expect(convertValue('Hemoglobin A1c/Hemoglobin.total', 42, 'mmol/mol', '%', 1).convertedValue).toBe(6);
     });
 
     it('converts a reference range with the master equation', () => {
       expect(
-        convertReferenceRange('HbA1c', { low: 4, high: 5.6, unit: '%' }, 'mmol/mol', 0)
+        convertReferenceRange('Hemoglobin A1c/Hemoglobin.total', { low: 4, high: 5.6, unit: '%' }, 'mmol/mol', 0)
       ).toEqual({ low: 20, high: 38, unit: 'mmol/mol' });
     });
   });
@@ -223,8 +227,8 @@ describe('Unit Conversion Service', () => {
   describe('MCH (pg ↔ fmol)', () => {
     // Per haemoglobin monomer, 16 114.5 g/mol: 1 pg = 0.06206 fmol
     it('converts pg to fmol and back', () => {
-      expect(convertValue('MCH', 30, 'pg', 'fmol', 2).convertedValue).toBe(1.86);
-      expect(convertValue('MCH', 1.9, 'fmol', 'pg', 1).convertedValue).toBe(30.6);
+      expect(convertValue('Hemoglobin', 30, 'pg', 'fmol', 2).convertedValue).toBe(1.86);
+      expect(convertValue('Hemoglobin', 1.9, 'fmol', 'pg', 1).convertedValue).toBe(30.6);
     });
   });
 

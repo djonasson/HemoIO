@@ -103,6 +103,17 @@ export default defineConfig(({ command }) => {
           },
           ocrRuntimeCaching(OCR_CACHE_NAME),
           {
+            // The LOINC catalog (13 MB) is loaded after unlock, then offline;
+            // its file name changes with its content, so old ones expire
+            urlPattern: /\/assets\/catalog\.generated-[^/]+\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'loinc-catalog',
+              expiration: { maxEntries: 1 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             // Downloaded the first time the matching model is needed, then offline
             urlPattern: new RegExp(`/${ONNX_ASSET_DIR}/`),
             handler: 'CacheFirst',
@@ -112,9 +123,9 @@ export default defineConfig(({ command }) => {
         // Skip waiting and claim clients immediately for better UX
         skipWaiting: true,
         clientsClaim: true,
-        // Pre-cache app shell; OCR files are cached on first use (ocrRuntimeCaching)
+        // Pre-cache app shell; OCR files and the LOINC catalog are cached on first use
         globPatterns: [...OCR_PRECACHE_GLOBS],
-        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`],
+        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`, 'assets/catalog.generated-*.js'],
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues

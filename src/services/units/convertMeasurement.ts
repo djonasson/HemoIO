@@ -21,8 +21,9 @@ export interface ConvertedMeasurement {
   referenceRange: { low?: number; high?: number };
 }
 
+/** @param component - LOINC component of the test, e.g. "Glucose" */
 export function convertMeasurement(
-  biomarkerName: string,
+  component: string,
   measurement: Measurement,
   targetUnit: string
 ): ConvertedMeasurement {
@@ -34,8 +35,8 @@ export function convertMeasurement(
 
   if (
     measurement.unit === targetUnit ||
-    !biomarkerName ||
-    !canConvert(biomarkerName, measurement.unit, targetUnit)
+    !component ||
+    !canConvert(component, measurement.unit, targetUnit)
   ) {
     return original;
   }
@@ -43,7 +44,7 @@ export function convertMeasurement(
   const convert = (value: number | undefined): number | undefined =>
     value === undefined
       ? undefined
-      : convertValue(biomarkerName, value, measurement.unit, targetUnit).convertedValue;
+      : convertValue(component, value, measurement.unit, targetUnit).convertedValue;
 
   try {
     return {

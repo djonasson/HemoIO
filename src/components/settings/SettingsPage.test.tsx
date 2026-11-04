@@ -9,6 +9,8 @@ import { MantineProvider } from '@mantine/core';
 import { testProviderConnection } from '@/services/ai';
 import { SettingsPage } from './SettingsPage';
 import { SaveError } from '@data/db/saveError';
+import { CatalogContext } from '@contexts/useCatalog';
+import type { Catalog } from '@data/loinc/catalog';
 
 // The db mock must be stable across renders, as the real hook memoizes it;
 // a new object per render would re-run SettingsPage's loading effects forever.
@@ -119,7 +121,11 @@ vi.mock('@data/biomarkers', () => ({
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider env="test">{ui}</MantineProvider>);
+  return render(
+    <MantineProvider env="test">
+      <CatalogContext.Provider value={{ version: '2.83' } as Catalog}>{ui}</CatalogContext.Provider>
+    </MantineProvider>
+  );
 }
 
 /**

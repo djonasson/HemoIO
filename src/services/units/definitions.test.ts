@@ -10,40 +10,28 @@ import {
 
 describe('Unit Conversion Definitions', () => {
   describe('UNIT_CONVERSIONS', () => {
-    it('contains glucose conversions', () => {
-      const glucose = UNIT_CONVERSIONS.find((c) => c.biomarker === 'Glucose');
-      expect(glucose).toBeDefined();
+    it('keys conversions by LOINC component', () => {
+      const glucose = UNIT_CONVERSIONS.find((c) => c.component === 'Glucose');
       expect(glucose?.conversions).toContainEqual(
         expect.objectContaining({ from: 'mg/dL', to: 'mmol/L' })
       );
-    });
-
-    it('contains creatinine conversions', () => {
-      const creatinine = UNIT_CONVERSIONS.find((c) => c.biomarker === 'Creatinine');
-      expect(creatinine).toBeDefined();
-      expect(creatinine?.conversions).toContainEqual(
-        expect.objectContaining({ from: 'mg/dL', to: 'µmol/L' })
-      );
-    });
-
-    it('contains hemoglobin conversions', () => {
-      const hemoglobin = UNIT_CONVERSIONS.find((c) => c.biomarker === 'Hemoglobin');
-      expect(hemoglobin).toBeDefined();
+      const hemoglobin = UNIT_CONVERSIONS.find((c) => c.component === 'Hemoglobin');
       expect(hemoglobin?.conversions).toContainEqual(
         expect.objectContaining({ from: 'g/dL', to: 'g/L' })
       );
     });
 
-    it('contains urine creatinine conversions', () => {
-      const urineCreatinine = UNIT_CONVERSIONS.find((c) => c.biomarker === 'Urine Creatinine');
-      expect(urineCreatinine).toBeDefined();
-      expect(urineCreatinine?.aliases).toContain('U-Creatinina');
-    });
-
-    it('contains protein/creatinine ratio conversions', () => {
-      const ratio = UNIT_CONVERSIONS.find((c) => c.biomarker === 'Protein Creatinine Ratio');
-      expect(ratio).toBeDefined();
-      expect(ratio?.aliases).toContain('U-Proteine/Creatinina');
+    it('has one entry per substance, whatever the sample', () => {
+      const components = UNIT_CONVERSIONS.map((c) => c.component);
+      expect(new Set(components).size).toBe(components.length);
+      // Serum, urine and 24-hour urine creatinine share one entry
+      const creatinine = UNIT_CONVERSIONS.find((c) => c.component === 'Creatinine');
+      expect(creatinine?.conversions).toContainEqual(
+        expect.objectContaining({ from: 'mg/dL', to: 'µmol/L' })
+      );
+      expect(creatinine?.conversions).toContainEqual(
+        expect.objectContaining({ from: 'g/24h', to: 'mmol/24h' })
+      );
     });
 
     it('all conversions have valid factor', () => {
@@ -58,45 +46,33 @@ describe('Unit Conversion Definitions', () => {
   });
 
   describe('findConversionDefinition', () => {
-    it('finds by exact biomarker name', () => {
-      const result = findConversionDefinition('Glucose');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Glucose');
+    it('finds by LOINC component, in any case and spacing', () => {
+      expect(findConversionDefinition('Glucose')?.component).toBe('Glucose');
+      expect(findConversionDefinition('glucose')?.component).toBe('Glucose');
+      expect(findConversionDefinition('  Glucose  ')?.component).toBe('Glucose');
     });
 
-    it('finds by case-insensitive name', () => {
-      const result = findConversionDefinition('glucose');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Glucose');
+    it('uses the substance for a component with a subpart', () => {
+      expect(findConversionDefinition('Cholesterol.in LDL')?.component).toBe('Cholesterol');
+      expect(findConversionDefinition('Glucose^2H post 75 g glucose PO')?.component).toBe('Glucose');
     });
 
-    it('finds by alias', () => {
-      const result = findConversionDefinition('Blood Sugar');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Glucose');
+    it('prefers a subpart that has its own conversions', () => {
+      expect(findConversionDefinition('Thyroxine.free')?.component).toBe('Thyroxine.free');
     });
 
-    it('finds by Italian alias via biomarker dictionary', () => {
-      const result = findConversionDefinition('P-Creatinina (metodo enzimatico)');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Creatinine');
+    it('never gives a ratio the conversions of one of its parts', () => {
+      expect(findConversionDefinition('Albumin/Creatinine')?.component).toBe('Albumin/Creatinine');
+      expect(findConversionDefinition('Spermatozoa.motile/Spermatozoa')).toBeUndefined();
     });
 
-    it('finds urine creatinine by Italian alias', () => {
-      const result = findConversionDefinition('U-Creatinina');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Urine Creatinine');
+    it('does not match old dictionary names', () => {
+      expect(findConversionDefinition('Blood Sugar')).toBeUndefined();
+      expect(findConversionDefinition('Urine Creatinine')).toBeUndefined();
     });
 
-    it('returns undefined for unknown biomarker', () => {
-      const result = findConversionDefinition('Unknown Biomarker XYZ');
-      expect(result).toBeUndefined();
-    });
-
-    it('trims whitespace from biomarker name', () => {
-      const result = findConversionDefinition('  Glucose  ');
-      expect(result).toBeDefined();
-      expect(result?.biomarker).toBe('Glucose');
+    it('returns undefined for an unknown component', () => {
+      expect(findConversionDefinition('Unknown Biomarker XYZ')).toBeUndefined();
     });
   });
 
@@ -146,13 +122,8 @@ describe('Unit Conversion Definitions', () => {
       expect(factor).toBeUndefined();
     });
 
-    it('works with biomarker aliases', () => {
-      const factor = getConversionFactor('Blood Sugar', 'mg/dL', 'mmol/L');
-      expect(factor).toBeCloseTo(0.0555, 4);
-    });
-
-    it('works with urine creatinine Italian alias', () => {
-      const factor = getConversionFactor('U-Creatinina', 'µmol/L', 'g/L');
+    it('converts urine creatinine units under the one creatinine entry', () => {
+      const factor = getConversionFactor('Creatinine', 'µmol/L', 'g/L');
       expect(factor).toBeDefined();
       expect(factor).toBeGreaterThan(0);
     });
@@ -187,8 +158,8 @@ describe('Unit Conversion Definitions', () => {
     });
 
     it('cholesterol conversions are inverse pairs', () => {
-      const mgToMmol = getConversionFactor('Total Cholesterol', 'mg/dL', 'mmol/L');
-      const mmolToMg = getConversionFactor('Total Cholesterol', 'mmol/L', 'mg/dL');
+      const mgToMmol = getConversionFactor('Cholesterol', 'mg/dL', 'mmol/L');
+      const mmolToMg = getConversionFactor('Cholesterol', 'mmol/L', 'mg/dL');
       expect(mgToMmol).toBeDefined();
       expect(mmolToMg).toBeDefined();
       // Product should be close to 1
@@ -196,8 +167,8 @@ describe('Unit Conversion Definitions', () => {
     });
 
     it('vitamin D conversions are inverse pairs', () => {
-      const ngToNmol = getConversionFactor('Vitamin D', 'ng/mL', 'nmol/L');
-      const nmolToNg = getConversionFactor('Vitamin D', 'nmol/L', 'ng/mL');
+      const ngToNmol = getConversionFactor('Calcidiol+ercalcidiol', 'ng/mL', 'nmol/L');
+      const nmolToNg = getConversionFactor('Calcidiol+ercalcidiol', 'nmol/L', 'ng/mL');
       expect(ngToNmol).toBeDefined();
       expect(nmolToNg).toBeDefined();
       // Product should be close to 1
@@ -209,8 +180,8 @@ describe('Unit Conversion Definitions', () => {
 describe('unit spellings', () => {
   it('matches conversion rows written with the Greek mu', () => {
     // Row: μUI/mL → mIU/L
-    expect(getConversion('Thyroid Stimulating Hormone', 'µUI/mL', 'mIU/L')).toBeDefined();
-    expect(getConversion('White Blood Cells', 'cells/μL', '10^9/L')).toBeDefined();
+    expect(getConversion('Thyrotropin', 'µUI/mL', 'mIU/L')).toBeDefined();
+    expect(getConversion('Leukocytes', 'cells/μL', '10^9/L')).toBeDefined();
   });
 
   it('takes two spellings of one unit as the same unit, with or without a conversion', () => {
@@ -222,7 +193,7 @@ describe('unit spellings', () => {
   });
 
   it('converts a creatinine ratio written without spaces or a dot', () => {
-    expect(getConversion('Protein Creatinine Ratio', 'mg/mmolcreat', 'mg/g')).toBeDefined();
+    expect(getConversion('Protein/Creatinine', 'mg/mmolcreat', 'mg/g')).toBeDefined();
   });
 
   it('reads a unit with spaces run together or around it', () => {
@@ -246,7 +217,7 @@ describe('conversion rows', () => {
               (other) => unitsMatch(other.from, row.from) && unitsMatch(other.to, row.to)
             ) !== i
         )
-        .map((row) => `${definition.biomarker}: ${row.from} → ${row.to}`)
+        .map((row) => `${definition.component}: ${row.from} → ${row.to}`)
     );
     expect(repeated).toEqual([]);
   });

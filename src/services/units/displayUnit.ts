@@ -7,9 +7,11 @@
 import { canConvert } from './conversion';
 import { convertMeasurement } from './convertMeasurement';
 import { unitsMatch } from './definitions';
+import { componentForBiomarker } from './legacyComponents';
 
 /** What a biomarker definition needs to offer units */
 export interface UnitSource {
+  /** Dictionary name, read as a LOINC component through componentForBiomarker until Task 8 */
   name: string;
   canonicalUnit: string;
   alternativeUnits?: string[];
@@ -21,7 +23,7 @@ export function preferredUnitOptions(definition: UnitSource): string[] {
   return [...units].filter(
     (unit) =>
       unit === definition.canonicalUnit ||
-      canConvert(definition.name, definition.canonicalUnit, unit)
+      canConvert(componentForBiomarker(definition.name), definition.canonicalUnit, unit)
   );
 }
 
@@ -55,12 +57,13 @@ export interface DisplayableValue {
 }
 
 /**
- * The value and its range in `targetUnit`. Unchanged when there is no
+ * The value and its range in `targetUnit`, converted as the substance
+ * `component` (a LOINC component). Unchanged when there is no
  * target, the value is not a plain number (Positive/Negative, text, an
  * interval), or it cannot be converted.
  */
 export function convertForDisplay<T extends DisplayableValue>(
-  biomarkerName: string,
+  component: string,
   item: T,
   targetUnit: string | undefined
 ): T {
@@ -68,7 +71,7 @@ export function convertForDisplay<T extends DisplayableValue>(
     return item;
   }
   const converted = convertMeasurement(
-    biomarkerName,
+    component,
     {
       value: item.value,
       unit: item.unit,

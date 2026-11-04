@@ -34,7 +34,13 @@ import type {
   ExtractedBiomarker,
 } from '../ai';
 import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
-import { normalizeUnit, canConvert, convertValue, unitsMatch } from '../units';
+import {
+  normalizeUnit,
+  canConvert,
+  componentForBiomarker,
+  convertValue,
+  unitsMatch,
+} from '../units';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -600,12 +606,13 @@ function comparable(
   };
   const targetUnit = canonicalUnit ?? firstUnit;
   if (unitsMatch(biomarker.unit, targetUnit)) return unchanged;
-  if (!canonicalUnit || !canConvert(name, biomarker.unit, canonicalUnit)) {
+  const component = componentForBiomarker(name);
+  if (!canonicalUnit || !canConvert(component, biomarker.unit, canonicalUnit)) {
     return { biomarker, allowance: 0 };
   }
   try {
     const convert = (value: number, precision?: number) =>
-      convertValue(name, value, biomarker.unit, canonicalUnit, precision).convertedValue;
+      convertValue(component, value, biomarker.unit, canonicalUnit, precision).convertedValue;
     const comparison = convert(biomarker.value, COMPARISON_PRECISION);
     const step = roundingAllowance(biomarker.value);
     return {

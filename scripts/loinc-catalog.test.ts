@@ -17,6 +17,10 @@ describe('buildCatalog', () => {
     expect(codes).toContain('718-7');
   });
 
+  it('keeps an unranked code the add-on table describes', () => {
+    expect(find('107184-4')).toMatchObject({ name: 'Spermatozoa [#] in Semen', rank: 0 });
+  });
+
   it('copies the LOINC fields', () => {
     expect(find('2345-7')).toMatchObject({
       name: 'Glucose [Mass/volume] in Serum or Plasma',

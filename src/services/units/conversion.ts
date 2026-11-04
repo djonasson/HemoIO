@@ -1,7 +1,8 @@
 /**
  * Unit Conversion Service
  *
- * Provides utilities for converting biomarker values between different units.
+ * Provides utilities for converting test values between different units. Each
+ * conversion is for a substance, named by its LOINC component ("Glucose").
  */
 
 import { findConversionDefinition, getConversion, normalizeUnitForLookup } from './definitions';
@@ -95,9 +96,9 @@ function roundToPrecision(value: number, precision: number): number {
 }
 
 /**
- * Convert a biomarker value from one unit to another
+ * Convert a value of a substance from one unit to another
  *
- * @param biomarkerName - Name or alias of the biomarker
+ * @param component - LOINC component of the test, e.g. "Glucose"
  * @param value - The value to convert
  * @param fromUnit - The source unit
  * @param toUnit - The target unit
@@ -106,7 +107,7 @@ function roundToPrecision(value: number, precision: number): number {
  * @throws ConversionError if conversion is not supported
  */
 export function convertValue(
-  biomarkerName: string,
+  component: string,
   value: number,
   fromUnit: string,
   toUnit: string,
@@ -127,18 +128,15 @@ export function convertValue(
     };
   }
 
-  const conversion = getConversion(biomarkerName, normalizedFrom, normalizedTo);
+  const conversion = getConversion(component, normalizedFrom, normalizedTo);
 
   if (conversion === undefined) {
-    // Check if biomarker exists
-    const definition = findConversionDefinition(biomarkerName);
+    const definition = findConversionDefinition(component);
     if (!definition) {
-      throw new ConversionError(
-        `No conversion definitions found for biomarker "${biomarkerName}"`
-      );
+      throw new ConversionError(`No conversion definitions found for "${component}"`);
     }
     throw new ConversionError(
-      `Conversion from "${normalizedFrom}" to "${normalizedTo}" is not supported for "${biomarkerName}"`
+      `Conversion from "${normalizedFrom}" to "${normalizedTo}" is not supported for "${component}"`
     );
   }
 
@@ -158,7 +156,7 @@ export function convertValue(
 /**
  * Convert a reference range to a different unit
  *
- * @param biomarkerName - Name or alias of the biomarker
+ * @param component - LOINC component of the test
  * @param range - The reference range to convert
  * @param toUnit - The target unit
  * @param precision - Optional decimal places
@@ -166,7 +164,7 @@ export function convertValue(
  * @throws ConversionError if conversion is not supported
  */
 export function convertReferenceRange(
-  biomarkerName: string,
+  component: string,
   range: ReferenceRange,
   toUnit: string,
   precision?: number
@@ -180,7 +178,7 @@ export function convertReferenceRange(
 
   if (range.low !== undefined) {
     const lowResult = convertValue(
-      biomarkerName,
+      component,
       range.low,
       range.unit,
       toUnit,
@@ -191,7 +189,7 @@ export function convertReferenceRange(
 
   if (range.high !== undefined) {
     const highResult = convertValue(
-      biomarkerName,
+      component,
       range.high,
       range.unit,
       toUnit,
@@ -204,32 +202,32 @@ export function convertReferenceRange(
 }
 
 /**
- * Check if a conversion is supported for a biomarker
+ * Check if a conversion is supported for a substance
  *
- * @param biomarkerName - Name or alias of the biomarker
+ * @param component - LOINC component of the test
  * @param fromUnit - The source unit
  * @param toUnit - The target unit
  * @returns true if conversion is supported
  */
 export function canConvert(
-  biomarkerName: string,
+  component: string,
   fromUnit: string,
   toUnit: string
 ): boolean {
   if (fromUnit.toLowerCase().trim() === toUnit.toLowerCase().trim()) {
     return true;
   }
-  return getConversion(biomarkerName, fromUnit, toUnit) !== undefined;
+  return getConversion(component, fromUnit, toUnit) !== undefined;
 }
 
 /**
- * Get all supported units for a biomarker
+ * Get all supported units for a substance
  *
- * @param biomarkerName - Name or alias of the biomarker
- * @returns Array of supported unit strings, or empty array if biomarker not found
+ * @param component - LOINC component of the test
+ * @returns Array of supported unit strings, or empty array if it has no conversions
  */
-export function getSupportedUnits(biomarkerName: string): string[] {
-  const definition = findConversionDefinition(biomarkerName);
+export function getSupportedUnits(component: string): string[] {
+  const definition = findConversionDefinition(component);
   if (!definition) return [];
 
   const units = new Set<string>();

@@ -6,6 +6,7 @@ import '@mantine/dates/styles.css';
 import {
   AuthProvider,
   AISettingsProvider,
+  CatalogProvider,
   AlertStateProvider,
   EncryptedApiKeyProvider,
   LabResultsProvider,
@@ -44,8 +45,12 @@ function AppContent(): React.ReactNode {
     return <LoginScreen />;
   }
 
-  // status === 'unlocked'
-  return <AppShell />;
+  // status === 'unlocked': the catalog loads only now, so login never waits for it
+  return (
+    <CatalogProvider>
+      <AppShell />
+    </CatalogProvider>
+  );
 }
 
 function App(): React.ReactNode {

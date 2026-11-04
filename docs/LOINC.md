@@ -102,12 +102,12 @@ names, such as `current/`, are ignored.
 
 When a new release is downloaded:
 
-1. Check that the dictionary's codes are still active and their long common
-   names unchanged in `files/LoincTable/Loinc.csv`.
-2. In `src/data/biomarkers/loinc.ts`, update the names in `LOINC_NAMES`
-   (long common names by LOINC code) and `LOINC_VERSION`.
+1. Regenerate the catalog (below). The LOINC names the app shows and the
+   version in Settings → About come from it.
+2. Check that the add-on table's codes are still in it: the
+   `src/data/loinc/addons.test.ts` tests fail for a code that is gone.
 3. In `src/data/biomarkers/loinc.test.ts`, update the expected names in
-   `TERMS` to match.
+   `TERMS` if LOINC renamed a test.
 4. Update the version in the README's Third-Party Notices.
 
 ## Generating the app's catalog
@@ -120,7 +120,10 @@ it is committed, so building the app never needs the release:
    release under `~/loinc` (or `LOINC_DIR`) and writes
    `src/data/loinc/catalog.generated.json`: the active laboratory codes with a
    common-test rank, with their names (English and Italian), example UCUM
-   units and groups. Use `--from <files dir>` and `--out <path>` to override.
+   units and groups. Codes the add-on table (`src/data/loinc/addons.ts`)
+   describes but LOINC does not rank are kept too: list them in
+   `EXTRA_CODES` in the script (they get rank 0). Use `--from <files dir>`
+   and `--out <path>` to override.
 3. Commit the regenerated file.
 
 The output is deterministic, so an unchanged release gives an unchanged file.

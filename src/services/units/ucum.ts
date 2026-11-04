@@ -108,22 +108,27 @@ export function ucumProperties(ucum: string): string[] {
  * moles needs a molar mass and is not done here.
  */
 export function convertUcum(value: number, from: string, to: string): number | null {
-  if (!readUnit(from) || !readUnit(to)) return null;
+  if (!Number.isFinite(value) || !readUnit(from) || !readUnit(to)) return null;
   const result = quietly(() => utils.convertUnitTo(from, value, to));
   if (result.status !== 'succeeded' || result.toVal === null) return null;
   // The library multiplies by factors such as 1e-3, which leaves 4.999999999999999
   return Number(result.toVal.toPrecision(12));
 }
 
-/** Whether one unit is a mass concentration and the other an amount concentration */
+/**
+ * Whether one unit is a mass concentration and the other an amount
+ * concentration. A rate (per volume per time) is not a concentration.
+ */
 export function isMassAndMolar(a: string, b: string): boolean {
   const first = readUnit(a);
   const second = readUnit(b);
   if (!first?.dim_ || !second?.dim_) return false;
-  const massConcentration = (unit: UcumUnit): boolean =>
-    !isAmount(unit) && unit.dim_?.dimVec_[2] === 1 && unit.dim_.dimVec_[0] === -3;
-  const amountConcentration = (unit: UcumUnit): boolean =>
-    isAmount(unit) && unit.dim_?.dimVec_[2] === 0 && unit.dim_.dimVec_[0] === -3;
+  const perVolume = (unit: UcumUnit, mass: number): boolean => {
+    const [length, time, unitMass] = unit.dim_?.dimVec_ ?? [];
+    return length === -3 && time === 0 && unitMass === mass;
+  };
+  const massConcentration = (unit: UcumUnit): boolean => !isAmount(unit) && perVolume(unit, 1);
+  const amountConcentration = (unit: UcumUnit): boolean => isAmount(unit) && perVolume(unit, 0);
   return (
     (massConcentration(first) && amountConcentration(second)) ||
     (amountConcentration(first) && massConcentration(second))

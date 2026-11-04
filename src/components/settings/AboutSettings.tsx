@@ -3,7 +3,8 @@
  * contains, which their licenses ask the app to show
  */
 import { Anchor, Stack, Text, Title } from '@mantine/core';
-import { LOINC_NOTICE, LOINC_VERSION } from '@data/biomarkers/loinc';
+import { useCatalog } from '@contexts/useCatalog';
+import { LOINC_NOTICE } from '@data/biomarkers/loinc';
 
 /**
  * The notice the UCUM library's license asks to be reproduced in the
@@ -14,6 +15,7 @@ const UCUM_NOTICE =
 
 /** The About tab: the app's license and the LOINC notice */
 export function AboutSettings(): React.ReactNode {
+  const { version } = useCatalog();
   return (
     <Stack gap="sm">
       <Title order={4}>About HemoIO</Title>
@@ -25,7 +27,7 @@ export function AboutSettings(): React.ReactNode {
         Third-party notices
       </Title>
       <Text size="sm" fw={500}>
-        LOINC (version {LOINC_VERSION})
+        LOINC (version {version})
       </Text>
       <Text size="sm">{LOINC_NOTICE}</Text>
       <Text size="sm">

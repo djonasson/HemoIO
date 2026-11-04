@@ -2,12 +2,18 @@
  * Tests for BiomarkerDetail component
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { BiomarkerDetail, type BiomarkerDetailProps } from './BiomarkerDetail';
 import { getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
+import { loadCatalog } from '@data/loinc/catalog';
+
+// LOINC names come from the catalog, loaded as in the unlocked app
+beforeAll(async () => {
+  await loadCatalog();
+});
 
 /** Renders the detail of `biomarker` with no results, no target and spy callbacks */
 function renderDetailOf(

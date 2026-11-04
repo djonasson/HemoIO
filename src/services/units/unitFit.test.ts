@@ -24,4 +24,16 @@ describe('unitFitsBiomarker', () => {
   it('rejects a unit the biomarker cannot be measured in', () => {
     expect(unitFitsBiomarker(findBiomarker('Hemoglobin A1c')!, 'g/dL')).toBe(false);
   });
+
+  it('accepts a unit that converts but no other test of the substance lists', () => {
+    expect(unitFitsBiomarker(findBiomarker('C-Reactive Protein')!, 'nmol/L')).toBe(true);
+  });
+
+  it('leaves a unit to the test of the same substance that lists it', () => {
+    // Urea converts from g/L, but urea in g/L is the urine test
+    expect(unitFitsBiomarker(findBiomarker('Urea')!, 'g/L')).toBe(false);
+    expect(unitFitsBiomarker(findBiomarker('Urine Urea')!, 'g/L')).toBe(true);
+    expect(unitFitsBiomarker(findBiomarker('Total Protein')!, 'mg/dL')).toBe(false);
+    expect(unitFitsBiomarker(findBiomarker('Urine Protein')!, 'mg/dL')).toBe(true);
+  });
 });

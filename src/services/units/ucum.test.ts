@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { convertUcum, isMassAndMolar, toUcum, ucumProperties } from './ucum';
 
 describe('toUcum', () => {
@@ -28,6 +28,16 @@ describe('toUcum', () => {
 
   it.each(['/campo', '', '   ', 'not a unit'])('is null for %j', (printed) => {
     expect(toUcum(printed)).toBeNull();
+  });
+
+  it('writes nothing to the console for a unit it rejects', () => {
+    const log = vi.spyOn(console, 'log');
+    try {
+      expect(toUcum('/campo')).toBeNull();
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 
@@ -72,6 +82,10 @@ describe('convertUcum', () => {
   it('is null for a unit it cannot read', () => {
     expect(convertUcum(1, 'nonsense', 'g/L')).toBeNull();
   });
+
+  it.each([NaN, Infinity, -Infinity])('is null for %s', (value) => {
+    expect(convertUcum(value, 'mg/dL', 'g/L')).toBeNull();
+  });
 });
 
 describe('isMassAndMolar', () => {
@@ -85,5 +99,11 @@ describe('isMassAndMolar', () => {
     expect(isMassAndMolar('mmol/L', 'umol/L')).toBe(false);
     expect(isMassAndMolar('mg/dL', '10*9/L')).toBe(false);
     expect(isMassAndMolar('mg/dL', 'nonsense')).toBe(false);
+  });
+
+  it('is false for rates, which are not concentrations', () => {
+    expect(isMassAndMolar('mg/dL/h', 'mmol/L')).toBe(false);
+    expect(isMassAndMolar('mg/dL', 'mmol/L/h')).toBe(false);
+    expect(isMassAndMolar('mg/dL/h', 'mmol/L/h')).toBe(false);
   });
 });

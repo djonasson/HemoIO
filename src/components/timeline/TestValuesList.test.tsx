@@ -2,12 +2,18 @@
  * Tests for TestValuesList component
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
+import { loadCatalog } from '@data/loinc/catalog';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
+
+// The LOINC names in tooltips come from the catalog, loaded as in the unlocked app
+beforeAll(async () => {
+  await loadCatalog();
+});
 
 let mockUnitPreferences: Record<string, string> = {};
 vi.mock('@hooks/usePreferences', () => ({

@@ -21,7 +21,7 @@ import {
   type BiomarkerDefinition,
 } from '@data/biomarkers/dictionary';
 import { usePreferences } from '@hooks/usePreferences';
-import { convertForDisplay, preferredUnitFor } from '@services/units';
+import { componentForBiomarker, convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
 import { loincLabel } from '@data/biomarkers/loinc';
@@ -239,7 +239,7 @@ export function TestValuesList({
             // Shown in the preferred unit when one is set and the value converts
             const definition = getBiomarkerForTestValue(recorded);
             const testValue = convertForDisplay(
-              definition?.name ?? '',
+              definition ? componentForBiomarker(definition.name) : '',
               recorded,
               preferredUnitFor(definition, unitPreferences[recorded.biomarkerKey])
             );
