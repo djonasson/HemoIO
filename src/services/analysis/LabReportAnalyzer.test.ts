@@ -81,82 +81,19 @@ vi.mock('../ai', () => {
         modelUsed: 'gpt-4o-mini',
         processingTime: 500,
       }),
+      chooseTests: vi.fn().mockResolvedValue([]),
     }),
     AIAnalysisError,
   };
 });
 
-vi.mock('../../data/biomarkers/dictionary', () => ({
-  // As the dictionary does: exactly, then ignoring spacing and punctuation
-  matchBiomarkerName: (name: string) =>
-    mockFindBiomarker(name) ?? mockFindBiomarker(name.toLowerCase().replace(/[^a-z0-9]/g, '')),
-  findBiomarker: vi.fn().mockImplementation((name: string) => mockFindBiomarker(name)),
-  // No count in this dictionary has a percentage
-  percentageOf: () => undefined,
-}));
-
-function mockFindBiomarker(name: string) {
-  const dictionary: Record<string, { name: string; canonicalUnit: string; alternativeUnits: string[]; category: string }> = {
-    glucose: {
-      name: 'Glucose',
-      canonicalUnit: 'mg/dL',
-      alternativeUnits: ['mmol/L'],
-      category: 'Metabolic',
-    },
-    hemoglobin: {
-      name: 'Hemoglobin',
-      canonicalUnit: 'g/dL',
-      alternativeUnits: ['g/L'],
-      category: 'CBC',
-    },
-    creatinine: {
-      name: 'Creatinine',
-      canonicalUnit: 'mg/dL',
-      alternativeUnits: ['µmol/L'],
-      category: 'Metabolic',
-    },
-  };
-  return dictionary[name.toLowerCase()];
-}
-
-vi.mock('../units', () => ({
-  normalizeUnit: vi.fn().mockImplementation((unit: string) => unit),
-  // The mocked conversions below take the dictionary names themselves
-  componentForBiomarker: (name: string) => name,
-  unitsMatch: (a: string, b: string) => a.toLowerCase() === b.toLowerCase(),
-  canConvert: vi.fn().mockImplementation((name: string, from: string, to: string) => {
-    // Glucose can be converted between mg/dL and mmol/L
-    if (name.toLowerCase() === 'glucose') {
-      return (from === 'mg/dL' && to === 'mg/dL') ||
-             (from === 'mmol/L' && to === 'mg/dL') ||
-             (from === 'mg/dL' && to === 'mmol/L');
-    }
-    if (name.toLowerCase() === 'creatinine') {
-      return ['mg/dL', 'µmol/L'].includes(from) && ['mg/dL', 'µmol/L'].includes(to);
-    }
-    return from === to;
-  }),
-  convertValue: vi.fn().mockImplementation((name: string, value: number, from: string, to: string) => {
-    // Glucose conversion: mg/dL to mmol/L (divide by 18.0182) or vice versa
-    if (name.toLowerCase() === 'glucose') {
-      if (from === 'mmol/L' && to === 'mg/dL') {
-        return { convertedValue: Math.round(value * 18.0182), originalValue: value, originalUnit: from, targetUnit: to, precision: 0 };
-      }
-      if (from === 'mg/dL' && to === 'mmol/L') {
-        return { convertedValue: Math.round(value / 18.0182 * 100) / 100, originalValue: value, originalUnit: from, targetUnit: to, precision: 2 };
-      }
-    }
-    if (name.toLowerCase() === 'creatinine' && from === 'µmol/L' && to === 'mg/dL') {
-      return { convertedValue: Math.round(value * 0.0113 * 100) / 100, originalValue: value, originalUnit: from, targetUnit: to, precision: 2 };
-    }
-    return { convertedValue: value, originalValue: value, originalUnit: from, targetUnit: to, precision: 2 };
-  }),
-}));
-
 // Import mocked modules for control
 import * as ocrModule from '../ocr';
 import * as aiModule from '../ai';
+import { fixtureCatalog } from '@/test/loincFixture';
 import type { AnalysisOptions } from '../ai/types';
+
+const catalog = fixtureCatalog();
 
 // Helper to create mock files
 function createMockFile(name: string, type: string, size: number = 1024): File {
@@ -176,6 +113,7 @@ describe('LabReportAnalyzer', () => {
     const defaultOptions = {
       aiProvider: 'openai' as const,
       aiConfig: { apiKey: 'sk-test-key' },
+      catalog,
     };
 
     it('analyzes a text PDF successfully', async () => {
@@ -200,16 +138,13 @@ describe('LabReportAnalyzer', () => {
       expect(result.labName).toBe('City Medical Lab');
     });
 
-    it('matches biomarkers to dictionary', async () => {
+    it('identifies each value in the LOINC catalog', async () => {
       const file = createMockFile('report.pdf', 'application/pdf');
 
       const result = await analyzeLabReport(file, defaultOptions);
 
-      const glucoseMatch = result.matchedBiomarkers.find(
-        (b) => b.name === 'Glucose'
-      );
-      expect(glucoseMatch?.isExactMatch).toBe(true);
-      expect(glucoseMatch?.dictionaryMatch).toBeDefined();
+      const hemoglobin = result.matchedBiomarkers.find((b) => b.name === 'Hemoglobin');
+      expect(hemoglobin).toMatchObject({ loincCode: '718-7', identifiedBy: 'local', isExactMatch: true });
     });
 
     it('generates unique analysis ID', async () => {
@@ -232,7 +167,7 @@ describe('LabReportAnalyzer', () => {
         'Document Detection',
         'Text Extraction',
         'AI Analysis',
-        'Biomarker Matching',
+        'Test Identification',
       ]);
       expect(result.stages.every((s) => s.status === 'completed')).toBe(true);
     });
@@ -359,10 +294,10 @@ describe('LabReportAnalyzer', () => {
         await stagesWith({ ...defaultOptions, aiConfig: { apiKey: 'sk', model: 'gpt-4o-mini' } })
       ).toContain('Analyzing with OpenAI gpt-4o-mini');
       // Without a chosen model, the provider's default: named by the provider alone
-      expect(await stagesWith({ aiProvider: 'anthropic', aiConfig: { apiKey: 'sk' } })).toContain(
+      expect(await stagesWith({ ...defaultOptions, aiProvider: 'anthropic', aiConfig: { apiKey: 'sk' } })).toContain(
         'Analyzing with Anthropic'
       );
-      expect(await stagesWith({ aiProvider: 'ollama', aiConfig: { model: 'llama3.2' } })).toContain(
+      expect(await stagesWith({ ...defaultOptions, aiProvider: 'ollama', aiConfig: { model: 'llama3.2' } })).toContain(
         'Analyzing with Ollama llama3.2'
       );
     });
@@ -435,6 +370,7 @@ describe('LabReportAnalyzer', () => {
     const defaultOptions = {
       aiProvider: 'openai' as const,
       aiConfig: { apiKey: 'sk-test-key' },
+      catalog,
     };
 
     it('analyzes multiple files', async () => {
@@ -581,6 +517,7 @@ describe('LabReportAnalyzer', () => {
       const result = await analyzeLabReport(createMockFile('scan.pdf', 'application/pdf'), {
         aiProvider: 'openai',
         aiConfig: { apiKey: 'sk-test-key', model: 'test-model' },
+        catalog,
       });
 
       expect(ocrModule.renderPdfPages).toHaveBeenCalled();
@@ -630,6 +567,7 @@ describe('LabReportAnalyzer', () => {
       const result = await analyzeLabReport(createMockFile('scan.pdf', 'application/pdf'), {
         aiProvider: 'openai',
         aiConfig: { apiKey: 'sk-test-key', model: 'test-model' },
+        catalog,
       });
 
       expect(ocrModule.renderPdfPages).toHaveBeenCalled();
@@ -638,213 +576,6 @@ describe('LabReportAnalyzer', () => {
       expect(sentText).toContain('Page two: Hemoglobin 14.5 g/dL');
       expect(sentText).not.toContain('Unable to extract text');
       expect(result.extractionMethod).toBe('ocr');
-    });
-  });
-
-  describe('dictionary matching', () => {
-    const defaultOptions = {
-      aiProvider: 'openai' as const,
-      aiConfig: { apiKey: 'sk-test-key' },
-    };
-
-    function mockExtraction(biomarkers: Array<{ name: string; value: number; unit: string }>) {
-      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
-        type: 'openai',
-        name: 'OpenAI',
-        analyzeLabReport: vi.fn().mockResolvedValue({
-          biomarkers: biomarkers.map((b) => ({ ...b, confidence: 0.9, flaggedAbnormal: false })),
-          labDate: '2024-01-15',
-          labName: 'Test Lab',
-          overallConfidence: 0.9,
-          analyzedText: 'test text',
-          warnings: [],
-          modelUsed: 'gpt-4o-mini',
-          processingTime: 500,
-        }),
-        validateConfiguration: vi.fn(),
-        testConnection: vi.fn(),
-        chooseTests: vi.fn(),
-      });
-    }
-
-    it('matches name variations (punctuation, spacing) to the dictionary', async () => {
-      mockExtraction([{ name: 'Hemo-globin', value: 14.5, unit: 'g/dL' }]);
-
-      const result = await analyzeLabReport(createMockFile('report.pdf', 'application/pdf'), defaultOptions);
-
-      const [biomarker] = result.matchedBiomarkers;
-      expect(biomarker.dictionaryMatch?.name).toBe('Hemoglobin');
-      expect(biomarker.isExactMatch).toBe(false);
-    });
-
-    it('only suggests a match when the unit is incompatible', async () => {
-      mockExtraction([{ name: 'Hemo-globin', value: 14.5, unit: 'mg/dL' }]);
-
-      const result = await analyzeLabReport(createMockFile('report.pdf', 'application/pdf'), defaultOptions);
-
-      const [biomarker] = result.matchedBiomarkers;
-      expect(biomarker.dictionaryMatch).toBeUndefined();
-      expect(biomarker.suggestedMatch?.name).toBe('Hemoglobin');
-    });
-  });
-
-  describe('biomarker deduplication', () => {
-    const defaultOptions = {
-      aiProvider: 'openai' as const,
-      aiConfig: { apiKey: 'sk-test-key' },
-    };
-
-    it('deduplicates biomarkers with same value in different units', async () => {
-      // Mock AI to return duplicate Glucose values in different units
-      // 100 mg/dL and 5.55 mmol/L are equivalent (5.55 * 18.0182 ≈ 100)
-      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
-        type: 'openai',
-        name: 'OpenAI',
-        analyzeLabReport: vi.fn().mockResolvedValue({
-          biomarkers: [
-            {
-              name: 'Glucose',
-              value: 100,
-              unit: 'mg/dL',
-              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
-              confidence: 0.95,
-              flaggedAbnormal: false,
-            },
-            {
-              name: 'Glucose',
-              value: 5.55,
-              unit: 'mmol/L',
-              referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
-              confidence: 0.90,
-              flaggedAbnormal: false,
-            },
-          ],
-          labDate: '2024-01-15',
-          labName: 'Test Lab',
-          overallConfidence: 0.92,
-          analyzedText: 'test text',
-          warnings: [],
-          modelUsed: 'gpt-4o-mini',
-          processingTime: 500,
-        }),
-        validateConfiguration: vi.fn(),
-        testConnection: vi.fn(),
-        chooseTests: vi.fn(),
-      });
-
-      const file = createMockFile('report.pdf', 'application/pdf');
-      const result = await analyzeLabReport(file, defaultOptions);
-
-      // Should have only one Glucose entry (deduplicated)
-      const glucoseEntries = result.matchedBiomarkers.filter(
-        (b) => b.name === 'Glucose'
-      );
-      expect(glucoseEntries).toHaveLength(1);
-      expect(result.duplicateConflicts).toHaveLength(0);
-    });
-
-    function mockCreatinineDuplicates(micromolar: number, mgPerDl: number) {
-      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
-        type: 'openai',
-        name: 'OpenAI',
-        analyzeLabReport: vi.fn().mockResolvedValue({
-          biomarkers: [
-            { name: 'Creatinine', value: micromolar, unit: 'µmol/L', confidence: 0.95, flaggedAbnormal: false },
-            { name: 'Creatinine', value: mgPerDl, unit: 'mg/dL', confidence: 0.95, flaggedAbnormal: false },
-          ],
-          labDate: '2024-01-15',
-          labName: 'Test Lab',
-          overallConfidence: 0.95,
-          analyzedText: 'test text',
-          warnings: [],
-          modelUsed: 'gpt-4o-mini',
-          processingTime: 500,
-        }),
-        validateConfiguration: vi.fn(),
-        testConnection: vi.fn(),
-        chooseTests: vi.fn(),
-      });
-    }
-
-    it('flags small-valued duplicates that differ by less than one unit', async () => {
-      // 67 µmol/L is 0.76 mg/dL: clearly not the same result as 1.5 mg/dL
-      mockCreatinineDuplicates(67, 1.5);
-
-      const result = await analyzeLabReport(createMockFile('report.pdf', 'application/pdf'), defaultOptions);
-
-      expect(result.duplicateConflicts).toHaveLength(1);
-      expect(result.matchedBiomarkers.filter((b) => b.name === 'Creatinine')).toHaveLength(2);
-    });
-
-    it('merges small-valued duplicates that are equal after conversion', async () => {
-      // 88.4 µmol/L is 1.0 mg/dL
-      mockCreatinineDuplicates(88.4, 1.0);
-
-      const result = await analyzeLabReport(createMockFile('report.pdf', 'application/pdf'), defaultOptions);
-
-      expect(result.duplicateConflicts).toHaveLength(0);
-      expect(result.matchedBiomarkers.filter((b) => b.name === 'Creatinine')).toHaveLength(1);
-    });
-
-    it('flags conflicting duplicate biomarkers for user review', async () => {
-      // Mock AI to return conflicting Glucose values
-      // 100 mg/dL and 8.0 mmol/L are NOT equivalent (8.0 * 18.0182 ≈ 144, not 100)
-      vi.mocked(aiModule.getAIProvider).mockReturnValueOnce({
-        type: 'openai',
-        name: 'OpenAI',
-        analyzeLabReport: vi.fn().mockResolvedValue({
-          biomarkers: [
-            {
-              name: 'Glucose',
-              value: 100,
-              unit: 'mg/dL',
-              referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
-              confidence: 0.95,
-              flaggedAbnormal: false,
-            },
-            {
-              name: 'Glucose',
-              value: 8.0,
-              unit: 'mmol/L',
-              referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
-              confidence: 0.90,
-              flaggedAbnormal: true,
-            },
-          ],
-          labDate: '2024-01-15',
-          labName: 'Test Lab',
-          overallConfidence: 0.92,
-          analyzedText: 'test text',
-          warnings: [],
-          modelUsed: 'gpt-4o-mini',
-          processingTime: 500,
-        }),
-        validateConfiguration: vi.fn(),
-        testConnection: vi.fn(),
-        chooseTests: vi.fn(),
-      });
-
-      const file = createMockFile('report.pdf', 'application/pdf');
-      const result = await analyzeLabReport(file, defaultOptions);
-
-      // Both entries should be kept since values conflict
-      const glucoseEntries = result.matchedBiomarkers.filter(
-        (b) => b.name === 'Glucose'
-      );
-      expect(glucoseEntries).toHaveLength(2);
-
-      // All Glucose entries should be flagged as having conflicts
-      expect(glucoseEntries.every((g) => g.hasDuplicateConflict)).toBe(true);
-
-      // Should have one conflict for Glucose
-      expect(result.duplicateConflicts).toHaveLength(1);
-      expect(result.duplicateConflicts[0].biomarkerName).toBe('Glucose');
-      expect(result.duplicateConflicts[0].valuesMatch).toBe(false);
-
-      // Warnings should mention the conflict
-      expect(
-        result.warnings.some((w) => w.includes('conflicting duplicate'))
-      ).toBe(true);
     });
   });
 });

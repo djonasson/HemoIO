@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Stack, Text, TextInput } from '@mantine/core';
-import type { BiomarkerDefinition } from '@data/biomarkers/dictionary';
-import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
-import { proposedTest } from '@services/analysis/nameMatching';
+import { useCatalog } from '@contexts/useCatalog';
 import { searchTests } from '@/utils/biomarkerSuggestions';
 import { IdentificationLabels } from './IdentificationLabels';
 import { TestOption } from './TestOption';
+import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
-/** The test a value is saved as; one proposed but whose unit does not fit, as such */
-function savedAsText(biomarker: MatchedBiomarker): string {
-  if (biomarker.dictionaryMatch) return biomarker.dictionaryMatch.name;
-  const proposed = proposedTest(biomarker);
-  if (proposed) return `Proposed: ${proposed.name}`;
-  return 'Not in dictionary';
+export const NOT_A_LOINC_TEST = 'Not a LOINC test';
+
+/** A test to choose: its code and LOINC long name */
+interface Option {
+  code: string;
+  name: string;
+}
+
+/** What a value is saved as, in words */
+function savedAsText(biomarker: MatchedBiomarker, name: string | undefined): string {
+  if (biomarker.loincCode) return name ?? `LOINC ${biomarker.loincCode}`;
+  return biomarker.savedAsUnknown ? NOT_A_LOINC_TEST : 'No test chosen';
 }
 
 /**
@@ -25,15 +30,27 @@ function isComposing(e: KeyboardEvent): boolean {
 
 interface SavedAsCellProps {
   biomarker: MatchedBiomarker;
-  /** A dictionary test, or null for "Not in dictionary" */
-  onChoose: (definition: BiomarkerDefinition | null) => void;
+  /** A LOINC code, or null for "Not a LOINC test" */
+  onChoose: (code: string | null) => void;
 }
 
-/** The test a value will be saved as, with a list to change it */
+/** The LOINC test a value will be saved as, with a list to change it */
 export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
+  const catalog = useCatalog();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const options = useMemo(() => searchTests(search), [search]);
+  // The catalog is large: typing stays quick while the results catch up
+  const query = useDeferredValue(search);
+  const current = biomarker.loincCode;
+  const currentName = current ? catalog.test(current)?.name : undefined;
+  // With no search, the tests the value may be (the current one first, if it is not one of them)
+  const options = useMemo<Option[]>(() => {
+    if (query.trim()) return searchTests(catalog, query).map(({ code, name }) => ({ code, name }));
+    const candidates = biomarker.candidates.map(({ code, name }) => ({ code, name }));
+    return current && currentName && !candidates.some((c) => c.code === current)
+      ? [{ code: current, name: currentName }, ...candidates]
+      : candidates;
+  }, [catalog, query, biomarker.candidates, current, currentName]);
   // Escape closes the list wherever focus is, as Mantine's own does, but
   // not the Escape that cancels Safari's composition (Mantine's misses it)
   useEffect(() => {
@@ -50,20 +67,25 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
     setSearch('');
     setOpen(true);
   };
-  const choose = (definition: BiomarkerDefinition | null) => {
+  const choose = (code: string | null) => {
     // A second click during the fade-out chooses nothing
     if (!open) return;
     setOpen(false);
-    onChoose(definition);
+    onChoose(code);
   };
 
   return (
-    // The test's name on its own line, wrapping between words; Change and
-    // the labels below it, so neither squeezes the other
+    // The test's name on its own line, wrapping between words; its code,
+    // Change and the labels below it, so neither squeezes the other
     <Stack gap={4} align="flex-start">
       <Text size="sm" data-testid="saved-as">
-        {savedAsText(biomarker)}
+        {savedAsText(biomarker, currentName)}
       </Text>
+      {current && (
+        <Text size="xs" c="dimmed">
+          LOINC {current}
+        </Text>
+      )}
       <Button
         size="compact-xs"
         variant="subtle"
@@ -82,35 +104,39 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
       >
         <TextInput
           label="Search tests"
-          description="Enter chooses the first test found"
+          description="Search LOINC by name or code; Enter chooses the first test found"
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !isComposing(e.nativeEvent) && search.trim() && options[0]) {
-              e.preventDefault();
-              choose(options[0]);
-            }
+            if (e.key !== 'Enter' || isComposing(e.nativeEvent) || !search.trim()) return;
+            // The results for exactly what was typed, even before the list catches up
+            const [first] = searchTests(catalog, search);
+            if (!first) return;
+            e.preventDefault();
+            choose(first.code);
           }}
           data-autofocus
         />
         {/* Plain buttons: each is reached with Tab and chosen with Enter or Space */}
         <Stack gap={2} mt="sm" mah={320} style={{ overflowY: 'auto' }} role="group" aria-label="Tests">
-          {/* A proposed test is no choice yet */}
-          <TestOption
-            current={!biomarker.dictionaryMatch && !proposedTest(biomarker)}
-            onClick={() => choose(null)}
-          >
-            Not in dictionary
+          <TestOption current={biomarker.savedAsUnknown === true && !current} onClick={() => choose(null)}>
+            {NOT_A_LOINC_TEST}
           </TestOption>
-          {options.map((definition) => (
+          {options.map((option) => (
             <TestOption
-              key={definition.key}
-              current={biomarker.dictionaryMatch?.key === definition.key}
-              onClick={() => choose(definition)}
+              key={option.code}
+              code={option.code}
+              current={current === option.code}
+              onClick={() => choose(option.code)}
             >
-              {definition.name}
+              {option.name}
             </TestOption>
           ))}
+          {query.trim() && options.length === 0 && (
+            <Text size="sm" c="dimmed" role="status">
+              No test found
+            </Text>
+          )}
         </Stack>
       </Modal>
     </Stack>

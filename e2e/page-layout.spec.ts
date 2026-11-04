@@ -16,7 +16,9 @@ import {
   goToImport,
   loginWithOllama,
   main,
+  reviewRow,
 } from './steps/importWizard.steps';
+import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
 import { expandLabResult, labResultCard } from './steps/timeline.steps';
 import { removeTempFile } from './steps/tempFiles';
@@ -221,7 +223,7 @@ test.describe('Page Layout', () => {
 
       await analyzeReport(
         page,
-        [{ name: 'Glicemia', value: 90, unit: 'mg/dL', confidence: 0.95, biomarkerKey: 'glucose' }],
+        [{ name: 'Glicemia', value: 90, unit: 'mg/dL', confidence: 0.95 }],
         1,
         {
           fileName: LONG_FILE_NAME,
@@ -238,6 +240,7 @@ test.describe('Page Layout', () => {
       );
       await test.step('review', expectNameInFull);
 
+      await changeTest(page, reviewRow(page, 'Glicemia'), NOT_A_LOINC_TEST);
       await continueToConfirm(page);
       await test.step('confirm', expectNameInFull);
     });
@@ -258,10 +261,13 @@ test.describe('Page Layout', () => {
       await page.setViewportSize(NARROW_PHONE_SCREEN);
       // Long words a table cannot wrap at
       await analyzeReport(page, [
-        { name: 'Gamma-glutamiltransferasi', value: 25, unit: 'U/L', confidence: 0.95, biomarkerKey: 'gamma-glutamyl-transferase' },
-        { name: 'Rapporto albumina/creatinina', value: 12, unit: 'mg/g', confidence: 0.95, biomarkerKey: 'albumin-creatinine-ratio' },
-        { name: 'eGFR', value: 95, unit: 'mL/min/1.73m²', confidence: 0.95, biomarkerKey: 'egfr' },
+        { name: 'Gamma-glutamiltransferasi', value: 25, unit: 'U/L', confidence: 0.95 },
+        { name: 'Rapporto albumina/creatinina', value: 12, unit: 'mg/g', confidence: 0.95 },
+        { name: 'eGFR', value: 95, unit: 'mL/min/1.73m²', confidence: 0.95 },
       ]);
+      for (const name of ['Gamma-glutamiltransferasi', 'Rapporto albumina/creatinina', 'eGFR']) {
+        await changeTest(page, reviewRow(page, name), NOT_A_LOINC_TEST);
+      }
 
       await continueToConfirm(page);
 

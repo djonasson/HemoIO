@@ -11,29 +11,6 @@ import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { LabResult, TestValue } from '@/types';
 
-// Mock the biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
-  findBiomarker: vi.fn((name: string) => {
-    if (name === 'Hemoglobin' || name === 'Hgb') {
-      return { key: 'hemoglobin', name: 'Hemoglobin', category: 'cbc', canonicalUnit: 'g/dL', alternativeUnits: ['g/L'] };
-    }
-    if (name === 'Glucose') {
-      return { key: 'glucose', name: 'Glucose', category: 'metabolic', canonicalUnit: 'mg/dL', alternativeUnits: ['mmol/L'] };
-    }
-    return undefined;
-  }),
-  BIOMARKER_DEFINITIONS: [
-    { name: 'Hemoglobin', category: 'cbc' },
-    { name: 'Glucose', category: 'metabolic' },
-    { name: 'Creatinine', category: 'metabolic' },
-  ],
-  // Name variations and keyed tests: none in these tests
-  matchBiomarkerName: vi.fn(() => undefined),
-  getBiomarkerByKey: vi.fn(() => undefined),
-  percentageOf: () => undefined,
-  unknownBiomarkerKey: (name: string) => `unknown:${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-}));
-
 /** The values saved, newest result first, with their lab result */
 async function saved(db: EncryptedDb): Promise<Array<LabResult & { values: TestValue[] }>> {
   const results = await db.getAllLabResults();
@@ -55,6 +32,7 @@ function createMockBiomarker(
     confidence: 0.95,
     isExactMatch: true,
     normalizedUnit: unit,
+    candidates: [],
     ...options,
   };
 }
@@ -94,23 +72,16 @@ describe('saveImportResults', () => {
   it('saves a lab result and its test values', async () => {
     const result = await saveOne(
       createMockReviewedResult('test.pdf', [
-        createMockBiomarker('Hemoglobin', 14.5, 'g/dL'),
-        createMockBiomarker('Glucose', 95, 'mg/dL'),
+        createMockBiomarker('Hemoglobin', 14.5, 'g/dL', { loincCode: '718-7' }),
+        createMockBiomarker('Glucose', 95, 'mg/dL', { loincCode: '2345-7' }),
       ])
     );
 
-    expect(result.values.map((v) => v.biomarkerKey).sort()).toEqual(['glucose', 'hemoglobin']);
-  });
-
-  it('looks up a value entered in review by its name only when its unit fits that test', async () => {
-    const result = await saveOne(
-      createMockReviewedResult('test.pdf', [
-        createMockBiomarker('Glucose', 5.2, 'mmol/L', { dictionaryMatch: undefined }),
-        createMockBiomarker('Glucose', 30, 'mmol/24h', { dictionaryMatch: undefined }),
-      ])
-    );
-
-    expect(result.values.map((v) => v.biomarkerKey).sort()).toEqual(['glucose', 'unknown:glucose']);
+    // Each value under its LOINC code, its printed name kept beside it
+    expect(result.values.map((v) => [v.biomarkerKey, v.rawText]).sort()).toEqual([
+      ['2345-7', 'Glucose'],
+      ['718-7', 'Hemoglobin'],
+    ]);
   });
 
   it('uses the edited lab date and name', async () => {
@@ -169,25 +140,19 @@ describe('saveImportResults', () => {
     );
   });
 
-  it('saves a value the user put as not in the dictionary under its own name', async () => {
+  it('saves a value saved as "Not a LOINC test" under its own name', async () => {
     const result = await saveOne(
       createMockReviewedResult('test.pdf', [
-        createMockBiomarker('Glucose', 95, 'mg/dL', { savedAsUnknown: true }),
+        createMockBiomarker('Glucose', 95, 'mg/dL', { loincCode: '2345-7', savedAsUnknown: true }),
       ])
     );
 
     expect(result.values[0].biomarkerKey).toBe('unknown:glucose');
   });
 
-  it('saves an analyzed value without a test under its own name, as review showed it', async () => {
-    // Review shows "Not in dictionary": the name alone must not pick a test
+  it('saves a value without a code under its own name: the name alone never picks a test', async () => {
     const result = await saveOne(
-      createMockReviewedResult('test.pdf', [
-        createMockBiomarker('Glucose', 95, 'mmol/24h', {
-          dictionaryMatch: undefined,
-          identificationFlags: ['not-identified'],
-        }),
-      ])
+      createMockReviewedResult('test.pdf', [createMockBiomarker('Glucose', 95, 'mmol/24h')])
     );
 
     expect(result.values[0].biomarkerKey).toBe('unknown:glucose');

@@ -421,15 +421,15 @@ describe('AnthropicProvider rate limiting', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('passes on the test key the model gave', async () => {
+  it('passes on the sample the model named', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }], stop_reason: 'end_turn' }),
+      json: () => Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, specimenHint: 'serum' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, specimenHint: null } ], warnings: [] }) }], stop_reason: 'end_turn' }),
     } as Response);
 
     const result = await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport('Glicemia 95 mg/dL');
 
-    expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
+    expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
 });
 
@@ -438,7 +438,7 @@ describe('AnthropicProvider prompt caching', () => {
     vi.stubGlobal('fetch', vi.fn());
   });
 
-  it('marks the system prompt, with its test list, cacheable across files', async () => {
+  it('marks the system prompt cacheable across files', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: () =>
@@ -454,7 +454,7 @@ describe('AnthropicProvider prompt caching', () => {
 
     const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body));
     expect(body.system).toEqual([
-      { type: 'text', text: expect.stringContaining('KNOWN TESTS'), cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: expect.stringContaining('OUTPUT FORMAT'), cache_control: { type: 'ephemeral' } },
     ]);
   });
 

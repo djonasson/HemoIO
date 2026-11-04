@@ -38,7 +38,6 @@ import {
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
-import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
 import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewedValue';
@@ -46,22 +45,18 @@ import {
   applyBiomarkerName,
   applyBiomarkerUnit,
   chooseTest,
-  suggestBiomarkerNames,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
-import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
-import { loincLabel } from '@data/biomarkers/loinc';
+import { getAddon } from '@data/loinc/addons';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { misfitTest, missingFields, planSave } from '@services/analysis/reviewedSave';
-import { proposedTest } from '@services/analysis/nameMatching';
-import { SavedAsCell } from './SavedAsCell';
+import { useCatalog } from '@contexts/useCatalog';
+import { missingFields, needsTest, planSave } from '@services/analysis/reviewedSave';
+import { NOT_A_LOINC_TEST, SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
+import type { Catalog } from '@data/loinc/catalog';
 import type { SpecimenType } from '../../types';
-
-/** Every dictionary name, the options of the name autocomplete */
-const BIOMARKER_NAMES = BIOMARKER_DEFINITIONS.map((b) => b.name);
 
 /**
  * Human-readable labels for specimen types
@@ -80,30 +75,30 @@ const SPECIMEN_LABELS: Record<SpecimenType, string> = {
   'other': 'Other',
 };
 
-/**
- * Get human-readable specimen label
- */
-function getSpecimenLabel(specimenType: SpecimenType | undefined): string {
-  if (!specimenType) return '—';
-  return SPECIMEN_LABELS[specimenType] || specimenType;
-}
+/** Readable names of the LOINC systems (samples) review shows */
+const SYSTEM_LABELS: Readonly<Record<string, string>> = {
+  'Ser/Plas': 'Serum/Plasma',
+  Ser: 'Serum',
+  Plas: 'Plasma',
+  Bld: 'Whole Blood',
+  BldC: 'Capillary',
+  Urine: 'Urine',
+  Semen: 'Semen',
+  CSF: 'CSF',
+  Saliva: 'Saliva',
+  Stool: 'Stool',
+};
 
 /**
- * Build tooltip content for biomarker with LOINC code and description
+ * The LOINC code with LOINC's name for it, as the license asks, and
+ * HemoIO's description of the test when it has one
  */
-function getBiomarkerTooltipContent(biomarker: MatchedBiomarker): string | null {
-  const match = biomarker.dictionaryMatch;
-  if (!match) return null;
-
-  const parts: string[] = [];
-  if (match.loincCode) {
-    parts.push(loincLabel(match.loincCode));
-  }
-  if (match.description) {
-    parts.push(match.description);
-  }
-
-  return parts.length > 0 ? parts.join('\n') : null;
+function getBiomarkerTooltipContent(biomarker: MatchedBiomarker, catalog: Catalog): string | null {
+  const code = biomarker.loincCode;
+  if (!code) return null;
+  const name = catalog.test(code)?.name;
+  const description = getAddon(catalog, code)?.description;
+  return [name ? `LOINC ${code}: ${name}` : `LOINC ${code}`, description].filter(Boolean).join('\n');
 }
 
 /**
@@ -142,17 +137,15 @@ function extractSpecimenFromName(name: string): { cleanName: string; extractedSp
   return { cleanName: name };
 }
 
-/**
- * Get specimen type - from dictionary match or extracted from name
- */
-function getEffectiveSpecimen(biomarker: MatchedBiomarker): SpecimenType | undefined {
-  // Prefer dictionary match
-  if (biomarker.dictionaryMatch?.specimenType) {
-    return biomarker.dictionaryMatch.specimenType;
+/** The sample of a value: its LOINC test's, else the one its name gives; '—' for none */
+function specimenLabel(biomarker: MatchedBiomarker, catalog: Catalog): string {
+  const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
+  if (test) {
+    if (test.system === 'Urine' && /\b24 ?(?:hour|hr|h) urine\b/i.test(test.name)) return SPECIMEN_LABELS['urine-24h'];
+    return SYSTEM_LABELS[test.system] ?? test.system;
   }
-  // Fall back to extracting from name
   const { extractedSpecimen } = extractSpecimenFromName(biomarker.name);
-  return extractedSpecimen;
+  return extractedSpecimen ? SPECIMEN_LABELS[extractedSpecimen] : '—';
 }
 
 /**
@@ -243,12 +236,9 @@ export function ReviewStep({
   const [problems, setProblems] = useState<string[] | null>(null);
   // Each Continue that finds problems lists them afresh, folded again
   const [continueAttempt, setContinueAttempt] = useState(0);
-  // The user's learned names: an edited value is identified as the analyzer would
-  const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
-  const learned = useCallback(
-    (name: string) => lookupLearnedAlias(learnedAliases, name),
-    [learnedAliases]
-  );
+  const catalog = useCatalog();
+  // The user's learned tests: an edited value is identified as the analyzer would
+  const learned = useContext(PreferencesContext)?.learnedTests;
 
   // Update a biomarker value
   const updateBiomarker = useCallback(
@@ -303,6 +293,7 @@ export function ReviewStep({
         confidence: 1.0,
         isExactMatch: false,
         normalizedUnit: '',
+        candidates: [],
       };
       newResults[resultIndex] = {
         ...newResults[resultIndex],
@@ -388,20 +379,14 @@ export function ReviewStep({
         // One left out for another value of its line is not saved: no fix
         if (setAside.has(b)) return;
         const missing = missingFields(b);
-
-        // A value is saved under its test only in a unit of that test: the
-        // one proposed (by the AI or the typed name), or the one it is saved
-        // as
-        const test = misfitTest(b);
-        if (missing.length === 0 && test) {
-          invalidBiomarkers.push(
-            `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
-          );
-        }
-
+        const biomarkerLabel = b.name || `Biomarker #${index + 1}`;
         if (missing.length > 0) {
-          const biomarkerLabel = b.name || `Biomarker #${index + 1}`;
           invalidBiomarkers.push(`${biomarkerLabel} in "${r.fileName}" is missing: ${missing.join(', ')}`);
+        }
+        if (needsTest(b)) {
+          invalidBiomarkers.push(
+            `${biomarkerLabel} in "${r.fileName}" needs a test: choose one or "${NOT_A_LOINC_TEST}"`
+          );
         }
       });
     });
@@ -599,30 +584,22 @@ export function ReviewStep({
                           rowBg = 'var(--mantine-color-yellow-light)';
                         }
 
-                        const tooltipContent = getBiomarkerTooltipContent(biomarker);
+                        const tooltipContent = getBiomarkerTooltipContent(biomarker, catalog);
 
                         return (
                           <Table.Tr key={bioIndex} bg={rowBg}>
                             <Table.Td>
                               {isEditing ? (
-                                <Autocomplete
+                                <TextInput
                                   size="xs"
                                   value={biomarker.name}
-                                  onChange={(name) =>
-                                    // Its dictionary match follows the new name
+                                  onChange={(e) =>
+                                    // Its test is read again from the new name
                                     updateBiomarker(
                                       resultIndex,
                                       bioIndex,
-                                      applyBiomarkerName(biomarker, name, learned)
+                                      applyBiomarkerName(biomarker, e.currentTarget.value, catalog, learned)
                                     )
-                                  }
-                                  data={BIOMARKER_NAMES}
-                                  // Searches names and aliases; options are dictionary names
-                                  filter={({ search }) =>
-                                    suggestBiomarkerNames(search).map((value) => ({
-                                      value,
-                                      label: value,
-                                    }))
                                   }
                                   placeholder="Biomarker name"
                                   aria-label="Biomarker name"
@@ -654,8 +631,8 @@ export function ReviewStep({
                                       </ThemeIcon>
                                     </Tooltip>
                                   )}
-                                  {biomarker.dictionaryMatch && !biomarker.hasDuplicateConflict && (
-                                    <Tooltip label="Matched to dictionary">
+                                  {biomarker.loincCode && !biomarker.hasDuplicateConflict && (
+                                    <Tooltip label="Identified as a LOINC test">
                                       <ThemeIcon
                                         size="xs"
                                         color="green"
@@ -671,8 +648,8 @@ export function ReviewStep({
                             <Table.Td>
                               <SavedAsCell
                                 biomarker={biomarker}
-                                onChoose={(definition) =>
-                                  updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
+                                onChoose={(code) =>
+                                  updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, code))
                                 }
                               />
                               {setAside.has(biomarker) && (
@@ -680,9 +657,8 @@ export function ReviewStep({
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
                                   </Text>{' '}
-                                  another {getDisplayName(biomarker)} value is saved as{' '}
-                                  {proposedTest(biomarker)?.name}. To keep this one, choose
-                                  &quot;Not in dictionary&quot;.
+                                  its unit cannot be read, and another {getDisplayName(biomarker)} value
+                                  is saved. To keep this one, choose its test or &quot;{NOT_A_LOINC_TEST}&quot;.
                                 </Text>
                               )}
                             </Table.Td>
@@ -690,7 +666,7 @@ export function ReviewStep({
                               <Group gap={4}>
                                 <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
                                 <Text size="sm" c="dimmed">
-                                  {getSpecimenLabel(getEffectiveSpecimen(biomarker))}
+                                  {specimenLabel(biomarker, catalog)}
                                 </Text>
                               </Group>
                             </Table.Td>
@@ -742,13 +718,13 @@ export function ReviewStep({
                                   size="xs"
                                   value={biomarker.unit}
                                   onChange={(unit) =>
-                                    updateBiomarker(resultIndex, bioIndex, applyBiomarkerUnit(biomarker, unit, learned))
+                                    updateBiomarker(
+                                      resultIndex,
+                                      bioIndex,
+                                      applyBiomarkerUnit(biomarker, unit, catalog, learned)
+                                    )
                                   }
-                                  data={unitOptionsFor(
-                                    biomarker.dictionaryMatch?.name ??
-                                      biomarker.suggestedMatch?.name ??
-                                      biomarker.name
-                                  )}
+                                  data={unitOptionsFor(catalog, biomarker.loincCode)}
                                   placeholder="Unit"
                                   w={80}
                                 />

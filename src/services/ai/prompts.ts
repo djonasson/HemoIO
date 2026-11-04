@@ -4,8 +4,6 @@
  * Contains system prompts and templates for extracting biomarker data
  * from lab report text using AI models.
  */
-import { BIOMARKER_DEFINITIONS } from '@data/biomarkers/dictionary';
-import { buildTestList } from './testList';
 import type { AnalysisOptions, TestChoiceRequest } from './types';
 
 /**
@@ -32,7 +30,7 @@ Respond with a JSON object containing:
 
 Each biomarker object should have:
 - name: Biomarker name as found in report
-- biomarkerKey: the key of the test this value is, from KNOWN TESTS, or null when none fits
+- specimenHint: the sample the report names for this value, from its section heading or name: "blood", "serum", "plasma", "urine" or "24h urine"; null when it names none
 - value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10")
 - unit: Unit of measurement
 - referenceRange: { low, high, unit } if available - IMPORTANT: extract numeric values only
@@ -160,7 +158,7 @@ export const RESPONSE_SCHEMA = {
         type: 'object',
         properties: {
           name: { type: 'string' },
-          biomarkerKey: { type: ['string', 'null'] },
+          specimenHint: { type: ['string', 'null'] },
           value: { oneOf: [{ type: 'number' }, { type: 'string' }] }, // Can be number or range string like "5-10"
           unit: { type: 'string' },
           referenceRange: {
@@ -190,30 +188,6 @@ export const RESPONSE_SCHEMA = {
   required: ['biomarkers', 'warnings'],
 };
 
-
-/**
- * How the AI identifies each value's test, and the tests it chooses from
- */
-export const IDENTIFICATION_CONTEXT = `
-IDENTIFYING THE TEST:
-For each value, set "biomarkerKey" to the key of the test it is, from KNOWN TESTS below.
-- Judge by the report, not only the printed name: section headings (e.g. "Raccolte urinarie temporizzate", "Urine delle 24 ore"), the specimen, whether a urine sample is a spot sample or a 24-hour collection, and the unit.
-- The unit tells apart tests a report names alike: a concentration (per litre, e.g. µmol/L, g/L) from an amount per day (e.g. µmol/24h, g/24h), and a count (e.g. 10^9/L) from a percentage (%).
-- Use null when no test in the list fits. Never invent a key, and never use a test's name instead of its key.
-- Keep "name" as printed in the report.
-
-KNOWN TESTS (key: name [specimen; units]):
-${buildTestList(BIOMARKER_DEFINITIONS)}
-`;
-
-/**
- * System prompt with identification
- */
-export const ENHANCED_SYSTEM_PROMPT = `${LAB_REPORT_SYSTEM_PROMPT}
-
-${IDENTIFICATION_CONTEXT}`;
-
-
 /**
  * System prompt for choosing the LOINC test of printed values among candidates
  */
@@ -229,28 +203,6 @@ RULES:
 
 OUTPUT FORMAT:
 Respond with a JSON object only: {"choices": [{"id": string, "code": string or null, "confident": boolean}]}`;
-
-/**
- * Expected JSON schema for the test choice response
- */
-export const TEST_CHOICE_SCHEMA = {
-  type: 'object',
-  properties: {
-    choices: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          code: { type: ['string', 'null'] },
-          confident: { type: 'boolean' },
-        },
-        required: ['id', 'code', 'confident'],
-      },
-    },
-  },
-  required: ['choices'],
-};
 
 /**
  * The user prompt for one report's values: every value with all its candidates

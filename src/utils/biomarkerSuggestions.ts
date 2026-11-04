@@ -1,194 +1,108 @@
 /**
- * Dictionary suggestions for typing a biomarker name in review
+ * Choosing and editing a value's LOINC test in review
  */
-import {
-  BIOMARKER_DEFINITIONS,
-  findBiomarker,
-  matchBiomarkerName,
-  nameKey,
-  searchBiomarkers,
-  type BiomarkerDefinition,
-} from '@data/biomarkers/dictionary';
-import type { AnalyzedValue, MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
-import {
-  identifyAnalyzed,
-  identifyByKey,
-  identifyByPrintedName,
-  learnedTest,
-  notIdentified,
-  testOfName,
-  type IdentifiableValue,
-  type LearnedAlias,
-} from '@services/analysis/nameMatching';
+import { getAddon } from '@data/loinc/addons';
+import { identifyLocally, type Identification, type LearnedTests } from '@services/analysis/identification';
+import { learnedKey } from '@services/analysis/loincMatch';
 import { normalizeUnit } from '@services/units';
+import type { Catalog, CatalogTest } from '@data/loinc/catalog';
+import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
-/** Dictionary names for the text, the closest first */
-export function suggestBiomarkerNames(search: string, limit = 10): string[] {
-  return searchBiomarkers(search).slice(0, limit).map((b) => b.name);
+/** Most tests a search lists */
+const MAX_SEARCH_RESULTS = 30;
+
+/** Tests in the catalog for a search, the closest first; a code typed comes first. None for no text. */
+export function searchTests(catalog: Catalog, search: string): CatalogTest[] {
+  const query = search.trim();
+  if (!query) return [];
+  const byCode = catalog.test(query);
+  const found = catalog.search(query).slice(0, MAX_SEARCH_RESULTS);
+  return byCode ? [byCode, ...found.filter((test) => test.code !== byCode.code)] : found;
 }
 
-/** Tests for a search, the closest first; every test for no text */
-export function searchTests(search: string): readonly BiomarkerDefinition[] {
-  return search.trim() ? searchBiomarkers(search) : BIOMARKER_DEFINITIONS;
+/** Units offered for a value of a test: HemoIO's own for it, else LOINC's examples */
+export function unitOptionsFor(catalog: Catalog, code: string | undefined): string[] {
+  if (!code) return [];
+  const addon = getAddon(catalog, code);
+  const units = addon?.canonicalUnit
+    ? [addon.canonicalUnit, ...(addon.alternativeUnits ?? [])]
+    : (catalog.test(code)?.units ?? []);
+  return [...new Set(units.filter(Boolean))];
 }
 
-/** Units the dictionary knows for a biomarker name or alias */
-export function unitOptionsFor(name: string): string[] {
-  const definition = findBiomarker(name);
-  if (!definition) return [];
-  return [...new Set([definition.canonicalUnit, ...definition.alternativeUnits].filter(Boolean))];
-}
-
-/**
- * Whether a value's test is the user's to keep: they picked it, or saved
- * the value as not in the dictionary. Review then never reads it again.
- */
-function isPinned(biomarker: MatchedBiomarker): boolean {
-  return biomarker.identifiedBy === 'user' || biomarker.savedAsUnknown === true;
-}
-
-/**
- * A row added in review: the test its name is (or the user's learned name
- * for it), read with its unit. A name edit fills an empty unit with that
- * test's standard unit, and it keeps following the name while the user has
- * not chosen one: typing passes through names of other tests ("Urea" on
- * the way to "Urea 24h"). Review checks the unit against the test the name
- * is before saving.
- */
-function readAddedRow(
-  biomarker: MatchedBiomarker,
-  learned: LearnedAlias | undefined,
-  { nameEdited }: { nameEdited: boolean }
-): MatchedBiomarker {
-  const named = matchBiomarkerName(biomarker.name) ?? learned?.(biomarker.name);
-  const fillUnit = nameEdited && (!biomarker.unit || biomarker.unitFromName === true);
-  const unit = fillUnit ? (named?.canonicalUnit ?? '') : biomarker.unit;
-  const withUnit = { ...biomarker, unit };
-  const test = testOfName(biomarker.name, unit) ?? learnedTest(withUnit, learned);
+/** The value with every identification field set from `identification`, none left from before */
+function identified(biomarker: MatchedBiomarker, identification: Identification): MatchedBiomarker {
   return {
-    ...withUnit,
-    unitFromName: fillUnit && unit !== '',
-    dictionaryMatch: test ?? named,
-    isExactMatch: test !== undefined,
+    ...biomarker,
+    loincCode: identification.loincCode,
+    candidates: identification.candidates,
+    identifiedBy: identification.identifiedBy,
+    identificationFlags: identification.identificationFlags,
+    savedAsUnknown: identification.savedAsUnknown,
+    isExactMatch: identification.isExactMatch,
   };
 }
 
-/**
- * An analyzed value the user renamed, by the name typed, as the analyzer
- * reads a printed name (with the user's learned names), but with no label
- * to check: the user chose it. A test the name is but the unit fits not is
- * proposed.
- */
-function readTypedName(biomarker: IdentifiableValue, learned: LearnedAlias | undefined): MatchedBiomarker {
-  const byName = identifyByPrintedName(biomarker, learned);
-  if (byName) {
-    const noUnit = byName.identificationFlags?.includes('no-unit');
-    return { ...byName, identificationFlags: noUnit ? ['no-unit'] : [] };
-  }
-  const unmatched = notIdentified(biomarker);
-  return unmatched.suggestedMatch ? { ...unmatched, identificationFlags: ['unit-mismatch'] } : unmatched;
-}
+/** Nothing known yet: a row added in review before it has a unit */
+const UNREAD: Identification = { candidates: [], identificationFlags: [], isExactMatch: false };
 
 /**
- * An analyzed value as edited, identified from the analyzer's reading and
- * its current name and unit only, so nothing typed on the way counts: with
- * its printed name as the analyzer does (the matching model's test too),
- * renamed by the AI's key or the name typed. An emptied unit is one still
- * to choose: the test is the one the report's unit gives, and review asks
- * for the unit.
- */
-function identifyEdited(
-  biomarker: MatchedBiomarker & { analyzed: AnalyzedValue },
-  learned: LearnedAlias | undefined
-): MatchedBiomarker {
-  const { analyzed } = biomarker;
-  const identify = (unit: string) => {
-    const value = { ...biomarker, unit };
-    // A name edited only in case, spacing or accent encoding reads as printed
-    return nameKey(biomarker.name) === nameKey(analyzed.name)
-      ? identifyAnalyzed(value, learned)
-      : (identifyByKey(value, learned) ?? readTypedName(value, learned));
-  };
-  // An emptied unit: the test the report's unit gives, else one measured
-  // without a unit (a stray "pH" cleared from a urine pH)
-  const emptied = biomarker.unit.trim() === '';
-  const byReportUnit = identify(emptied ? analyzed.unit : biomarker.unit);
-  const withoutUnit = emptied && !byReportUnit.dictionaryMatch ? identify('') : undefined;
-  const identified = withoutUnit?.dictionaryMatch ? withoutUnit : byReportUnit;
-  return {
-    ...identified,
-    unit: biomarker.unit,
-    normalizedUnit: normalizeUnit(biomarker.unit),
-  };
-}
-
-/** What the analyzer read a value as; for a value from elsewhere, the value before the edit */
-function analyzedAs(biomarker: MatchedBiomarker): AnalyzedValue {
-  return biomarker.analyzed ?? { name: biomarker.name, unit: biomarker.unit };
-}
-
-/**
- * A value edited in review, its test read again: a pinned test stays, a
- * row the user added is read by its name, an analyzed value as the
- * analyzer reads it
+ * A value edited in review, its test read again: a test the user chose
+ * stays; back at the printed name and unit, the analyzer's test (the AI's
+ * choice too) is the value's again; else it is read as the analyzer reads
+ * a printed name, with the learned tests. An emptied unit is one still to
+ * choose: the value is read in the report's unit, and review asks for one.
  */
 function reidentify(
   original: MatchedBiomarker,
   changed: MatchedBiomarker,
-  learned: LearnedAlias | undefined,
-  { nameEdited }: { nameEdited: boolean }
+  catalog: Catalog,
+  learned: LearnedTests | undefined
 ): MatchedBiomarker {
-  if (isPinned(original)) return changed;
-  if (!original.identificationFlags) return readAddedRow(changed, learned, { nameEdited });
-  return identifyEdited({ ...changed, analyzed: analyzedAs(original) }, learned);
+  const withUnit = { ...changed, normalizedUnit: normalizeUnit(changed.unit) };
+  if (original.identifiedBy === 'user') return withUnit;
+  const { analyzed } = original;
+  const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
+  if (!analyzed && unit.trim() === '') return identified(withUnit, UNREAD);
+  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint };
+  const identification =
+    analyzed && learnedKey(reading) === learnedKey(analyzed)
+      ? analyzed.identification
+      : identifyLocally(catalog, reading, learned);
+  return identified(withUnit, identification);
 }
 
-/**
- * Rename a value. Its test is read again from the new name and its unit,
- * as the analyzer reads it: a test the AI identified stays (the name is its
- * label) with whether the name suggests another worked out again, and a
- * test the user picked, or "Not in dictionary", stays. Free text is saved
- * as an unknown biomarker rather than under its previous match.
- */
+/** Rename a value; its test is read again from the new name (see reidentify) */
 export function applyBiomarkerName(
   biomarker: MatchedBiomarker,
   name: string,
-  learned?: LearnedAlias
+  catalog: Catalog,
+  learned?: LearnedTests
 ): MatchedBiomarker {
-  return reidentify(biomarker, { ...biomarker, name }, learned, { nameEdited: true });
+  return reidentify(biomarker, { ...biomarker, name }, catalog, learned);
 }
 
-/**
- * Change a value's unit. Its test is read again in the new unit, as the
- * analyzer reads it: a proposed test (by the AI, the typed name or the
- * matching model) becomes the value's test once the unit fits it, and a
- * count's name in % is its percentage. An emptied unit is one still to
- * choose: the test stays, and review asks for the unit.
- */
+/** Change a value's unit; its test is read again in the new unit (see reidentify) */
 export function applyBiomarkerUnit(
   biomarker: MatchedBiomarker,
   unit: string,
-  learned?: LearnedAlias
+  catalog: Catalog,
+  learned?: LearnedTests
 ): MatchedBiomarker {
-  return reidentify(biomarker, { ...biomarker, unit, unitFromName: false }, learned, { nameEdited: false });
+  return reidentify(biomarker, { ...biomarker, unit }, catalog, learned);
 }
 
 /**
- * Save a value as a test the user chose in review, or as not in the
- * dictionary (null): the choice is final, so name edits no longer move it
+ * Save a value as the LOINC test the user chose in review, or as "Not a
+ * LOINC test" (null): the choice is final, so edits no longer move it. The
+ * candidates stay, to change the choice again.
  */
-export function chooseTest(
-  biomarker: MatchedBiomarker,
-  definition: BiomarkerDefinition | null
-): MatchedBiomarker {
+export function chooseTest(biomarker: MatchedBiomarker, code: string | null): MatchedBiomarker {
   return {
     ...biomarker,
-    dictionaryMatch: definition ?? undefined,
-    suggestedMatch: undefined,
-    identifiedBy: definition ? 'user' : undefined,
-    identificationFlags: definition ? [] : ['not-identified'],
-    nameSuggests: undefined,
-    savedAsUnknown: definition === null,
+    loincCode: code ?? undefined,
+    identifiedBy: 'user',
+    identificationFlags: [],
+    savedAsUnknown: code === null,
   };
 }
-

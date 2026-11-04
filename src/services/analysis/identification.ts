@@ -1,0 +1,176 @@
+/**
+ * Giving each extracted value its LOINC code: a test learned for the
+ * wording, the local match, then one AI call for the values several tests
+ * fit; what is left is the user's to choose in review.
+ */
+import { isNotALoincTest, type SavedValue } from '@data/loinc/learnedTests';
+import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { normalizeUnit } from '../units';
+import { learnedKey, matchLocally, type Candidate, type PrintedValue } from './loincMatch';
+import type { Catalog } from '@data/loinc/catalog';
+import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
+import type { IdentificationFlag, IdentifiedBy, MatchedBiomarker } from './LabReportAnalyzer';
+
+/** The user's learned tests: learned key → LOINC code, or an unknown key for "Not a LOINC test" */
+export type LearnedTests = Readonly<Record<string, string>>;
+
+/** What identification sets on a value */
+export interface Identification {
+  loincCode?: string;
+  candidates: Candidate[];
+  identifiedBy?: IdentifiedBy;
+  identificationFlags: IdentificationFlag[];
+  savedAsUnknown?: boolean;
+  /** Matched without asking: learned, or the one test that fits */
+  isExactMatch: boolean;
+}
+
+/** Asks the AI which candidate each value is */
+export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[]>;
+
+/**
+ * A printed value's test as far as it is known without the AI: the one
+ * learned for its wording and unit (a learned "Not a LOINC test" too), else
+ * the one test that clearly fits. A value the report gives no unit is never
+ * matched on its name alone: it is saved under its own name unless the user
+ * chooses a test. Otherwise the candidates are left to the AI and the user.
+ */
+export function identifyLocally(
+  catalog: Catalog,
+  value: PrintedValue,
+  learned: LearnedTests = {}
+): Identification {
+  const taught = learned[learnedKey(value)];
+  if (taught && isNotALoincTest(taught)) {
+    return { candidates: [], identifiedBy: 'learned', identificationFlags: [], savedAsUnknown: true, isExactMatch: true };
+  }
+
+  const match = matchLocally(catalog, value, (key) => learned[key]);
+  if (match.status === 'match') {
+    return {
+      loincCode: match.code,
+      candidates: match.candidates,
+      identifiedBy: match.code === taught ? 'learned' : 'local',
+      identificationFlags: [],
+      isExactMatch: true,
+    };
+  }
+  if (value.unit.trim() === '') {
+    return { candidates: match.candidates, identificationFlags: ['no-unit'], savedAsUnknown: true, isExactMatch: false };
+  }
+  return {
+    candidates: match.candidates,
+    identificationFlags: [match.candidates.length > 0 ? 'ambiguous' : 'not-identified'],
+    isExactMatch: false,
+  };
+}
+
+/** Whether a value is still undecided among candidates: the AI, then the user, chooses */
+export function needsChoice(
+  identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'candidates'>
+): boolean {
+  return (
+    !identification.loincCode && !identification.savedAsUnknown && identification.candidates.length > 0
+  );
+}
+
+/** The AI's choice applied: a confident one is the value's test, an unsure one goes first among the candidates */
+function withChoice(value: MatchedBiomarker, choice: TestChoice | undefined): MatchedBiomarker {
+  if (!choice?.code) return value;
+  if (choice.confident) {
+    return { ...value, loincCode: choice.code, identifiedBy: 'ai', identificationFlags: [] };
+  }
+  const picked = value.candidates.find((candidate) => candidate.code === choice.code);
+  return picked
+    ? { ...value, candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)] }
+    : value;
+}
+
+/** The values identified, and whether the AI could not be asked */
+export interface IdentifiedValues {
+  values: MatchedBiomarker[];
+  choiceFailed: boolean;
+}
+
+/**
+ * Identify a report's values: each locally, then the undecided ones in one
+ * request to the AI, if there is one to ask. A failed request leaves them
+ * to the user.
+ */
+export async function identifyValues(
+  catalog: Catalog,
+  extracted: readonly ExtractedBiomarker[],
+  { learned, choose }: { learned?: LearnedTests; choose?: ChooseTests }
+): Promise<IdentifiedValues> {
+  const values: MatchedBiomarker[] = extracted.map((biomarker) => {
+    const identification = identifyLocally(catalog, biomarker, learned);
+    return {
+      ...biomarker,
+      ...identification,
+      normalizedUnit: normalizeUnit(biomarker.unit),
+      analyzed: { name: biomarker.name, unit: biomarker.unit, identification },
+    };
+  });
+
+  const requests: TestChoiceRequest[] = values.flatMap((value, index) =>
+    needsChoice(value)
+      ? [
+          {
+            id: String(index),
+            name: value.name,
+            unit: value.unit,
+            ...(value.specimenHint && { specimenHint: value.specimenHint }),
+            candidates: value.candidates.map(({ code, name }) => ({ code, name })),
+          },
+        ]
+      : []
+  );
+  if (!choose || requests.length === 0) return { values, choiceFailed: false };
+
+  let choices: TestChoice[];
+  try {
+    choices = await choose(requests);
+  } catch {
+    return { values, choiceFailed: true };
+  }
+  const byId = new Map(choices.map((choice) => [choice.id, choice]));
+  return {
+    values: values.map((value, index) => {
+      const chosen = withChoice(value, byId.get(String(index)));
+      // Editing back to the printed name and unit restores the AI's choice too
+      return chosen === value
+        ? value
+        : { ...chosen, analyzed: { name: value.name, unit: value.unit, identification: identificationOf(chosen) } };
+    }),
+    choiceFailed: false,
+  };
+}
+
+/** A value's identification fields */
+export function identificationOf(value: MatchedBiomarker): Identification {
+  return {
+    loincCode: value.loincCode,
+    candidates: value.candidates,
+    identifiedBy: value.identifiedBy,
+    identificationFlags: value.identificationFlags ?? [],
+    savedAsUnknown: value.savedAsUnknown,
+    isExactMatch: value.isExactMatch,
+  };
+}
+
+/**
+ * What saving a value teaches: its code under the wording and unit the
+ * report printed. It is the user's decision when they chose the test, saved
+ * the AI's choice, or edited the value until it matched; a test matched with
+ * no edit, or learned, is matched the same way next time anyway.
+ */
+export function toLearn(value: MatchedBiomarker): SavedValue {
+  const printed = value.analyzed ?? value;
+  const edited = !value.analyzed || learnedKey(value) !== learnedKey(value.analyzed);
+  const by = value.identifiedBy;
+  return {
+    key: learnedKey(printed),
+    code: value.savedAsUnknown ? unknownBiomarkerKey(value.name) : value.loincCode,
+    confirmed: by === 'ai' || by === 'user' || (by === 'local' && edited),
+  };
+}

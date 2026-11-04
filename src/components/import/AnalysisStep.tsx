@@ -34,8 +34,7 @@ import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysi
 import { processWithConcurrency } from '../../utils/concurrency';
 import { manualEntryResult } from './manualEntry';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
-import { getSimilarNameMatcher, MODEL_LOADING_STAGE } from '@services/matching';
+import { useCatalog } from '@contexts/useCatalog';
 
 /**
  * Analysis result for a single file
@@ -106,12 +105,13 @@ export function AnalysisStep({
   onComplete,
   onBack,
 }: AnalysisStepProps) {
-  // The user's learned names, as they are when each file is matched
-  const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
-  const learnedAliasesRef = useRef(learnedAliases);
+  const catalog = useCatalog();
+  // The user's learned tests, as they are when each file is matched
+  const learnedTests = useContext(PreferencesContext)?.learnedTests;
+  const learnedTestsRef = useRef(learnedTests);
   useEffect(() => {
-    learnedAliasesRef.current = learnedAliases;
-  }, [learnedAliases]);
+    learnedTestsRef.current = learnedTests;
+  }, [learnedTests]);
   const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
@@ -206,18 +206,8 @@ export function AnalysisStep({
                   model: aiModel,
                 },
                 signal: controller.signal,
-                nameFallback: {
-                  learned: (name) => lookupLearnedAlias(learnedAliasesRef.current, name),
-                  // Loaded the first time a name needs it, then kept for offline use
-                  similar: async (name) => {
-                    const matcher = await getSimilarNameMatcher(() => {
-                      if (!cancelled) {
-                        updateFileStatus(uploadedFile.id, { stage: MODEL_LOADING_STAGE });
-                      }
-                    });
-                    return matcher.similar(name);
-                  },
-                },
+                catalog,
+                learnedTests: learnedTestsRef.current,
                 onProgress: (stage, progress) => {
                   if (!cancelled) {
                     updateFileStatus(uploadedFile.id, {
@@ -297,7 +287,7 @@ export function AnalysisStep({
       cancelled = true;
       controller.abort();
     };
-  }, [files, aiProvider, getApiKey, aiModel, fileStatuses.length, updateFileStatus]);
+  }, [files, aiProvider, getApiKey, aiModel, fileStatuses.length, updateFileStatus, catalog]);
 
   // Calculate summary statistics
   const successCount = results.filter((r) => r.success).length;

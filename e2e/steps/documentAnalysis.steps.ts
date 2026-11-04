@@ -8,7 +8,7 @@
  */
 
 import { expect, type Page, type Route } from '@playwright/test';
-import { DEFAULT_EXTRACTION, MOCK_OLLAMA_MODELS } from './ai.steps';
+import { DEFAULT_EXTRACTION, MOCK_OLLAMA_MODELS, isTestChoiceRequest } from './ai.steps';
 import { writeTempFile } from './tempFiles';
 
 const OLLAMA_CHAT_URL = '**/localhost:11434/api/chat';
@@ -79,6 +79,11 @@ export async function scriptOllamaChat(
       messages: { role: string; content: string }[];
       options?: { num_predict?: number; num_ctx?: number };
     };
+    // Which test values are is asked apart from the report: mockOllama answers it
+    if (isTestChoiceRequest(body)) {
+      await route.fallback();
+      return;
+    }
     script.prompts.push(body.messages.find((m) => m.role === 'user')?.content ?? '');
     script.answerLimits.push(body.options?.num_predict ?? 0);
     script.contexts.push(body.options?.num_ctx ?? 0);

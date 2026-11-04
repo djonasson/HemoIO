@@ -14,6 +14,9 @@ export type {
   AnalysisOptions,
   LabReportAnalysisResult,
   ExtractedBiomarker,
+  TestCandidate,
+  TestChoice,
+  TestChoiceRequest,
 } from './types';
 
 // Error classes and provider names
@@ -69,13 +72,7 @@ export {
 export type { AnthropicModelInfo } from './anthropicUtils';
 
 // Prompts (for advanced use cases)
-export {
-  LAB_REPORT_SYSTEM_PROMPT,
-  ENHANCED_SYSTEM_PROMPT,
-  createAnalysisPrompt,
-  RESPONSE_SCHEMA,
-  IDENTIFICATION_CONTEXT,
-} from './prompts';
+export { LAB_REPORT_SYSTEM_PROMPT, createAnalysisPrompt, RESPONSE_SCHEMA } from './prompts';
 
 // Interval value parsing
 export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';

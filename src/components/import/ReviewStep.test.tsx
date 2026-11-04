@@ -1,56 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { CatalogContext } from '@contexts/useCatalog';
+import { fixtureCatalog } from '@/test/loincFixture';
+import { PreferencesContext, type PreferencesState } from '@hooks/usePreferences';
 import { ReviewStep } from './ReviewStep';
-import type { ReviewedResult, ReviewStepProps } from './ReviewStep';
+import type { ReviewedResult } from './ReviewStep';
 import type { AnalysisResult } from './AnalysisStep';
+import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
-// Mock the biomarker dictionary
-vi.mock('../../data/biomarkers/dictionary', () => ({
-  findBiomarker: vi.fn((name: string) => {
-    // pH is a unitless biomarker
-    if (name.toLowerCase() === 'ph') {
-      return { name: 'pH', canonicalUnit: '', aliases: [], category: 'metabolic', description: '', alternativeUnits: [] };
-    }
-    // Glucose with full metadata for testing
-    if (name.toLowerCase() === 'glucose') {
-      return {
-        key: 'glucose',
-        name: 'Glucose',
-        canonicalUnit: 'mg/dL',
-        aliases: ['Blood Sugar'],
-        category: 'metabolic',
-        description: 'Blood glucose level',
-        alternativeUnits: ['mmol/L'],
-        specimenType: 'serum',
-        loincCode: '2345-7',
-      };
-    }
-    // Other biomarkers have units
-    if (name) {
-      return { name, canonicalUnit: 'mg/dL', aliases: [], category: 'metabolic', description: '', alternativeUnits: [] };
-    }
-    return undefined;
-  }),
-  BIOMARKER_DEFINITIONS: [],
-  nameKey: (name: string) => name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim(),
-  // No name variations; the one keyed test is the AI's proposed glucose
-  matchBiomarkerName: vi.fn(() => undefined),
-  getBiomarkerByKey: vi.fn((key: string) =>
-    key === 'glucose'
-      ? { key: 'glucose', name: 'Glucose', canonicalUnit: 'mg/dL', aliases: [], category: 'metabolic',
-          description: '', alternativeUnits: ['mmol/L'], related: [] }
-      : undefined
-  ),
-  searchBiomarkers: vi.fn((query: string) =>
-    ['Hematocrit', 'Hemoglobin', 'Glucose']
-      .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
-      .map((name) => ({ name, aliases: [] }))
-  ),
-  percentageOf: () => undefined,
-}));
+const catalog = fixtureCatalog();
+
+/** The providers review needs: Mantine and the LOINC catalog */
+function Providers({ children }: { children: ReactNode }) {
+  return (
+    <MantineProvider env="test">
+      <CatalogContext.Provider value={catalog}>{children}</CatalogContext.Provider>
+    </MantineProvider>
+  );
+}
 
 const mockAnalysisResult: AnalysisResult = {
   fileId: 'file1',
@@ -67,18 +37,10 @@ const mockAnalysisResult: AnalysisResult = {
       confidence: 0.95,
       isExactMatch: true,
       normalizedUnit: 'mg/dL',
-      dictionaryMatch: {
-        key: 'glucose',
-        name: 'Glucose',
-        canonicalUnit: 'mg/dL',
-        aliases: ['Blood Sugar'],
-        category: 'metabolic',
-        description: 'Blood glucose level',
-        alternativeUnits: ['mmol/L'],
-        specimenType: 'serum',
-        loincCode: '2345-7',
-        related: [],
-      },
+      loincCode: '2345-7',
+      identifiedBy: 'local',
+      identificationFlags: [],
+      candidates: [],
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
     },
   ],
@@ -102,9 +64,9 @@ const defaultProps = {
 
 function renderReviewStep(props: Partial<typeof defaultProps> = {}) {
   return render(
-    <MantineProvider env="test">
+    <Providers>
       <ReviewStep {...defaultProps} {...props} />
-    </MantineProvider>
+    </Providers>
   );
 }
 
@@ -138,6 +100,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: true,
             normalizedUnit: 'g/dL',
+            candidates: [],
           },
         ],
       };
@@ -172,6 +135,7 @@ describe('ReviewStep', () => {
             confidence: 0.5,
             isExactMatch: false,
             normalizedUnit: 'U/L',
+            candidates: [],
           },
         ],
       };
@@ -276,13 +240,14 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: true,
             normalizedUnit: 'U/L',
+            candidates: [],
           },
         ],
       };
 
       renderReviewStep({ reviewedResults: [noRangeResult] });
 
-      // Three dashes: one for specimen type (no dictionaryMatch), one for reference range, one for method
+      // Three dashes: one for specimen type (no LOINC test), one for reference range, one for method
       expect(screen.getAllByText('—').length).toBe(3);
     });
 
@@ -489,9 +454,9 @@ describe('ReviewStep', () => {
       ['the row itself', 2, null],
     ])('keeps the edited row on its value when %s is removed', (_, removed, shown) => {
       render(
-        <MantineProvider env="test">
+        <Providers>
           <ThreeValues />
-        </MantineProvider>
+        </Providers>
       );
       fireEvent.click(screen.getAllByLabelText('Edit biomarker')[2]);
       expect(screen.getByPlaceholderText('Value')).toHaveValue('3');
@@ -605,6 +570,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: 'mg/dL',
+            candidates: [],
           },
         ],
       };
@@ -626,6 +592,8 @@ describe('ReviewStep', () => {
         confidence: 0.9,
         isExactMatch: false,
         normalizedUnit: 'mg/dL',
+        candidates: [],
+        savedAsUnknown: true,
       }));
       renderReviewStep({ reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: unnamed }] });
       const continueButton = screen.getByRole('button', { name: /Continue to Confirm/i });
@@ -650,6 +618,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: '',
+            candidates: [],
           },
         ],
       };
@@ -663,156 +632,34 @@ describe('ReviewStep', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
-    it('asks for a unit that fits a renamed value instead of saving it in the wrong one', () => {
+    it('asks for a test, or "Not a LOINC test", for a value several tests fit', () => {
       const onComplete = vi.fn();
-      const renamed: ReviewedResult = {
+      const reviewed: ReviewedResult = {
         ...mockReviewedResult,
         editedBiomarkers: [
           {
-            name: 'Hemoglobin A1c',
-            value: 42,
-            unit: 'g/dL',
+            name: 'Glucosio',
+            value: 95,
+            unit: 'mg/dL',
             confidence: 0.9,
-            isExactMatch: true,
-            normalizedUnit: 'g/dL',
-            dictionaryMatch: {
-              key: 'hemoglobin-a1c',
-              name: 'Hemoglobin A1c',
-              canonicalUnit: '%',
-              aliases: ['HbA1c'],
-              category: 'metabolic',
-              description: '',
-              alternativeUnits: ['mmol/mol'],
-              specimenType: 'other',
-              loincCode: '4548-4',
-              related: [],
-            },
+            isExactMatch: false,
+            normalizedUnit: 'mg/dL',
+            identificationFlags: ['ambiguous'],
+            candidates: [
+              { code: '2345-7', name: 'Glucose [Mass/volume] in Serum or Plasma', score: 1 },
+              { code: '2339-0', name: 'Glucose [Mass/volume] in Blood', score: 1 },
+            ],
           },
         ],
       };
 
-      renderReviewStep({ reviewedResults: [renamed], onComplete });
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(screen.getByText('Cannot Continue')).toBeInTheDocument();
       expect(
-        screen.getByText(
-          /Hemoglobin A1c in "lab-report.pdf": g\/dL is not a unit for Hemoglobin A1c\. Choose a fitting unit, another test, or "Not in dictionary"\./
-        )
+        screen.getByText('Glucosio in "lab-report.pdf" needs a test: choose one or "Not a LOINC test"')
       ).toBeInTheDocument();
-      expect(onComplete).not.toHaveBeenCalled();
-    });
-
-    it('asks for a unit that fits any value saved under a test, renamed or not', () => {
-      const onComplete = vi.fn();
-      const reviewed: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'Creatinina',
-            value: 1.55,
-            unit: 'g/24h',
-            confidence: 0.9,
-            isExactMatch: true,
-            normalizedUnit: 'g/24h',
-            identifiedBy: 'user',
-            dictionaryMatch: {
-              key: 'urine-creatinine',
-              name: 'Urine Creatinine',
-              canonicalUnit: 'mg/dL',
-              aliases: [],
-              category: 'urinalysis',
-              description: '',
-              alternativeUnits: ['µmol/L', 'g/L'],
-              specimenType: 'urine',
-              loincCode: '2161-8',
-              related: [],
-            },
-          },
-        ],
-      };
-
-      renderReviewStep({ reviewedResults: [reviewed], onComplete });
-      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-
-      expect(
-        screen.getByText(
-          /Creatinina in "lab-report.pdf": g\/24h is not a unit for Urine Creatinine\. Choose a fitting unit, another test, or "Not in dictionary"\./
-        )
-      ).toBeInTheDocument();
-      expect(onComplete).not.toHaveBeenCalled();
-    });
-
-    it('asks the same when the unit does not fit the test the AI proposed', () => {
-      const onComplete = vi.fn();
-      const reviewed: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'Creatinina',
-            value: 1.55,
-            unit: 'g/24h',
-            confidence: 0.9,
-            isExactMatch: false,
-            normalizedUnit: 'g/24h',
-            identificationFlags: ['unit-mismatch'],
-            suggestedMatch: {
-              key: 'urine-creatinine',
-              name: 'Urine Creatinine',
-              canonicalUnit: 'mg/dL',
-              aliases: [],
-              category: 'urinalysis',
-              description: '',
-              alternativeUnits: ['µmol/L', 'g/L'],
-              specimenType: 'urine',
-              loincCode: '2161-8',
-              related: [],
-            },
-          },
-        ],
-      };
-
-      renderReviewStep({ reviewedResults: [reviewed], onComplete });
-      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-
-      expect(screen.getByText(/g\/24h is not a unit for Urine Creatinine/)).toBeInTheDocument();
-      expect(onComplete).not.toHaveBeenCalled();
-    });
-
-    it('asks for the unit of a proposed test when the value has none', () => {
-      const onComplete = vi.fn();
-      const reviewed: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'Glicemia',
-            value: 5,
-            // Blank but for spaces, as a model may give it
-            unit: ' ',
-            confidence: 0.9,
-            isExactMatch: false,
-            normalizedUnit: '',
-            identificationFlags: ['unit-mismatch'],
-            suggestedMatch: {
-              key: 'glucose',
-              name: 'Glucose',
-              canonicalUnit: 'mg/dL',
-              aliases: [],
-              category: 'metabolic',
-              description: '',
-              alternativeUnits: ['mmol/L'],
-              specimenType: 'serum',
-              loincCode: '2345-7',
-              related: [],
-            },
-          },
-        ],
-      };
-
-      renderReviewStep({ reviewedResults: [reviewed], onComplete });
-      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-
-      expect(screen.getByText(/Glicemia in ".*" is missing: unit/)).toBeInTheDocument();
       expect(onComplete).not.toHaveBeenCalled();
     });
 
@@ -828,7 +675,19 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: '',
+            candidates: [],
             identificationFlags: ['no-unit'],
+            savedAsUnknown: true,
+            analyzed: {
+              name: 'Proteine (urine)',
+              unit: '',
+              identification: {
+                candidates: [],
+                identificationFlags: ['no-unit'],
+                savedAsUnknown: true,
+                isExactMatch: false,
+              },
+            },
           },
         ],
       };
@@ -839,7 +698,7 @@ describe('ReviewStep', () => {
       expect(onComplete).toHaveBeenCalled();
     });
 
-    it('saves a value the user put as not in the dictionary, whatever its unit', () => {
+    it('saves a value the user put as not a LOINC test, whatever its unit', () => {
       const onComplete = vi.fn();
       const reviewed: ReviewedResult = {
         ...mockReviewedResult,
@@ -851,6 +710,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: 'g/24h',
+            candidates: [],
             identificationFlags: ['not-identified'],
             savedAsUnknown: true,
           },
@@ -861,53 +721,6 @@ describe('ReviewStep', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
-    });
-
-    it('lets a value with no test have no unit, as specific gravity has none', () => {
-      const onComplete = vi.fn();
-      const unitless: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'Zorblatin ratio',
-            value: 1.02,
-            unit: '',
-            confidence: 0.9,
-            isExactMatch: false,
-            normalizedUnit: '',
-            identificationFlags: ['not-identified'],
-          },
-        ],
-      };
-
-      renderReviewStep({ reviewedResults: [unitless], onComplete });
-      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-
-      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
-    });
-
-    it('allows unitless biomarkers (like pH) without unit', () => {
-      const onComplete = vi.fn();
-      const phResult: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'pH',
-            value: 7.4,
-            unit: '',
-            confidence: 0.9,
-            isExactMatch: true,
-            normalizedUnit: '',
-          },
-        ],
-      };
-
-      renderReviewStep({ reviewedResults: [phResult], onComplete });
-
-      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-
-      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
-      expect(onComplete).toHaveBeenCalled();
     });
 
     it('closes validation error when close button is clicked', () => {
@@ -921,6 +734,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: false,
             normalizedUnit: 'mg/dL',
+            candidates: [],
           },
         ],
       };
@@ -941,38 +755,37 @@ describe('ReviewStep', () => {
   });
 
   describe('A value left out for another value of its line', () => {
-    const nrbcPercentage = {
-      key: 'nucleated-red-blood-cells-percentage',
-      name: 'Nucleated Red Blood Cells Percentage',
-      canonicalUnit: '/100 WBC',
-      aliases: [],
-      category: 'cbc' as const,
-      description: '',
-      alternativeUnits: ['%'],
-      related: [],
+    const shareIdentification = {
+      loincCode: '770-8',
+      candidates: [],
+      identifiedBy: 'ai' as const,
+      identificationFlags: [],
+      isExactMatch: false,
     };
-    const share = {
+    const share: MatchedBiomarker = {
       name: 'Eritroblasti',
       value: 0.2,
       unit: '%',
       confidence: 0.95,
-      isExactMatch: false,
       normalizedUnit: '%',
-      identifiedBy: 'ai' as const,
-      identificationFlags: [],
-      dictionaryMatch: nrbcPercentage,
-      analyzed: { name: 'Eritroblasti', unit: '%' },
+      ...shareIdentification,
+      analyzed: { name: 'Eritroblasti', unit: '%', identification: shareIdentification },
     };
-    // The same test as a share no test is counted per
-    const twin = {
+    // The same printed name, in a unit UCUM cannot read: no test for it
+    const twinIdentification = {
+      candidates: [],
+      identificationFlags: ['not-identified' as const],
+      isExactMatch: false,
+    };
+    const twin: MatchedBiomarker = {
       ...share,
       value: 0.5,
       unit: '/100 HPF',
       normalizedUnit: '/100 HPF',
-      dictionaryMatch: undefined,
-      identificationFlags: ['unit-mismatch' as const],
-      suggestedMatch: nrbcPercentage,
-      analyzed: { name: 'Eritroblasti', unit: '/100 HPF' },
+      loincCode: undefined,
+      identifiedBy: undefined,
+      ...twinIdentification,
+      analyzed: { name: 'Eritroblasti', unit: '/100 HPF', identification: twinIdentification },
     };
 
     it('is labelled "Not saved", says how to keep it, and does not stop the import', () => {
@@ -983,7 +796,9 @@ describe('ReviewStep', () => {
 
       expect(screen.getAllByText('Not saved:')).toHaveLength(1);
       expect(
-        screen.getByText(/another Eritroblasti value is saved as Nucleated Red Blood Cells Percentage\. To keep this one, choose "Not in dictionary"\./)
+        screen.getByText(
+          /its unit cannot be read, and another Eritroblasti value is saved\. To keep this one, choose its test or "Not a LOINC test"\./
+        )
       ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
@@ -1012,9 +827,7 @@ describe('ReviewStep', () => {
 
       expect(screen.queryByText('Not saved:')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
-      expect(
-        screen.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Eritroblasti in "lab-report.pdf" needs a test/)).toBeInTheDocument();
       expect(onComplete).not.toHaveBeenCalled();
     });
   });
@@ -1046,6 +859,7 @@ describe('ReviewStep', () => {
             confidence: 0.9,
             isExactMatch: true,
             normalizedUnit: 'g/dL',
+            candidates: [],
           },
           {
             name: 'Hematocrit',
@@ -1054,6 +868,7 @@ describe('ReviewStep', () => {
             confidence: 0.85,
             isExactMatch: true,
             normalizedUnit: '%',
+            candidates: [],
           },
         ],
       };
@@ -1071,10 +886,10 @@ describe('ReviewStep', () => {
       expect(screen.getByRole('columnheader', { name: /specimen/i })).toBeInTheDocument();
     });
 
-    it('displays specimen type for matched biomarkers', () => {
+    it("displays the sample of the value's LOINC test", () => {
       renderReviewStep();
 
-      expect(screen.getByText('Serum')).toBeInTheDocument();
+      expect(screen.getByText('Serum/Plasma')).toBeInTheDocument();
     });
 
     it('shows dash for unmatched biomarkers', () => {
@@ -1088,7 +903,8 @@ describe('ReviewStep', () => {
             confidence: 0.7,
             isExactMatch: false,
             normalizedUnit: 'U/L',
-            // No dictionaryMatch
+            candidates: [],
+            // No LOINC test
           },
         ],
       };
@@ -1119,19 +935,10 @@ describe('ReviewStep', () => {
             value: 50,
             unit: 'U/L',
             confidence: 0.9,
-            isExactMatch: true,
+            isExactMatch: false,
             normalizedUnit: 'U/L',
-            dictionaryMatch: {
-              key: 'test-marker',
-              name: 'Test Marker',
-              canonicalUnit: 'U/L',
-              aliases: [],
-              category: 'metabolic',
-              description: '',
-              alternativeUnits: [],
-              related: [],
-              // No loincCode or description
-            },
+            candidates: [],
+            savedAsUnknown: true,
           },
         ],
       };
@@ -1203,90 +1010,49 @@ describe('ReviewStep', () => {
     });
   });
 
-  describe('Biomarker name suggestions', () => {
-    function StatefulReview(props: Partial<ReviewStepProps>) {
-      const [reviewed, setReviewed] = useState(props.reviewedResults ?? [mockReviewedResult]);
-      return (
-        <ReviewStep
-          results={[mockAnalysisResult]}
-          onComplete={vi.fn()}
-          onBack={vi.fn()}
-          {...props}
-          reviewedResults={reviewed}
-          onReviewChange={setReviewed}
-        />
-      );
-    }
-
-    it('suggests dictionary biomarkers while editing a name', async () => {
-      render(
-        <MantineProvider env="test">
-          <StatefulReview />
-        </MantineProvider>
-      );
-      await userEvent.click(screen.getAllByRole('button', { name: 'Edit biomarker' })[0]);
-      const name = screen.getByPlaceholderText('Biomarker name');
-
-      await userEvent.clear(name);
-      await userEvent.type(name, 'Hemato');
-
-      expect(await screen.findByRole('option', { name: 'Hematocrit' })).toBeInTheDocument();
-      expect(screen.queryByRole('option', { name: 'Glucose' })).not.toBeInTheDocument();
-    });
-
-    it("makes the AI's proposed test the value's test once its unit fits", async () => {
-      const onReviewChange = vi.fn();
-      const proposed: ReviewedResult = {
-        ...mockReviewedResult,
-        editedBiomarkers: [
-          {
-            name: 'Glucose',
-            value: 95,
-            unit: 'mmol/24h',
-            confidence: 0.9,
-            isExactMatch: false,
-            normalizedUnit: 'mmol/24h',
-            biomarkerKey: 'glucose',
-            identifiedBy: 'ai',
-            identificationFlags: ['unit-mismatch'],
-            suggestedMatch: {
-              key: 'glucose',
-              name: 'Glucose',
-              canonicalUnit: 'mg/dL',
-              aliases: [],
-              category: 'metabolic',
-              description: '',
-              alternativeUnits: ['mmol/L'],
-              related: [],
-            },
-          },
-        ],
-      };
-      renderReviewStep({ reviewedResults: [proposed], onReviewChange });
-      await userEvent.click(screen.getByRole('button', { name: 'Edit biomarker' }));
-
-      fireEvent.change(screen.getByPlaceholderText('Unit'), { target: { value: 'mg/dL' } });
-
-      const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
-      expect(last[0].editedBiomarkers[0]).toMatchObject({
-        unit: 'mg/dL',
-        dictionaryMatch: { key: 'glucose' },
-        identificationFlags: [],
-      });
-    });
-
-    it('re-matches the biomarker when its name is edited', async () => {
+  describe("Editing a value's test", () => {
+    it('reads the test again from a new name', async () => {
       const onReviewChange = vi.fn();
       renderReviewStep({ onReviewChange });
       await userEvent.click(screen.getAllByRole('button', { name: 'Edit biomarker' })[0]);
 
-      await userEvent.type(screen.getByPlaceholderText('Biomarker name'), 'X');
+      fireEvent.change(screen.getByPlaceholderText('Biomarker name'), { target: { value: 'Zorblatina' } });
 
       const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
-      // This file's dictionary mock knows every name: the match follows the
-      // new name instead of keeping Glucose (unknown names: biomarkerSuggestions.test)
-      expect(last[0].editedBiomarkers[0].name).toBe('GlucoseX');
-      expect(last[0].editedBiomarkers[0].dictionaryMatch?.name).toBe('GlucoseX');
+      expect(last[0].editedBiomarkers[0]).toMatchObject({
+        name: 'Zorblatina',
+        identificationFlags: ['not-identified'],
+      });
+      expect(last[0].editedBiomarkers[0].loincCode).toBeUndefined();
+    });
+
+    it('reads a new name with the tests the user taught', async () => {
+      const onReviewChange = vi.fn();
+      const preferences = { learnedTests: { 'zorblatina|mg/dL': '2339-0' } } as unknown as PreferencesState;
+      render(
+        <Providers>
+          <PreferencesContext.Provider value={preferences}>
+            <ReviewStep {...defaultProps} onReviewChange={onReviewChange} />
+          </PreferencesContext.Provider>
+        </Providers>
+      );
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit biomarker' })[0]);
+
+      fireEvent.change(screen.getByPlaceholderText('Biomarker name'), { target: { value: 'Zorblatina' } });
+
+      const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
+      expect(last[0].editedBiomarkers[0]).toMatchObject({ loincCode: '2339-0', identifiedBy: 'learned' });
+    });
+
+    it('saves a value as "Not a LOINC test" chosen in the Saved as column', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Change test for Glucose' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Not a LOINC test' }));
+
+      const last = onReviewChange.mock.calls.at(-1)?.[0] as ReviewedResult[];
+      expect(last[0].editedBiomarkers[0]).toMatchObject({ savedAsUnknown: true, identifiedBy: 'user' });
     });
   });
 
@@ -1296,7 +1062,7 @@ describe('ReviewStep', () => {
         { ...mockReviewedResult, labDate, editedLabDate: undefined },
       ]);
       return (
-        <MantineProvider env="test">
+        <Providers>
           <ReviewStep
             results={[mockAnalysisResult]}
             reviewedResults={reviewed}
@@ -1304,7 +1070,7 @@ describe('ReviewStep', () => {
             onComplete={vi.fn()}
             onBack={vi.fn()}
           />
-        </MantineProvider>
+        </Providers>
       );
     }
 
@@ -1343,7 +1109,7 @@ describe('ReviewStep', () => {
         { ...mockReviewedResult, editedLabDate: undefined },
       ]);
       return (
-        <MantineProvider env="test">
+        <Providers>
           <ReviewStep
             results={[mockAnalysisResult]}
             reviewedResults={reviewed}
@@ -1351,7 +1117,7 @@ describe('ReviewStep', () => {
             onComplete={onComplete}
             onBack={vi.fn()}
           />
-        </MantineProvider>
+        </Providers>
       );
     }
     render(<Cleared />);

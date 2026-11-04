@@ -17,6 +17,7 @@ import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
+import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
 import {
   createScannedPdf,
   createTextImage,
@@ -466,54 +467,31 @@ test.describe('Document Analysis - AI Processing', () => {
     );
   });
 
-  test('should match extracted names to biomarker dictionary', async ({ page }) => {
+  test('should match extracted names to LOINC tests', async ({ page }) => {
+    // Scenario: Match extracted names to LOINC tests
     await loginWithOllama(page, [
       {
         extraction: extraction([
-          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 },
-          // A common alias of Hemoglobin
-          { name: 'Hgb', value: 14.5, unit: 'g/dL', confidence: 0.9 },
+          // The lab's sample prefix: serum
+          { name: 'S-ALT', value: 25, unit: 'U/L', confidence: 0.95 },
         ]),
       },
     ]);
     await analyzeToReview(page, track(createTextLabReportPdf()));
 
-    await expect(reviewCell(reviewRow(page, 'Glucose'), 'Specimen')).toHaveText('Serum');
-    await expect(reviewCell(reviewRow(page, 'Hgb'), 'Specimen')).toHaveText('Whole Blood');
+    const alt = reviewRow(page, 'S-ALT');
+    await expect(reviewCell(alt, 'Specimen')).toHaveText('Serum/Plasma');
+    await reviewCell(alt, 'Biomarker').getByText('S-ALT').hover();
+    await expect(page.getByRole('tooltip')).toContainText(
+      'LOINC 1742-6: Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma'
+    );
 
-    await reviewCell(reviewRow(page, 'Hgb'), 'Biomarker').getByText('Hgb').hover();
-    await expect(page.getByRole('tooltip')).toContainText('LOINC 718-7: Hemoglobin [Mass/volume] in Blood');
-
-    // No dictionary warning
-    await expect(main(page).getByText(/could not be matched to the dictionary/)).toBeHidden();
-  });
-
-  test('should match variations of biomarker names to the dictionary', async ({ page }) => {
-    await loginWithOllama(page, [
-      {
-        extraction: extraction([
-          // Hyphenated variation of "Hemoglobin"
-          { name: 'Hemo-globin', value: 14.5, unit: 'g/dL', confidence: 0.9 },
-        ]),
-      },
-    ]);
-    await analyzeToReview(page, track(createTextLabReportPdf()));
-
-    await expect(reviewCell(reviewRow(page, 'Hemo-globin'), 'Specimen')).toHaveText('Whole Blood');
-    // Matched, so not counted as unmatched
-    await expect(main(page).getByText(/could not be matched to the dictionary/)).toBeHidden();
-
-    // Saved as Hemoglobin
-    await continueToConfirm(page);
-    await saveResults(page);
-    await goToTimeline(page);
-    const card = await expandLabResult(page, '2024-01-15');
-    await expect(
-      card.getByRole('table', { name: 'Test values' }).getByRole('row').filter({ hasText: '14.5' })
-    ).toContainText('Hemoglobin');
+    // Matched, so not counted as one to identify
+    await expect(main(page).getByText(/could not be identified/)).toBeHidden();
   });
 
   test('should flag unknown biomarkers for review', async ({ page }) => {
+    // Scenario: Handle unknown biomarkers
     await loginWithOllama(page, [
       {
         extraction: extraction([{ name: 'Zorblatin', value: 42, unit: 'mg/dL', confidence: 0.9 }]),
@@ -523,25 +501,22 @@ test.describe('Document Analysis - AI Processing', () => {
 
     // Flagged for review
     const notes = page.getByRole('alert', { name: 'Analysis Notes' });
-    await expect(notes).toContainText('1 biomarker(s) could not be matched to the dictionary');
+    await expect(notes).toContainText(
+      '1 value(s) could not be identified: choose their tests in the Saved as column'
+    );
     const unknown = reviewRow(page, 'Zorblatin');
+    await expect(unknown.getByText('Not identified')).toBeVisible();
     await expect(reviewCell(unknown, 'Specimen')).toHaveText('—');
 
-    // The user maps it to a known biomarker
-    await unknown.getByRole('button', { name: 'Edit biomarker' }).click();
-    const editing = main(page)
-      .getByRole('row')
-      .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
-    await editing.getByPlaceholder('Biomarker name').fill('Glucose');
-    await editing.getByRole('button', { name: 'Save changes' }).click();
-    await expect(reviewRow(page, 'Glucose')).toBeVisible();
+    // The user chooses its test
+    await changeTest(page, unknown, NOT_A_LOINC_TEST);
 
     await continueToConfirm(page);
     await saveResults(page);
     await goToTimeline(page);
     const card = await expandLabResult(page, '2024-01-15');
     await expect(
-      card.getByRole('table', { name: 'Test values' }).getByRole('row').filter({ hasText: 'Glucose' })
+      card.getByRole('table', { name: 'Test values' }).getByRole('row').filter({ hasText: 'Zorblatin' })
     ).toContainText('42');
   });
 
@@ -814,11 +789,12 @@ test.describe('Document Analysis - Error Handling', () => {
     const editing = main(page)
       .getByRole('row')
       .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
-    await editing.getByPlaceholder('Biomarker name').fill('Gluc');
-    await page.getByRole('option', { name: 'Glucose', exact: true }).click();
+    await editing.getByPlaceholder('Biomarker name').fill('Glucose');
     await editing.getByPlaceholder('Value', { exact: true }).fill('95');
     await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
     await editing.getByRole('button', { name: 'Save changes' }).click();
+    // Serum and blood glucose both fit the name: the user chooses
+    await changeTest(page, reviewRow(page, 'Glucose'), 'Glucose [Mass/volume] in Serum or Plasma');
 
     // A lab date is required before continuing
     await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();

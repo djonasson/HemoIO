@@ -16,14 +16,14 @@ import type {
 } from './types';
 import { AIAnalysisError, AIConfigurationError } from './types';
 import {
-  ENHANCED_SYSTEM_PROMPT,
+  LAB_REPORT_SYSTEM_PROMPT,
   createAnalysisPrompt,
   createTestChoicePrompt,
   TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
 import { parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
-import { withBiomarkerKey } from './biomarkerKey';
+import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
 
@@ -120,7 +120,7 @@ export class AnthropicProvider implements AIProvider {
     try {
       const response = await this.makeRequest(
         messages,
-        ENHANCED_SYSTEM_PROMPT,
+        LAB_REPORT_SYSTEM_PROMPT,
         options.rateLimit,
         options.signal
       );
@@ -317,7 +317,7 @@ export class AnthropicProvider implements AIProvider {
 
           return {
             name: String(b.name || ''),
-            ...withBiomarkerKey(b),
+            ...withSpecimenHint(b),
             value: parsedValue.value,
             unit: String(b.unit || ''),
             referenceRange: b.referenceRange

@@ -346,15 +346,15 @@ describe('OpenAIProvider quota', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('passes on the test key the model gave', async () => {
+  it('passes on the sample the model named', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, finish_reason: 'stop' }] }),
+      json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, specimenHint: 'serum' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, specimenHint: null } ], warnings: [] }) }, finish_reason: 'stop' }] }),
     } as Response);
 
     const result = await new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL }).analyzeLabReport('Glicemia 95 mg/dL');
 
-    expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
+    expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
 
   describe('chooseTests', () => {

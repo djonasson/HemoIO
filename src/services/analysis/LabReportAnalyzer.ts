@@ -5,7 +5,7 @@
  * 1. Document type detection
  * 2. Text extraction (PDF text or OCR)
  * 3. AI-powered biomarker extraction
- * 4. Biomarker dictionary matching
+ * 4. Identifying each value's LOINC test: learned, local match, then the AI
  */
 
 import {
@@ -19,28 +19,18 @@ import {
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
-import { MODEL_LOAD_NOTE } from '../matching/notes';
-import {
-  identifyByKey,
-  identifyByPrintedName,
-  identifyByModel,
-  notIdentified,
-  proposedTest,
-} from './nameMatching';
+import { getAddon } from '@data/loinc/addons';
+import { nameKey } from '@data/biomarkers/dictionary';
+import { identifyValues, type Identification, type LearnedTests } from './identification';
 import type {
   AIProviderConfig,
   AIProviderType,
   LabReportAnalysisResult,
   ExtractedBiomarker,
 } from '../ai';
-import type { BiomarkerDefinition } from '../../data/biomarkers/dictionary';
-import {
-  normalizeUnit,
-  canConvert,
-  componentForBiomarker,
-  convertValue,
-  unitsMatch,
-} from '../units';
+import type { Catalog } from '@data/loinc/catalog';
+import type { Candidate } from './loincMatch';
+import { normalizeUnit, canConvert, convertValue, unitsMatch } from '../units';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -62,14 +52,14 @@ export interface DuplicateConflict {
 }
 
 /**
- * Matched biomarker with dictionary information
+ * An extracted value with its LOINC test, or the tests it may be
  */
 export interface MatchedBiomarker extends ExtractedBiomarker {
-  /** Matched biomarker from dictionary, if found */
-  dictionaryMatch?: BiomarkerDefinition;
-  /** Suggested biomarker if fuzzy match found */
-  suggestedMatch?: BiomarkerDefinition;
-  /** Whether an exact match was found */
+  /** The LOINC code it is saved under; none while undecided or "Not a LOINC test" */
+  loincCode?: string;
+  /** The tests it may be, best first: the local match's, the AI's pick first */
+  candidates: Candidate[];
+  /** Matched without asking: learned, or the one test that fits */
   isExactMatch: boolean;
   /** Normalized unit */
   normalizedUnit: string;
@@ -77,26 +67,21 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   hasDuplicateConflict?: boolean;
   /** Details about the duplicate conflict if present */
   duplicateConflict?: DuplicateConflict;
-  /** Set while its unit is the standard unit of the test the name typed in review is */
-  unitFromName?: boolean;
   /**
-   * The value as the analyzer read it. Review identifies an edited value
-   * from this and its current name and unit, so nothing typed on the way
-   * counts: the printed name and unit, and the test the matching model
-   * chose for that name.
+   * The value as the analyzer read it. An edited value is identified from
+   * this and its current name and unit, so nothing typed on the way counts:
+   * back at the printed name and unit, it has the analyzer's test again.
    */
   analyzed?: AnalyzedValue;
-  /** How its test was chosen: by the AI, the printed name, the matching model or the user */
+  /** How its test was found: learned, matched locally, chosen by the AI or the user */
   identifiedBy?: IdentifiedBy;
   /** Checks the identification needs; absent means none (manual rows, fixtures) */
   identificationFlags?: IdentificationFlag[];
-  /** With 'name-disagrees': the test the printed name is an exact alias of */
-  nameSuggests?: BiomarkerDefinition;
-  /** The user chose "Not in dictionary": saved under the unknown key of its name */
+  /** Saved under the unknown key of its printed name: "Not a LOINC test" */
   savedAsUnknown?: boolean;
 }
 
-export type IdentifiedBy = 'ai' | 'name' | 'model' | 'user';
+export type IdentifiedBy = 'learned' | 'local' | 'ai' | 'user';
 
 /** What the analyzer read a value as */
 export interface AnalyzedValue {
@@ -104,29 +89,21 @@ export interface AnalyzedValue {
   name: string;
   /** The unit as the report gave it ('' for a screening value) */
   unit: string;
-  /** The test the matching model chose for the printed name */
-  modelMatch?: BiomarkerDefinition;
+  /** The test the analyzer found for it */
+  identification: Identification;
 }
 
 /** What review asks the user to check about a value's test */
-export type IdentificationFlag =
-  | 'unit-mismatch'
-  | 'name-disagrees'
-  | 'name-only'
-  | 'similar-name'
-  | 'not-identified'
-  | 'no-unit';
+export type IdentificationFlag = 'ambiguous' | 'no-unit' | 'not-identified';
 
-/** Names matched after the dictionary's own aliases: learned aliases, then the model */
-export interface NameFallback {
-  /** A learned alias of the printed name */
-  learned?: (name: string) => BiomarkerDefinition | undefined;
-  /** Tests whose names mean the same as the printed name, closest first */
-  similar?: (name: string) => Promise<BiomarkerDefinition[]>;
+/** Notes the values whose test the user must choose */
+export function unidentifiedNote(count: number): string {
+  return `${count} value(s) could not be identified: choose their tests in the Saved as column`;
 }
 
-export const NO_KEYS_NOTE =
-  'This model did not identify the tests; they were matched by name. Check the Saved as column.';
+/** Notes that the AI could not be asked to choose among the tests that fit */
+export const CHOICE_FAILED_NOTE =
+  'The AI could not choose the tests of values several tests fit: choose them in the Saved as column.';
 
 /**
  * Complete analysis result
@@ -192,8 +169,10 @@ export interface AnalyzerOptions {
   onProgress?: (stage: string, progress: number) => void;
   /** Cancels the AI request, e.g. when the user leaves the analysis */
   signal?: AbortSignal;
-  /** How names no dictionary alias knows are matched */
-  nameFallback?: NameFallback;
+  /** The LOINC catalog values are matched in */
+  catalog: Catalog;
+  /** The user's learned tests, as they are when the report is matched */
+  learnedTests?: LearnedTests;
 }
 
 /**
@@ -377,11 +356,12 @@ export async function analyzeLabReport(
   options.onProgress?.(analyzing, 0.6);
 
   let aiAnalysis: LabReportAnalysisResult;
+  let provider: ReturnType<typeof getAIProvider>;
 
   try {
     startStage(aiStage);
 
-    const provider = getAIProvider(options.aiProvider, options.aiConfig);
+    provider = getAIProvider(options.aiProvider, options.aiConfig);
     aiAnalysis = await provider.analyzeLabReport(extractedText, {
       language: options.language,
       extractPatientInfo: options.extractPatientInfo,
@@ -413,10 +393,10 @@ export async function analyzeLabReport(
     );
   }
 
-  // Stage 4: Biomarker Matching
-  const matchingStage = createStage('Biomarker Matching');
+  // Stage 4: Test identification
+  const matchingStage = createStage('Test Identification');
   stages.push(matchingStage);
-  options.onProgress?.('Matching biomarkers', 0.9);
+  options.onProgress?.('Identifying tests', 0.9);
 
   let matchedBiomarkers: MatchedBiomarker[];
   let duplicateConflicts: DuplicateConflict[] = [];
@@ -424,32 +404,29 @@ export async function analyzeLabReport(
   try {
     startStage(matchingStage);
 
-    const model = { failed: false };
-    const initialMatches = await Promise.all(
-      aiAnalysis.biomarkers.map((biomarker) =>
-        matchBiomarkerToDictionary(biomarker, options.nameFallback, model)
-      )
-    );
-    if (model.failed) warnings.push(MODEL_LOAD_NOTE);
+    const choosing = `Choosing tests with ${AI_PROVIDER_NAMES[options.aiProvider]}`;
+    const { values, choiceFailed } = await identifyValues(options.catalog, aiAnalysis.biomarkers, {
+      learned: options.learnedTests,
+      choose: (requests) => {
+        options.onProgress?.(choosing, 0.9);
+        return provider.chooseTests(requests, {
+          signal: options.signal,
+          rateLimit: {
+            onWait: () => options.onProgress?.(RATE_LIMIT_STAGE, 0.9),
+            onResume: () => options.onProgress?.(choosing, 0.9),
+          },
+        });
+      },
+    });
+    if (choiceFailed) warnings.push(CHOICE_FAILED_NOTE);
 
-    // Deduplicate biomarkers with different units
-    const deduplicationResult = deduplicateBiomarkers(initialMatches);
+    // Deduplicate values reported in two units
+    const deduplicationResult = deduplicateBiomarkers(values, options.catalog);
     matchedBiomarkers = deduplicationResult.deduplicated;
     duplicateConflicts = deduplicationResult.conflicts;
 
-    // The values review shows as not in the dictionary (a test the AI
-    // proposed is labelled instead)
-    const unmatchedCount = matchedBiomarkers.filter(
-      (b) => !b.dictionaryMatch && !proposedTest(b)
-    ).length;
-    if (unmatchedCount > 0) {
-      warnings.push(
-        `${unmatchedCount} biomarker(s) could not be matched to the dictionary`
-      );
-    }
-    if (aiAnalysis.biomarkers.length > 0 && aiAnalysis.biomarkers.every((b) => !b.biomarkerKey)) {
-      warnings.push(NO_KEYS_NOTE);
-    }
+    const unidentified = matchedBiomarkers.filter((b) => !b.loincCode && !b.savedAsUnknown).length;
+    if (unidentified > 0) warnings.push(unidentifiedNote(unidentified));
 
     // Add warnings for duplicate conflicts
     if (duplicateConflicts.length > 0) {
@@ -464,13 +441,21 @@ export async function analyzeLabReport(
     completeStage(matchingStage);
   } catch (error) {
     failStage(matchingStage, error);
-    // Non-fatal - continue with unmatched biomarkers
-    matchedBiomarkers = aiAnalysis.biomarkers.map((b) => ({
-      ...b,
-      isExactMatch: false,
-      normalizedUnit: normalizeUnit(b.unit),
-    }));
-    warnings.push('Biomarker matching encountered errors');
+    // Non-fatal - continue with values whose tests the user chooses
+    matchedBiomarkers = aiAnalysis.biomarkers.map((b) => {
+      const identification: Identification = {
+        candidates: [],
+        identificationFlags: ['not-identified'],
+        isExactMatch: false,
+      };
+      return {
+        ...b,
+        ...identification,
+        normalizedUnit: normalizeUnit(b.unit),
+        analyzed: { name: b.name, unit: b.unit, identification },
+      };
+    });
+    warnings.push('Test identification encountered errors');
   }
 
   const totalProcessingTime = performance.now() - startTime;
@@ -497,36 +482,6 @@ export async function analyzeLabReport(
 /** "Analyzing with OpenAI gpt-4o-mini": the provider, and the model when one was chosen */
 function analyzingLabel(provider: AIProviderType, model: string | undefined): string {
   return `Analyzing with ${AI_PROVIDER_NAMES[provider]}${model ? ` ${model}` : ''}`;
-}
-
-/**
- * Choose an extracted value's test, first that applies: the AI's key when
- * the dictionary has it and the unit fits (only proposed when the unit does
- * not fit); else the printed name, a learned alias, then the matching model,
- * each only with a fitting unit. Flags say what review should check.
- */
-async function matchBiomarkerToDictionary(
-  biomarker: ExtractedBiomarker,
-  fallback: NameFallback = {},
-  model: { failed: boolean } = { failed: false }
-): Promise<MatchedBiomarker> {
-  const value = { ...biomarker, analyzed: { name: biomarker.name, unit: biomarker.unit } };
-  const identified =
-    identifyByKey(value, fallback.learned) ?? identifyByPrintedName(value, fallback.learned);
-  if (identified) return identified;
-
-  let closest: BiomarkerDefinition | undefined;
-  try {
-    [closest] = (await fallback.similar?.(biomarker.name)) ?? [];
-  } catch {
-    // The matching model could not load: the value is not identified, the notes say why
-    model.failed = true;
-  }
-  // Only the closest test, read with the unit (a count's name in % is its
-  // percentage): one rejected by its unit is a reason to doubt the match
-  const byModel =
-    closest && identifyByModel({ ...value, analyzed: { ...value.analyzed, modelMatch: closest } }, closest);
-  return byModel?.dictionaryMatch ? byModel : notIdentified(value);
 }
 
 /**
@@ -594,7 +549,7 @@ function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
  */
 function comparable(
   biomarker: MatchedBiomarker,
-  name: string,
+  component: string | undefined,
   canonicalUnit: string | undefined,
   firstUnit: string
 ): ComparableValue {
@@ -606,8 +561,7 @@ function comparable(
   };
   const targetUnit = canonicalUnit ?? firstUnit;
   if (unitsMatch(biomarker.unit, targetUnit)) return unchanged;
-  const component = componentForBiomarker(name);
-  if (!canonicalUnit || !canConvert(component, biomarker.unit, canonicalUnit)) {
+  if (!component || !canonicalUnit || !canConvert(component, biomarker.unit, canonicalUnit)) {
     return { biomarker, allowance: 0 };
   }
   try {
@@ -630,26 +584,25 @@ function comparable(
  * Deduplicate biomarkers reported more than once, as labs do when they give
  * a value in two units (SI and conventional).
  *
- * Values of one biomarker that are the same measurement after conversion
- * are kept once, in the canonical unit when one of them is in it. Distinct
- * measurements reported under distinct names (a 24-hour and a spot sample)
- * are each kept. Anything else is flagged for the user to review.
+ * Values of one test that are the same measurement after conversion are
+ * kept once, in the canonical unit when one of them is in it. A test's mass
+ * and molar codes are one test here; its 24-hour urine and serum codes are
+ * not. Distinct measurements reported under distinct names (a 24-hour and a
+ * spot sample) are each kept. Anything else is flagged for the user to
+ * review.
  */
 function deduplicateBiomarkers(
-  biomarkers: MatchedBiomarker[]
+  biomarkers: MatchedBiomarker[],
+  catalog: Catalog
 ): { deduplicated: MatchedBiomarker[]; conflicts: DuplicateConflict[] } {
   const conflicts: DuplicateConflict[] = [];
 
-  // Group biomarkers by their dictionary entry, else by the name as reported
+  // Group values by the trend group of their code, else by the name as reported
   const groups = new Map<string, MatchedBiomarker[]>();
   for (const biomarker of biomarkers) {
-    // A proposal whose unit does not fit is not the same measurement as a
-    // confirmed value of that test: it is reviewed on its own
-    const proposal = biomarker.identificationFlags?.includes('unit-mismatch');
-    const groupKey =
-      biomarker.dictionaryMatch?.name ||
-      (biomarker.suggestedMatch && `${biomarker.suggestedMatch.name}${proposal ? ' (proposed)' : ''}`) ||
-      biomarker.name.toLowerCase().trim();
+    const groupKey = biomarker.loincCode
+      ? `code:${catalog.trendGroup(biomarker.loincCode)}`
+      : `name:${nameKey(biomarker.name)}`;
     if (!groups.has(groupKey)) groups.set(groupKey, []);
     groups.get(groupKey)!.push(biomarker);
   }
@@ -662,10 +615,11 @@ function deduplicateBiomarkers(
       continue;
     }
 
-    const definition = group[0].dictionaryMatch || group[0].suggestedMatch;
-    const name = definition?.name ?? group[0].name;
-    const canonicalUnit = definition?.canonicalUnit;
-    const values = group.map((b) => comparable(b, name, canonicalUnit, group[0].unit));
+    const code = group[0].loincCode;
+    const test = code ? catalog.test(code) : undefined;
+    const name = test?.name ?? group[0].name;
+    const canonicalUnit = code ? getAddon(catalog, code)?.canonicalUnit : undefined;
+    const values = group.map((b) => comparable(b, test?.component, canonicalUnit, group[0].unit));
 
     // Values that are the same measurement form one cluster
     const clusters: ComparableValue[][] = [];

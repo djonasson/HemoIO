@@ -10,6 +10,7 @@ import { useCallback } from 'react';
 import { notifications } from '@mantine/notifications';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { saveImportResults } from '@services/persistence';
+import { toLearn } from '@services/analysis/identification';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useLabResults } from './useLabResults';
 import { usePreferences } from './usePreferences';
@@ -24,7 +25,7 @@ export function useSaveImport(
 ): (results: ReviewedResult[]) => Promise<boolean> {
   const { db, isReady } = useEncryptedDb();
   const { refresh } = useLabResults();
-  const { learnAliases } = usePreferences();
+  const { learnTests } = usePreferences();
 
   return useCallback(
     async (results: ReviewedResult[]) => {
@@ -55,16 +56,9 @@ export function useSaveImport(
       await refresh();
       // Not waited for: the import is saved, and the user may go on. The
       // sync comes after, as it copies the learned names too.
-      void learnAliases(
-        // Names saved under a test are this user's aliases from now on
-        results.flatMap((r) =>
-          r.editedBiomarkers.map((b) => ({
-            name: b.name,
-            key: b.dictionaryMatch?.key,
-            pickedByUser: b.identifiedBy === 'user',
-            savedAsUnknown: b.savedAsUnknown,
-          }))
-        )
+      void learnTests(
+        // What the user decided for a wording and unit is matched without asking from now on
+        results.flatMap((r) => r.editedBiomarkers.map(toLearn))
       )
         .catch((err: unknown) =>
           notifySaveFailed('Learned names not saved', err, 'The import was saved.')
@@ -74,6 +68,6 @@ export function useSaveImport(
         .catch(() => undefined);
       return true;
     },
-    [db, isReady, refresh, learnAliases, syncNow]
+    [db, isReady, refresh, learnTests, syncNow]
   );
 }

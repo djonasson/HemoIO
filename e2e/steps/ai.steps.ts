@@ -13,8 +13,47 @@ export interface ExtractedBiomarkerFixture {
   unit: string;
   confidence: number;
   referenceRange?: { low?: number; high?: number; unit: string };
-  /** The dictionary key the AI identifies */
-  biomarkerKey?: string;
+  /** The sample the AI reads from the report: "urine", "24h urine", "serum" */
+  specimenHint?: string;
+}
+
+/** The AI's answer when asked which of the candidate tests a value is */
+export interface TestChoiceFixture {
+  code: string | null;
+  confident: boolean;
+}
+
+/** How the mocked AI answers the test choice: by printed name; any other value gets no choice */
+export interface TestChoiceMock {
+  choices?: Record<string, TestChoiceFixture>;
+  /** The test choice request fails, as an unreachable AI would */
+  fails?: boolean;
+}
+
+/** A value the app asks the AI about, as the test choice prompt lists it */
+export interface AskedValue {
+  id: string;
+  name: string;
+  unit: string;
+  candidates: { code: string; name: string }[];
+}
+
+interface ChatBody {
+  messages: { role: string; content: string }[];
+}
+
+/** Whether a chat request asks which test values are, rather than to read a report */
+export function isTestChoiceRequest(body: ChatBody): boolean {
+  return body.messages.some(
+    (m) => m.role === 'system' && m.content.startsWith('You match laboratory test names')
+  );
+}
+
+/** The values a test choice request asks about */
+function askedValues(body: ChatBody): AskedValue[] {
+  const prompt = body.messages.find((m) => m.role === 'user')?.content ?? '';
+  const start = prompt.indexOf('[');
+  return start === -1 ? [] : (JSON.parse(prompt.slice(start)) as AskedValue[]);
 }
 
 export const DEFAULT_EXTRACTION = {
@@ -33,19 +72,29 @@ export const DEFAULT_EXTRACTION = {
   warnings: [] as string[],
 };
 
+/** The AI's choices for the values of DEFAULT_EXTRACTION, which several tests fit */
+export const DEFAULT_TEST_CHOICES: Record<string, TestChoiceFixture> = {
+  Glucose: { code: '2345-7', confident: true },
+  Hemoglobin: { code: '718-7', confident: true },
+};
+
 export interface OllamaMock {
-  /** Number of chat completion requests received */
+  /** Number of report analysis requests received */
   chatRequests: number;
+  /** The values each test choice request asked about */
+  choiceRequests: AskedValue[][];
 }
 
 /**
- * Mock a local Ollama server. Analysis requests return `extraction`.
+ * Mock a local Ollama server. Analysis requests return `extraction`; test
+ * choice requests are answered from `testChoice`, over DEFAULT_TEST_CHOICES.
  */
 export async function mockOllama(
   page: Page,
-  extraction: object = DEFAULT_EXTRACTION
+  extraction: object = DEFAULT_EXTRACTION,
+  testChoice: TestChoiceMock = {}
 ): Promise<OllamaMock> {
-  const mock: OllamaMock = { chatRequests: 0 };
+  const mock: OllamaMock = { chatRequests: 0, choiceRequests: [] };
 
   await page.route('**/localhost:11434/**', async (route: Route) => {
     const url = route.request().url();
@@ -62,6 +111,30 @@ export async function mockOllama(
     }
 
     if (url.includes('/api/chat')) {
+      const body = route.request().postDataJSON() as ChatBody;
+      if (isTestChoiceRequest(body)) {
+        const asked = askedValues(body);
+        mock.choiceRequests.push(asked);
+        if (testChoice.fails) {
+          await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"unavailable"}' });
+          return;
+        }
+        const choices = asked.map(({ id, name }) => ({
+          id,
+          ...({ ...DEFAULT_TEST_CHOICES, ...testChoice.choices }[name] ?? { code: null, confident: false }),
+        }));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            model: MOCK_OLLAMA_MODELS[0],
+            message: { role: 'assistant', content: JSON.stringify({ choices }) },
+            done: true,
+            done_reason: 'stop',
+          }),
+        });
+        return;
+      }
       mock.chatRequests++;
       await route.fulfill({
         status: 200,

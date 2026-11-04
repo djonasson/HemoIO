@@ -20,6 +20,7 @@ const mockResult: ReviewedResult = {
       confidence: 0.95,
       isExactMatch: true,
       normalizedUnit: 'mg/dL',
+      candidates: [],
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
     },
   ],
@@ -31,6 +32,7 @@ const mockResult: ReviewedResult = {
       confidence: 0.95,
       isExactMatch: true,
       normalizedUnit: 'mg/dL',
+      candidates: [],
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
     },
   ],
@@ -152,6 +154,7 @@ describe('ConfirmStep', () => {
           confidence: 0.9,
           isExactMatch: true,
           normalizedUnit: 'U/L',
+          candidates: [],
         },
       ],
     };
@@ -225,6 +228,7 @@ describe('ConfirmStep', () => {
           confidence: 0.9,
           isExactMatch: true,
           normalizedUnit: 'g/dL',
+          candidates: [],
           referenceRange: { low: 12, high: 17.5, unit: 'g/dL' },
         },
       ],
@@ -247,8 +251,8 @@ describe('ConfirmStep', () => {
       fileId: 'file2',
       fileName: 'second-report.pdf',
       editedBiomarkers: [
-        { name: 'Hemoglobin', value: 14.5, unit: 'g/dL', confidence: 0.9, isExactMatch: true, normalizedUnit: 'g/dL' },
-        { name: 'Hematocrit', value: 45, unit: '%', confidence: 0.9, isExactMatch: true, normalizedUnit: '%' },
+        { name: 'Hemoglobin', value: 14.5, unit: 'g/dL', confidence: 0.9, isExactMatch: true, normalizedUnit: 'g/dL', candidates: [] },
+        { name: 'Hematocrit', value: 45, unit: '%', confidence: 0.9, isExactMatch: true, normalizedUnit: '%', candidates: [] },
       ],
     };
 

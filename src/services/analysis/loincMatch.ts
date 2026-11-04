@@ -59,6 +59,17 @@ const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
   ['U', ['Urine']],
 ];
 
+/**
+ * Samples the AI may name for a value (its specimen hint) besides urine,
+ * which splitSamplePrefix reads. "Blood" is said loosely of serum tests
+ * too, so it only makes blood the likelier.
+ */
+const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
+  [/\b(?:serum|siero)\b/i, ['Ser/Plas', 'Ser']],
+  [/\bplasma\b/i, ['Ser/Plas', 'Plas']],
+  [/\b(?:blood|sangue)\b/i, ['Bld', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld')]],
+];
+
 /** The urinalysis section prefix, read before the plain "U-" */
 const URINALYSIS_PREFIX = /^U\s*-\s*Esame standard\b[\s\-.:]*/i;
 const URINE_WORD = /\burin(?:a|e|ari[oa])\b/gi;
@@ -101,6 +112,11 @@ export function splitSamplePrefix(name: string): { name: string; systems?: strin
   // The words only narrow a urine sample, or name one; another prefix stands
   if (named && !named.includes('Urine')) return { name: rest, systems: named };
   return { name: rest, systems: [day ? DAY_URINE : 'Urine'] };
+}
+
+/** The LOINC systems a specimen hint names, if any */
+function hintSystems(hint: string): string[] | undefined {
+  return splitSamplePrefix(hint).systems ?? SAMPLE_HINTS.find(([words]) => words.test(hint))?.[1];
 }
 
 /** The key a value's code is remembered under: its printed name and unit */
@@ -146,8 +162,9 @@ function toCandidate(test: CatalogTest, score: number): Candidate {
 /**
  * The LOINC test a printed value is, if one clearly fits, and the best
  * candidates. A code learned for this wording and unit wins. Otherwise the
- * name is searched among tests of its sample (serum, plasma or blood when
- * none is named) and of the properties its unit implies. A value whose unit
+ * name is searched among tests of its sample (the name's prefix, else the
+ * specimen hint, else serum, plasma or blood) and of the properties its
+ * unit implies. A value whose unit
  * says nothing is never matched, as nothing tells its tests apart.
  */
 export function matchLocally(
@@ -163,7 +180,7 @@ export function matchLocally(
 
   const { name, systems: named } = splitSamplePrefix(value.name);
   const systems =
-    named ?? (value.specimenHint ? splitSamplePrefix(value.specimenHint).systems : undefined) ?? DEFAULT_SYSTEMS;
+    named ?? (value.specimenHint ? hintSystems(value.specimenHint) : undefined) ?? DEFAULT_SYSTEMS;
   const ucum = toUcum(value.unit);
   const properties = ucum ? ucumProperties(ucum) : [];
 

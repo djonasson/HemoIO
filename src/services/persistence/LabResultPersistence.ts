@@ -9,7 +9,6 @@ import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb, LabResultWithValues } from '@data/db/encryptedDb';
 import type { LabResult, TestValue } from '@/types';
 import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
-import { testOfName } from '@services/analysis/nameMatching';
 import { normalizeLabDate } from '@/utils/labDate';
 
 /**
@@ -35,20 +34,14 @@ function parseLabDate(dateStr: string | undefined): Date {
 }
 
 /**
- * Resolve the stored biomarker key: the dictionary match, else a stable key
- * for the unknown name. A value the analyzer identified (it has
- * identification flags) is saved as review showed it: without a match it
- * is not in the dictionary, whatever its name. Only values from elsewhere
- * (manual entry) are still looked up by name, read with their unit as the
- * analyzer reads it (never serum creatinine in g/24h).
+ * The stored key of a value: its LOINC code, else ("Not a LOINC test", or
+ * a value from elsewhere with no code) the unknown key of its printed name.
+ * The name alone never picks a test.
  */
 function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
-  // The user chose "Not in dictionary", or review showed it
-  if (biomarker.savedAsUnknown || (biomarker.identificationFlags && !biomarker.dictionaryMatch)) {
-    return unknownBiomarkerKey(biomarker.name);
-  }
-  const test = biomarker.dictionaryMatch ?? testOfName(biomarker.name, biomarker.unit);
-  return test?.key ?? unknownBiomarkerKey(biomarker.name);
+  return biomarker.savedAsUnknown || !biomarker.loincCode
+    ? unknownBiomarkerKey(biomarker.name)
+    : biomarker.loincCode;
 }
 
 /**

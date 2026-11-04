@@ -71,15 +71,15 @@ describe('PreferencesProvider', () => {
 
   it('learns the names saved under a test, and forgets a removed one', async () => {
     const { result } = await renderLoaded();
-    await act(() => result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea', pickedByUser: true }]));
+    await act(() => result.current.learnTests([{ key: 'zorb|mg/dL', code: '2339-0', confirmed: true }]));
 
-    expect(result.current.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
-    expect(stored?.learnedAliases).toEqual({ 'zorb (urine)': 'urine-urea' });
+    expect(result.current.learnedTests).toEqual({ 'zorb|mg/dL': '2339-0' });
+    expect(stored?.learnedTests).toEqual({ 'zorb|mg/dL': '2339-0' });
     expect(stored?.unitPreferences).toEqual({ glucose: 'mmol/L' });
 
-    await act(() => result.current.removeLearnedAlias('Zorb (urine)'));
-    expect(result.current.learnedAliases).toEqual({});
-    expect(stored?.learnedAliases).toEqual({});
+    await act(() => result.current.removeLearnedTest('zorb|mg/dL'));
+    expect(result.current.learnedTests).toEqual({});
+    expect(stored?.learnedTests).toEqual({});
   });
 
   it('goes back to the previous learned names when saving fails', async () => {
@@ -88,10 +88,10 @@ describe('PreferencesProvider', () => {
 
     await act(async () => {
       await expect(
-        result.current.learnAliases([{ name: 'Zorb (urine)', key: 'urine-urea', pickedByUser: true }])
+        result.current.learnTests([{ key: 'zorb|mg/dL', code: '2339-0', confirmed: true }])
       ).rejects.toThrow('disk full');
     });
-    expect(result.current.learnedAliases).toEqual({});
+    expect(result.current.learnedTests).toEqual({});
   });
 
   it('goes back to the previous unit when saving fails', async () => {

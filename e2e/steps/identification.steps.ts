@@ -39,12 +39,31 @@ export async function expectNoCheckLabel(row: Locator): Promise<void> {
   await expect(row.getByTestId('check-labels')).toHaveCount(0);
 }
 
-/** When I change the row's test to `testName` */
-export async function changeTest(page: Page, row: Locator, testName: string): Promise<void> {
+export const NOT_A_LOINC_TEST = 'Not a LOINC test';
+
+/** The test list of the row's "Saved as" cell */
+export function testList(page: Page): Locator {
+  return page.getByRole('dialog', { name: /Saved as/ });
+}
+
+/** A test in the open list, by its LOINC long name (shown with its code), or "Not a LOINC test" */
+export function testOption(list: Locator, testName: string): Locator {
+  if (testName === NOT_A_LOINC_TEST) return list.getByRole('button', { name: testName, exact: true });
+  const escaped = testName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return list.getByRole('button', { name: new RegExp(`^${escaped} · \\d+-\\d$`) });
+}
+
+/** When I change the row's test to `testName`, searching the catalog for it unless it is a candidate */
+export async function changeTest(
+  page: Page,
+  row: Locator,
+  testName: string,
+  { search = testName !== NOT_A_LOINC_TEST }: { search?: boolean } = {}
+): Promise<void> {
   await row.getByRole('button', { name: /^Change test for / }).click();
-  const dialog = page.getByRole('dialog', { name: /Saved as/ });
-  await dialog.getByRole('textbox', { name: 'Search tests' }).fill(testName);
-  await dialog.getByRole('button', { name: testName, exact: true }).click();
+  const dialog = testList(page);
+  if (search) await dialog.getByRole('textbox', { name: 'Search tests' }).fill(testName);
+  await testOption(dialog, testName).click();
   await expect(dialog).toBeHidden();
 }
 

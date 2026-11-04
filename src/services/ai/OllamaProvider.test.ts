@@ -485,7 +485,7 @@ describe('OllamaProvider', () => {
 
       const callBody = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
       // The answer format is the system prompt's, not a copy that can drift
-      expect(callBody.messages[0].content).toContain('biomarkerKey');
+      expect(callBody.messages[0].content).toContain('specimenHint');
       expect(callBody.messages[1].content).not.toMatch(/biomarkers: Array of/);
       expect(callBody.messages[1].content).toContain('OUTPUT FORMAT');
     });
@@ -788,25 +788,15 @@ describe('OllamaProvider rate limiting', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('passes on the test key the model gave', async () => {
+  it('passes on the sample the model named', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, done_reason: 'stop' }),
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, specimenHint: 'serum' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, specimenHint: null } ], warnings: [] }) }, done_reason: 'stop' }),
     } as Response);
 
     const result = await new OllamaProvider().analyzeLabReport('Glicemia 95 mg/dL');
 
-    expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
-  });
-  it('passes on the test key the model gave', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9, biomarkerKey: 'glucose' }, { name: 'Zorb', value: 1, unit: 'U', confidence: 0.9, biomarkerKey: null } ], warnings: [] }) }, done_reason: 'stop' }),
-    } as Response);
-
-    const result = await new OllamaProvider().analyzeLabReport('Glicemia 95 mg/dL');
-
-    expect(result.biomarkers.map((b) => b.biomarkerKey)).toEqual(['glucose', undefined]);
+    expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
 });
 
@@ -973,6 +963,46 @@ describe('OllamaProvider native chat API', () => {
         { id: 'v1', code: '2350-7', confident: true },
         { id: 'v2', code: null, confident: false },
       ]);
+    });
+
+    it("asks at the context kept from a larger report, so the model needs no reload, and keeps it", async () => {
+      const choiceReply = () =>
+        ({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: answer }, done_reason: 'stop' }),
+        }) as Response;
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(okReply())
+        .mockResolvedValueOnce(choiceReply())
+        .mockResolvedValueOnce(okReply());
+      const provider = new OllamaProvider();
+
+      await provider.analyzeLabReport('x'.repeat(60_000));
+      await provider.chooseTests(requests);
+      await provider.analyzeLabReport('short report text');
+
+      const [large, choice, next] = contexts(3);
+      expect(choice).toBe(large);
+      expect(next).toBe(large);
+    });
+
+    it('asks at its own context when the one kept from before no longer fits', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(okReply())
+        .mockResolvedValueOnce(refused())
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ message: { content: answer }, done_reason: 'stop' }),
+        } as Response);
+      const provider = new OllamaProvider();
+
+      await provider.analyzeLabReport('x'.repeat(60_000));
+      const result = await provider.chooseTests(requests);
+
+      const [large, kept, own] = contexts(3);
+      expect(kept).toBe(large);
+      expect(own).toBeLessThan(large);
+      expect(result[0].code).toBe('2350-7');
     });
 
     it('makes no call without requests', async () => {

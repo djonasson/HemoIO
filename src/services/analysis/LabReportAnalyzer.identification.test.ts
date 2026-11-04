@@ -1,12 +1,12 @@
 /**
- * How the analyzer chooses each value's test: the AI's key, checked by the
- * unit, else the name. Real dictionary; text extraction and the AI mocked.
+ * How the analyzer gives each value its LOINC test: locally, then one AI
+ * choice for the values several tests fit. Fixture catalog; text
+ * extraction and the AI mocked.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { analyzeLabReport, NO_KEYS_NOTE, type NameFallback } from './LabReportAnalyzer';
-import { getBiomarkerByKey } from '../../data/biomarkers/dictionary';
-import { MODEL_LOAD_NOTE } from '../matching';
-import type { ExtractedBiomarker } from '../ai';
+import { fixtureCatalog } from '@/test/loincFixture';
+import { analyzeLabReport, CHOICE_FAILED_NOTE, unidentifiedNote } from './LabReportAnalyzer';
+import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
 import * as aiModule from '../ai';
 
 vi.mock('../ocr', () => ({
@@ -35,16 +35,18 @@ vi.mock('../ai', async (importOriginal) => ({
   getAIProvider: vi.fn(),
 }));
 
-function extracted(
-  name: string,
-  value: number,
-  unit: string,
-  biomarkerKey?: string
-): ExtractedBiomarker {
-  return { name, value, unit, confidence: 0.95, ...(biomarkerKey && { biomarkerKey }) };
+function extracted(name: string, value: number, unit: string, specimenHint?: string): ExtractedBiomarker {
+  return { name, value, unit, confidence: 0.95, ...(specimenHint && { specimenHint }) };
 }
 
-async function analyze(biomarkers: ExtractedBiomarker[], nameFallback?: NameFallback) {
+const catalog = fixtureCatalog();
+
+async function analyze(
+  biomarkers: ExtractedBiomarker[],
+  chooseTests: (requests: TestChoiceRequest[]) => Promise<TestChoice[]> = async () => [],
+  learnedTests?: Record<string, string>
+) {
+  const choose = vi.fn(chooseTests);
   vi.mocked(aiModule.getAIProvider).mockReturnValue({
     analyzeLabReport: vi.fn().mockResolvedValue({
       biomarkers,
@@ -55,270 +57,88 @@ async function analyze(biomarkers: ExtractedBiomarker[], nameFallback?: NameFall
       modelUsed: 'test',
       processingTime: 1,
     }),
+    chooseTests: choose,
   } as unknown as ReturnType<typeof aiModule.getAIProvider>);
   const file = new File([new ArrayBuffer(8)], 'report.pdf', { type: 'application/pdf' });
-  return analyzeLabReport(file, { aiProvider: 'ollama', aiConfig: {}, nameFallback });
+  const result = await analyzeLabReport(file, { aiProvider: 'ollama', aiConfig: {}, catalog, learnedTests });
+  return { result, choose };
+}
+
+/** Each value as "code: value unit", or "name: …" with no code */
+function saved(result: Awaited<ReturnType<typeof analyze>>['result']): string[] {
+  return result.matchedBiomarkers.map((b) => `${b.loincCode ?? b.name}: ${b.value} ${b.unit}`);
 }
 
 describe('analyzeLabReport: identifying each value', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("uses the AI's key when the unit fits it", async () => {
-    const [value] = (
-      await analyze([extracted('Creatinina/L (urine 24h)', 4582, 'µmol/L', 'urine-creatinine')])
-    ).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('urine-creatinine');
-    expect(value.identifiedBy).toBe('ai');
-    expect(value.identificationFlags).toEqual([]);
+  it('matches a known test locally and does not ask the AI', async () => {
+    const { result, choose } = await analyze([extracted('P-Glucosio', 90, 'mg/dL')]);
+    expect(saved(result)).toEqual(['2345-7: 90 mg/dL']);
+    expect(result.matchedBiomarkers[0]).toMatchObject({ identifiedBy: 'local', identificationFlags: [] });
+    expect(choose).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([]);
   });
 
-  it("only proposes the AI's key when the unit does not fit it", async () => {
-    // Glucose has no 24-hour pair: nothing the unit fits
-    const [value] = (await analyze([extracted('Glicemia', 5, 'mmol/24h', 'glucose')]))
-      .matchedBiomarkers;
-    expect(value.dictionaryMatch).toBeUndefined();
-    expect(value.suggestedMatch?.key).toBe('glucose');
-    expect(value.identificationFlags).toEqual(['unit-mismatch']);
-  });
-
-  it('files a value the report gives no unit under its own name, not a test with a unit', async () => {
-    // A dipstick screening ("Proteine < 15") prints no unit: it cannot be the measured test
-    const result = await analyze([
-      extracted('Proteine (urine)', 15, '', 'urine-protein'),
-      extracted('Proteine (urine)', 15, ''),
-    ]);
-    for (const value of result.matchedBiomarkers) {
-      expect(value.dictionaryMatch).toBeUndefined();
-      expect(value.suggestedMatch).toBeUndefined();
-      expect(value.identificationFlags).toEqual(['no-unit']);
-    }
-  });
-
-  it('keeps a unitless test the AI keyed with no unit', async () => {
-    const [value] = (
-      await analyze([extracted('Densità Relativa (urine)', 1.006, '', 'urine-specific-gravity')])
-    ).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('urine-specific-gravity');
-    expect(value.identificationFlags).toEqual([]);
-  });
-
-  it("flags a printed name whose test, read with its unit, differs from the AI's", async () => {
-    // BUN is blood urea nitrogen, which mg/dL fits too: the AI said urea
-    const [value] = (await analyze([extracted('BUN', 18, 'mg/dL', 'urea')])).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('urea');
-    expect(value.identificationFlags).toEqual(['name-disagrees']);
-    expect(value.nameSuggests?.key).toBe('blood-urea-nitrogen');
-  });
-
-  it("flags a learned name whose test differs from the AI's", async () => {
-    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-urea') : undefined);
-    const [value] = (
-      await analyze([extracted('Zorb', 7, 'g/L', 'urine-protein')], { learned })
-    ).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('urine-protein');
-    expect(value.identificationFlags).toEqual(['name-disagrees']);
-    expect(value.nameSuggests?.key).toBe('urine-urea');
-  });
-
-  it("says which learned test fits when the AI's test does not fit the unit", async () => {
-    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-urea') : undefined);
-    const [value] = (
-      await analyze([extracted('Zorb', 7, 'mmol/L', 'urine-protein')], { learned })
-    ).matchedBiomarkers;
-    expect(value.suggestedMatch?.key).toBe('urine-protein');
-    expect(value.identificationFlags).toEqual(['unit-mismatch', 'name-disagrees']);
-    expect(value.nameSuggests?.key).toBe('urine-urea');
-  });
-
-  it('reads a learned name with its unit, as the 24-hour amount of a concentration', async () => {
-    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-creatinine') : undefined);
-    const [value] = (
-      await analyze([extracted('Zorb', 1.2, 'g/24h', '24-hour-urine-creatinine')], { learned })
-    ).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('24-hour-urine-creatinine');
-    expect(value.identificationFlags).toEqual([]);
-  });
-
-  it("flags a name that is exactly another test, also in a unit that test is not measured in", async () => {
-    // "Emoglobina" in % keyed as hematocrit: a row mix-up worth a check
-    const [value] = (await analyze([extracted('Emoglobina', 43.5, '%', 'hematocrit')])).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('hematocrit');
-    expect(value.identificationFlags).toEqual(['name-disagrees']);
-    expect(value.nameSuggests?.key).toBe('hemoglobin');
-  });
-
-  it('reads a learned name with its unit when the AI gives no key', async () => {
-    const learned = (name: string) => (name === 'Zorb' ? getBiomarkerByKey('urine-creatinine') : undefined);
-    const [value] = (await analyze([extracted('Zorb', 1.2, 'g/24h')], { learned })).matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('24-hour-urine-creatinine');
-    expect(value.identificationFlags).toEqual(['name-only']);
-  });
-
-  it('counts as not matched exactly the values review shows as not in the dictionary', async () => {
-    const NOTE = '1 biomarker(s) could not be matched to the dictionary';
-    // A variation of Hemoglobin is matched, and the AI's proposal is labelled instead
-    const matched = await analyze([
-      extracted('Hemo-globin', 14.5, 'g/dL'),
-      extracted('Glicemia', 5, 'mmol/24h', 'glucose'),
-    ]);
-    expect(matched.warnings.filter((w) => w.includes('could not be matched'))).toEqual([]);
-    // Glucose in a unit glucose is not measured in is not in the dictionary
-    expect((await analyze([extracted('Glucose', 5, 'mmol/24h')])).warnings).toContain(NOTE);
-  });
-
-  it("does not flag a name the unit makes the AI's test", async () => {
-    // The count's name in /100 WBC is its percentage; "Creatinina 24h" in µmol/L its concentration
-    const result = await analyze([
-      extracted('Eritroblasti', 0, '/100 WBC', 'nucleated-red-blood-cells-percentage'),
-      extracted('Creatinina 24h', 4582, 'µmol/L', 'urine-creatinine'),
-    ]);
-    expect(result.matchedBiomarkers.map((b) => b.identificationFlags)).toEqual([[], []]);
-  });
-
-  it('falls back to the name for unknown and malformed keys', async () => {
-    const result = await analyze([
-      extracted('Glucose', 95, 'mg/dL', 'Glucose'),
-      extracted('Glucose', 95, 'mg/dL', 'not-a-key'),
-    ]);
-    for (const value of result.matchedBiomarkers) {
-      expect(value.dictionaryMatch?.key).toBe('glucose');
-      expect(value.identifiedBy).toBe('name');
-      expect(value.identificationFlags).toEqual(['name-only']);
-    }
-  });
-
-  it('files an albumin/creatinine ratio in mg/g under the ratio, not microalbumin', async () => {
-    const [value] = (await analyze([extracted('Albumin/Creatinine Ratio', 25, 'mg/g')]))
-      .matchedBiomarkers;
-    expect(value.dictionaryMatch?.key).toBe('albumin-creatinine-ratio');
-  });
-
-  it('labels a value nothing identifies', async () => {
-    const [value] = (await analyze([extracted('Zorblatin', 1, 'U/L')])).matchedBiomarkers;
-    expect(value.identifiedBy).toBeUndefined();
-    expect(value.identificationFlags).toEqual(['not-identified']);
-  });
-
-  it('notes when the model identified no test at all', async () => {
-    const result = await analyze([
-      extracted('Glucose', 95, 'mg/dL'),
-      extracted('Zorblatin', 1, 'U/L'),
-    ]);
-    expect(result.warnings).toContain(NO_KEYS_NOTE);
-  });
-
-  it('does not note it when the model identified some', async () => {
-    const result = await analyze([
-      extracted('Glucose', 95, 'mg/dL', 'glucose'),
-      extracted('Zorblatin', 1, 'U/L'),
-    ]);
-    expect(result.warnings).not.toContain(NO_KEYS_NOTE);
-  });
-
-  it('merges one value the AI keyed in two units that convert', async () => {
-    const result = await analyze([
-      extracted('Urea/L (urine)', 117, 'mmol/L', 'urine-urea'),
-      extracted('Urea/L (urine)', 7, 'g/L', 'urine-urea'),
-    ]);
-    expect(result.duplicateConflicts).toEqual([]);
-    expect(result.matchedBiomarkers).toHaveLength(1);
-  });
-
-  it('matches a learned name after the dictionary aliases, with a fitting unit', async () => {
-    const learned = () => getBiomarkerByKey('urine-urea');
-    const result = await analyze(
-      [
-        extracted('Zorb', 7, 'g/L'),
-        extracted('Glucose', 95, 'mg/dL'),
-        extracted('Zorb', 3, '10^9/L'),
-      ],
-      { learned }
+  it('asks the AI once, with only the values several tests fit, and takes its confident choice', async () => {
+    const { result, choose } = await analyze(
+      [extracted('Hb', 14, 'g/dL'), extracted('Glucosio', 5, 'mmol/L'), extracted('Zorb', 1, 'mg/dL')],
+      async (requests) => requests.map(({ id }) => ({ id, code: '14749-6', confident: true }))
     );
-
-    expect(
-      result.matchedBiomarkers.map((b) => [b.dictionaryMatch?.key, b.identificationFlags])
-    ).toEqual([
-      ['urine-urea', ['name-only']],
-      ['glucose', ['name-only']],
-      [undefined, ['not-identified']],
-    ]);
-  });
-
-  it("reads the matching model's test with the unit: a count's name in % is its percentage", async () => {
-    const similar = async () => [getBiomarkerByKey('neutrophils')!];
-    const result = await analyze([extracted('Neutrófilos', 62, '%')], { similar });
-    expect(result.matchedBiomarkers[0].dictionaryMatch?.key).toBe('neutrophils-percentage');
-    // Kept for review, so a unit edit can read it again
-    expect(result.matchedBiomarkers[0].analyzed?.modelMatch?.key).toBe('neutrophils');
-  });
-
-  it('matches a name by meaning only with a fitting unit', async () => {
-    const similar = async () => [getBiomarkerByKey('urine-urea')!];
-    const result = await analyze(
-      [extracted('Zorb urinaria', 7, 'g/L'), extracted('Zorb urinaria', 3, '10^9/L')],
-      { similar }
-    );
-
-    expect(
-      result.matchedBiomarkers.map((b) => [
-        b.dictionaryMatch?.key,
-        b.identifiedBy,
-        b.identificationFlags,
-      ])
-    ).toEqual([
-      ['urine-urea', 'model', ['similar-name']],
-      [undefined, undefined, ['not-identified']],
-    ]);
-  });
-
-  it('notes once when the matching model could not load', async () => {
-    const similar = async () => {
-      throw new Error('offline');
-    };
-    const result = await analyze([extracted('Zorb', 1, 'U/L'), extracted('Blarg', 2, 'U/L')], {
-      similar,
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(choose.mock.calls[0][0].map((request) => request.name)).toEqual(['Glucosio']);
+    expect(result.matchedBiomarkers.find((b) => b.name === 'Glucosio')).toMatchObject({
+      loincCode: '14749-6',
+      identifiedBy: 'ai',
     });
-
-    expect(result.matchedBiomarkers.map((b) => b.identificationFlags)).toEqual([
-      ['not-identified'],
-      ['not-identified'],
-    ]);
-    expect(result.warnings.filter((w) => w === MODEL_LOAD_NOTE)).toHaveLength(1);
+    // Only the value no test fits is left to the user
+    expect(result.warnings).toEqual([unidentifiedNote(1)]);
   });
 
-  it("takes the AI's test's pair when the unit fits that, not a conflict", async () => {
-    // The AI gave the concentration's key to the 24-hour amount too
-    const result = await analyze([
-      extracted('Creatinina urine', 120, 'mg/dL', 'urine-creatinine'),
-      extracted('Creatinina urine', 1.55, 'g/24h', 'urine-creatinine'),
-      extracted('Neutrofili', 55, '%', 'neutrophils'),
-    ]);
+  it('leaves the candidates to the user when the AI cannot be asked', async () => {
+    const { result } = await analyze([extracted('Glucosio', 5, 'mmol/L')], () =>
+      Promise.reject(new Error('unreachable'))
+    );
+    const [glucose] = result.matchedBiomarkers;
+    expect(glucose.loincCode).toBeUndefined();
+    expect(glucose.identificationFlags).toEqual(['ambiguous']);
+    expect(glucose.candidates.map((c) => c.code)).toEqual(['14749-6', '15074-8']);
+    expect(result.warnings).toEqual([CHOICE_FAILED_NOTE, unidentifiedNote(1)]);
+  });
 
+  it('uses learned tests before the local match', async () => {
+    const { result, choose } = await analyze([extracted('Glucosio', 5, 'mmol/L')], undefined, {
+      'glucosio|mmol/L': '15074-8',
+    });
+    expect(result.matchedBiomarkers[0]).toMatchObject({ loincCode: '15074-8', identifiedBy: 'learned' });
+    expect(choose).not.toHaveBeenCalled();
+  });
+
+  it('saves a value the report gives no unit under its own name, without asking the AI', async () => {
+    const { result, choose } = await analyze([extracted('Proteine (urine)', 15, '', 'urine')]);
+    expect(result.matchedBiomarkers[0]).toMatchObject({ savedAsUnknown: true, identificationFlags: ['no-unit'] });
+    expect(choose).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('gives a 24-hour urine value and a plasma value of one substance different codes, both kept', async () => {
+    const { result } = await analyze([
+      extracted('Glucosio', 90, 'mg/dL', 'plasma'),
+      extracted('Glucosio', 300, 'mg/L', '24h urine'),
+    ]);
+    expect(saved(result)).toEqual(['2345-7: 90 mg/dL', '21305-8: 300 mg/L']);
     expect(result.duplicateConflicts).toEqual([]);
-    expect(result.matchedBiomarkers.map((b) => [b.dictionaryMatch?.key, b.identifiedBy])).toEqual([
-      ['urine-creatinine', 'ai'],
-      ['24-hour-urine-creatinine', 'ai'],
-      ['neutrophils-percentage', 'ai'],
-    ]);
   });
 
-  it('never groups a proposal whose unit does not fit with a confirmed value', async () => {
-    const result = await analyze([
-      extracted('Creatinina urine', 120, 'mg/dL', 'urine-creatinine'),
-      extracted('Creatinina urine', 3, 'U/L', 'urine-creatinine'),
-    ]);
-
+  it('merges one value reported in its mass and its molar unit, keeping the standard unit', async () => {
+    const { result } = await analyze([extracted('P-Glucosio', 5, 'mmol/L'), extracted('P-Glucosio', 90, 'mg/dL')]);
+    expect(saved(result)).toEqual(['2345-7: 90 mg/dL']);
     expect(result.duplicateConflicts).toEqual([]);
-    expect(result.matchedBiomarkers).toHaveLength(2);
   });
 
-  it('says not identified when the closest test by meaning does not fit the unit', async () => {
-    // A runner-up is no safer: the nearest test was rejected
-    const similar = async () => [getBiomarkerByKey('glucose')!, getBiomarkerByKey('urine-urea')!];
-    const [value] = (await analyze([extracted('Zorb urinaria', 7, 'g/L')], { similar }))
-      .matchedBiomarkers;
-
-    expect(value.dictionaryMatch).toBeUndefined();
-    expect(value.identificationFlags).toEqual(['not-identified']);
+  it('flags two values of one test that are not the same measurement', async () => {
+    const { result } = await analyze([extracted('P-Glucosio', 8, 'mmol/L'), extracted('P-Glucosio', 90, 'mg/dL')]);
+    expect(result.duplicateConflicts).toHaveLength(1);
+    expect(result.matchedBiomarkers.every((b) => b.hasDuplicateConflict)).toBe(true);
   });
 });

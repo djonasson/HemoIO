@@ -70,18 +70,18 @@ Feature: Import Wizard
     And each value should show a confidence indicator
     And I should see the reference range if detected
 
-  Scenario: User sees specimen type for matched biomarkers
+  Scenario: User sees specimen type for identified values
     Given the analysis has completed
-    When biomarkers are matched to the dictionary
-    Then each matched biomarker should display its specimen type
-    And unmatched biomarkers should show no specimen type
+    When values are identified as LOINC tests
+    Then each identified value should display the specimen of its test
+    And a value with no test should show the specimen its name gives, if any
 
   Scenario: User sees LOINC code in tooltip
     Given the analysis has completed
-    When I hover over a matched biomarker name
+    When I hover over an identified value's name
     Then I should see the LOINC code in a tooltip
     And LOINC's own name for the code beside it
-    And the tooltip should include the biomarker description
+    And the tooltip should include the test's description when HemoIO has one
 
   Scenario: User sees confidence indicators
     Given I am on the review step
@@ -94,13 +94,13 @@ Feature: Import Wizard
     When I click on the value to edit it
     Then I should be able to change the value
     And I should be able to change the unit
-    And I should see a list of matching biomarkers
+    And its test should be read again from the new name and unit
 
   Scenario: User adds a missing value
     Given the AI missed a value from the report
     When I click "Add Biomarker"
-    Then I should be able to select a biomarker
-    And I should be able to enter the value and unit
+    Then I should be able to enter its name, value and unit
+    And its test should be found from the name and unit I typed
 
   Scenario: A value whose number is cleared must be filled in before saving
     Given I am editing a value of 14.5 g/dL on the review step
@@ -113,6 +113,7 @@ Feature: Import Wizard
 
   Scenario: An interval with a cleared end must be filled in before saving
     Given the AI read a value of "5-10" from a report
+    And I chose "Not a LOINC test" for it
     And I am editing that value on the review step, shown with its low and high ends
     When I clear either end of the interval
     And I try to continue to the confirmation
@@ -121,17 +122,19 @@ Feature: Import Wizard
     Then I should be able to continue to the confirmation
     And the confirmation should show the value as the interval "5-10"
 
-  Scenario: User enters a biomarker that is not in the dictionary
+  Scenario: User enters a name that is not a LOINC test
     Given I am editing a value on the review step
-    When I type a biomarker name that matches no dictionary entry
+    When I type a name that no LOINC test fits
     Then the name should be kept as I typed it
-    And the value should be saved as an unknown biomarker
+    And the value should be labelled "Not identified"
+    When I choose "Not a LOINC test" for it
+    Then the value should be saved under the name I typed
 
   Scenario: Renaming a value keeps the unit it was measured in
     Given I am editing a value of 95 mg/dL on the review step
-    When I rename it to "HbA1c"
+    When I rename it to "Zorblatina"
     Then its unit should still be "mg/dL"
-    And when I try to continue I should be asked to choose a unit for Hemoglobin A1c
+    And when I try to continue I should be asked to choose its test or "Not a LOINC test"
 
   Scenario: User must set a missing lab date
     Given a reviewed file has no lab date

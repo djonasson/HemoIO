@@ -377,21 +377,18 @@ test.describe('Unit Conversion - International Aliases', () => {
         value: 132,
         unit: 'mg/g cr',
         confidence: 0.95,
-        biomarkerKey: 'protein-creatinine-ratio',
       },
       {
         name: 'Rapporto albumina/creatinina - screening (urine)',
         value: 12,
         unit: 'mg/gcr',
         confidence: 0.95,
-        biomarkerKey: 'albumin-creatinine-ratio',
       },
       {
         name: 'Eritroblasti',
         value: 0.2,
         unit: '/100WBC',
         confidence: 0.95,
-        biomarkerKey: 'nucleated-red-blood-cells-percentage',
       },
     ]);
 

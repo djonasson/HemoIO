@@ -225,8 +225,8 @@ export function ConfirmStep({
           color="blue"
         >
           <Text size="sm">
-            Their unit fits no test in the dictionary, and the same test is saved from another
-            value of their line. To keep one, go back and choose &quot;Not in dictionary&quot; for it.
+            Their unit cannot be read, and another value of the same name is saved. To keep
+            one, go back and choose its test or &quot;Not a LOINC test&quot;.
           </Text>
           <List size="sm" mt={4}>
             {notSaved.map(({ fileName, biomarker }, index) => (

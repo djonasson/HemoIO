@@ -3,9 +3,9 @@
  * within a PreferencesProvider so a change in one view shows in all.
  */
 import { createContext, useContext } from 'react';
-import type { SavedName } from '@data/biomarkers/learnedAliases';
+import type { SavedValue } from '@data/loinc/learnedTests';
 
-export type { SavedName };
+export type { SavedValue };
 
 export interface PersonalTargetRange {
   low?: number;
@@ -22,11 +22,12 @@ export interface PreferencesState {
   setPreferredUnit(biomarkerKey: string, unit: string): Promise<void>;
   /** null removes the target */
   setPersonalTarget(biomarkerKey: string, target: PersonalTargetRange | null): Promise<void>;
-  /** The user's own aliases: printed name (normalised) → biomarker key */
-  learnedAliases: Readonly<Record<string, string>>;
-  /** Learn the names of saved values; "Not in dictionary" forgets them */
-  learnAliases(values: ReadonlyArray<SavedName>): Promise<void>;
-  removeLearnedAlias(name: string): Promise<void>;
+  /** The tests the user taught: learned key (wording and unit) → LOINC code or unknown key */
+  learnedTests: Readonly<Record<string, string>>;
+  /** Learn the tests of saved values the user confirmed */
+  learnTests(values: ReadonlyArray<SavedValue>): Promise<void>;
+  /** Forget what was learned for a learned key */
+  removeLearnedTest(key: string): Promise<void>;
   /** Re-read the stored preferences, e.g. after a backup restore */
   reload(): Promise<void>;
 }

@@ -18,7 +18,7 @@ import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, labResultCard, goToTimeline } from './steps/timeline.steps';
-import { editingRow } from './steps/identification.steps';
+import { changeTest, editingRow, NOT_A_LOINC_TEST, savedAsCell } from './steps/identification.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import {
   createTextPdf,
@@ -282,41 +282,38 @@ test.describe('Import Wizard', () => {
       await expect(reviewCell(glucose, 'Value')).toHaveText('5.3');
       await expect(reviewCell(glucose, 'Unit')).toHaveText('mmol/L');
 
-      // While editing the name, matching dictionary biomarkers are listed
-      await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
-      await editing.getByPlaceholder('Biomarker name').fill('Hemato');
-      await expect(page.getByRole('option', { name: 'Hematocrit' })).toBeVisible();
+      // Its test is read again in the new unit: the AI chose it for mg/dL
+      await expect(savedAsCell(glucose)).not.toHaveText('Glucose [Mass/volume] in Serum or Plasma');
     });
 
-    test('keeps the unit of a renamed value and asks for one that fits', async ({ page }) => {
+    test('keeps the unit of a renamed value and asks for its test', async ({ page }) => {
+      // Scenario: Renaming a value keeps the unit it was measured in
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
-      // Typing passes through other biomarkers' names ("Hb" is Hemoglobin)
       await reviewRow(page, 'Glucose').getByRole('button', { name: 'Edit biomarker' }).click();
       const editing = editingRow(page);
       const name = editing.getByPlaceholder('Biomarker name');
       await name.clear();
-      await name.pressSequentially('HbA1c');
+      await name.pressSequentially('Zorblatina');
       await expect(editing.getByPlaceholder('Unit', { exact: true })).toHaveValue('mg/dL');
       await editing.getByRole('button', { name: 'Save changes' }).click();
-      await expect(reviewCell(reviewRow(page, 'HbA1c'), 'Unit')).toHaveText('mg/dL');
+      await expect(reviewCell(reviewRow(page, 'Zorblatina'), 'Unit')).toHaveText('mg/dL');
 
       await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
       await expect(main(page).getByText('Cannot Continue')).toBeVisible();
       await expect(
-        main(page).getByText(/HbA1c in ".*": mg\/dL is not a unit for Hemoglobin A1c/)
+        main(page).getByText(/Zorblatina in ".*" needs a test: choose one or "Not a LOINC test"/)
       ).toBeVisible();
     });
 
     test('shows every problem that stops the import once asked', async ({ page }) => {
       // Scenario: User sees every problem that stops the import
       const misfits = Array.from({ length: 7 }, (_, index) => ({
-        name: `Glicemia ${index + 1}`,
+        name: `Zorblatina ${index + 1}`,
         value: index + 1,
-        unit: 'mmol/24h',
+        unit: 'mg/dL',
         confidence: 0.95,
-        biomarkerKey: 'glucose',
       }));
       await loginWithOllama(page, [{ extraction: extraction(misfits) }]);
       await analyzeToReview(page, track(createTextLabReportPdf()));
@@ -324,12 +321,12 @@ test.describe('Import Wizard', () => {
       await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
       const problems = main(page).getByRole('alert').filter({ hasText: 'Cannot Continue' });
       await expect(problems.getByRole('listitem')).toHaveCount(5);
-      await expect(problems.getByText(/^Glicemia 6 in/)).toHaveCount(0);
+      await expect(problems.getByText(/^Zorblatina 6 in/)).toHaveCount(0);
 
       await problems.getByRole('button', { name: 'Show 2 more' }).click();
 
       await expect(problems.getByRole('listitem')).toHaveCount(7);
-      await expect(problems.getByText(/^Glicemia 7 in ".*": mmol\/24h is not a unit for Glucose/)).toBeVisible();
+      await expect(problems.getByText(/^Zorblatina 7 in ".*" needs a test/)).toBeVisible();
 
       // Each try lists the problems afresh, folded again
       await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
@@ -337,7 +334,8 @@ test.describe('Import Wizard', () => {
       await expect(problems.getByRole('button', { name: 'Show 2 more' })).toBeVisible();
     });
 
-    test('saves a name that matches no dictionary entry as typed', async ({ page }) => {
+    test('saves a name that is not a LOINC test as typed', async ({ page }) => {
+      // Scenario: User enters a name that is not a LOINC test
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
@@ -345,6 +343,9 @@ test.describe('Import Wizard', () => {
       const editing = editingRow(page);
       await editing.getByPlaceholder('Biomarker name').fill('Zorblatin');
       await editing.getByRole('button', { name: 'Save changes' }).click();
+      const zorblatin = reviewRow(page, 'Zorblatin');
+      await expect(zorblatin.getByText('Not identified')).toBeVisible();
+      await changeTest(page, zorblatin, NOT_A_LOINC_TEST);
 
       await continueToConfirm(page);
       await saveResults(page);
@@ -360,17 +361,18 @@ test.describe('Import Wizard', () => {
       await main(page).getByRole('button', { name: 'Add Biomarker' }).click();
       const editing = editingRow(page);
 
-      await editing.getByPlaceholder('Value', { exact: true }).fill('180');
-      await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
-
-      // The biomarker is selected from the dictionary
-      await editing.getByPlaceholder('Biomarker name').fill('Cholest');
-      await page.getByRole('option', { name: 'Total Cholesterol', exact: true }).click();
+      await editing.getByPlaceholder('Value', { exact: true }).fill('30');
+      await editing.getByPlaceholder('Unit', { exact: true }).fill('U/L');
+      await editing.getByPlaceholder('Biomarker name').fill('S-ALT');
       await editing.getByRole('button', { name: 'Save changes' }).click();
 
-      const cholesterol = reviewRow(page, 'Total Cholesterol');
-      await expect(reviewCell(cholesterol, 'Value')).toHaveText('180');
-      await expect(reviewCell(cholesterol, 'Unit')).toHaveText('mg/dL');
+      // Its test is found from the name and unit typed
+      const alt = reviewRow(page, 'S-ALT');
+      await expect(reviewCell(alt, 'Value')).toHaveText('30');
+      await expect(reviewCell(alt, 'Unit')).toHaveText('U/L');
+      await expect(savedAsCell(alt)).toHaveText(
+        'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma'
+      );
       await expect(main(page).getByText('3 biomarker(s) from 1 file(s)')).toBeVisible();
     });
 
@@ -418,6 +420,7 @@ test.describe('Import Wizard', () => {
         await analyzeToReview(page, pdfPath);
         const row = reviewRow(page, 'Erythrocytes');
         await expect(reviewCell(row, 'Value')).toHaveText('5-10');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
 
         await row.getByRole('button', { name: 'Edit biomarker' }).click();
         const editing = editingRow(page);
@@ -482,7 +485,7 @@ test.describe('Import Wizard', () => {
       await expect(labNameCard).toContainText('City Hospital Lab');
     });
 
-    test('should display specimen type column for matched biomarkers', async ({ page }) => {
+    test('should display specimen type column for identified values', async ({ page }) => {
       await loginWithOllama(page, [
         {
           extraction: extraction([
@@ -495,9 +498,10 @@ test.describe('Import Wizard', () => {
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await expect(main(page).getByRole('columnheader', { name: 'Specimen' })).toBeVisible();
-      await expect(reviewCell(reviewRow(page, 'Glucose'), 'Specimen')).toHaveText('Serum');
+      // The LOINC sample of each test the AI chose
+      await expect(reviewCell(reviewRow(page, 'Glucose'), 'Specimen')).toHaveText('Serum/Plasma');
       await expect(reviewCell(reviewRow(page, 'Hemoglobin'), 'Specimen')).toHaveText('Whole Blood');
-      // Not in the dictionary: no specimen type
+      // No test: no specimen type
       await expect(reviewCell(reviewRow(page, 'Zorblatin'), 'Specimen')).toHaveText('—');
     });
 

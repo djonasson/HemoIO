@@ -15,7 +15,13 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openFromMenu } from './app.steps';
 import { expectAnalysisFinished } from './importWizard.steps';
-import { configureOllamaProvider, mockOllama, type ExtractedBiomarkerFixture } from './ai.steps';
+import {
+  configureOllamaProvider,
+  mockOllama,
+  type ExtractedBiomarkerFixture,
+  type OllamaMock,
+  type TestChoiceMock,
+} from './ai.steps';
 import { seedLabData } from './data.steps';
 import { removeTempFile, writeTempFile } from './tempFiles';
 import { dataPoints, goToTrends, selectBiomarker } from './trends.steps';
@@ -192,19 +198,23 @@ export async function analyzeReport(
     onUploaded,
     onAnalyzed,
     toReview = true,
+    testChoice,
   }: {
     fileName?: string;
     onUploaded?: () => Promise<void>;
     onAnalyzed?: () => Promise<void>;
     toReview?: boolean;
+    /** How the AI answers when asked which test a value is */
+    testChoice?: TestChoiceMock;
   } = {}
-): Promise<void> {
-  await mockOllama(page, {
-    biomarkers,
-    labDate: '2024-03-10',
-    labName: 'Unit Test Laboratory',
-    warnings: [],
-  });
+): Promise<OllamaMock> {
+  // A later analysis in the same test answers by its own mock
+  await page.unroute('**/localhost:11434/**');
+  const mock = await mockOllama(
+    page,
+    { biomarkers, labDate: '2024-03-10', labName: 'Unit Test Laboratory', warnings: [] },
+    testChoice
+  );
   await configureOllamaProvider(page);
 
   const reportText = biomarkers.map((b) => `${b.name} ${b.value} ${b.unit.replace('µ', 'u')}`);
@@ -220,12 +230,13 @@ export async function analyzeReport(
 
     await expectAnalysisFinished(page);
     await onAnalyzed?.();
-    if (!toReview) return;
+    if (!toReview) return mock;
 
     const review = page.getByRole('button', { name: /^Review Results/ });
     await expect(review).toBeEnabled();
     await review.click();
     await expect(page.getByText('Review Extracted Values', { exact: true })).toBeVisible();
+    return mock;
   } finally {
     pdfPaths.forEach(removeTempFile);
   }

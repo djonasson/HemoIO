@@ -17,7 +17,7 @@ export function IdentificationLabels({ biomarker }: IdentificationLabelsProps) {
   return (
     <Group gap={4} data-testid="check-labels">
       {flags.map((flag) => {
-        const label = IDENTIFICATION_LABELS[flag](biomarker);
+        const label = IDENTIFICATION_LABELS[flag];
         return (
           // Wraps rather than cuts the text off; the full text also on hover
           <Tooltip key={flag} label={label} multiline maw={260} openDelay={300}>

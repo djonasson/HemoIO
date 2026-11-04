@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { CatalogContext } from '@contexts/useCatalog';
+import { PreferencesContext, type PreferencesState } from '@hooks/usePreferences';
+import { fixtureCatalog } from '@/test/loincFixture';
 import { AnalysisStep } from './AnalysisStep';
 import { analyzeLabReport } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
@@ -44,10 +47,17 @@ const defaultProps = {
   onBack: vi.fn(),
 };
 
+const catalog = fixtureCatalog();
+const LEARNED = { 'zorb|mg/dL': '2339-0' };
+
 function renderAnalysisStep(props: Partial<typeof defaultProps> = {}) {
   return render(
     <MantineProvider env="test">
-      <AnalysisStep {...defaultProps} {...props} />
+      <CatalogContext.Provider value={catalog}>
+        <PreferencesContext.Provider value={{ learnedTests: LEARNED } as unknown as PreferencesState}>
+          <AnalysisStep {...defaultProps} {...props} />
+        </PreferencesContext.Provider>
+      </CatalogContext.Provider>
     </MantineProvider>
   );
 }
@@ -241,6 +251,18 @@ describe('AnalysisStep', () => {
 
     const stage = await screen.findByText('Waiting for the AI provider (rate limited)');
     expect(stage).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('matches in the LOINC catalog with the learned tests', async () => {
+    let options: Parameters<typeof analyzeLabReport>[1] | undefined;
+    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, given) => {
+      options = given;
+      return new Promise(() => {});
+    });
+    renderAnalysisStep({ files: [mockUploadedFile] });
+    await waitFor(() => expect(options).toBeDefined());
+    expect(options?.catalog).toBe(catalog);
+    expect(options?.learnedTests).toEqual(LEARNED);
   });
 
   it('aborts the analysis when the step is left', async () => {

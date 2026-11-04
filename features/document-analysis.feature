@@ -97,19 +97,17 @@ Feature: Document Analysis
     And values should be extracted regardless of layout
 
   # Value Matching
-  Scenario: Match extracted names to biomarker dictionary
-    Given the AI has extracted biomarker names
-    When matching to the dictionary
-    Then exact matches should be found
-    And common aliases should be recognized
-    And fuzzy matching should handle variations
-    And a value matched by a variation of its name should not be counted as unmatched in the analysis notes
+  Scenario: Match extracted names to LOINC tests
+    Given the AI has extracted test names as the lab printed them
+    When they are matched to the LOINC catalog
+    Then a name with its sample prefix, such as "S-ALT", should be found by name, sample and unit
+    And a value matched this way should not be counted in the analysis notes as one to identify
 
   Scenario: Handle unknown biomarkers
-    Given the AI extracts an unknown biomarker name
-    Then it should be flagged for user review
-    And the analysis notes should count it among the values not matched to the dictionary
-    And the user should be able to map it to a known biomarker
+    Given the AI extracts a name no LOINC test fits
+    Then it should be labelled "Not identified" for user review
+    And the analysis notes should count it among the values whose test I must choose
+    And the user should be able to choose its test, or "Not a LOINC test"
 
   # Unit Handling
   Scenario: Normalize extracted units
@@ -205,6 +203,7 @@ Feature: Document Analysis
     When I choose "Enter values manually"
     Then I should see the review step with the file's name and no values
     And I should be able to add values and a lab date myself
+    And I should choose the LOINC test of a value several tests fit
 
   Scenario: OCR works without internet access
     Given the app's own files have loaded

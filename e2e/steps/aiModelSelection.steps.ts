@@ -34,7 +34,7 @@ const EXTRACTION_RESULT = {
 };
 
 export interface AnthropicMock {
-  /** Model IDs sent to /v1/messages, in request order */
+  /** Model IDs of the report readings sent to /v1/messages, in request order */
   requestedModels: string[];
 }
 
@@ -92,8 +92,10 @@ export async function mockAnthropicApi(page: Page): Promise<AnthropicMock> {
     }
 
     if (url.endsWith('/v1/messages')) {
-      const body = request.postDataJSON() as { model: string };
-      mock.requestedModels.push(body.model);
+      const body = request.postDataJSON() as { model: string; system?: { text: string }[] };
+      // Which test values are is asked apart from the report, of the same model
+      const choosingTests = body.system?.some((block) => block.text.startsWith('You match laboratory test names'));
+      if (!choosingTests) mock.requestedModels.push(body.model);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -105,7 +107,7 @@ export async function mockAnthropicApi(page: Page): Promise<AnthropicMock> {
           model: body.model,
           content: [
             { type: 'thinking', thinking: '', signature: 'sig' },
-            { type: 'text', text: JSON.stringify(EXTRACTION_RESULT) },
+            { type: 'text', text: JSON.stringify(choosingTests ? { choices: [] } : EXTRACTION_RESULT) },
           ],
           stop_reason: 'end_turn',
           usage: { input_tokens: 100, output_tokens: 50 },

@@ -17,7 +17,7 @@ import {
   AIAnalysisError,
 } from './types';
 import {
-  ENHANCED_SYSTEM_PROMPT,
+  LAB_REPORT_SYSTEM_PROMPT,
   createAnalysisPrompt,
   createTestChoicePrompt,
   TEST_CHOICE_SYSTEM_PROMPT,
@@ -34,7 +34,7 @@ import {
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
 import { parseIntervalValue } from './parseIntervalValue';
-import { withBiomarkerKey } from './biomarkerKey';
+import { withSpecimenHint } from './specimenHint';
 import { ollamaContext } from './ollamaContext';
 import { fetchWithRateLimitRetry } from './rateLimitedFetch';
 
@@ -114,7 +114,7 @@ export class OllamaProvider implements AIProvider {
     const modelToUse = await this.ensureModel();
 
     const messages: ChatMessage[] = [
-      { role: 'system', content: ENHANCED_SYSTEM_PROMPT },
+      { role: 'system', content: LAB_REPORT_SYSTEM_PROMPT },
       { role: 'user', content: createAnalysisPrompt(text, options) },
     ];
 
@@ -168,7 +168,7 @@ export class OllamaProvider implements AIProvider {
     );
 
     try {
-      const response = await this.chat(messages, modelToUse, options, size, answerRoom);
+      const response = await this.sendAtKeptSize(messages, modelToUse, options, size, answerRoom);
       // A cut-off or empty answer has no readable choices: no choice for any value
       return parseTestChoices(response.message?.content, requests);
     } catch (error) {
@@ -209,7 +209,7 @@ export class OllamaProvider implements AIProvider {
 
     // The image goes with the prompt, as Ollama's native API takes it
     const messages: ChatMessage[] = [
-      { role: 'system', content: ENHANCED_SYSTEM_PROMPT },
+      { role: 'system', content: LAB_REPORT_SYSTEM_PROMPT },
       { role: 'user', content: this.createVisionPrompt(options), images: [imageBase64] },
     ];
 
@@ -520,16 +520,7 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     // the retry always has more room
     const ask = async (answerTokens: number) => {
       const { size: own, answerRoom: limit } = ollamaContext(characters, answerTokens, images, CONTEXT_SLACK);
-      const kept = this.acceptedContext.get(model) ?? 0;
-      const send = (size: number) => this.chat(messages, model, options, size, limit);
-      if (kept <= own) return { limit, response: await send(own) };
-      try {
-        return { limit, response: await send(kept) };
-      } catch (error) {
-        // The size kept from before no longer fits (less free memory): the report's own may
-        if (!isRefused(error)) throw error;
-        return { limit, response: await send(own) };
-      }
+      return { limit, response: await this.sendAtKeptSize(messages, model, options, own, limit) };
     };
     const split = 'Split the report into smaller files and import them one by one.';
     const cutOffAt = (limit: number) =>
@@ -562,6 +553,28 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
    * refused, or that ran out of time, means that one no longer fits either
    * (less free memory), so it is forgotten; a larger one leaves it.
    */
+  /**
+   * Ask at the larger context kept from before, so Ollama need not reload
+   * the model, else at the request's own size; the own size also when the
+   * kept one no longer fits (less free memory)
+   */
+  private async sendAtKeptSize(
+    messages: ChatMessage[],
+    model: string,
+    options: AnalysisOptions,
+    own: number,
+    answerTokens: number
+  ): Promise<ChatResponse> {
+    const kept = this.acceptedContext.get(model) ?? 0;
+    if (kept <= own) return this.chat(messages, model, options, own, answerTokens);
+    try {
+      return await this.chat(messages, model, options, kept, answerTokens);
+    } catch (error) {
+      if (!isRefused(error)) throw error;
+      return this.chat(messages, model, options, own, answerTokens);
+    }
+  }
+
   private async chat(
     messages: ChatMessage[],
     model: string,
@@ -656,7 +669,7 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
 
           return {
             name: String(b.name || ''),
-            ...withBiomarkerKey(b),
+            ...withSpecimenHint(b),
             value: parsedValue.value,
             unit: cleanedUnit,
             referenceRange: hasRange

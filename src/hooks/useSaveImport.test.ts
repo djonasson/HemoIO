@@ -10,11 +10,11 @@ vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 vi.mock('@services/persistence', () => ({ saveImportResults: vi.fn() }));
 
 const refresh = vi.fn();
-const learnAliases = vi.fn();
+const learnTests = vi.fn();
 const encryptedDb = { db: {} as unknown, isReady: true };
 vi.mock('./useEncryptedDb', () => ({ useEncryptedDb: () => encryptedDb }));
 vi.mock('./useLabResults', () => ({ useLabResults: () => ({ refresh }) }));
-vi.mock('./usePreferences', () => ({ usePreferences: () => ({ learnAliases }) }));
+vi.mock('./usePreferences', () => ({ usePreferences: () => ({ learnTests }) }));
 
 const REVIEWED = [
   {
@@ -26,7 +26,17 @@ const REVIEWED = [
     warnings: [],
     labName: 'Quest Diagnostics',
     editedBiomarkers: [
-      { name: 'Glucose', value: 125, unit: 'mg/dL', confidence: 0.9, isExactMatch: true, normalizedUnit: 'mg/dL' },
+      {
+        name: 'Glucose',
+        value: 125,
+        unit: 'mg/dL',
+        confidence: 0.9,
+        isExactMatch: false,
+        normalizedUnit: 'mg/dL',
+        loincCode: '2345-7',
+        candidates: [],
+        identifiedBy: 'ai',
+      },
     ],
   },
 ] as unknown as ReviewedResult[];
@@ -40,10 +50,10 @@ describe('useSaveImport', () => {
     vi.clearAllMocks();
     encryptedDb.isReady = true;
     refresh.mockResolvedValue(undefined);
-    learnAliases.mockResolvedValue(undefined);
+    learnTests.mockResolvedValue(undefined);
   });
 
-  it('saves, says so, learns the names, shows the results and syncs', async () => {
+  it('saves, says so, learns the tests, shows the results and syncs', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
     const syncNow = vi.fn().mockResolvedValue(undefined);
     const { result } = renderSave(syncNow);
@@ -57,7 +67,8 @@ describe('useSaveImport', () => {
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Import Complete', color: 'green' })
     );
-    expect(learnAliases).toHaveBeenCalled();
+    // The AI's choice is the user's once saved
+    expect(learnTests).toHaveBeenCalledWith([{ key: 'glucose|mg/dL', code: '2345-7', confirmed: true }]);
     expect(refresh).toHaveBeenCalled();
     expect(syncNow).toHaveBeenCalled();
   });
@@ -65,7 +76,7 @@ describe('useSaveImport', () => {
   it('is done once the import is saved and shown, while names are learned and synced after', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
     let learned!: () => void;
-    learnAliases.mockReturnValue(new Promise<void>((resolve) => (learned = resolve)));
+    learnTests.mockReturnValue(new Promise<void>((resolve) => (learned = resolve)));
     const syncNow = vi.fn().mockResolvedValue(undefined);
     const { result } = renderSave(syncNow);
 
@@ -103,7 +114,7 @@ describe('useSaveImport', () => {
 
   it('says when the names it learns are not saved, though the import is', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
-    learnAliases.mockRejectedValue(new SaveError('quota'));
+    learnTests.mockRejectedValue(new SaveError('quota'));
     const { result } = renderSave();
 
     let saved: boolean | undefined;
@@ -141,7 +152,7 @@ describe('useSaveImport', () => {
       })
     );
     // Nothing is learned from, shown or synced that was not stored
-    expect(learnAliases).not.toHaveBeenCalled();
+    expect(learnTests).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
     expect(syncNow).not.toHaveBeenCalled();
   });

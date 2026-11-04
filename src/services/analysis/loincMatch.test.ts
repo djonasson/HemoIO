@@ -57,6 +57,19 @@ describe('matchLocally', () => {
     expect(serum).toMatchObject({ status: 'match', code: '2345-7' });
   });
 
+  it('reads the serum, plasma or blood the AI names for a value whose name names none', () => {
+    expect(matchLocally(catalog, { name: 'Glucosio', unit: 'mg/dL' }).status).toBe('ambiguous');
+    for (const specimenHint of ['serum', 'plasma', 'Siero']) {
+      expect(matchLocally(catalog, { name: 'Glucosio', unit: 'mg/dL', specimenHint })).toMatchObject({
+        status: 'match',
+        code: '2345-7',
+      });
+    }
+    // "Blood" is said loosely of serum tests too: blood is only the likelier
+    const blood = matchLocally(catalog, { name: 'Glucosio', unit: 'mmol/L', specimenHint: 'blood' });
+    expect(blood.candidates.map((candidate) => candidate.code)).toEqual(['15074-8', '14749-6']);
+  });
+
   it('never matches a value without a readable unit, but still offers candidates', () => {
     const result = matchLocally(catalog, { name: 'Proteine', unit: '' });
     expect(result.status).not.toBe('match');

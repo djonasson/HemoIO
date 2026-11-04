@@ -11,15 +11,15 @@ import {
   PreferencesContext,
   type PersonalTargetRange,
   type PreferencesState,
-  type SavedName,
+  type SavedValue,
 } from '@hooks/usePreferences';
-import { learnFromSaved, learnedAliasName } from '@data/biomarkers/learnedAliases';
+import { learnFromSaved } from '@data/loinc/learnedTests';
 import type { UserPreferences } from '@/types';
 
 interface Maps {
   unitPreferences: Record<string, string>;
   personalTargets: Record<string, PersonalTargetRange>;
-  learnedAliases: Record<string, string>;
+  learnedTests: Record<string, string>;
 }
 
 type MapField = keyof Maps;
@@ -28,7 +28,7 @@ function fromStored(prefs: UserPreferences | undefined): Maps {
   return {
     unitPreferences: prefs?.unitPreferences ?? {},
     personalTargets: prefs?.personalTargets ?? {},
-    learnedAliases: prefs?.learnedAliases ?? {},
+    learnedTests: prefs?.learnedTests ?? {},
   };
 }
 
@@ -45,7 +45,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
   const [maps, setMaps] = useState<Maps>({
     unitPreferences: {},
     personalTargets: {},
-    learnedAliases: {},
+    learnedTests: {},
   });
   const [isLoaded, setIsLoaded] = useState(false);
   // The maps as stored: a failed save puts back the stored entry, as the one
@@ -134,13 +134,13 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     [setEntry]
   );
 
-  const removeLearnedAlias = useCallback(
-    (name: string) => setEntry('learnedAliases', learnedAliasName(name), null),
+  const removeLearnedTest = useCallback(
+    (key: string) => setEntry('learnedTests', key, null),
     [setEntry]
   );
-  const learnAliases = useCallback(
-    (values: ReadonlyArray<SavedName>) =>
-      updateField('learnedAliases', (map) => learnFromSaved(map, values)),
+  const learnTests = useCallback(
+    (values: ReadonlyArray<SavedValue>) =>
+      updateField('learnedTests', (map) => learnFromSaved(map, values)),
     [updateField]
   );
 
@@ -150,11 +150,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
       isLoaded,
       setPreferredUnit,
       setPersonalTarget,
-      learnAliases,
-      removeLearnedAlias,
+      learnTests,
+      removeLearnedTest,
       reload,
     }),
-    [maps, isLoaded, setPreferredUnit, setPersonalTarget, learnAliases, removeLearnedAlias, reload]
+    [maps, isLoaded, setPreferredUnit, setPersonalTarget, learnTests, removeLearnedTest, reload]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;

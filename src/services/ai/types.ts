@@ -56,8 +56,12 @@ export interface OllamaConfig extends Omit<AIProviderConfig, 'apiKey'> {
 export interface ExtractedBiomarker {
   /** Biomarker name as found in the report */
   name: string;
-  /** The dictionary key the model identified, as given (checked by the analyzer) */
-  biomarkerKey?: string;
+  /**
+   * The sample the report names for the value ("urine", "24h urine",
+   * "serum", "plasma", "blood"), as the model read it from headings and
+   * names; absent when it names none
+   */
+  specimenHint?: string;
   /**
    * Numeric value. For interval values (e.g., "5-10"), this is the midpoint.
    * The original interval bounds are in intervalLow/intervalHigh.
