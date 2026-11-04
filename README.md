@@ -91,6 +91,8 @@ This material contains content from LOINC (http://loinc.org). LOINC is copyright
 
 HemoIO uses LOINC version 2.83: the LOINC code and long common name of each test in its biomarker dictionary. The app shows the same notice under Settings → About.
 
+HemoIO reads and converts units with the UCUM library @lhncbc/ucum-lhc 8.0.1, developed by the Lister Hill National Center for Biomedical Communications (LHNCBC), U.S. National Library of Medicine, with the permission and based on the copyrighted content of the Regenstrief Institute. The UCUM table and UCUM codes are copyright © 1995-2009, Regenstrief Institute, Inc. and the Unified Codes for Units of Measures (UCUM) Organization. All rights reserved. They are used under the license at https://ucum.org/license. The library is provided "as is", without warranty, under the terms in its LICENSE.md. The app shows the same notice under Settings → About.
+
 ## License
 
 MIT

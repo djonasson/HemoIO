@@ -110,6 +110,7 @@ Feature: Application Settings
     Then I should see that HemoIO is open source under the MIT license
     And I should see the LOINC notice its license asks for, with the LOINC version
     And I should be able to open the LOINC license
+    And I should see the UCUM notice its license asks for, with the UCUM library
 
   Scenario: Links are underlined
     When I open the About tab

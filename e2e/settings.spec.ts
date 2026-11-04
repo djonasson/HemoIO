@@ -86,6 +86,14 @@ test.describe('Settings Page', () => {
         'href',
         'https://loinc.org/license'
       );
+      await expect(panel.getByText('UCUM (@lhncbc/ucum-lhc 8.0.1)')).toBeVisible();
+      await expect(panel.getByText(/^The UCUM table and UCUM codes are copyright/)).toContainText(
+        'Unified Codes for Units of Measures (UCUM) Organization'
+      );
+      await expect(panel.getByRole('link', { name: 'Read the UCUM license' })).toHaveAttribute(
+        'href',
+        'https://ucum.org/license'
+      );
     });
 
     test('underlines links', async ({ page }) => {

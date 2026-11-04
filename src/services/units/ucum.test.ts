@@ -1,0 +1,89 @@
+import { describe, expect, it } from 'vitest';
+import { convertUcum, isMassAndMolar, toUcum, ucumProperties } from './ucum';
+
+describe('toUcum', () => {
+  it.each([
+    ['mg/dl', 'mg/dL'],
+    ['mmol/l', 'mmol/L'],
+    ['10^9/L', '10*9/L'],
+    ['x10³/µL', '10*3/uL'],
+    ['µg/L', 'ug/L'],
+    ['mcg/L', 'ug/L'],
+    ['mg/gcr', 'mg/g'],
+    ['/100WBC', '/100{WBCs}'],
+    ['U/L', 'U/L'],
+    ['%', '%'],
+    ['K/µL', '10*3/uL'],
+    ['M/µL', '10*6/uL'],
+    ['cells/µL', '{cells}/uL'],
+    ['mIU/L', 'm[IU]/L'],
+    ['µIU/mL', 'u[IU]/mL'],
+    ['mEq/L', 'meq/L'],
+    ['mL/min/1.73m²', 'mL/min/(1.73.m2)'],
+    ['g/24h', 'g/(24.h)'],
+    ['/HPF', '/[HPF]'],
+  ])('writes %s as %s', (printed, ucum) => {
+    expect(toUcum(printed)).toBe(ucum);
+  });
+
+  it.each(['/campo', '', '   ', 'not a unit'])('is null for %j', (printed) => {
+    expect(toUcum(printed)).toBeNull();
+  });
+});
+
+describe('ucumProperties', () => {
+  it.each([
+    ['mg/dL', ['MCnc']],
+    ['mmol/L', ['SCnc']],
+    ['meq/L', ['SCnc']],
+    ['10*9/L', ['NCnc']],
+    ['10*3/uL', ['NCnc']],
+    ['U/L', ['CCnc']],
+    ['g/(24.h)', ['MRat']],
+    ['mmol/(24.h)', ['SRat']],
+    ['[IU]/L', ['ACnc', 'Ratio', 'Titr']],
+    ['{index}', ['ACnc', 'Ratio', 'Titr']],
+    ['1', ['SpGrav', 'Ratio', 'pH']],
+    ['/[HPF]', ['Naric', 'NCnc']],
+    ['{cells}/[HPF]', ['Naric', 'NCnc']],
+    ['mg/g', []],
+    ['mL/min/(1.73.m2)', []],
+    ['nonsense', []],
+  ])('reads %s as %j', (ucum, properties) => {
+    expect(ucumProperties(ucum)).toEqual(properties);
+  });
+
+  it('reads a percentage and a count per 100 as a fraction or a ratio', () => {
+    expect(ucumProperties('%')).toEqual(['NFr', 'MFr', 'VFr', 'SFr', 'Ratio']);
+    expect(ucumProperties('/100{WBCs}')).toContain('NFr');
+  });
+});
+
+describe('convertUcum', () => {
+  it('converts units of one dimension', () => {
+    expect(convertUcum(100, 'mg/dL', 'g/L')).toBe(1);
+    expect(convertUcum(5, '10*3/uL', '10*9/L')).toBe(5);
+  });
+
+  it('does not convert mass to moles', () => {
+    expect(convertUcum(1, 'mg/dL', 'mmol/L')).toBeNull();
+  });
+
+  it('is null for a unit it cannot read', () => {
+    expect(convertUcum(1, 'nonsense', 'g/L')).toBeNull();
+  });
+});
+
+describe('isMassAndMolar', () => {
+  it('is true for a mass and an amount concentration, either way round', () => {
+    expect(isMassAndMolar('mg/dL', 'mmol/L')).toBe(true);
+    expect(isMassAndMolar('umol/L', 'g/L')).toBe(true);
+  });
+
+  it('is false for two of a kind or for other units', () => {
+    expect(isMassAndMolar('mg/dL', 'g/L')).toBe(false);
+    expect(isMassAndMolar('mmol/L', 'umol/L')).toBe(false);
+    expect(isMassAndMolar('mg/dL', '10*9/L')).toBe(false);
+    expect(isMassAndMolar('mg/dL', 'nonsense')).toBe(false);
+  });
+});
