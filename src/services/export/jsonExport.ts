@@ -7,10 +7,10 @@
 import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
 
 /**
- * Schema version for backup compatibility. v2: biomarker keys instead of
- * dictionary positions. v3: urea and urine red cells have their own entries.
+ * Schema version for backup compatibility. v4: values are identified by LOINC
+ * code; backups of earlier versions are refused.
  */
-export const BACKUP_SCHEMA_VERSION = 3;
+export const BACKUP_SCHEMA_VERSION = 4;
 
 /**
  * Complete backup data structure

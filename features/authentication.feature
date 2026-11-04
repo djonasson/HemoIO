@@ -57,9 +57,3 @@ Feature: Authentication
     And they should not find any lab's name or any date
     And they should not find my personal targets, preferred units, acknowledged alerts or note tags
     And they should find only record IDs and the links between records
-
-  Scenario: Data stored before this protection is protected at the next unlock
-    Given lab data, preferences and note tags were stored partly readable by an earlier version
-    When I unlock the application
-    Then they should be stored encrypted
-    And my lab results, preferences and notes should be unchanged

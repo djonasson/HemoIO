@@ -19,7 +19,6 @@ import {
   TEST_WORDS,
   namedSpecimen,
 } from './dictionary';
-import { ISSUED_BIOMARKER_KEYS } from './keys.snapshot';
 
 describe('Biomarker Dictionary', () => {
   describe('BIOMARKER_DEFINITIONS', () => {
@@ -206,20 +205,6 @@ describe('Biomarker Dictionary', () => {
       const keys = BIOMARKER_DEFINITIONS.map((b) => b.key);
       expect(new Set(keys).size).toBe(keys.length);
       keys.forEach((key) => expect(key).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/));
-    });
-
-    it('keeps every issued key on the biomarker it was issued for', () => {
-      // Moving or swapping keys would relabel stored data. A rename must update
-      // the snapshot name in the same, reviewed change.
-      ISSUED_BIOMARKER_KEYS.forEach(([key, name]) =>
-        expect(getBiomarkerByKey(key)?.name, key).toBe(name)
-      );
-    });
-
-    it('has every dictionary key in the issued list', () => {
-      // A new biomarker must be appended to ISSUED_BIOMARKER_KEYS
-      const issued = new Set(ISSUED_BIOMARKER_KEYS.map(([key]) => key));
-      BIOMARKER_DEFINITIONS.forEach((b) => expect(issued.has(b.key), b.key).toBe(true));
     });
 
     it('looks up a biomarker by key', () => {

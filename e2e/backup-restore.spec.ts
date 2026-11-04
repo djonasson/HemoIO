@@ -13,7 +13,6 @@ import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
-import { expandLabResult } from './steps/timeline.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { loginWithOllama } from './steps/importWizard.steps';
@@ -42,7 +41,7 @@ const MOCK_TEST_VALUES = [
   {
     id: 1,
     labResultId: 1,
-    biomarkerId: 1,
+    biomarkerKey: '718-7',
     value: 14.5,
     unit: 'g/dL',
     referenceRangeLow: 12.0,
@@ -54,7 +53,7 @@ const MOCK_TEST_VALUES = [
   {
     id: 2,
     labResultId: 1,
-    biomarkerId: 2,
+    biomarkerKey: '2345-7',
     value: 125,
     unit: 'mg/dL',
     referenceRangeLow: 70,
@@ -66,7 +65,7 @@ const MOCK_TEST_VALUES = [
   {
     id: 3,
     labResultId: 2,
-    biomarkerId: 1,
+    biomarkerKey: '718-7',
     value: 15.0,
     unit: 'g/dL',
     referenceRangeLow: 12.0,
@@ -91,7 +90,7 @@ const MOCK_USER_NOTES = [
 // Valid backup file content
 function createValidBackupData() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 4,
     exportedAt: new Date().toISOString(),
     appVersion: '1.0.0',
     labResults: MOCK_LAB_RESULTS,
@@ -790,25 +789,24 @@ test.describe('Encrypted Backup', () => {
 });
 
 test.describe('Backups from earlier versions', () => {
-  test('restores a schema version 1 backup with correct biomarker names', async ({ page }) => {
+  // Scenario: An older backup is refused
+  test('refuses a backup made before tests were identified by LOINC', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);
-    // seedLabData writes schema version 1 backups, which use numeric biomarker
-    // IDs (dictionary positions): 3 was Hemoglobin, 22 was Glucose
-    await seedLabData(page, {
-      labResults: [
-        { id: 1, date: '2024-01-15T10:00:00.000Z', labName: 'Old Lab', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-      ],
-      testValues: [
-        { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-        { id: 2, labResultId: 1, biomarkerId: 22, value: 95, unit: 'mg/dL', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-      ],
-    });
+    await navigateToSettings(page);
+    const backupPath = createBackupFile({ ...createValidBackupData(), schemaVersion: 3 });
 
-    const card = await expandLabResult(page, '2024-01-15');
-    const rows = card.getByRole('table', { name: 'Test values' }).getByRole('row');
-    await expect(rows.filter({ hasText: '14.5' })).toContainText('Hemoglobin');
-    await expect(rows.filter({ hasText: '95' })).toContainText('Glucose');
+    try {
+      await uploadBackupFile(page, backupPath);
+
+      await expect(
+        page.getByText(/made before tests were identified by LOINC and cannot be restored/i)
+      ).toBeVisible();
+      await expect(page.getByText(/re-import your reports instead/i)).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Restore from Backup' })).toBeHidden();
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
   });
 });
 

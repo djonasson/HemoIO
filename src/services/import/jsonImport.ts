@@ -4,20 +4,8 @@
  * Imports backup data from JSON format.
  */
 
-import {
-  legacyUnknownKeyMapping,
-  migrateNoteRecord,
-  migratePreferenceMaps,
-  migrateTestValueRecord,
-  reconcileTestValueKey,
-  refileMisfiledPreferences,
-  refileMisfiledValue,
-  remapBiomarkerKey,
-  remapPreferenceMaps,
-} from '@data/migrations/biomarkerKeyMigration';
 import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
 import {
-  type BackupData,
   BACKUP_SCHEMA_VERSION,
   isValidBackupData,
 } from '../export/jsonExport';
@@ -142,46 +130,25 @@ function deserializeUserNote(data: SerializedUserNote): UserNote {
   };
 }
 
+/** The first backup version whose values are identified by LOINC code */
+const FIRST_LOINC_BACKUP_VERSION = 4;
+
 /**
- * Migrate backup data from older schema versions to the current one
+ * Refuse a backup this version cannot restore: one made before tests were
+ * identified by LOINC, or by a newer version
  */
-export function migrateBackupData<T extends BackupData>(data: T): T {
-  let migrated = { ...data };
-
-  if (migrated.schemaVersion < 2) {
-    // v1 referenced biomarkers by their position in the dictionary
-    const testValues = migrated.testValues.map(migrateTestValueRecord);
-    // Unknown biomarkers had hash IDs; rawText is plaintext in a backup, so
-    // give them the key their name gets today
-    const unknownKeys = legacyUnknownKeyMapping(testValues);
-    const userPreferences = migrated.userPreferences
-      ? remapPreferenceMaps(migratePreferenceMaps(migrated.userPreferences), unknownKeys)
-      : migrated.userPreferences;
-    migrated = {
-      ...migrated,
-      testValues: testValues.map(reconcileTestValueKey),
-      userNotes: migrated.userNotes.map((note) =>
-        remapBiomarkerKey(migrateNoteRecord(note), unknownKeys)
-      ),
-      userPreferences,
-      schemaVersion: 2,
-    };
+export function assertSupportedBackupVersion(schemaVersion: number): void {
+  if (schemaVersion < FIRST_LOINC_BACKUP_VERSION) {
+    throw new Error(
+      'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.'
+    );
   }
-
-  if (migrated.schemaVersion < 3) {
-    // Urea was filed as blood urea nitrogen, and urine red cell counts as
-    // urine blood, before each had its own entry
-    migrated = {
-      ...migrated,
-      testValues: migrated.testValues.map(refileMisfiledValue),
-      userPreferences: migrated.userPreferences
-        ? refileMisfiledPreferences(migrated.userPreferences)
-        : migrated.userPreferences,
-      schemaVersion: 3,
-    };
+  if (schemaVersion > BACKUP_SCHEMA_VERSION) {
+    throw new Error(
+      `Backup was created with a newer version (v${schemaVersion}). ` +
+        `Current version supports up to v${BACKUP_SCHEMA_VERSION}.`
+    );
   }
-
-  return migrated;
 }
 
 export function parseBackupJson(jsonString: string): ParsedBackupData {
@@ -205,32 +172,23 @@ export function parseBackupData(data: unknown): ParsedBackupData {
     throw new Error('Invalid backup file structure');
   }
 
-  // Check schema version compatibility
-  if (data.schemaVersion > BACKUP_SCHEMA_VERSION) {
-    throw new Error(
-      `Backup was created with a newer version (v${data.schemaVersion}). ` +
-        `Current version supports up to v${BACKUP_SCHEMA_VERSION}.`
-    );
-  }
-
-  // Migrate if needed
-  const migrated = migrateBackupData(data);
+  assertSupportedBackupVersion(data.schemaVersion);
 
   // Deserialize data (cast since JSON parsing gives strings for dates)
   return {
-    labResults: migrated.labResults.map((lr) =>
+    labResults: data.labResults.map((lr) =>
       deserializeLabResult(lr as unknown as SerializedLabResult)
     ),
-    testValues: migrated.testValues.map((tv) =>
+    testValues: data.testValues.map((tv) =>
       deserializeTestValue(tv as unknown as SerializedTestValue)
     ),
-    userNotes: migrated.userNotes.map((note) =>
+    userNotes: data.userNotes.map((note) =>
       deserializeUserNote(note as unknown as SerializedUserNote)
     ),
-    settings: migrated.settings,
-    userPreferences: migrated.userPreferences,
-    schemaVersion: migrated.schemaVersion,
-    exportedAt: new Date(migrated.exportedAt),
+    settings: data.settings,
+    userPreferences: data.userPreferences,
+    schemaVersion: data.schemaVersion,
+    exportedAt: new Date(data.exportedAt),
   };
 }
 

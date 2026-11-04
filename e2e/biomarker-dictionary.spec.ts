@@ -29,8 +29,6 @@ import {
   searchField,
   viewDetail,
 } from './steps/dictionary.steps';
-import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
-import { storeTestValueAsEarlierVersion } from './steps/dataAtRest.steps';
 import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
 
 /**
@@ -492,55 +490,6 @@ test.describe('Biomarker Dictionary', () => {
       // Reference information is still shown
       await expect(detail.getByText('Reference Range', { exact: true })).toBeVisible();
     });
-  });
-});
-
-test.describe('Values filed under the wrong test by earlier versions', () => {
-  // Schema version 1 backup IDs: 24 is Blood Urea Nitrogen, 60 Urine Blood
-  const at = '2024-01-15T10:00:00.000Z';
-  const misfiled = (id: number, biomarkerId: number, rawText: string, value: number, unit: string) => ({
-    id, labResultId: 1, biomarkerId, rawText, value, unit, createdAt: at, updatedAt: at,
-  });
-
-  async function trendOptions(page: Page): Promise<string[]> {
-    await goToTrends(page);
-    await biomarkerSelect(page).click();
-    return page.getByRole('option').allTextContents();
-  }
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    await setupOrUnlock(page);
-  });
-
-  test('files values from an old backup under the test they are', async ({ page }) => {
-    // Scenario: A backup from before urea and urine red cells had their own tests
-    await seedLabData(page, {
-      labResults: [SEED_LAB_RESULTS[0]],
-      testValues: [
-        misfiled(1, 24, 'Urea', 18, 'mg/dL'),
-        misfiled(2, 60, 'Eritrociti (urine)', 15, 'cells/µL'),
-      ],
-    });
-
-    const options = await trendOptions(page);
-    expect(options).toEqual(expect.arrayContaining(['Urea (1 value)', 'Urine Red Blood Cells (1 value)']));
-    expect(options.join()).not.toMatch(/Blood Urea Nitrogen|Urine Blood/);
-  });
-
-  test('refiles values an earlier version stored under the wrong test', async ({ page }) => {
-    // Scenario: Values an earlier version filed under the wrong test
-    await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });
-    await storeTestValueAsEarlierVersion(page, {
-      labResultId: 1, biomarkerKey: 'urine-blood', value: 15, unit: 'cells/µL',
-    });
-
-    await page.reload();
-    await unlockApp(page);
-
-    const options = await trendOptions(page);
-    expect(options).toContain('Urine Red Blood Cells (1 value)');
-    expect(options.join()).not.toMatch(/Urine Blood/);
   });
 });
 

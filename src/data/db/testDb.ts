@@ -7,9 +7,8 @@ import 'fake-indexeddb/auto';
 import { afterEach } from 'vitest';
 import Dexie from 'dexie';
 import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
-import { encryptString } from '@data/encryption';
-import { HemoIODatabase, MIGRATE_RECORDS } from './index';
-import { EncryptedDb, LEGACY_ENCRYPTED_FIELDS } from './encryptedDb';
+import { HemoIODatabase } from './index';
+import { EncryptedDb } from './encryptedDb';
 
 export interface TestDb {
   db: EncryptedDb;
@@ -46,25 +45,4 @@ export async function openTestDb(key?: CryptoKey): Promise<TestDb> {
       'decrypt',
     ]));
   return { db: new EncryptedDb(dataKey, database), database, key: dataKey };
-}
-
-/**
- * Store a record as earlier versions did: only the fields they encrypted are
- * encrypted, the rest is readable. Marks the database as upgraded, as the
- * schema upgrade does for a database an earlier version wrote.
- *
- * @returns The record's ID
- */
-export async function storeAsEarlierVersion(
-  { database, key }: TestDb,
-  table: keyof typeof LEGACY_ENCRYPTED_FIELDS,
-  record: object
-): Promise<number> {
-  const stored = { ...record } as Record<string, unknown>;
-  for (const field of LEGACY_ENCRYPTED_FIELDS[table]) {
-    const value = stored[field];
-    if (typeof value === 'string') stored[field] = await encryptString(value, key);
-  }
-  await database.meta.put({ key: MIGRATE_RECORDS });
-  return (await database.table(table).add(stored)) as number;
 }

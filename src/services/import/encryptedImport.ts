@@ -18,8 +18,8 @@ import {
   STANDARD_BACKUP_EXTENSION,
 } from '@/types/backup';
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
-import { isValidBackupData, BACKUP_SCHEMA_VERSION } from '../export/jsonExport';
-import { migrateBackupData } from './jsonImport';
+import { isValidBackupData } from '../export/jsonExport';
+import { assertSupportedBackupVersion } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
@@ -154,15 +154,7 @@ export async function parseEncryptedBackup(
     throw new Error('Invalid backup data structure');
   }
 
-  // Check schema version
-  if (backupData.schemaVersion > BACKUP_SCHEMA_VERSION) {
-    throw new Error(
-      `Backup was created with a newer version (v${backupData.schemaVersion}). ` +
-        `Current version supports up to v${BACKUP_SCHEMA_VERSION}.`
-    );
-  }
-
-  backupData = migrateBackupData(backupData);
+  assertSupportedBackupVersion(backupData.schemaVersion);
 
   // Deserialize dates
   return {

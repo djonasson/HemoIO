@@ -29,13 +29,13 @@ export const SEED_LAB_RESULTS = [
   },
 ];
 
-// Written as a schema version 1 backup: biomarkerId is the legacy dictionary
-// position (3 = Hemoglobin, 22 = Glucose), converted to a key on restore
+// Written as a schema version 4 backup: biomarkerKey is the LOINC code
+// (718-7 = Hemoglobin, 2345-7 = Glucose)
 export const SEED_TEST_VALUES = [
   {
     id: 1,
     labResultId: 1,
-    biomarkerId: 3,
+    biomarkerKey: '718-7',
     rawText: 'Hemoglobin',
     value: 14.5,
     unit: 'g/dL',
@@ -48,7 +48,7 @@ export const SEED_TEST_VALUES = [
   {
     id: 2,
     labResultId: 1,
-    biomarkerId: 22,
+    biomarkerKey: '2345-7',
     rawText: 'Glucose',
     value: 125,
     unit: 'mg/dL',
@@ -61,7 +61,7 @@ export const SEED_TEST_VALUES = [
   {
     id: 3,
     labResultId: 2,
-    biomarkerId: 3,
+    biomarkerKey: '718-7',
     rawText: 'Hemoglobin',
     value: 15.0,
     unit: 'g/dL',
@@ -77,13 +77,13 @@ export interface SeedData {
   labResults?: unknown[];
   testValues?: unknown[];
   userNotes?: unknown[];
-  /** Backup preferences; schema version 1, so maps are keyed by legacy biomarker IDs */
+  /** Backup preferences, with per-test maps keyed by LOINC code */
   userPreferences?: unknown;
 }
 
 export function createBackupData(data: SeedData = {}): object {
   return {
-    schemaVersion: 1,
+    schemaVersion: 4,
     exportedAt: new Date().toISOString(),
     appVersion: '1.0.0',
     labResults: data.labResults ?? SEED_LAB_RESULTS,

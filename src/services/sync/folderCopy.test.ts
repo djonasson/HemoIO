@@ -123,32 +123,13 @@ describe('readFolderCopy, earlier formats', () => {
     expect(SYNC_FILE_VERSION).toBe(BACKUP_SCHEMA_VERSION);
   });
 
-  it('reads a format 1 copy, whose values name biomarkers by dictionary position', async () => {
+  it.each([1, 2, 3])('reports a format %i copy, made before LOINC codes, as not a copy', async (version) => {
     const key = await newKey();
-    const v1 = {
-      ...STORED,
-      testValues: [{ ...STORED.testValues[0], biomarkerKey: undefined, biomarkerId: 22, rawText: 'Glucose' }],
-    };
 
-    const reading = await readFolderCopy(await sealed(copy(v1, 1), key), key);
-
-    expect(reading.status).toBe('readable');
-    if (reading.status !== 'readable') return;
-    expect(reading.data.testValues[0].biomarkerKey).toBe('glucose');
-  });
-
-  it('refiles urea saved as blood urea nitrogen in a format 2 copy, but not in a format 3 one', async () => {
-    const key = await newKey();
-    const urea = {
-      ...STORED,
-      testValues: [{ ...STORED.testValues[0], biomarkerKey: 'blood-urea-nitrogen', rawText: 'Urea', unit: 'mg/dL' }],
-    };
-
-    const v2 = await readFolderCopy(await sealed(copy(urea, 2), key), key);
-    const v3 = await readFolderCopy(await sealed(copy(urea, 3), key), key);
-
-    expect(v2.status === 'readable' && v2.data.testValues[0].biomarkerKey).toBe('urea');
-    expect(v3.status === 'readable' && v3.data.testValues[0].biomarkerKey).toBe('blood-urea-nitrogen');
+    expect(await readFolderCopy(await sealed(copy(STORED, version), key), key)).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
   });
 
   it('reports a format it never wrote as not a copy', async () => {

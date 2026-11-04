@@ -232,7 +232,7 @@ describe('encryptedImport', () => {
       expect(result.exportedAt).toBeInstanceOf(Date);
     });
 
-    it('converts biomarker IDs in schema version 1 backups to keys', async () => {
+    it('refuses a backup made before tests were identified by LOINC', async () => {
       const password = 'SecurePassword123!';
       const v1Payload = {
         schemaVersion: 1,
@@ -256,9 +256,9 @@ describe('encryptedImport', () => {
         payload,
       });
 
-      const result = await parseEncryptedBackup(encrypted, password);
-
-      expect(result.testValues[0].biomarkerKey).toBe('hemoglobin');
+      await expect(parseEncryptedBackup(encrypted, password)).rejects.toThrow(
+        'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.'
+      );
     });
 
     it('should throw error with wrong password', async () => {

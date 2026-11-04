@@ -97,12 +97,12 @@ Feature: Restore From the Folder Copy
     Then I should still be asked whether to restore my data from the folder
     And I should be told that restoring replaces the lab data added since I unlocked
 
-  Scenario: Folder copy saved by an earlier version of HemoIO
-    Given the folder copy was saved by an earlier version of HemoIO
+  Scenario: Folder copy saved before tests were identified by LOINC
+    Given the folder copy was saved before tests were identified by LOINC
     And this browser no longer has any of my lab data
     When I unlock HemoIO
-    Then I should be asked whether to restore my data from the folder
-    And the restored values should keep their biomarkers
+    Then I should be told the folder copy cannot be read
+    And I should not be offered to restore it
 
   Scenario: Change my mind about replacing the folder copy
     Given this browser no longer has any of my lab data

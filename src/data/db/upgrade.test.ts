@@ -3,16 +3,17 @@ import { describe, it, expect, afterEach } from 'vitest';
 import Dexie from 'dexie';
 import { HemoIODatabase } from './index';
 
-/** The v2 schema exactly as shipped before biomarker keys */
-function openV2(name: string): Dexie {
+/** The v6 schema exactly as shipped before tests were identified by LOINC */
+function openV6(name: string): Dexie {
   const legacy = new Dexie(name);
-  legacy.version(2).stores({
-    labResults: '++id, date, labName',
-    testValues: '++id, labResultId, biomarkerId, [labResultId+biomarkerId]',
+  legacy.version(6).stores({
+    labResults: '++id',
+    testValues: '++id, labResultId',
     biomarkers: '++id, name, category',
     userPreferences: '++id',
     settings: '++id',
-    userNotes: '++id, labResultId, biomarkerId, testValueId, createdAt, *tags',
+    userNotes: '++id, labResultId, testValueId',
+    meta: '&key',
   });
   return legacy;
 }
@@ -22,55 +23,65 @@ afterEach(async () => {
   await Promise.all(names.splice(0).map((n) => Dexie.delete(n)));
 });
 
-async function seedV2(name: string) {
+async function seedV6(name: string): Promise<void> {
   names.push(name);
-  const legacy = openV2(name);
+  const legacy = openV6(name);
+  await legacy.table('labResults').add({ encrypted: 'enc:lab' });
   await legacy.table('testValues').bulkAdd([
-    { labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', rawText: 'enc:abc' },
-    { labResultId: 1, biomarkerId: 10042, value: 2, unit: 'U/L', rawText: 'enc:def' },
+    { labResultId: 1, encrypted: 'enc:v1' },
+    { labResultId: 1, encrypted: 'enc:v2' },
   ]);
-  await legacy.table('userNotes').bulkAdd([
-    { biomarkerId: 3, content: 'enc:n1', tags: [], createdAt: new Date() },
-    { labResultId: 1, content: 'enc:n2', tags: [], createdAt: new Date() },
-  ]);
-  await legacy.table('userPreferences').add({
-    theme: 'dark',
-    dateFormat: 'MM/DD/YYYY',
-    personalTargets: { 3: { low: 13 } },
-    unitPreferences: { 3: 'g/L' },
+  await legacy.table('userNotes').add({ labResultId: 1, encrypted: 'enc:n1' });
+  await legacy.table('userPreferences').add({ encrypted: 'enc:prefs' });
+  await legacy.table('biomarkers').add({ name: 'Glucose', category: 'metabolic' });
+  await legacy.table('meta').put({ key: 'migrate-records' });
+  await legacy.table('settings').add({
+    storageProvider: 'local',
+    aiProvider: 'ollama',
+    ollamaModel: 'llama3',
+    language: 'en',
   });
   legacy.close();
 }
 
-describe('database upgrade to biomarker keys', () => {
-  it('converts stored biomarker IDs to keys without the encryption key', async () => {
-    await seedV2('upgrade-test-1');
+describe('database upgrade to LOINC codes', () => {
+  it('upgrade to v7 empties values and per-test preferences and keeps settings', async () => {
+    await seedV6('upgrade-test-1');
     const db = new HemoIODatabase('upgrade-test-1');
+    await db.open();
 
-    const values = await db.testValues.orderBy('id').toArray();
-    expect(values.map((v) => v.biomarkerKey)).toEqual(['hemoglobin', 'unknown:legacy-10042']);
-    expect(values.every((v) => !('biomarkerId' in v))).toBe(true);
-    // Encrypted fields are carried over untouched
-    expect(values[0].rawText).toBe('enc:abc');
-
-    const notes = await db.userNotes.orderBy('id').toArray();
-    expect(notes[0].biomarkerKey).toBe('hemoglobin');
-    expect(notes[1].biomarkerKey).toBeUndefined();
-
-    const [prefs] = await db.userPreferences.toArray();
-    expect(prefs.personalTargets).toEqual({ hemoglobin: { low: 13 } });
-    expect(prefs.unitPreferences).toEqual({ hemoglobin: 'g/L' });
+    expect(await db.labResults.count()).toBe(0);
+    expect(await db.testValues.count()).toBe(0);
+    expect(await db.userNotes.count()).toBe(0);
+    // Sealed: the per-test maps cannot be cleared one by one
+    expect(await db.userPreferences.count()).toBe(0);
+    expect(await db.settings.toArray()).toEqual([
+      expect.objectContaining({ aiProvider: 'ollama', ollamaModel: 'llama3', language: 'en' }),
+    ]);
     db.close();
   });
 
-  it('no longer indexes the biomarker keys or note tags, which are stored encrypted', async () => {
-    await seedV2('upgrade-test-2');
+  it('drops the legacy biomarker and marker tables', async () => {
+    await seedV6('upgrade-test-2');
     const db = new HemoIODatabase('upgrade-test-2');
     await db.open();
 
+    expect(db.tables.map((table) => table.name).sort()).toEqual([
+      'labResults',
+      'settings',
+      'testValues',
+      'userNotes',
+      'userPreferences',
+    ]);
+    db.close();
+  });
+
+  it('keeps the indexes that find a value or note by its lab result', async () => {
+    await seedV6('upgrade-test-3');
+    const db = new HemoIODatabase('upgrade-test-3');
+    await db.open();
+
     expect(db.testValues.schema.indexes.map((index) => index.name)).toEqual(['labResultId']);
-    expect(db.userNotes.schema.indexes.map((index) => index.name)).not.toContain('tags');
-    expect(db.userNotes.schema.indexes.map((index) => index.name)).not.toContain('biomarkerKey');
     db.close();
   });
 });

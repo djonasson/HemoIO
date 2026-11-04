@@ -6,7 +6,6 @@
  */
 
 import { createContext, useState, useCallback, type ReactNode } from 'react';
-import { createEncryptedDb } from '@data/db';
 import { verifyPassword, getEncryptionKey } from '@data/encryption';
 import {
   createCredentialsV2,
@@ -81,24 +80,6 @@ async function unlockCredentials(password: string, credentials: object): Promise
   return null;
 }
 
-/**
- * Migrations that need the decrypted data, run before the app is unlocked so
- * nothing reads data that is half migrated: records earlier versions stored
- * are sealed, and unknown biomarkers stored before keys existed get the key
- * new imports of the same name get, and values stored under the wrong
- * biomarker (urea as blood urea nitrogen) are refiled. A failure is not
- * fatal: those records stay as they are, readable by the app, and the
- * migration runs again at the next unlock.
- */
-async function migrateStoredData(key: CryptoKey): Promise<void> {
-  try {
-    await createEncryptedDb(key).migrateLegacyRecords();
-  } catch {
-    // Not logged with the error, which could name stored data
-    console.error('Failed to migrate stored records');
-  }
-}
-
 export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   const storedCreds = loadStoredCredentials();
 
@@ -143,7 +124,6 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         return false;
       }
 
-      await migrateStoredData(key);
       setEncryptionKey(key);
       setCredentials(storedCreds);
       setStatus('unlocked');

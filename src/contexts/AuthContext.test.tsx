@@ -9,12 +9,6 @@ import {
   rewrapCredentials,
 } from '@data/encryption/keyWrapping';
 
-// Stored-data migrations run on unlock; the database itself is not under test
-const migrate = vi.hoisted(() => vi.fn<() => Promise<void>>());
-vi.mock('@data/db', () => ({
-  createEncryptedDb: () => ({ migrateLegacyRecords: migrate }),
-}));
-
 const CREDENTIALS_KEY = 'hemoio_credentials';
 const OLD = 'Old-Passw0rd!';
 const NEW = 'New-Passw0rd!';
@@ -74,8 +68,6 @@ function lock() {
 describe('AuthContext', () => {
   beforeEach(() => {
     localStorage.clear();
-    migrate.mockReset();
-    migrate.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -149,38 +141,6 @@ describe('AuthContext', () => {
       expect(await unlock(OLD)).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       expect(auth.encryptionKey).not.toBeNull();
-    });
-
-    it('migrates stored records before reporting unlocked', async () => {
-      await setUp();
-      lock();
-      let finishMigrating!: () => void;
-      migrate.mockReturnValue(new Promise<void>((resolve) => (finishMigrating = resolve)));
-
-      let unlocking!: Promise<boolean>;
-      act(() => {
-        unlocking = auth.unlock(OLD);
-      });
-      await vi.waitFor(() => expect(migrate).toHaveBeenCalled());
-      expect(screen.getByTestId('status')).toHaveTextContent('locked');
-
-      await act(async () => {
-        finishMigrating();
-        await unlocking;
-      });
-      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-    });
-
-    it('unlocks even when migrating stored records fails', async () => {
-      await setUp();
-      lock();
-      migrate.mockRejectedValue(new Error('IndexedDB unavailable'));
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      expect(await unlock(OLD)).toBe(true);
-      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
-      // Logged without the error, which could name stored data
-      expect(consoleError).toHaveBeenCalledWith('Failed to migrate stored records');
     });
 
     it('stays locked with a wrong password', async () => {

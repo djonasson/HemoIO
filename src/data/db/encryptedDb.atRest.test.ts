@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { openTestDb, storeAsEarlierVersion, type TestDb } from './testDb';
+import { openTestDb } from './testDb';
 import type { HemoIODatabase } from './index';
 import type { EncryptedDb } from './encryptedDb';
 
@@ -213,56 +213,6 @@ describe('EncryptedDb: biomarker data at rest', () => {
     });
   });
 
-  describe('data stored readable by an earlier version', () => {
-    async function seedReadable(test: TestDb): Promise<void> {
-      await storeAsEarlierVersion(test, 'testValues', {
-        labResultId: 1,
-        biomarkerKey: 'glucose',
-        value: 5,
-        unit: 'mg/dL',
-        createdAt: now,
-        updatedAt: now,
-      });
-      await storeAsEarlierVersion(test, 'userNotes', {
-        biomarkerKey: 'glucose',
-        content: 'c',
-        tags: ['fasting'],
-        createdAt: now,
-        updatedAt: now,
-      });
-      await storeAsEarlierVersion(test, 'userPreferences', PREFERENCES);
-    }
-
-    it('is still read correctly', async () => {
-      const test = await openTestDb();
-      const { db } = test;
-      await seedReadable(test);
-
-      expect((await db.getAllTestValues())[0].biomarkerKey).toBe('glucose');
-      expect((await db.getNotesByTag('fasting'))[0].biomarkerKey).toBe('glucose');
-      expect(await db.getPreferences()).toEqual(expect.objectContaining(PREFERENCES));
-    });
-
-    it('is encrypted by the migration, and reads the same afterwards', async () => {
-      const test = await openTestDb();
-      const { db, database } = test;
-      await seedReadable(test);
-
-      await db.migrateLegacyRecords();
-      expect(await db.migrateLegacyRecords()).toBe(0);
-
-      const raw = await stored(database);
-      expect(raw).not.toContain('glucose');
-      expect(raw).not.toContain('fasting');
-      expect((await db.getAllTestValues())[0]).toMatchObject({ biomarkerKey: 'glucose', value: 5 });
-      expect((await db.getAllNotes())[0]).toMatchObject({
-        biomarkerKey: 'glucose',
-        tags: ['fasting'],
-      });
-      expect(await db.getPreferences()).toEqual(expect.objectContaining(PREFERENCES));
-    });
-  });
-
   describe('everything but IDs and links', () => {
     /** The fields of each stored record, which someone without the password sees */
     async function storedFields(database: HemoIODatabase): Promise<Record<string, string[]>> {
@@ -316,9 +266,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
       await addEverything(db);
 
       expect(await storedFields(database)).toEqual({
-        biomarkers: [],
         labResults: ['encrypted', 'id'],
-        meta: [],
         testValues: ['encrypted', 'id', 'labResultId'],
         userNotes: ['encrypted', 'id', 'labResultId', 'testValueId'],
         userPreferences: ['encrypted', 'id'],
@@ -448,61 +396,5 @@ describe('EncryptedDb: biomarker data at rest', () => {
         'testValueId',
       ]);
     });
-
-    describe('records as earlier versions stored them', () => {
-      async function seedEarlierVersion(test: TestDb) {
-        const labResultId = await storeAsEarlierVersion(test, 'labResults', {
-          date: new Date('2024-03-01T12:00:00Z'),
-          labName: 'Quest',
-          createdAt: now,
-          updatedAt: now,
-        });
-        const valueId = await storeAsEarlierVersion(test, 'testValues', {
-          labResultId,
-          biomarkerKey: 'hba1c',
-          value: 48,
-          unit: 'mmol/mol',
-          rawText: 'HbA1c',
-          createdAt: now,
-          updatedAt: now,
-        });
-        const noteId = await storeAsEarlierVersion(test, 'userNotes', {
-          labResultId,
-          content: 'c',
-          tags: ['diabetes'],
-          createdAt: now,
-          updatedAt: now,
-        });
-        return { labResultId, valueId, noteId };
-      }
-
-      it('are read and updated correctly', async () => {
-        const test = await openTestDb();
-        const { db } = test;
-        const { labResultId, valueId, noteId } = await seedEarlierVersion(test);
-
-        await db.updateTestValue(valueId, { value: 50 });
-
-        expect(await db.getLabResult(labResultId)).toMatchObject({ labName: 'Quest', date: new Date('2024-03-01T12:00:00Z') });
-        expect(await db.getTestValue(valueId)).toMatchObject({ value: 50, unit: 'mmol/mol', rawText: 'HbA1c' });
-        expect(await db.getNote(noteId)).toMatchObject({ content: 'c', tags: ['diabetes'] });
-      });
-
-      it('are encrypted whole by the migration', async () => {
-        const test = await openTestDb();
-        const { db, database } = test;
-        const { labResultId, valueId } = await seedEarlierVersion(test);
-
-        await db.migrateLegacyRecords();
-
-        const fields = await storedFields(database);
-        expect(fields.labResults).toEqual(['encrypted', 'id']);
-        expect(fields.testValues).toEqual(['encrypted', 'id', 'labResultId']);
-        expect(fields.userNotes).toEqual(['encrypted', 'id', 'labResultId']);
-        expect(await db.getLabResult(labResultId)).toMatchObject({ labName: 'Quest' });
-        expect(await db.getTestValue(valueId)).toMatchObject({ value: 48, rawText: 'HbA1c', biomarkerKey: 'hba1c' });
-      });
-    });
   });
 });
-

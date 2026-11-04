@@ -305,108 +305,38 @@ describe('jsonImport', () => {
     });
   });
 
-  describe('schema version 1 backups', () => {
-    const v1 = {
-      schemaVersion: 1,
-      exportedAt: '2024-03-01T00:00:00.000Z',
-      appVersion: '1.0.0',
-      labResults: [
-        { id: 1, date: '2024-01-15T00:00:00.000Z', labName: 'Lab', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
-      ],
-      testValues: [
-        { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
-        { id: 2, labResultId: 1, biomarkerId: 10042, value: 2, unit: 'U/L', createdAt: '2024-01-15T00:00:00.000Z', updatedAt: '2024-01-15T00:00:00.000Z' },
-      ],
-      userNotes: [
-        { id: 1, biomarkerId: 3, content: 'note', tags: [], createdAt: '2024-01-16T00:00:00.000Z', updatedAt: '2024-01-16T00:00:00.000Z' },
-      ],
-      userPreferences: {
-        theme: 'dark',
-        dateFormat: 'MM/DD/YYYY',
-        personalTargets: { 3: { low: 13 } },
-        unitPreferences: {},
-      },
-      settings: null,
-    };
-
-    it('converts biomarker IDs to keys', () => {
-      const parsed = parseBackupJson(JSON.stringify(v1));
-
-      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual(['hemoglobin', 'unknown:legacy-10042']);
-      expect(parsed.userNotes[0].biomarkerKey).toBe('hemoglobin');
-      expect(parsed.userPreferences?.personalTargets).toEqual({ hemoglobin: { low: 13 } });
-      expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
-    });
-
-    it('gives unknown biomarkers the same key new imports of that name get', () => {
-      // Hash IDs (>= 10000) were derived from the extracted name, kept as rawText
-      const parsed = parseBackupJson(
-        JSON.stringify({
-          ...v1,
-          testValues: [{ ...v1.testValues[1], rawText: 'Zorblatin' }],
-          userNotes: [{ ...v1.userNotes[0], biomarkerId: 10042 }],
-          userPreferences: { ...v1.userPreferences, personalTargets: { 10042: { high: 5 } } },
-        })
-      );
-
-      expect(parsed.testValues[0].biomarkerKey).toBe('unknown:zorblatin');
-      expect(parsed.userNotes[0].biomarkerKey).toBe('unknown:zorblatin');
-      expect(parsed.userPreferences?.personalTargets).toEqual({ 'unknown:zorblatin': { high: 5 } });
-    });
-
-    it('rejects backups from a newer version', () => {
-      expect(() =>
-        parseBackupJson(JSON.stringify({ ...v1, schemaVersion: BACKUP_SCHEMA_VERSION + 1 }))
-      ).toThrow(/newer version/);
-    });
-  });
-
-  describe('backups made before urea and urine red cells had their own entries', () => {
+  describe('backups made before tests were identified by LOINC', () => {
     const at = '2024-01-15T00:00:00.000Z';
+    const REFUSAL =
+      'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.';
     const backup = (schemaVersion: number) => ({
       schemaVersion,
       exportedAt: at,
       appVersion: '1.0.0',
       labResults: [{ id: 1, date: at, labName: 'Lab', createdAt: at, updatedAt: at }],
       testValues: [
-        { id: 1, labResultId: 1, biomarkerKey: 'blood-urea-nitrogen', rawText: 'Urea', value: 18, unit: 'mg/dL', createdAt: at, updatedAt: at },
-        { id: 2, labResultId: 1, biomarkerKey: 'blood-urea-nitrogen', rawText: 'BUN', value: 9, unit: 'mg/dL', createdAt: at, updatedAt: at },
-        { id: 3, labResultId: 1, biomarkerKey: 'urine-blood', rawText: 'Eritrociti (urine)', value: 15, unit: 'cell/µL', createdAt: at, updatedAt: at },
-        { id: 4, labResultId: 1, biomarkerKey: 'urine-blood', rawText: 'Emoglobina (urine)', value: 0, unit: 'mg/dL', createdAt: at, updatedAt: at },
+        { id: 1, labResultId: 1, biomarkerKey: '2345-7', rawText: 'Glucose', value: 95, unit: 'mg/dL', createdAt: at, updatedAt: at },
       ],
       userNotes: [],
-      userPreferences: {
-        theme: 'dark',
-        dateFormat: 'MM/DD/YYYY',
-        personalTargets: {},
-        unitPreferences: { 'urine-blood': 'cells/µL' },
-      },
+      userPreferences: null,
       settings: null,
     });
 
-    it('files each value under the test it is', () => {
-      const parsed = parseBackupJson(JSON.stringify(backup(2)));
+    it.each([1, 2, 3])('refuses a version %i backup with the message', (version) => {
+      expect(() => parseBackupJson(JSON.stringify(backup(version)))).toThrow(REFUSAL);
+    });
 
-      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual([
-        'urea',
-        'blood-urea-nitrogen',
-        'urine-red-blood-cells',
-        'urine-blood',
-      ]);
-      expect(parsed.userPreferences?.unitPreferences).toEqual({ 'urine-red-blood-cells': 'cells/µL' });
+    it('restores a version 4 backup as it is', () => {
+      const parsed = parseBackupJson(JSON.stringify(backup(4)));
+
+      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual(['2345-7']);
       expect(parsed.schemaVersion).toBe(BACKUP_SCHEMA_VERSION);
     });
 
-    it('leaves a newer backup as it is: its values were filed with both entries known', () => {
-      const parsed = parseBackupJson(JSON.stringify(backup(BACKUP_SCHEMA_VERSION)));
-
-      expect(parsed.testValues.map((tv) => tv.biomarkerKey)).toEqual([
-        'blood-urea-nitrogen',
-        'blood-urea-nitrogen',
-        'urine-blood',
-        'urine-blood',
-      ]);
+    it('rejects backups from a newer version', () => {
+      expect(() =>
+        parseBackupJson(JSON.stringify(backup(BACKUP_SCHEMA_VERSION + 1)))
+      ).toThrow(/newer version/);
     });
   });
 });
-

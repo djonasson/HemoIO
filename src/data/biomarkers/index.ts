@@ -12,5 +12,3 @@ export {
   getCanonicalUnit,
   type BiomarkerDefinition,
 } from './dictionary';
-
-export { ISSUED_BIOMARKER_KEYS } from './keys.snapshot';

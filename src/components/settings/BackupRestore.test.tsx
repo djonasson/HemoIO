@@ -222,7 +222,7 @@ describe('BackupRestore', () => {
   describe('restoring AI configuration', () => {
     function backupFileWithAISettings(): File {
       const backup = {
-        schemaVersion: 2,
+        schemaVersion: 4,
         exportedAt: '2024-03-01T00:00:00.000Z',
         appVersion: '1.0.0',
         labResults: [],

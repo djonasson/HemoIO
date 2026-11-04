@@ -25,8 +25,7 @@ import { relatedKeysFor } from './related';
  */
 export interface BiomarkerDefinition extends Omit<Biomarker, 'id'> {
   /**
-   * Permanent identifier used in stored data. Never change or reuse a key:
-   * renaming a biomarker keeps its key. See ISSUED_BIOMARKER_KEYS.
+   * Identifier of the biomarker within the dictionary
    */
   key: string;
   /** Common aliases/abbreviations for this biomarker */

@@ -1,20 +1,11 @@
 import Dexie, { type EntityTable } from 'dexie';
-import {
-  migrateNoteRecord,
-  migratePreferenceMaps,
-  migrateTestValueRecord,
-} from '@data/migrations/biomarkerKeyMigration';
 import type {
   LabResult,
   TestValue,
-  Biomarker,
   UserPreferences,
   Settings,
   UserNote,
 } from '@/types';
-
-/** Set by the schema upgrade: records stored by an earlier version need migrating */
-export const MIGRATE_RECORDS = 'migrate-records';
 
 /**
  * HemoIO Database
@@ -25,12 +16,9 @@ export const MIGRATE_RECORDS = 'migrate-records';
 export class HemoIODatabase extends Dexie {
   labResults!: EntityTable<LabResult, 'id'>;
   testValues!: EntityTable<TestValue, 'id'>;
-  biomarkers!: EntityTable<Biomarker, 'id'>;
   userPreferences!: EntityTable<UserPreferences, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
   userNotes!: EntityTable<UserNote, 'id'>;
-  /** Markers for the migrations that need the encryption key (see MIGRATE_RECORDS) */
-  meta!: EntityTable<{ key: string }, 'key'>;
 
   constructor(name = 'HemoIO') {
     super(name);
@@ -54,28 +42,15 @@ export class HemoIODatabase extends Dexie {
     });
 
     // Version 3: biomarkers are referenced by permanent keys instead of their
-    // position in the dictionary (which shifted when entries were inserted)
-    this.version(3)
-      .stores({
-        labResults: '++id, date, labName',
-        testValues: '++id, labResultId, biomarkerKey, [labResultId+biomarkerKey]',
-        biomarkers: '++id, name, category',
-        userPreferences: '++id',
-        settings: '++id',
-        userNotes: '++id, labResultId, biomarkerKey, testValueId, createdAt, *tags',
-      })
-      .upgrade(async (tx) => {
-        // Only unencrypted fields are touched, so no encryption key is needed
-        await tx.table('testValues').toCollection().modify((record, ref) => {
-          ref.value = migrateTestValueRecord(record);
-        });
-        await tx.table('userNotes').toCollection().modify((record, ref) => {
-          ref.value = migrateNoteRecord(record);
-        });
-        await tx.table('userPreferences').toCollection().modify((record, ref) => {
-          ref.value = migratePreferenceMaps(record);
-        });
-      });
+    // position in the dictionary
+    this.version(3).stores({
+      labResults: '++id, date, labName',
+      testValues: '++id, labResultId, biomarkerKey, [labResultId+biomarkerKey]',
+      biomarkers: '++id, name, category',
+      userPreferences: '++id',
+      settings: '++id',
+      userNotes: '++id, labResultId, biomarkerKey, testValueId, createdAt, *tags',
+    });
 
     // Version 5: records are sealed (everything but IDs and links encrypted),
     // so lab data is indexed by IDs and links only. (Version 4 was never
@@ -89,21 +64,39 @@ export class HemoIODatabase extends Dexie {
       userNotes: '++id, labResultId, testValueId',
     });
 
-    // Version 6: marks a database upgraded from an earlier version, so the
-    // records it stored are migrated once after unlock
-    // (EncryptedDb.migrateLegacyRecords), which needs the encryption key. A
-    // new database has nothing to migrate and is never marked.
-    this.version(6)
+    // Version 6: a marker table for migrations that needed the encryption key
+    this.version(6).stores({
+      labResults: '++id',
+      testValues: '++id, labResultId',
+      biomarkers: '++id, name, category',
+      userPreferences: '++id',
+      settings: '++id',
+      userNotes: '++id, labResultId, testValueId',
+      meta: '&key',
+    });
+
+    // Version 7: tests are identified by LOINC code, so the database starts
+    // empty. Values, notes and preferences (sealed: their per-test maps, and
+    // the theme and date format with them, cannot be edited without the
+    // encryption key) are cleared; settings, which hold the AI configuration,
+    // are kept. The legacy biomarker and marker tables are dropped.
+    this.version(7)
       .stores({
         labResults: '++id',
         testValues: '++id, labResultId',
-        biomarkers: '++id, name, category',
+        biomarkers: null,
         userPreferences: '++id',
         settings: '++id',
         userNotes: '++id, labResultId, testValueId',
-        meta: '&key',
+        meta: null,
       })
-      .upgrade((tx) => tx.table('meta').put({ key: MIGRATE_RECORDS }));
+      .upgrade(async (tx) => {
+        await Promise.all(
+          ['labResults', 'testValues', 'userNotes', 'userPreferences'].map((name) =>
+            tx.table(name).clear()
+          )
+        );
+      });
   }
 }
 

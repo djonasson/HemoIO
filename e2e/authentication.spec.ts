@@ -1,13 +1,12 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { setupOrUnlock } from './steps/app.steps';
 import { SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
   readStoredData,
-  storeReadableAsEarlierVersion,
   storedFieldNames,
 } from './steps/dataAtRest.steps';
-import { noteSeed, viewTrendsFor } from './steps/userNotes.steps';
+import { noteSeed } from './steps/userNotes.steps';
 
 // Helper to set up a user with password
 async function setupUser(page: Page, password: string = 'MySecurePass123!') {
@@ -204,21 +203,20 @@ test.describe('Authentication', () => {
 });
 
 test.describe('Data at rest', () => {
-  // Restored from a schema version 1 backup: 22 is Glucose, 10042 an unknown
-  // biomarker's legacy hash ID
+  // Restored from a schema version 4 backup: 2345-7 is Glucose (LOINC)
   const backup = {
     testValues: [
       ...SEED_TEST_VALUES,
       {
-        id: 4, labResultId: 2, biomarkerId: 10042, rawText: 'Zorblatin', value: 3, unit: 'U/L',
+        id: 4, labResultId: 2, biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin', value: 3, unit: 'U/L',
         createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z',
       },
     ],
-    userNotes: [noteSeed(1, { biomarkerId: 22 }, 'Fasting sample', ['diabetes'])],
+    userNotes: [noteSeed(1, { biomarkerKey: '2345-7' }, 'Fasting sample', ['diabetes'])],
     userPreferences: {
-      unitPreferences: { 22: 'mmol/L' },
-      personalTargets: { 22: { low: 70, high: 90 } },
-      acknowledgedAlerts: { 22: '2024-01-15T10:00:00.000Z' },
+      unitPreferences: { '2345-7': 'mmol/L' },
+      personalTargets: { '2345-7': { low: 70, high: 90 } },
+      acknowledgedAlerts: { '2345-7': '2024-01-15T10:00:00.000Z' },
       theme: 'system',
       dateFormat: 'MM/DD/YYYY',
     },
@@ -242,22 +240,5 @@ test.describe('Data at rest', () => {
     // Scenario: Which tests were done cannot be read without the password
     expect(await storedFieldNames(page)).toMatchObject(SEALED);
     expect(await readStoredData(page)).not.toMatch(READABLE);
-  });
-
-  test('encrypts data an earlier version stored readable at the next unlock', async ({ page }) => {
-    // Scenario: Data stored before this protection is protected at the next unlock
-    await storeReadableAsEarlierVersion(page, { labResultId: 2, value: 131 });
-    expect(await readStoredData(page)).toMatch(READABLE);
-
-    await page.reload();
-    await unlockApp(page);
-
-    expect(await storedFieldNames(page)).toMatchObject(SEALED);
-    expect(await readStoredData(page)).not.toMatch(READABLE);
-    // The data is unchanged: both glucose values, and the note with its tag
-    const main = await viewTrendsFor(page, 'Glucose');
-    await expect(main.getByText('Showing 2 data points')).toBeVisible();
-    await expect(main.getByText('Fasting sample')).toBeVisible();
-    await expect(main.getByText('diabetes')).toBeVisible();
   });
 });

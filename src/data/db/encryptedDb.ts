@@ -12,20 +12,9 @@
  */
 
 import Dexie, { type Table, type Transaction } from 'dexie';
-import { db, HemoIODatabase, MIGRATE_RECORDS } from './index';
+import { db, HemoIODatabase } from './index';
 import { SaveError, toSaveError } from './saveError';
 import { encryptString, decryptString } from '@data/encryption';
-import {
-  legacyUnknownKeyMapping,
-  migrateNoteRecord,
-  migratePreferenceMaps,
-  migrateTestValueRecord,
-  reconcileTestValueKey,
-  refileMisfiledPreferences,
-  refileMisfiledValue,
-  remapBiomarkerKey,
-  remapPreferenceMaps,
-} from '@data/migrations/biomarkerKeyMigration';
 import type {
   LabResult,
   TestValue,
@@ -114,19 +103,6 @@ async function seal(
   return stored;
 }
 
-// ============ Records as earlier versions stored them ============
-
-/**
- * The fields earlier versions encrypted one by one, leaving the rest
- * readable. Records in this form are still read, and are sealed after unlock.
- */
-export const LEGACY_ENCRYPTED_FIELDS: Record<SealedTable, readonly string[]> = {
-  labResults: ['labName', 'notes'],
-  testValues: ['rawText'],
-  userNotes: ['content'],
-  userPreferences: [],
-};
-
 /** Settings are device configuration: only the API key is encrypted */
 const SETTINGS_ENCRYPTED_FIELDS = ['aiApiKey'];
 
@@ -160,47 +136,15 @@ async function decryptFields<T>(obj: T, fields: readonly string[], key: CryptoKe
   return decrypted as T;
 }
 
-/** Records as released versions stored them, which referenced biomarkers by dictionary position */
-const LEGACY_RECORD_MIGRATIONS: Record<SealedTable, (record: object) => object> = {
-  labResults: (record) => record,
-  testValues: migrateTestValueRecord,
-  userNotes: migrateNoteRecord,
-  userPreferences: migratePreferenceMaps,
-};
-
-/**
- * Fields as an earlier version stored them, decrypted and given biomarker
- * keys: a whole record, or only the fields it wrote beside a sealed one
- */
-async function readLegacy(
-  fields: SealedRecord,
-  table: SealedTable,
-  key: CryptoKey,
-  wholeRecord: boolean
-): Promise<Record<string, unknown>> {
-  const decrypted = await decryptFields(fields, LEGACY_ENCRYPTED_FIELDS[table], key);
-  return wholeRecord || 'biomarkerId' in decrypted
-    ? (LEGACY_RECORD_MIGRATIONS[table](decrypted) as Record<string, unknown>)
-    : decrypted;
-}
-
-/**
- * A stored record as the app sees it: sealed, as an earlier version stored
- * it, or sealed with fields an older version wrote beside it since, which
- * are newer and win
- */
+/** A stored record as the app sees it: its readable fields and the decrypted rest */
 async function unseal<T>(stored: SealedRecord, table: SealedTable, key: CryptoKey): Promise<T> {
-  if (typeof stored.encrypted !== 'string') return (await readLegacy(stored, table, key, true)) as T;
+  if (typeof stored.encrypted !== 'string') throw new Error('Record is not sealed');
   const readable: SealedRecord = {};
-  const beside: SealedRecord = {};
-  for (const [field, value] of Object.entries(stored)) {
-    if (field === 'encrypted' || value === undefined) continue;
-    if (READABLE_FIELDS[table].includes(field)) readable[field] = value;
-    else beside[field] = value;
+  for (const field of READABLE_FIELDS[table]) {
+    if (stored[field] !== undefined) readable[field] = stored[field];
   }
   const hidden = JSON.parse(await decryptString(stored.encrypted, key), reviver) as object;
-  const newer = Object.keys(beside).length > 0 ? await readLegacy(beside, table, key, false) : {};
-  return { ...hidden, ...newer, ...readable } as T;
+  return { ...hidden, ...readable } as T;
 }
 
 /** Whether a record has a date it can be sorted by (the date indexes skipped others) */
@@ -381,58 +325,6 @@ export class EncryptedDb {
       await table.put(await Dexie.waitFor(this.seal(name, { ...current, ...changes, id })));
       return 1;
     });
-  }
-
-  // ============ Migrations needing the encryption key ============
-
-  /**
-   * Bring the records earlier versions stored up to date: seal them, give
-   * unknown biomarkers stored before biomarker keys existed
-   * ("unknown:legacy-<hash>") the key their extracted name gets today, and
-   * refile values stored under the wrong biomarker (urea as blood urea
-   * nitrogen). Needs the encryption key, so it runs after unlock rather than
-   * in the schema upgrade, which only marks that it is needed: it runs once
-   * per upgraded database, and never on a new one.
-   *
-   * One transaction, kept open across the decryption and encryption by
-   * Dexie.waitFor, so no edit in the meantime (in another tab, say) is
-   * overwritten, and a second tab finds nothing left to do. Records that
-   * cannot be decrypted are left as they are.
-   *
-   * @returns Number of records migrated
-   */
-  async migrateLegacyRecords(): Promise<number> {
-    const names = Object.keys(READABLE_FIELDS) as SealedTable[];
-    const tables = names.map((name) => this.table(name));
-    return this.db.transaction('rw', [...tables, this.db.meta], async () => {
-      if (!(await this.db.meta.get(MIGRATE_RECORDS))) return 0;
-      const stored = await Promise.all(tables.map((table) => table.toArray()));
-      const sealed = await Dexie.waitFor(this.migrated(names, stored));
-      await Promise.all(tables.map((table, i) => table.bulkPut(sealed[i])));
-      await this.db.meta.delete(MIGRATE_RECORDS);
-      return sealed.reduce((sum, records) => sum + records.length, 0);
-    });
-  }
-
-  /** Every record of each table, migrated and sealed */
-  private async migrated(names: SealedTable[], stored: SealedRecord[][]): Promise<SealedRecord[][]> {
-    const [labResults, testValues, userNotes, userPreferences] = await Promise.all(
-      names.map((name, i) => this.unsealAll<Record<string, unknown>>(name, stored[i]))
-    );
-    const values = testValues as unknown as TestValue[];
-    const mapping = legacyUnknownKeyMapping(values);
-    const migrated: Record<SealedTable, object[]> = {
-      labResults,
-      // Each value by its own name: two names can share a legacy key
-      testValues: values.map((value) => refileMisfiledValue(reconcileTestValueKey(value))),
-      userNotes: userNotes.map((note) => remapBiomarkerKey(note, mapping)),
-      userPreferences: (userPreferences as unknown as UserPreferences[]).map((prefs) =>
-        refileMisfiledPreferences(remapPreferenceMaps(prefs, mapping))
-      ),
-    };
-    return Promise.all(
-      names.map((name) => Promise.all(migrated[name].map((record) => this.seal(name, record))))
-    );
   }
 
   // ============ Lab Results ============
@@ -628,24 +520,6 @@ export class EncryptedDb {
     // Under the stored record's ID, so unreadable preferences are replaced
     const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current), id: stored?.id };
     return (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
-  }
-
-  // ============ Biomarkers ============
-
-  async getBiomarker(id: number) {
-    return this.db.biomarkers.get(id);
-  }
-
-  async getAllBiomarkers() {
-    return this.db.biomarkers.toArray();
-  }
-
-  async getBiomarkersByCategory(category: string) {
-    return this.db.biomarkers.where('category').equals(category).toArray();
-  }
-
-  async findBiomarkerByName(name: string) {
-    return this.db.biomarkers.where('name').equalsIgnoreCase(name).first();
   }
 
   // ============ User Notes ============

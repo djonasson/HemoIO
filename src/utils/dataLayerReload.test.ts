@@ -29,7 +29,7 @@ describe('isDataLayerFile', () => {
     'src/data/db/encryptedDb.ts',
     'src/data/encryption/keyWrapping.ts',
     'src/data/storage/FileSystemStorageProvider.ts',
-    'src/data/migrations/biomarkerKeyMigration.ts',
+    'src/data/db/saveError.ts',
   ])('treats %s as data layer', (file) => {
     expect(isDataLayerFile(`${ROOT}/${file}`, ROOT)).toBe(true);
   });
@@ -132,7 +132,7 @@ describe('needsFullReload', () => {
 
   it('reloads for a dictionary change that reaches the data layer', () => {
     const dictionary = mod('src/data/biomarkers/dictionary.ts');
-    const migration = mod('src/data/migrations/biomarkerKeyMigration.ts');
+    const migration = mod('src/data/db/encryptedDb.ts');
     link(migration, dictionary);
 
     expect(needsFullReload([dictionary], ROOT)).toBe(true);

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { encryptString } from '@data/encryption';
 import { EncryptedDb } from './encryptedDb';
-import { openTestDb, storeAsEarlierVersion } from './testDb';
+import { openTestDb } from './testDb';
 
 const now = new Date('2024-01-15T10:00:00Z');
 const invalid = new Date('not a date');
@@ -113,35 +112,6 @@ describe('EncryptedDb: a record that cannot be decrypted', () => {
     await db.updatePreferences(() => ({ theme: 'light' }));
 
     expect(await db.getPreferences()).toEqual(expect.objectContaining({ theme: 'light' }));
-  });
-});
-
-describe('EncryptedDb: records an older version wrote', () => {
-  it('reads fields written beside a sealed record as the older version stored them', async () => {
-    const { db, database, key } = await openTestDb();
-    const id = await db.addNote({ content: 'first', tags: [], createdAt: now, updatedAt: now });
-    // An older version still open in another tab edits the note
-    await database.userNotes.update(id, {
-      content: await encryptString('edited', key),
-      tags: ['fasting'],
-    });
-
-    expect(await db.getNote(id)).toMatchObject({ content: 'edited', tags: ['fasting'] });
-  });
-
-  it('reads a value stored with a dictionary position as its biomarker key', async () => {
-    const test = await openTestDb();
-    // As released versions stored values: biomarkerId 22 is Glucose
-    const id = await storeAsEarlierVersion(test, 'testValues', {
-      labResultId: 1,
-      biomarkerId: 22,
-      value: 95,
-      unit: 'mg/dL',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    expect((await test.db.getTestValue(id))?.biomarkerKey).toBe('glucose');
   });
 });
 

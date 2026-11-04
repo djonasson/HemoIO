@@ -214,8 +214,9 @@ Feature: Backup and Restore
     And the restore section should have proper labels
     And progress indicators should announce updates
 
-  Scenario: Restore a backup made by an earlier version
-    Given I have a backup file created by an earlier version of HemoIO
-    When I restore it from the Data tab
-    Then my lab results should be restored
-    And each value should keep its biomarker name
+  Scenario: An older backup is refused
+    Given I have a backup file made before tests were identified by LOINC
+    When I choose it on the Data tab
+    Then I should see that it cannot be restored and that I should re-import my reports
+    And no restore dialog should open
+    And my data should be unchanged
