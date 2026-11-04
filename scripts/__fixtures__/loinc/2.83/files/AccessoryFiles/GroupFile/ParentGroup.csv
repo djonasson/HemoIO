@@ -1,0 +1,4 @@
+"ParentGroupId","ParentGroup","Status"
+"LG100-4","Chem_DrugTox_Chal_Sero_Allergy<SAME:Comp|Prop|Tm|Syst (except intravascular and urine)><ANYBldSerPlas,ANYUrineUrineSed><ROLLUP:Method>","ACTIVE"
+"LG55-6","MassMolConc<SAME:Comp|Tm|Sys|Meth><Prop:MCncORSCncORMSCnc>","ACTIVE"
+"LG74-7","Urine<SAME:Comp|Prop|Sys><ROLLUP:Tm|Meth>","ACTIVE"

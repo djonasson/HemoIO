@@ -110,6 +110,22 @@ When a new release is downloaded:
    `TERMS` to match.
 4. Update the version in the README's Third-Party Notices.
 
+## Generating the app's catalog
+
+The app's catalog of laboratory codes is generated from the release files;
+it is committed, so building the app never needs the release:
+
+1. Download the release: `npm run loinc:download` (see above).
+2. Generate the catalog: `npm run loinc:catalog`. It reads the latest complete
+   release under `~/loinc` (or `LOINC_DIR`) and writes
+   `src/data/loinc/catalog.generated.json`: the active laboratory codes with a
+   common-test rank, with their names (English and Italian), example UCUM
+   units and groups. Use `--from <files dir>` and `--out <path>` to override.
+3. Commit the regenerated file.
+
+The output is deterministic, so an unchanged release gives an unchanged file.
+Tests for the generator run on a small fixture in `scripts/__fixtures__/loinc/`.
+
 ## License
 
 LOINC is free to use under the
