@@ -1,0 +1,197 @@
+# LOINC and UCUM instead of our own dictionary
+
+Date: 2026-11-04. Status: design, approved for planning once reviewed.
+
+## Why
+
+Italian lab reports keep needing new aliases and units added to the code.
+Every new lab writes test names and units its own way ("S-ALT",
+"P-Glucosio", "Emoglobina glicosilata", "mg/gcr"), so each one means
+another dictionary entry or spelling rule. HemoIO should instead use the
+standards these values belong to: LOINC for what a test is and UCUM for
+units.
+
+**Success:** a report from a lab never imported before goes through with
+no code change. At most, the app asks the user to confirm a match it is
+unsure of, and it remembers the answer.
+
+## Goals
+
+- Each imported value is identified by a LOINC code: the most specific
+  code that fits the value (user's decision).
+- Trends, alerts and personal targets group closely related codes
+  through LOINC groups, where a single code is too specific for our data
+  (user's decision).
+  - Mass and molar codes of the same substance and sample share one trend
+    line, converted to the preferred unit with the substance's molar
+    factor (user's decision). So glucose in mg/dL and in mmol/L is one
+    line.
+  - Use the LOINC group (GroupFile parent group) that joins mass and
+    molar codes where one exists, else the one joining sample types
+    (blood/serum/plasma). A code in no group stands alone. The exact
+    order of preference is the builder's call.
+- Units are read and converted as UCUM.
+- Matching runs locally first, then asks the AI, then asks the user
+  (user's decision).
+- A decision for a lab's wording plus unit is remembered, so the same
+  wording is matched locally next time.
+- The app never contacts loinc.org at runtime. LOINC data comes from the
+  local release files only.
+
+## Non-goals
+
+- Migrating existing data. The database starts empty and the user
+  re-imports (user's decision; no backwards compatibility is needed in
+  development).
+- In-app download of LOINC releases.
+- Non-lab LOINC content (documents, radiology, surveys).
+- Translating the UI.
+
+## Anti-goals
+
+- The AI inventing codes. It chooses only from candidate codes the local
+  search found.
+- A hand-kept alias list growing again. Lab-specific wordings are learned
+  from imports, not written into code.
+- A slower app start because LOINC data is loaded eagerly.
+
+## How a value gets its code
+
+1. **Local match.**
+   - Clean the lab's test name. Strip sample prefixes such as "S-", "P-",
+     "U-" and "U-Esame standard", and read them as the sample type.
+   - Read the unit as UCUM, after our spelling layer has turned lab
+     spellings into UCUM. The UCUM unit implies the LOINC property: mg/dL
+     is mass concentration (MCnc), 10*9/L is number concentration
+     (NCnc), % may be a ratio or fraction.
+   - Search the shipped LOINC subset using the English names, the Italian
+     names (itIT linguistic variant: COMPONENT and RELATEDNAMES2),
+     LOINC's related names and short names. Filter the results by the
+     property the unit implies and by the sample type, defaulting to
+     blood, serum or plasma where nothing says otherwise.
+   - If exactly one code fits well, take it without asking.
+2. **AI.** If nothing fits, or several do, send the configured AI the
+   lab's wording, the unit, the specimen hints and a short list of
+   candidate codes with their names. It picks one or says none fits.
+   With no AI configured, this step is skipped.
+3. **User.** If the AI is not confident, or there is no AI, the review
+   step shows the best few candidates with their LOINC names. The user
+   picks one, or "not a LOINC test". This replaces today's dictionary
+   picker in review.
+4. **Remember.** A code is remembered only once the user saves the import
+   with it, whether the user or the AI picked it (user's decision). This
+   is how today's learned names work (`learnFromSaved`). An AI pick the
+   user never saw saved is not remembered.
+   - The key is the printed wording plus its unit, across all labs. There
+     is no lab entity (Claude's call; it fits the current design).
+
+**"Not a LOINC test"** (Claude's call, keeping today's "Not in
+dictionary" behaviour). Such a value is saved with its printed name and
+unit and no code, and shown in the timeline. It trends by printed name
+plus unit and alerts only on the range printed with it. Personal targets
+and unit preferences need a code.
+
+**Existing local matcher** (Claude's call). The ONNX embedding matcher in
+`src/services/matching` may stay, as a scorer over LOINC names, if it
+measurably helps. Otherwise it is removed along with its model download.
+
+The thresholds for "fits well" and "confident" are the builder's call.
+They are tuned on the user's own report PDFs, used locally and never
+committed (user's decision). Committed tests use made-up report text that
+mimics their wording.
+
+## What ships with the app
+
+- A LOINC subset generated by a new script from the local release
+  (`/home/daniel/loinc/<version>/files`, written by `npm run
+  loinc:download`).
+  - It covers active laboratory codes (CLASSTYPE 1) with a common-test
+    rank, about 18,000 codes. The builder may add codes the remaining
+    reports need, and should say so.
+  - For each code it holds: the LOINC long common name, the English and
+    Italian names and related names, component, property, system, scale,
+    example UCUM units, and LOINC group memberships (GroupFile).
+- The generated data file is committed to the repo and lazy-loaded when
+  matching or display first needs it. Its format and splitting are the
+  builder's call.
+- Updating LOINC: the user runs `npm run loinc:download`, then the
+  generate script, then commits. The LOINC version shown in Settings →
+  About comes from the generated data.
+- Licensing: keep the LOINC notice (README and Settings → About) and show
+  each code with a LOINC name, as now. Verify the UCUM library's license
+  and add the UCUM notice its terms ask for.
+
+## Units
+
+- Use `@lhncbc/ucum-lhc` (the US National Library of Medicine's UCUM
+  library) to validate and convert UCUM units. This is Claude's choice;
+  the user agreed to it.
+- Keep our own layers:
+  - a spelling layer that turns what labs print into UCUM ("mg/gcr",
+    "/100WBC", "mmol/L" written oddly, Greek µ);
+  - mass↔molar factors per substance, which UCUM cannot know (glucose
+    mg/dL↔mmol/L).
+- The user's preferred display unit per test stays.
+
+## What is kept from the current dictionary
+
+The user keeps **reference ranges, descriptions and unit conversions**
+and drops the rest.
+
+- **Kept:**
+  - standard reference ranges;
+  - patient-facing descriptions;
+  - preferred/alternative units with their conversion factors.
+
+  These move to a small add-on table keyed by LOINC code, or by LOINC
+  group where one entry should cover several codes (Claude's call; the
+  builder decides per entry). Codes without an entry still work: they
+  show the LOINC name, no description, and the printed range from the
+  report.
+- **Dropped:**
+  - our names and aliases (replaced by LOINC names and learned wordings);
+  - "related tests" (replaced by LOINC groups, Claude's call);
+  - our categories.
+- **Dictionary page grouping:** the Dictionary page groups tests by LOINC
+  class (Chemistry, Hematology, Urinalysis…) instead of our categories
+  (user's decision).
+- **What the Dictionary page lists:** the tests the user has values for,
+  plus those with an add-on entry. It is not all 18,000 codes, but it can
+  search them. The exact scope is the builder's call.
+
+## Data
+
+- Values, personal targets, notes, unit preferences and learned wordings
+  key on LOINC code instead of our biomarker keys.
+- Groups are worked out from the shipped LOINC data, not stored per
+  value.
+- The database schema may change freely. The database starts empty, and
+  old backups need not restore.
+
+## Constraints
+
+- Follow CLAUDE.md:
+  - Gherkin first, then E2E and unit tests;
+  - the layer rules;
+  - accessibility (EAA/WCAG AA);
+  - never log health data or keys;
+  - all quality gates pass before a branch closes (build, lint,
+    noise-free vitest, full Playwright on all four projects, simplify,
+    code-review and security-review).
+- Never contact loinc.org from code, tests or tooling, apart from the
+  existing download script the user runs. Tests use small fixtures cut
+  from the local files.
+- Never run prettier.
+- `test-data/2019-02-18.pdf` is personal data and must never be
+  committed.
+
+## Left to the builder
+
+- Search method and scoring for the local match, and the thresholds.
+- The generated file format, its size budget and its lazy loading.
+- The AI prompt for choosing among candidates.
+- The add-on table's exact shape, and moving the existing 107 entries'
+  ranges, descriptions and conversions onto LOINC codes. The 106 codes
+  checked in `loinc.test.ts` are a starting point.
+- How review shows candidates, within the current review step's look.
+- Splitting the work into branches.
