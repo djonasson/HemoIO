@@ -11,7 +11,7 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
   configureAnthropic,
@@ -23,7 +23,7 @@ import {
  * Helper to navigate to settings page
  */
 async function navigateToSettings(page: Page) {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
+  await openFromMenu(page, 'Settings');
 }
 
 function glucoseTargetRow(page: Page) {
@@ -69,14 +69,41 @@ test.describe('Settings Page', () => {
     });
   });
 
+  test.describe('About', () => {
+    test('shows the license and the LOINC notice', async ({ page }) => {
+      // Scenario: See the notices of material the app contains
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await openSettingsTab(page, 'About');
+
+      const panel = page.getByRole('tabpanel', { name: 'About' });
+      await expect(panel.getByText('HemoIO is open source under the MIT license.')).toBeVisible();
+      await expect(panel.getByText('LOINC (version 2.83)')).toBeVisible();
+      await expect(panel.getByText(/^This material contains content from LOINC/)).toContainText(
+        'LOINC® is a registered United States trademark of Regenstrief Institute, Inc.'
+      );
+      await expect(panel.getByRole('link', { name: 'Read the LOINC license' })).toHaveAttribute(
+        'href',
+        'https://loinc.org/license'
+      );
+    });
+
+    test('underlines links', async ({ page }) => {
+      // Scenario: Links are underlined
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await openSettingsTab(page, 'About');
+
+      const link = page.getByRole('tabpanel', { name: 'About' }).getByRole('link', { name: 'Read the LOINC license' });
+      await expect(link).toHaveCSS('text-decoration-line', 'underline');
+    });
+  });
+
   test.describe('Display Settings', () => {
     test('should show theme selection options', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Display tab
-      await page.getByRole('tab', { name: /Display/i }).click();
+      await openSettingsTab(page, 'Display');
 
       // Should see theme section with label
       await expect(page.getByText('Theme').first()).toBeVisible();
@@ -90,10 +117,7 @@ test.describe('Settings Page', () => {
     test('should show date format options', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Display tab
-      await page.getByRole('tab', { name: /Display/i }).click();
+      await openSettingsTab(page, 'Display');
 
       // Should see date format section
       await expect(page.getByText(/Date Format/i).first()).toBeVisible();
@@ -102,10 +126,7 @@ test.describe('Settings Page', () => {
     test('should change theme to dark mode', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Display tab
-      await page.getByRole('tab', { name: /Display/i }).click();
+      await openSettingsTab(page, 'Display');
 
       // Select dark theme - click the Dark label in the SegmentedControl
       await page.locator('.mantine-SegmentedControl-root').getByText('Dark').click();
@@ -117,10 +138,7 @@ test.describe('Settings Page', () => {
     test('should change theme to light mode', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Display tab
-      await page.getByRole('tab', { name: /Display/i }).click();
+      await openSettingsTab(page, 'Display');
 
       // Select light theme - click the Light label in the SegmentedControl
       await page.locator('.mantine-SegmentedControl-root').getByText('Light').click();
@@ -132,10 +150,7 @@ test.describe('Settings Page', () => {
     test('theme preference should persist after reload', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Display tab and set dark theme
-      await page.getByRole('tab', { name: /Display/i }).click();
+      await openSettingsTab(page, 'Display');
       await page.locator('.mantine-SegmentedControl-root').getByText('Dark').click();
 
       await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'dark');
@@ -153,10 +168,7 @@ test.describe('Settings Page', () => {
     test('should show AI provider selection', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // Should see provider selection
       await expect(page.getByText(/Provider/i).first()).toBeVisible();
@@ -165,10 +177,7 @@ test.describe('Settings Page', () => {
     test('should show OpenAI option', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // Should see OpenAI option
       await expect(page.getByText(/OpenAI/i).first()).toBeVisible();
@@ -177,10 +186,7 @@ test.describe('Settings Page', () => {
     test('should show Anthropic option in provider dropdown', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // Click the provider dropdown to open it (find by current value)
       await page.locator('input[aria-label="Select AI provider"]').click();
@@ -192,10 +198,7 @@ test.describe('Settings Page', () => {
     test('should show Ollama option in provider dropdown', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // Click the provider dropdown to open it
       await page.locator('input[aria-label="Select AI provider"]').click();
@@ -207,10 +210,7 @@ test.describe('Settings Page', () => {
     test('should show API key input for OpenAI', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // OpenAI is the default, should see API key section
       await expect(page.getByText('API Key', { exact: true })).toBeVisible();
@@ -221,10 +221,7 @@ test.describe('Settings Page', () => {
     test('should not require API key for Ollama', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // Select Ollama from the dropdown
       await page.locator('input[aria-label="Select AI provider"]').click();
@@ -269,10 +266,7 @@ test.describe('Settings Page', () => {
     test('should show personal targets tab', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Personal Targets tab
-      await page.getByRole('tab', { name: /Personal Targets/i }).click();
+      await openSettingsTab(page, 'Personal Targets');
 
       // Should see personal targets section
       await expect(page.getByText(/Personal Targets/i).first()).toBeVisible();
@@ -281,10 +275,7 @@ test.describe('Settings Page', () => {
     test('should display list of biomarkers', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Click on Personal Targets tab
-      await page.getByRole('tab', { name: /Personal Targets/i }).click();
+      await openSettingsTab(page, 'Personal Targets');
 
       // Should see some biomarkers in the list (e.g., Glucose)
       await expect(page.getByText(/Glucose/i).first()).toBeVisible({ timeout: 10000 });
@@ -302,8 +293,7 @@ test.describe('Settings Page', () => {
       // The target is persisted, not just held in component state
       await page.reload();
       await unlockApp(page);
-      await navigateToSettings(page);
-      await page.getByRole('tab', { name: /Personal Targets/i }).click();
+      await openSettingsTab(page, 'Personal Targets');
       await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
       await expect(
         glucoseTargetRow(page).getByText('80 - 95')
@@ -403,10 +393,7 @@ test.describe('Settings Page', () => {
     test('should have accessible labels on form fields', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await navigateToSettings(page);
-
-      // Navigate to AI Configuration tab
-      await page.getByRole('tab', { name: /AI Configuration/i }).click();
+      await openSettingsTab(page, 'AI Configuration');
 
       // AI provider dropdown should have accessible label
       const providerSelect = page.locator('input[aria-label="Select AI provider"]');

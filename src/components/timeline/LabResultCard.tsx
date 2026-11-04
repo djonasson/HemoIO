@@ -12,6 +12,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  ThemeIcon,
   Collapse,
   Tooltip,
   Modal,
@@ -52,6 +53,8 @@ export interface LabResultCardProps {
   onDeleteNote?: (id: number) => Promise<void>;
   /** Open a test's trend at this result's date */
   onOpenTrend?: (biomarkerKey: string, date: Date) => void;
+  /** Receives the card's expand button, for the list to move focus to it */
+  toggleRef?: React.Ref<HTMLDivElement>;
 }
 
 /**
@@ -89,6 +92,7 @@ export function LabResultCard({
   onUpdateNote,
   onDeleteNote,
   onOpenTrend,
+  toggleRef,
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -165,40 +169,32 @@ export function LabResultCard({
         shadow={expanded ? 'sm' : undefined}
         role="region"
         aria-label={`Lab result from ${formatDate(result.date)}`}
-        aria-expanded={expanded}
       >
         <Stack gap="sm">
-          {/* Header - clickable to expand */}
-          <Group
-            justify="space-between"
-            wrap="nowrap"
-            style={{ cursor: 'pointer' }}
-            onClick={handleToggle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleToggle();
-              }
-            }}
-            tabIndex={0}
-            role="button"
-            aria-controls={`lab-result-${result.id}-content`}
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
-          >
-            <Group gap="md" wrap="nowrap">
-              {/* Expand/collapse icon */}
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                aria-hidden="true"
-                tabIndex={-1}
-              >
-                {expanded ? (
-                  <IconChevronUp size={20} />
-                ) : (
-                  <IconChevronDown size={20} />
-                )}
-              </ActionIcon>
+          {/* Header: a click anywhere on it expands. Wraps on a narrow screen
+              so the badges keep their full width. The keyboard's expand button
+              is the date part alone, so the delete button is not inside it. */}
+          <Group justify="space-between" style={{ cursor: 'pointer' }} onClick={handleToggle}>
+            <Group
+              ref={toggleRef}
+              gap="md"
+              wrap="nowrap"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleToggle();
+                }
+              }}
+              tabIndex={0}
+              role="button"
+              aria-expanded={expanded}
+              aria-controls={`lab-result-${result.id}-content`}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
+            >
+              {/* Expand/collapse icon: the header is the button */}
+              <ThemeIcon variant="transparent" color="gray" aria-hidden="true">
+                {expanded ? <IconChevronUp size={20} /> : <IconChevronDown size={20} />}
+              </ThemeIcon>
 
               {/* Date and lab info */}
               <Stack gap={4}>
@@ -215,8 +211,8 @@ export function LabResultCard({
               </Stack>
             </Group>
 
-            {/* Badges and actions */}
-            <Group gap="sm" wrap="nowrap">
+            {/* Badges and actions; on a very narrow screen they wrap rather than shrink */}
+            <Group gap="sm">
               {/* Biomarker count badge */}
               <Badge variant="light" color="blue">
                 {result.totalCount} test{result.totalCount !== 1 ? 's' : ''}

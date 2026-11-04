@@ -1,5 +1,6 @@
 import { test, expect } from './fixtures';
 import type { Page, Route } from '@playwright/test';
+import { openSettingsTab } from './steps/app.steps';
 
 // Mock Ollama API responses
 const mockOllamaModels = {
@@ -95,12 +96,6 @@ async function setupOllamaMocks(
 
     await route.continue();
   });
-}
-
-// Helper to open the AI Configuration tab in Settings
-async function openAISettings(page: Page) {
-  await page.locator('nav').getByText('Settings', { exact: true }).click();
-  await page.getByRole('tab', { name: /AI Configuration/i }).click();
 }
 
 // Helper to navigate to AI step in setup wizard
@@ -251,20 +246,20 @@ test.describe('Ollama Integration - Settings', () => {
 
   test('can access AI settings', async ({ page }) => {
     // Navigate to settings
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     await expect(page.getByRole('heading', { name: 'AI Configuration' })).toBeVisible();
   });
 
   test('shows Ollama connected status in settings', async ({ page }) => {
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     await expect(page.getByText('Connected', { exact: true })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/\d+ models? available/)).toBeVisible();
   });
 
   test('can change Ollama model in settings', async ({ page }) => {
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     const modelSelect = page.getByRole('textbox', { name: 'Select Ollama model' });
     await modelSelect.click();
@@ -274,7 +269,7 @@ test.describe('Ollama Integration - Settings', () => {
   });
 
   test('can test connection in settings', async ({ page }) => {
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     const testButton = page.getByRole('button', { name: 'Test Connection' });
     await testButton.click();
@@ -283,7 +278,7 @@ test.describe('Ollama Integration - Settings', () => {
   });
 
   test('shows privacy notice for Ollama', async ({ page }) => {
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     await expect(
       page.getByText(/runs AI models locally on your device/)

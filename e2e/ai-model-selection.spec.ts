@@ -10,13 +10,12 @@ import {
   analyzeLabReport,
   completeFreshSetup,
   configureAnthropic,
-  goToImport,
   mockAnthropicApi,
   modelSelect,
-  openAISettings,
   selectModel,
   unlock,
 } from './steps/aiModelSelection.steps';
+import { openFromMenu, openSettingsTab } from './steps/app.steps';
 
 test.describe('AI Model Selection', () => {
   test('models are loaded from my account and none is preselected', async ({ page }) => {
@@ -60,7 +59,7 @@ test.describe('AI Model Selection', () => {
 
     await page.reload();
     await unlock(page);
-    await openAISettings(page);
+    await openSettingsTab(page, 'AI Configuration');
 
     await expect(modelSelect(page)).toHaveValue('claude-sonnet-5-5');
   });
@@ -70,7 +69,8 @@ test.describe('AI Model Selection', () => {
     await completeFreshSetup(page);
     await configureAnthropic(page);
 
-    await goToImport(page);
+    // Not goToImport: without a model the Import heading is replaced by the notice
+    await openFromMenu(page, 'Import');
 
     await expect(page.getByRole('heading', { name: 'Model Selection Required' })).toBeVisible();
     await expect(page.getByText(/select a model in Settings/i)).toBeVisible();

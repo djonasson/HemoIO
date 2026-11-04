@@ -9,13 +9,14 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Stepper, Container, Title, Text, Paper } from '@mantine/core';
+import { Stepper, Title, Text, Paper } from '@mantine/core';
 import {
   IconUpload,
   IconAnalyze,
   IconChecklist,
   IconCheck,
 } from '@tabler/icons-react';
+import { planSave, type SavePlan } from '@services/analysis/reviewedSave';
 import { UploadStep } from './UploadStep';
 import type { UploadedFile } from './UploadStep';
 import { AnalysisStep } from './AnalysisStep';
@@ -23,7 +24,6 @@ import type { AnalysisResult } from './AnalysisStep';
 import { ReviewStep } from './ReviewStep';
 import type { ReviewedResult } from './ReviewStep';
 import { ConfirmStep } from './ConfirmStep';
-import { resultsToSave } from './resultsToSave';
 
 /**
  * Props for ImportWizard
@@ -33,7 +33,6 @@ export interface ImportWizardProps {
    * Saves the reviewed results. The wizard shows it is saving until this
    * settles, and stays on the confirm step: on failure, to try again.
    */
-  /** Resolves once the save has settled; the confirm step shows it saving until then */
   onComplete: (results: ReviewedResult[]) => Promise<unknown>;
   /** Callback when wizard is cancelled */
   onCancel?: () => void;
@@ -55,6 +54,9 @@ const STEPS = [
   { label: 'Confirm', description: 'Save results', icon: IconCheck },
 ];
 
+const CONFIRM_STEP = 3;
+const NOTHING_PLANNED: SavePlan<ReviewedResult> = { toSave: [], notSaved: [] };
+
 /**
  * Import Wizard for lab report documents
  */
@@ -64,7 +66,7 @@ export function ImportWizard({
   aiProvider,
   getApiKey,
   aiModel,
-}: ImportWizardProps) {
+}: ImportWizardProps): React.JSX.Element {
   const [activeStep, setActiveStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
@@ -99,13 +101,13 @@ export function ImportWizard({
     nextStep();
   }, [nextStep]);
 
-  // Handler for review completion
-  const handleReviewComplete = useCallback((results: ReviewedResult[]) => {
-    setReviewedResults(results);
-    nextStep();
-  }, [nextStep]);
-
-  const toSave = useMemo(() => resultsToSave(reviewedResults), [reviewedResults]);
+  // What the import saves, shown and saved by the confirm step. Review
+  // works out its own plan for its checks; this one is made only once the
+  // confirm step is open, so it is not made again on every review edit.
+  const { toSave, notSaved } = useMemo(
+    () => (activeStep === CONFIRM_STEP ? planSave(reviewedResults) : NOTHING_PLANNED),
+    [activeStep, reviewedResults]
+  );
 
   // Handler for final confirmation
   const handleConfirm = useCallback(async () => {
@@ -144,14 +146,16 @@ export function ImportWizard({
             results={analysisResults}
             reviewedResults={reviewedResults}
             onReviewChange={setReviewedResults}
-            onComplete={handleReviewComplete}
+            // Its edits are already held, through onReviewChange
+            onComplete={nextStep}
             onBack={prevStep}
           />
         );
-      case 3:
+      case CONFIRM_STEP:
         return (
           <ConfirmStep
             results={toSave}
+            notSaved={notSaved}
             onConfirm={handleConfirm}
             onBack={prevStep}
             isSaving={isSaving}
@@ -163,35 +167,33 @@ export function ImportWizard({
   };
 
   return (
-    <Container size="lg" py="xl">
-      <Paper shadow="sm" p="xl" radius="md" withBorder>
-        <Title order={2} mb="md">
-          Import Lab Results
-        </Title>
-        <Text c="dimmed" mb="xl">
-          Upload your lab report documents and we'll extract the values automatically.
-        </Text>
+    <Paper shadow="sm" p="xl" radius="md" withBorder>
+      <Title order={2} mb="md">
+        Import Lab Results
+      </Title>
+      <Text c="dimmed" mb="xl">
+        Upload your lab report documents and we'll extract the values automatically.
+      </Text>
 
-        <Stepper
-          active={activeStep}
-          onStepClick={setActiveStep}
-          allowNextStepsSelect={false}
-          mb="xl"
-        >
-          {STEPS.map((step, index) => (
-            <Stepper.Step
-              key={step.label}
-              label={step.label}
-              description={step.description}
-              icon={<step.icon size={18} />}
-              // Not while saving: the confirm step must stay to report the outcome
-              allowStepSelect={!isSaving && index < activeStep}
-            />
-          ))}
-        </Stepper>
+      <Stepper
+        active={activeStep}
+        onStepClick={setActiveStep}
+        allowNextStepsSelect={false}
+        mb="xl"
+      >
+        {STEPS.map((step, index) => (
+          <Stepper.Step
+            key={step.label}
+            label={step.label}
+            description={step.description}
+            icon={<step.icon size={18} />}
+            // Not while saving: the confirm step must stay to report the outcome
+            allowStepSelect={!isSaving && index < activeStep}
+          />
+        ))}
+      </Stepper>
 
-        {renderStepContent()}
-      </Paper>
-    </Container>
+      {renderStepContent()}
+    </Paper>
   );
 }

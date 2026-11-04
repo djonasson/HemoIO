@@ -7,6 +7,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 
 /**
  * Built-in dictionary entries used by the tests. IDs are 1-indexed positions
@@ -141,18 +142,14 @@ export function shortDate(day: string): string {
  * When I navigate to the Timeline view
  */
 export async function goToTimeline(page: Page): Promise<void> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Timeline/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Timeline');
 }
 
 /**
  * When I navigate to the Trends view
  */
 export async function goToTrends(page: Page): Promise<void> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Trends/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Trends');
 }
 
 /**
@@ -172,12 +169,19 @@ export function labResultCard(page: Page, day: string): Locator {
 }
 
 /**
+ * A lab result card's expand button, which says whether the card is open
+ */
+export function expandButton(card: Locator): Locator {
+  return card.getByRole('button', { name: /^(Expand|Collapse) lab result from / });
+}
+
+/**
  * And I expand the lab result card
  */
 export async function expandLabResult(page: Page, day: string): Promise<Locator> {
   const card = labResultCard(page, day);
   await card.getByRole('button', { name: `Expand lab result from ${longDate(day)}` }).click();
-  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'true');
   await waitForAnimations(card);
   return card;
 }
@@ -237,4 +241,20 @@ export function trendLink(card: Locator, biomarkerName: string): Locator {
   return card
     .getByRole('table', { name: 'Test values' })
     .getByRole('button', { name: `${biomarkerName}, open trend`, exact: true });
+}
+
+/**
+ * When I press Enter on a lab result's delete button and confirm with the
+ * keyboard
+ */
+export async function deleteWithKeyboard(page: Page, card: Locator): Promise<void> {
+  await card.getByRole('button', { name: 'Delete this lab result' }).focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Delete Lab Result' });
+  await expect(dialog).toBeVisible();
+  // Enter on the delete button does not also toggle the card
+  await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
+
+  await dialog.getByRole('button', { name: 'Delete', exact: true }).press('Enter');
+  await expect(card).toHaveCount(0);
 }

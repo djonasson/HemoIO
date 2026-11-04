@@ -15,11 +15,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { test, expect } from './fixtures';
-import type { Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {
   BIOMARKERS,
+  deleteWithKeyboard,
+  expandButton,
   expandLabResult,
   goToTimeline,
   labResult,
@@ -44,14 +45,6 @@ const mockLabResult = {
   ],
 };
 
-/**
- * Helper to navigate to timeline view
- */
-async function navigateToTimeline(page: Page) {
-  // Navigation items render as buttons
-  await page.getByRole('button', { name: /timeline/i }).click();
-}
-
 test.describe('Timeline View', () => {
   test.describe('Empty State', () => {
     test('should display empty state message when no results', async ({ page }) => {
@@ -60,7 +53,7 @@ test.describe('Timeline View', () => {
       await setupOrUnlock(page);
 
       // Navigate to timeline
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Verify empty state
       await expect(page.getByText(/no lab results yet/i)).toBeVisible();
@@ -70,7 +63,7 @@ test.describe('Timeline View', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       const importButton = page.getByRole('button', { name: /import lab results/i });
       await expect(importButton).toBeVisible();
@@ -80,7 +73,7 @@ test.describe('Timeline View', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       await page.getByRole('button', { name: /import lab results/i }).click();
 
@@ -119,7 +112,7 @@ test.describe('Timeline View', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Tab through the page
       await page.keyboard.press('Tab');
@@ -133,7 +126,7 @@ test.describe('Timeline View', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       const importButton = page.getByRole('button', { name: /import lab results/i });
       await importButton.focus();
@@ -144,7 +137,7 @@ test.describe('Timeline View', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       const importButton = page.getByRole('button', { name: /import lab results/i });
       await importButton.focus();
@@ -227,7 +220,7 @@ test.describe('Timeline with Data', () => {
 
     await goToTimeline(page);
 
-    await expect(card).toHaveAttribute('aria-expanded', 'false');
+    await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('should expand card to show test values', async ({ page }) => {
@@ -493,6 +486,36 @@ test.describe('Timeline with Data', () => {
     await expect(labResultCard(page, '2024-02-20')).toBeVisible();
   });
 
+  test.describe('deleting from the keyboard', () => {
+    /** Shown newest first: March, February, January */
+    const DAYS = ['2024-01-15', '2024-02-20', '2024-03-10'];
+
+    test.beforeEach(async ({ page }) => {
+      const results = DAYS.map((day, i) => labResult(i + 1, day, 'Quest Diagnostics'));
+      await seedLabData(page, {
+        labResults: results,
+        testValues: results.flatMap((r, i) => panelValues(r, 1, i + 1)),
+      });
+      await goToTimeline(page);
+      await expect(labResultCards(page)).toHaveCount(3);
+    });
+
+    test('deletes a result from the keyboard', async ({ page }) => {
+      // Scenario: Delete a lab result with the keyboard
+      await deleteWithKeyboard(page, labResultCard(page, '2024-02-20'));
+
+      // Focus moves on to the next lab result, not back to the top of the page
+      await expect(expandButton(labResultCard(page, '2024-01-15'))).toBeFocused();
+    });
+
+    test('deleting the last result moves focus to the one before it', async ({ page }) => {
+      // Scenario: Delete the last lab result with the keyboard
+      await deleteWithKeyboard(page, labResultCard(page, '2024-01-15'));
+
+      await expect(expandButton(labResultCard(page, '2024-02-20'))).toBeFocused();
+    });
+  });
+
   test('should show a success notification after deleting a result', async ({ page }) => {
     await seedLabData(page);
     await goToTimeline(page);
@@ -527,7 +550,7 @@ test.describe('Timeline with Data', () => {
     await expect(labResultCards(page)).toHaveCount(2);
 
     // Still there after leaving and returning, so nothing was deleted in the DB
-    await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+    await openFromMenu(page, 'Trends');
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(2);
   });

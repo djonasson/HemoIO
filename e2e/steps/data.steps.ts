@@ -8,6 +8,7 @@
 
 import { expect, type Page } from '@playwright/test';
 import { removeTempFile, writeTempFile } from './tempFiles';
+import { openSettingsTab } from './app.steps';
 
 export const SEED_LAB_RESULTS = [
   {
@@ -107,9 +108,8 @@ export function writeBackupFile(content: object): string {
 export async function seedLabData(page: Page, data: SeedData = {}): Promise<void> {
   const backupPath = writeBackupFile(createBackupData(data));
   try {
-    await page.locator('nav').getByText('Settings', { exact: true }).click();
     // Settings keeps its last tab when re-entered; the restore input is on Data
-    await page.getByRole('tab', { name: 'Data' }).click();
+    await openSettingsTab(page, 'Data');
     await page.locator('input[type="file"]').setInputFiles(backupPath);
 
     const dialog = page.getByRole('dialog', { name: 'Restore from Backup' });

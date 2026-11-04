@@ -12,11 +12,13 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { test, expect } from './fixtures';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, labResultCard, goToTimeline } from './steps/timeline.steps';
+import { editingRow } from './steps/identification.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import {
   createTextPdf,
@@ -227,7 +229,7 @@ test.describe('Import Wizard', () => {
       const glucose = reviewRow(page, 'Glucose');
       await expect(reviewCell(glucose, 'Value')).toHaveText('95');
       await expect(reviewCell(glucose, 'Unit')).toHaveText('mg/dL');
-      await expect(reviewCell(glucose, 'Reference Range')).toHaveText('70 - 100');
+      await expect(reviewCell(glucose, 'Reference Range')).toHaveText('70 - 100 mg/dL');
       await expect(reviewCell(glucose, 'Confidence')).toHaveText('95%');
 
       const hemoglobin = reviewRow(page, 'Hemoglobin');
@@ -271,9 +273,7 @@ test.describe('Import Wizard', () => {
 
       const glucose = reviewRow(page, 'Glucose');
       await glucose.getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
 
       await editing.getByPlaceholder('Value', { exact: true }).fill('5.3');
       await editing.getByPlaceholder('Unit', { exact: true }).fill('mmol/L');
@@ -294,9 +294,7 @@ test.describe('Import Wizard', () => {
 
       // Typing passes through other biomarkers' names ("Hb" is Hemoglobin)
       await reviewRow(page, 'Glucose').getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
       const name = editing.getByPlaceholder('Biomarker name');
       await name.clear();
       await name.pressSequentially('HbA1c');
@@ -311,14 +309,40 @@ test.describe('Import Wizard', () => {
       ).toBeVisible();
     });
 
+    test('shows every problem that stops the import once asked', async ({ page }) => {
+      // Scenario: User sees every problem that stops the import
+      const misfits = Array.from({ length: 7 }, (_, index) => ({
+        name: `Glicemia ${index + 1}`,
+        value: index + 1,
+        unit: 'mmol/24h',
+        confidence: 0.95,
+        biomarkerKey: 'glucose',
+      }));
+      await loginWithOllama(page, [{ extraction: extraction(misfits) }]);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      const problems = main(page).getByRole('alert').filter({ hasText: 'Cannot Continue' });
+      await expect(problems.getByRole('listitem')).toHaveCount(5);
+      await expect(problems.getByText(/^Glicemia 6 in/)).toHaveCount(0);
+
+      await problems.getByRole('button', { name: 'Show 2 more' }).click();
+
+      await expect(problems.getByRole('listitem')).toHaveCount(7);
+      await expect(problems.getByText(/^Glicemia 7 in ".*": mmol\/24h is not a unit for Glucose/)).toBeVisible();
+
+      // Each try lists the problems afresh, folded again
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      await expect(problems.getByRole('listitem')).toHaveCount(5);
+      await expect(problems.getByRole('button', { name: 'Show 2 more' })).toBeVisible();
+    });
+
     test('saves a name that matches no dictionary entry as typed', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
       await editing.getByPlaceholder('Biomarker name').fill('Zorblatin');
       await editing.getByRole('button', { name: 'Save changes' }).click();
 
@@ -334,9 +358,7 @@ test.describe('Import Wizard', () => {
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await main(page).getByRole('button', { name: 'Add Biomarker' }).click();
-      const editing = main(page)
-        .getByRole('row')
-        .filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+      const editing = editingRow(page);
 
       await editing.getByPlaceholder('Value', { exact: true }).fill('180');
       await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
@@ -351,6 +373,80 @@ test.describe('Import Wizard', () => {
       await expect(reviewCell(cholesterol, 'Unit')).toHaveText('mg/dL');
       await expect(main(page).getByText('3 biomarker(s) from 1 file(s)')).toBeVisible();
     });
+
+    test('asks for a cleared number, and keeps a negative one as typed', async ({ page }) => {
+      // Scenario: A value whose number is cleared must be filled in before saving
+      await loginWithOllama(page);
+      const pdfPath = track(createTextLabReportPdf());
+      await analyzeToReview(page, pdfPath);
+      const editing = editingRow(page);
+      const number = editing.getByPlaceholder('Value', { exact: true });
+
+      await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
+      await number.clear();
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      await expect(
+        main(page).getByText(`Hemoglobin in "${path.basename(pdfPath)}" is missing: value`, { exact: true })
+      ).toBeVisible();
+
+      await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
+      await expect(number).toHaveValue('');
+      // Typed key by key, through the half-typed "-" and "-0"
+      await number.pressSequentially('-0.5');
+      await expect(number).toHaveValue('-0.5');
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+      await expect(reviewCell(reviewRow(page, 'Hemoglobin'), 'Value')).toHaveText('-0.5');
+
+      await continueToConfirm(page);
+      await expect(
+        main(page).getByRole('row').filter({ hasText: 'Hemoglobin' }).getByText('-0.5')
+      ).toBeVisible();
+    });
+
+    for (const end of ['Low', 'High'] as const) {
+      test(`asks for an interval whose ${end.toLowerCase()} end is cleared`, async ({ page }) => {
+        // Scenario: An interval with a cleared end must be filled in before saving
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Erythrocytes', value: '5-10', unit: '/HPF', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        const pdfPath = track(createTextLabReportPdf());
+        await analyzeToReview(page, pdfPath);
+        const row = reviewRow(page, 'Erythrocytes');
+        await expect(reviewCell(row, 'Value')).toHaveText('5-10');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        // The interval's ends come before the reference range's
+        const low = editing.getByPlaceholder('Low', { exact: true }).first();
+        const high = editing.getByPlaceholder('High', { exact: true }).first();
+        await expect(low).toHaveValue('5');
+        await expect(high).toHaveValue('10');
+        await (end === 'Low' ? low : high).clear();
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+        await expect(
+          main(page).getByText(`Erythrocytes in "${path.basename(pdfPath)}" is missing: value`, {
+            exact: true,
+          })
+        ).toBeVisible();
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await low.fill('5');
+        await high.fill('10');
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('5-10');
+
+        await continueToConfirm(page);
+        await expect(
+          main(page).getByRole('row').filter({ hasText: 'Erythrocytes' }).getByText('5-10')
+        ).toBeVisible();
+      });
+    }
 
     test('should show date picker for lab date', async ({ page }) => {
       await loginWithOllama(page);
@@ -427,7 +523,7 @@ test.describe('Import Wizard', () => {
       await reviewCell(reviewRow(page, 'Glucose'), 'Biomarker').getByText('Glucose').hover();
 
       const tooltip = page.getByRole('tooltip');
-      await expect(tooltip).toContainText('LOINC: 2345-7');
+      await expect(tooltip).toContainText('LOINC 2345-7: Glucose [Mass/volume] in Serum or Plasma');
       await expect(tooltip).toContainText('Blood sugar level, primary energy source for cells.');
     });
   });
@@ -450,6 +546,29 @@ test.describe('Import Wizard', () => {
       await expect(values.getByRole('row').filter({ hasText: 'Glucose' })).toContainText('70 - 100 mg/dL');
       await expect(values.getByRole('row').filter({ hasText: 'Hemoglobin' })).toContainText('14.5 g/dL');
       await expect(main(page).getByText('2 values', { exact: true })).toBeVisible();
+    });
+
+    test('shows a reference range with only one end as ≤ or ≥', async ({ page }) => {
+      // Scenario: A reference range with only one end
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+      const confirmRow = () => main(page).getByRole('table').getByRole('row').filter({ hasText: 'Hemoglobin' });
+
+      for (const [end, other, number, shown] of [
+        ['High', 'Low', '17.5', '≤ 17.5 g/dL'],
+        ['Low', 'High', '12', '≥ 12 g/dL'],
+      ]) {
+        await reviewRow(page, 'Hemoglobin').getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await editing.getByPlaceholder(other).clear();
+        await editing.getByPlaceholder(end).fill(number);
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(reviewRow(page, 'Hemoglobin'), 'Reference Range')).toHaveText(shown);
+
+        await continueToConfirm(page);
+        await expect(confirmRow()).toContainText(shown);
+        await main(page).getByRole('button', { name: 'Back to Review' }).click();
+      }
     });
 
     test('should save results and redirect to timeline', async ({ page }) => {

@@ -135,6 +135,23 @@ Feature: Timeline View
     Then the lab result should be removed from the timeline
     And I should see a success notification
 
+  Scenario: Delete a lab result with the keyboard
+    Given I have lab results from "2024-01-15", "2024-02-20" and "2024-03-10"
+    When I navigate to the Timeline view
+    And I press Enter on the delete button of the lab result from "2024-02-20"
+    Then I should see a confirmation dialog
+    And the lab result should stay as it was, not expanded
+    When I confirm the deletion with the keyboard
+    Then the lab result should be removed from the timeline
+    And the keyboard focus should move to the next lab result, from "2024-01-15"
+
+  Scenario: Delete the last lab result with the keyboard
+    Given I have lab results from "2024-01-15", "2024-02-20" and "2024-03-10"
+    When I navigate to the Timeline view
+    And I delete the lab result from "2024-01-15", the last on the timeline, with the keyboard
+    Then the lab result should be removed from the timeline
+    And the keyboard focus should move to the lab result before it, from "2024-02-20"
+
   Scenario: Cancel lab result deletion
     Given I have a lab result from "Quest Diagnostics" on "2024-01-15"
     When I navigate to the Timeline view

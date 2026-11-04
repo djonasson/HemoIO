@@ -31,6 +31,7 @@ import {
   IconTarget,
 } from '@tabler/icons-react';
 import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
+import { loincName } from '@data/biomarkers/loinc';
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
 import { formatShortDate } from '@/utils/formatShortDate';
@@ -161,9 +162,9 @@ export function BiomarkerDetail({
           </Group>
         )}
 
-        {/* LOINC Code */}
+        {/* LOINC Code, with LOINC's name for it as its license asks */}
         {biomarker.loincCode && (
-          <Group gap="xs">
+          <Stack gap={2}>
             <Text size="sm" c="dimmed">
               LOINC:{' '}
               <Anchor
@@ -176,7 +177,12 @@ export function BiomarkerDetail({
                 <IconExternalLink size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
               </Anchor>
             </Text>
-          </Group>
+            {loincName(biomarker.loincCode) && (
+              <Text size="sm" c="dimmed">
+                {loincName(biomarker.loincCode)}
+              </Text>
+            )}
+          </Stack>
         )}
 
         <Divider />

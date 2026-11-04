@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from './fixtures';
-import { setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {
   ORANGE_INDICATOR,
@@ -68,7 +68,7 @@ test.describe('Alerts', () => {
     test('should show empty trends state when no data exists', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
 
       await expect(page.getByRole('main').getByText(/no lab results yet/i)).toBeVisible();
     });
@@ -78,7 +78,7 @@ test.describe('Alerts', () => {
     test('trends/alerts view should be keyboard navigable', async ({ page }) => {
       await page.goto('/');
       await setupOrUnlock(page);
-      await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+      await openFromMenu(page, 'Trends');
       const importButton = page.getByRole('main').getByRole('button', { name: /import lab results/i });
       await expect(importButton).toBeVisible();
 

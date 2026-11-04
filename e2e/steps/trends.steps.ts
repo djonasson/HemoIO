@@ -8,6 +8,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 import { seedLabData } from './data.steps';
 
 export interface BiomarkerFixture {
@@ -84,7 +85,7 @@ export async function seedVisits(page: Page, visits: LabVisit[]): Promise<void> 
  * When I navigate to the Trends view
  */
 export async function goToTrends(page: Page): Promise<void> {
-  await page.getByRole('navigation').getByRole('button', { name: /^Trends/ }).click();
+  await openFromMenu(page, 'Trends');
   await expect(page.getByRole('main').getByRole('heading', { name: 'Trends', level: 2 })).toBeVisible();
 }
 

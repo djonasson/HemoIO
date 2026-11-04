@@ -7,7 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { expect, type Locator, type Page } from '@playwright/test';
-import { setupOrUnlock } from './app.steps';
+import { openFromMenu, setupOrUnlock } from './app.steps';
 import { configureOllamaProvider, mockOllama, DEFAULT_EXTRACTION } from './ai.steps';
 import {
   scriptOllamaChat,
@@ -38,9 +38,7 @@ export async function loginWithOllama(
  * And I navigate to the Import page
  */
 export async function goToImport(page: Page): Promise<void> {
-  const nav = page.getByRole('navigation').getByRole('button', { name: /^Import/ });
-  await nav.click();
-  await expect(nav).toHaveAttribute('aria-current', 'page');
+  await openFromMenu(page, 'Import');
   await expect(page.getByRole('heading', { name: 'Import Lab Results' })).toBeVisible();
 }
 

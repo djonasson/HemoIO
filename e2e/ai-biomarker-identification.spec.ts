@@ -5,7 +5,7 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
-import { main } from './steps/importWizard.steps';
+import { continueToConfirm, main } from './steps/importWizard.steps';
 import { expandLabResult, goToTimeline } from './steps/timeline.steps';
 import {
   changeTest,
@@ -49,6 +49,136 @@ test.describe('AI biomarker identification', () => {
     await page.getByRole('button', { name: 'Continue to Confirm' }).click();
     await expect(
       page.getByText(/Choose a fitting unit, another test, or "Not in dictionary"/)
+    ).toBeVisible();
+  });
+
+  test('saves a test given twice once, leaving out the value as a share no test is counted per', async ({
+    page,
+  }) => {
+    // Scenario: A test given twice, once as a share the app cannot read, is saved once
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '%',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '0.2'))).toHaveText('Nucleated Red Blood Cells Percentage');
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toBeVisible();
+    await expect(rowFor(page, '0.5')).toContainText('To keep this one, choose "Not in dictionary".');
+    await expect(rowFor(page, '0.2').getByText('Not saved:')).toHaveCount(0);
+
+    await continueToConfirm(page);
+
+    const notSaved = main(page).getByRole('alert').filter({ hasText: '1 value not saved' });
+    await expect(notSaved).toContainText('Eritroblasti: 0.5 /100 HPF');
+    await expect(main(page).getByRole('cell', { name: '0.2 %' })).toBeVisible();
+    await expect(main(page).getByRole('cell', { name: '0.5 /100 HPF' })).toHaveCount(0);
+  });
+
+  test('never leaves out a value whose test I chose', async ({ page }) => {
+    // Scenario: A test I choose is never left out
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '%',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toBeVisible();
+
+    await changeTest(page, rowFor(page, '0.5'), 'Nucleated Red Blood Cells Percentage');
+
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(
+      page.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
+    ).toBeVisible();
+  });
+
+  test('still blocks a value whose unit fits another test', async ({ page }) => {
+    // Scenario: A value whose unit fits another test still blocks, as it may be another measurement
+    await analyzeReport(page, [
+      { name: 'Sodio', value: 140, unit: 'mmol/L', confidence: 0.95, biomarkerKey: 'sodium' },
+      { name: 'Sodio', value: 180, unit: 'mmol/24h', confidence: 0.95, biomarkerKey: 'sodium' },
+    ]);
+    await expect(rowFor(page, '180').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText(/mmol\/24h is not a unit for Sodium/)).toBeVisible();
+  });
+
+  test('still blocks a value in another unit the app does not know', async ({ page }) => {
+    // Scenario: A value in another unit the app does not know still blocks, as it may be another measurement
+    await analyzeReport(page, [
+      { name: 'Sodio', value: 140, unit: 'mmol/L', confidence: 0.95, biomarkerKey: 'sodium' },
+      { name: 'Sodio', value: 180, unit: 'mEq/24h', confidence: 0.95, biomarkerKey: 'sodium' },
+    ]);
+    await expect(rowFor(page, '180').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(page.getByText(/mEq\/24h is not a unit for Sodium/)).toBeVisible();
+  });
+
+  test('asks no fix of a value it leaves out', async ({ page }) => {
+    // Scenario: A value set aside needs no fixing
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+      {
+        name: 'Eritroblasti',
+        value: 0.2,
+        unit: '%',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await rowFor(page, '0.5').getByRole('button', { name: 'Edit biomarker' }).click();
+    await editingRow(page).getByPlaceholder('Value', { exact: true }).clear();
+    await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+
+    await continueToConfirm(page);
+    await expect(main(page).getByRole('cell', { name: '0.2 %' })).toBeVisible();
+  });
+
+  test('still blocks a value whose unit does not fit when it is the only one of its line', async ({
+    page,
+  }) => {
+    // Scenario: A value in a unit that doesn't fit still blocks when it is the only one of its line
+    await analyzeReport(page, [
+      {
+        name: 'Eritroblasti',
+        value: 0.5,
+        unit: '/100 HPF',
+        confidence: 0.95,
+        biomarkerKey: 'nucleated-red-blood-cells-percentage',
+      },
+    ]);
+    await expect(rowFor(page, '0.5').getByText('Not saved:')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(
+      page.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
     ).toBeVisible();
   });
 

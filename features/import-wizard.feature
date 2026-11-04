@@ -80,6 +80,7 @@ Feature: Import Wizard
     Given the analysis has completed
     When I hover over a matched biomarker name
     Then I should see the LOINC code in a tooltip
+    And LOINC's own name for the code beside it
     And the tooltip should include the biomarker description
 
   Scenario: User sees confidence indicators
@@ -101,6 +102,25 @@ Feature: Import Wizard
     Then I should be able to select a biomarker
     And I should be able to enter the value and unit
 
+  Scenario: A value whose number is cleared must be filled in before saving
+    Given I am editing a value of 14.5 g/dL on the review step
+    When I clear its number
+    And I try to continue to the confirmation
+    Then I should be told that the value is missing its number
+    When I type the negative number -0.5 in its place
+    Then the field should show -0.5
+    And the confirmation should show the value as -0.5
+
+  Scenario: An interval with a cleared end must be filled in before saving
+    Given the AI read a value of "5-10" from a report
+    And I am editing that value on the review step, shown with its low and high ends
+    When I clear either end of the interval
+    And I try to continue to the confirmation
+    Then I should be told that the value is missing its number
+    When I fill in both ends again
+    Then I should be able to continue to the confirmation
+    And the confirmation should show the value as the interval "5-10"
+
   Scenario: User enters a biomarker that is not in the dictionary
     Given I am editing a value on the review step
     When I type a biomarker name that matches no dictionary entry
@@ -117,6 +137,15 @@ Feature: Import Wizard
     Given a reviewed file has no lab date
     When I try to continue
     Then I should be asked to enter the lab date
+
+  Scenario: User sees every problem that stops the import
+    Given the review has more problems than the message shows at first
+    When I try to continue
+    Then I should see the first problems and how many more there are
+    When I choose to show the rest
+    Then I should see every problem
+    When I try to continue again
+    Then I should again see the first problems and how many more there are
 
   Scenario: User removes an extracted value
     Given I see an incorrectly extracted value
@@ -142,6 +171,14 @@ Feature: Import Wizard
     Then I should see a summary of all values to be saved
     And I should see the lab date and name
     And I should see the total number of values
+
+  Scenario: A reference range with only one end
+    Given I am on the review step
+    When I give a value a reference range with only a high end of 17.5
+    Then the review should show its range as "≤ 17.5" in the value's unit
+    And the confirm step should show it the same way
+    When I give it only a low end of 12 instead
+    Then the review and the confirm step should show "≥ 12" in the value's unit
 
   Scenario: User confirms and saves the import
     Given I am on the confirm step

@@ -4,10 +4,12 @@
  * Review and edit extracted biomarker values before saving.
  */
 
-import { useState, useCallback, useContext } from 'react';
+import { useState, useCallback, useContext, useMemo } from 'react';
 import {
+  Box,
   Stack,
   Group,
+  SimpleGrid,
   Button,
   Text,
   Paper,
@@ -16,7 +18,6 @@ import {
   ActionIcon,
   TextInput,
   Autocomplete,
-  NumberInput,
   Tooltip,
   Alert,
   Accordion,
@@ -37,9 +38,10 @@ import {
 } from '@tabler/icons-react';
 import type { AnalysisResult } from './AnalysisStep';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
-import { BIOMARKER_DEFINITIONS, findBiomarker } from '../../data/biomarkers/dictionary';
+import { BIOMARKER_DEFINITIONS } from '../../data/biomarkers/dictionary';
 import { DateInput } from '@mantine/dates';
 import { normalizeLabDate, reviewedLabDate } from '@/utils/labDate';
+import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewedValue';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
@@ -47,12 +49,15 @@ import {
   suggestBiomarkerNames,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
-import { unitFitsBiomarker } from '@services/units/unitFit';
-import { proposedTest } from '@services/analysis/nameMatching';
 import { lookupLearnedAlias } from '@data/biomarkers/learnedAliases';
+import { loincLabel } from '@data/biomarkers/loinc';
 import { PreferencesContext } from '@hooks/usePreferences';
-import { resultsToSave } from './resultsToSave';
+import { misfitTest, missingFields, planSave } from '@services/analysis/reviewedSave';
+import { proposedTest } from '@services/analysis/nameMatching';
 import { SavedAsCell } from './SavedAsCell';
+import { ContinueProblems } from './ContinueProblems';
+import { NumberField } from './NumberField';
+import { FileName } from './FileName';
 import type { SpecimenType } from '../../types';
 
 /** Every dictionary name, the options of the name autocomplete */
@@ -92,7 +97,7 @@ function getBiomarkerTooltipContent(biomarker: MatchedBiomarker): string | null 
 
   const parts: string[] = [];
   if (match.loincCode) {
-    parts.push(`LOINC: ${match.loincCode}`);
+    parts.push(loincLabel(match.loincCode));
   }
   if (match.description) {
     parts.push(match.description);
@@ -173,6 +178,21 @@ export interface ReviewedResult extends AnalysisResult {
 }
 
 /**
+ * An interval's ends and the value saved for it, their midpoint: none
+ * while either end is missing, so the value must be filled in again
+ */
+function intervalEnds(
+  low: number | undefined,
+  high: number | undefined
+): Pick<MatchedBiomarker, 'intervalLow' | 'intervalHigh' | 'value'> {
+  return {
+    intervalLow: low,
+    intervalHigh: high,
+    value: low !== undefined && high !== undefined ? (low + high) / 2 : NaN,
+  };
+}
+
+/**
  * Props for ReviewStep
  */
 export interface ReviewStepProps {
@@ -182,8 +202,8 @@ export interface ReviewStepProps {
   reviewedResults: ReviewedResult[];
   /** Callback when review changes */
   onReviewChange: (results: ReviewedResult[]) => void;
-  /** Callback when review is complete */
-  onComplete: (results: ReviewedResult[]) => void;
+  /** Called when the review is complete and the import may continue */
+  onComplete: () => void;
   /** Callback to go back */
   onBack: () => void;
 }
@@ -214,12 +234,15 @@ export function ReviewStep({
   onReviewChange,
   onComplete,
   onBack,
-}: ReviewStepProps) {
+}: ReviewStepProps): React.JSX.Element {
   const [editingBiomarker, setEditingBiomarker] = useState<{
     resultIndex: number;
     biomarkerIndex: number;
   } | null>(null);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  // What stops the import from continuing; null when nothing was tried
+  const [problems, setProblems] = useState<string[] | null>(null);
+  // Each Continue that finds problems lists them afresh, folded again
+  const [continueAttempt, setContinueAttempt] = useState(0);
   // The user's learned names: an edited value is identified as the analyzer would
   const learnedAliases = useContext(PreferencesContext)?.learnedAliases;
   const learned = useCallback(
@@ -256,6 +279,13 @@ export function ReviewStep({
           (_, i) => i !== biomarkerIndex
         ),
       };
+      // Rows are kept by position: the row being edited moves up with the
+      // rows below the removed one, and stops being edited if it is removed
+      setEditingBiomarker((editing) => {
+        if (editing?.resultIndex !== resultIndex || editing.biomarkerIndex < biomarkerIndex) return editing;
+        if (editing.biomarkerIndex === biomarkerIndex) return null;
+        return { resultIndex, biomarkerIndex: editing.biomarkerIndex - 1 };
+      });
       onReviewChange(newResults);
     },
     [reviewedResults, onReviewChange]
@@ -267,7 +297,8 @@ export function ReviewStep({
       const newResults = [...reviewedResults];
       const newBiomarker: MatchedBiomarker = {
         name: '',
-        value: 0,
+        // No number until one is typed: 0 is a reading of its own
+        value: NaN,
         unit: '',
         confidence: 1.0,
         isExactMatch: false,
@@ -340,6 +371,13 @@ export function ReviewStep({
     0
   );
 
+  // What the import saves, and the values it leaves out
+  const plan = useMemo(() => planSave(reviewedResults), [reviewedResults]);
+  const setAside = useMemo(
+    () => new Set(plan.notSaved.map(({ biomarker }) => biomarker)),
+    [plan]
+  );
+
   // Handle continue
   const handleContinue = useCallback(() => {
     // Find biomarkers with missing required fields
@@ -347,30 +385,15 @@ export function ReviewStep({
 
     reviewedResults.forEach((r) => {
       r.editedBiomarkers.forEach((b, index) => {
-        const missing: string[] = [];
-        if (!b.name) missing.push('name');
-        if (b.value === undefined || b.value === null) missing.push('value');
-        // Check if unit is required - some biomarkers like pH are unitless
-        if (!b.unit.trim()) {
-          // The test the value is saved as or proposed for (rows not analyzed: by name)
-          const biomarkerDef =
-            b.dictionaryMatch ??
-            proposedTest(b) ??
-            (b.identificationFlags ? undefined : findBiomarker(b.name || ''));
-          // A test with a unit needs one; an analyzed value with no test may
-          // have none (specific gravity, ratios), as the report gave it
-          const unitRequired = biomarkerDef
-            ? biomarkerDef.canonicalUnit !== ''
-            : !b.identificationFlags;
-          if (unitRequired) {
-            missing.push('unit');
-          }
-        }
+        // One left out for another value of its line is not saved: no fix
+        if (setAside.has(b)) return;
+        const missing = missingFields(b);
 
         // A value is saved under its test only in a unit of that test: the
-        // one proposed (by the AI or the typed name), or the one it is saved as
-        const test = b.savedAsUnknown ? undefined : (b.dictionaryMatch ?? proposedTest(b));
-        if (missing.length === 0 && test && !unitFitsBiomarker(test, b.unit)) {
+        // one proposed (by the AI or the typed name), or the one it is saved
+        // as
+        const test = misfitTest(b);
+        if (missing.length === 0 && test) {
           invalidBiomarkers.push(
             `${b.name} in "${r.fileName}": ${b.unit} is not a unit for ${test.name}. Choose a fitting unit, another test, or "Not in dictionary".`
           );
@@ -385,19 +408,20 @@ export function ReviewStep({
 
     // Without a date a result would be saved as today: ask for it instead
     // Files left without values are not saved, so they need no date
-    const missingDates = resultsToSave(reviewedResults)
+    const missingDates = plan.toSave
       .filter((r) => !reviewedLabDate(r))
       .map((r) => `Enter the lab date for "${r.fileName}"`);
     const problems = [...missingDates, ...invalidBiomarkers];
 
     if (problems.length > 0) {
-      setValidationError(`Please fix the following issues:\n${problems.slice(0, 5).join('\n')}${problems.length > 5 ? `\n...and ${problems.length - 5} more` : ''}`);
+      setProblems(problems);
+      setContinueAttempt((attempt) => attempt + 1);
       return;
     }
 
-    setValidationError(null);
-    onComplete(reviewedResults);
-  }, [reviewedResults, onComplete]);
+    setProblems(null);
+    onComplete();
+  }, [reviewedResults, plan, setAside, onComplete]);
 
   return (
     <Stack gap="lg">
@@ -473,12 +497,12 @@ export function ReviewStep({
           <Accordion.Item key={result.fileId} value={String(resultIndex)}>
             <Accordion.Control>
               <Group justify="space-between" wrap="nowrap" pr="md">
-                <div>
-                  <Text fw={500}>{result.fileName}</Text>
+                <Box miw={0}>
+                  <FileName name={result.fileName} />
                   <Text size="sm" c="dimmed">
                     {result.editedBiomarkers.length} biomarker(s)
                   </Text>
-                </div>
+                </Box>
                 {result.manualEntry ? (
                   <Badge color="gray" variant="light">
                     Entered manually
@@ -493,7 +517,8 @@ export function ReviewStep({
             <Accordion.Panel>
               <Stack gap="md">
                 {/* Lab info */}
-                <Group grow>
+                {/* Side by side when there is room, stacked on a phone */}
+                <SimpleGrid cols={{ base: 1, sm: 2 }}>
                   <DateInput
                     label="Lab Date"
                     leftSection={<IconCalendar size={16} />}
@@ -526,7 +551,7 @@ export function ReviewStep({
                       updateLabName(resultIndex, e.target.value || undefined)
                     }
                   />
-                </Group>
+                </SimpleGrid>
 
                 {/* Warnings */}
                 {result.warnings.length > 0 && (
@@ -650,6 +675,16 @@ export function ReviewStep({
                                   updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, definition))
                                 }
                               />
+                              {setAside.has(biomarker) && (
+                                <Text size="xs" c="dimmed" mt={4}>
+                                  <Text span fw={700} size="xs" inherit>
+                                    Not saved:
+                                  </Text>{' '}
+                                  another {getDisplayName(biomarker)} value is saved as{' '}
+                                  {proposedTest(biomarker)?.name}. To keep this one, choose
+                                  &quot;Not in dictionary&quot;.
+                                </Text>
+                              )}
                             </Table.Td>
                             <Table.Td>
                               <Group gap={4}>
@@ -663,34 +698,22 @@ export function ReviewStep({
                               {isEditing ? (
                                 biomarker.isInterval ? (
                                   <Group gap="xs" wrap="nowrap">
-                                    <NumberInput
+                                    <NumberField
                                       size="xs"
-                                      value={biomarker.intervalLow ?? ''}
-                                      onChange={(value) =>
-                                        updateBiomarker(resultIndex, bioIndex, {
-                                          intervalLow: value === '' ? undefined : Number(value),
-                                          // Update the midpoint value as well
-                                          value: value === '' || biomarker.intervalHigh === undefined
-                                            ? biomarker.value
-                                            : (Number(value) + biomarker.intervalHigh) / 2,
-                                        })
+                                      value={biomarker.intervalLow}
+                                      onValueChange={(low) =>
+                                        updateBiomarker(resultIndex, bioIndex, intervalEnds(low, biomarker.intervalHigh))
                                       }
                                       decimalScale={2}
                                       placeholder="Low"
                                       w={60}
                                     />
                                     <Text size="xs">-</Text>
-                                    <NumberInput
+                                    <NumberField
                                       size="xs"
-                                      value={biomarker.intervalHigh ?? ''}
-                                      onChange={(value) =>
-                                        updateBiomarker(resultIndex, bioIndex, {
-                                          intervalHigh: value === '' ? undefined : Number(value),
-                                          // Update the midpoint value as well
-                                          value: value === '' || biomarker.intervalLow === undefined
-                                            ? biomarker.value
-                                            : (biomarker.intervalLow + Number(value)) / 2,
-                                        })
+                                      value={biomarker.intervalHigh}
+                                      onValueChange={(high) =>
+                                        updateBiomarker(resultIndex, bioIndex, intervalEnds(biomarker.intervalLow, high))
                                       }
                                       decimalScale={2}
                                       placeholder="High"
@@ -698,24 +721,19 @@ export function ReviewStep({
                                     />
                                   </Group>
                                 ) : (
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
                                     value={biomarker.value}
-                                    onChange={(value) =>
-                                      updateBiomarker(resultIndex, bioIndex, {
-                                        value: Number(value) || 0,
-                                      })
+                                    onValueChange={(value) =>
+                                      // A cleared number is missing, not 0
+                                      updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
                                     }
                                     decimalScale={2}
                                     placeholder="Value"
                                   />
                                 )
                               ) : (
-                                <Text size="sm">
-                                  {biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined
-                                    ? `${biomarker.intervalLow}-${biomarker.intervalHigh}`
-                                    : biomarker.value}
-                                </Text>
+                                <Text size="sm">{formatReviewedValue(biomarker)}</Text>
                               )}
                             </Table.Td>
                             <Table.Td>
@@ -741,15 +759,14 @@ export function ReviewStep({
                             <Table.Td>
                               {isEditing ? (
                                 <Group gap="xs" wrap="nowrap">
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
-                                    value={biomarker.referenceRange?.low ?? ''}
-                                    onChange={(value) =>
+                                    value={biomarker.referenceRange?.low}
+                                    onValueChange={(low) =>
                                       updateBiomarker(resultIndex, bioIndex, {
                                         referenceRange: {
                                           ...biomarker.referenceRange,
-                                          low: value === '' ? undefined : Number(value),
-                                          high: biomarker.referenceRange?.high,
+                                          low,
                                           unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
@@ -760,15 +777,14 @@ export function ReviewStep({
                                     allowNegative={false}
                                   />
                                   <Text size="xs">-</Text>
-                                  <NumberInput
+                                  <NumberField
                                     size="xs"
-                                    value={biomarker.referenceRange?.high ?? ''}
-                                    onChange={(value) =>
+                                    value={biomarker.referenceRange?.high}
+                                    onValueChange={(high) =>
                                       updateBiomarker(resultIndex, bioIndex, {
                                         referenceRange: {
                                           ...biomarker.referenceRange,
-                                          low: biomarker.referenceRange?.low,
-                                          high: value === '' ? undefined : Number(value),
+                                          high,
                                           unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
@@ -779,15 +795,8 @@ export function ReviewStep({
                                     allowNegative={false}
                                   />
                                 </Group>
-                              ) : biomarker.referenceRange ? (
-                                <Text size="sm">
-                                  {biomarker.referenceRange.low ?? '?'} -{' '}
-                                  {biomarker.referenceRange.high ?? '?'}
-                                </Text>
                               ) : (
-                                <Text size="sm" c="dimmed">
-                                  —
-                                </Text>
+                                <Text size="sm">{formatReviewedRange(biomarker) ?? '—'}</Text>
                               )}
                             </Table.Td>
                             <Table.Td>
@@ -882,21 +891,7 @@ export function ReviewStep({
       </Accordion>
 
       {/* Validation error */}
-      {validationError && (
-        <Alert
-          icon={<IconAlertTriangle size={16} />}
-          title="Cannot Continue"
-          color="red"
-          withCloseButton
-          onClose={() => setValidationError(null)}
-        >
-          {validationError.split('\n').map((line, i) => (
-            <Text key={i} size="sm">
-              {line}
-            </Text>
-          ))}
-        </Alert>
-      )}
+      {problems && <ContinueProblems key={continueAttempt} problems={problems} onClose={() => setProblems(null)} />}
 
       {/* Action buttons */}
       <Group justify="space-between" mt="xl">

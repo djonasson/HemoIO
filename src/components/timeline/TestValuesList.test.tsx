@@ -67,6 +67,14 @@ describe('TestValuesList', () => {
       expect(within(row).getByText(/ - 5\.55 mmol\/L$/)).toBeInTheDocument();
     });
 
+    it.each([
+      [{ referenceRangeHigh: 100 }, '≤ 100 mg/dL'],
+      [{ referenceRangeLow: 70 }, '≥ 70 mg/dL'],
+    ])('shows a range with one end as ≤ or ≥ (%o)', (range, shown) => {
+      renderWithProviders(<TestValuesList testValues={[glucose({ value: 90, unit: 'mg/dL', ...range })]} />);
+      expect(screen.getByText(shown)).toBeInTheDocument();
+    });
+
     it('shows a value as recorded without a preference', () => {
       renderWithProviders(<TestValuesList testValues={[glucose({ value: 100, unit: 'mg/dL' })]} />);
       expect(screen.getByRole('row', { name: /^Glucose: 100 mg\/dL,/ })).toBeInTheDocument();
@@ -106,6 +114,16 @@ describe('TestValuesList', () => {
     expect(screen.getByRole('columnheader', { name: /value/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /unit/i })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: /reference range/i })).toBeInTheDocument();
+  });
+
+  it('holds the table in its own scroll box, so a narrow screen scrolls only the table', () => {
+    const testValues = [createTestValue(1, { rawText: 'Hemoglobin' })];
+    renderWithProviders(<TestValuesList testValues={testValues} />);
+
+    const box = screen.getByRole('table', { name: 'Test values' }).closest('[data-scroll-box]');
+    expect(box).toHaveStyle({ overflowX: 'auto' });
+    // Nothing to scroll here, so no extra stop for the keyboard
+    expect(box).not.toHaveAttribute('tabindex');
   });
 
   it('should display biomarker name from raw text', () => {
@@ -292,6 +310,15 @@ describe('TestValuesList', () => {
 
       const hemoglobinText = screen.getByText('Hemoglobin');
       expect(hemoglobinText).toHaveStyle({ cursor: 'help' });
+    });
+
+    it("gives the LOINC code with LOINC's own name", () => {
+      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
+      renderWithProviders(<TestValuesList testValues={testValues} onOpenTrend={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Hemoglobin, open trend' })).toHaveAccessibleDescription(
+        /^LOINC 718-7: Hemoglobin \[Mass\/volume\] in Blood/
+      );
     });
 
     it('should not show tooltip styling for unknown biomarkers', () => {

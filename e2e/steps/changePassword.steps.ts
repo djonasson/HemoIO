@@ -3,6 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openSettingsTab } from './app.steps';
 
 export const NEW_PASSWORD = 'N3w-Secure-Passw0rd!';
 
@@ -28,8 +29,7 @@ export class SecuritySettingsPage {
 
   /** And I am on the Security tab of Settings */
   async open(): Promise<void> {
-    await this.page.locator('nav').getByText('Settings', { exact: true }).click();
-    await this.page.getByRole('tab', { name: 'Security' }).click();
+    await openSettingsTab(this.page, 'Security');
     await expect(this.page.getByRole('heading', { name: 'Change password' })).toBeVisible();
   }
 

@@ -43,14 +43,16 @@ export interface BackupPasswordInputProps {
 }
 
 /**
- * Get color for strength indicator
+ * Strength bar colour for a score. Hues far apart also for colour-blind
+ * people: orange, yellow, lime and green look alike to protanopes and
+ * deuteranopes.
  */
 function getStrengthColor(score: number): string {
   if (score <= 1) return 'red';
-  if (score <= 2) return 'orange';
-  if (score <= 3) return 'yellow';
-  if (score <= 4) return 'lime';
-  return 'green';
+  if (score <= 2) return 'yellow';
+  if (score <= 3) return 'teal';
+  if (score <= 4) return 'cyan';
+  return 'blue';
 }
 
 /**

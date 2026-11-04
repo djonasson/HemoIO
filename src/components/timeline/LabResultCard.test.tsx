@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { LabResultCard } from './LabResultCard';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
@@ -179,6 +180,21 @@ describe('LabResultCard', () => {
     });
   });
 
+  it.each(['{Enter}', ' '])('opens the delete confirmation from the keyboard (%s)', async (key) => {
+    const result = createMockResult();
+    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+
+    screen.getByRole('button', { name: 'Delete this lab result' }).focus();
+    await userEvent.keyboard(key);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    // The card stays as it was: the key did not reach its expand button
+    expect(screen.getByRole('button', { name: /^Expand lab result/, hidden: true })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+  });
+
   it('should open delete confirmation when delete button is clicked', async () => {
     const result = createMockResult();
     renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
@@ -280,23 +296,25 @@ describe('LabResultCard', () => {
     ).toBeInTheDocument();
   });
 
-  it('should have aria-expanded attribute', () => {
-    const result = createMockResult();
-    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+  it('tells screen readers its expand button is collapsed', () => {
+    renderWithProviders(<LabResultCard result={createMockResult()} onDelete={() => {}} />);
 
-    const region = screen.getByRole('region');
-    expect(region).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: /expand/i })).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('should update aria-expanded when expanded', () => {
-    const result = createMockResult();
-    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+  it('tells screen readers its expand button is expanded once clicked', () => {
+    renderWithProviders(<LabResultCard result={createMockResult()} onDelete={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /expand/i }));
+
+    expect(screen.getByRole('button', { name: /collapse/i })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('holds no other button in its expand button, hidden or not', () => {
+    renderWithProviders(<LabResultCard result={createMockResult()} onDelete={() => {}} />);
 
     const expandButton = screen.getByRole('button', { name: /expand/i });
-    fireEvent.click(expandButton);
-
-    const region = screen.getByRole('region');
-    expect(region).toHaveAttribute('aria-expanded', 'true');
+    expect(expandButton.querySelector('button, [role="button"], [tabindex]:not([tabindex="0"])')).toBeNull();
   });
 
   it('should render with defaultExpanded true', () => {

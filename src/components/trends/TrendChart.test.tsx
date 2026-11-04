@@ -311,7 +311,7 @@ describe('CustomTooltip', () => {
 
   it('shows a reference range with one bound without "undefined"', () => {
     renderPoint({ high: 100 });
-    expect(screen.getByText('< 100')).toBeInTheDocument();
+    expect(screen.getByText('≤ 100')).toBeInTheDocument();
     expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
   });
 

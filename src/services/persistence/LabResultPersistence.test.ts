@@ -30,6 +30,7 @@ vi.mock('@data/biomarkers/dictionary', () => ({
   // Name variations and keyed tests: none in these tests
   matchBiomarkerName: vi.fn(() => undefined),
   getBiomarkerByKey: vi.fn(() => undefined),
+  percentageOf: () => undefined,
   unknownBiomarkerKey: (name: string) => `unknown:${name.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
 }));
 

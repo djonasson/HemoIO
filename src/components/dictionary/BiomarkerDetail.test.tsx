@@ -200,6 +200,14 @@ describe('BiomarkerDetail', () => {
       expect(screen.getByText('6690-2')).toBeInTheDocument();
     });
 
+    it("shows LOINC's own name for the code", () => {
+      renderDetailOf(createMockBiomarker());
+
+      expect(
+        screen.getByText('Leukocytes [#/volume] in Blood by Automated count')
+      ).toBeInTheDocument();
+    });
+
     it('should link LOINC code to correct URL', () => {
       const biomarker = createMockBiomarker();
       renderDetailOf(biomarker);

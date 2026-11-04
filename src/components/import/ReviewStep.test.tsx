@@ -49,6 +49,7 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
       .filter((name) => name.toLowerCase().includes(query.toLowerCase()))
       .map((name) => ({ name, aliases: [] }))
   ),
+  percentageOf: () => undefined,
 }));
 
 const mockAnalysisResult: AnalysisResult = {
@@ -261,7 +262,7 @@ describe('ReviewStep', () => {
     it('displays reference range', () => {
       renderReviewStep();
 
-      expect(screen.getByText('70 - 100')).toBeInTheDocument();
+      expect(screen.getByText('70 - 100 mg/dL')).toBeInTheDocument();
     });
 
     it('displays dash when no reference range', () => {
@@ -367,6 +368,68 @@ describe('ReviewStep', () => {
       expect(screen.queryByPlaceholderText('Biomarker name')).not.toBeInTheDocument();
     });
 
+    it('keeps a negative number typed into a cleared value', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      const input = screen.getByPlaceholderText('Value');
+      await userEvent.clear(input);
+      await userEvent.type(input, '-0.5');
+
+      expect(input).toHaveValue('-0.5');
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].value).toBe(-0.5);
+    });
+
+    it('takes an interval with a cleared end as a value still to fill in', async () => {
+      const onReviewChange = vi.fn();
+      const interval = {
+        ...mockReviewedResult.editedBiomarkers[0],
+        value: 7.5,
+        isInterval: true,
+        intervalLow: 5,
+        intervalHigh: 10,
+      };
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [interval] }],
+        onReviewChange,
+      });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      // The interval's Low comes before the reference range's
+      await userEvent.clear(screen.getAllByPlaceholderText('Low')[0]);
+
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0]).toMatchObject({ intervalLow: undefined, intervalHigh: 10 });
+      expect(edited[0].editedBiomarkers[0].value).toBeNaN();
+    });
+
+    it('takes a cleared number as missing, not as 0', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      await userEvent.clear(screen.getByPlaceholderText('Value'));
+
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].value).toBeNaN();
+    });
+
+    it('shows a value with no number as blank, and asks for it on Continue', () => {
+      const onComplete = vi.fn();
+      const blank = { ...mockReviewedResult.editedBiomarkers[0], value: NaN };
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [blank] }],
+        onComplete,
+      });
+
+      expect(screen.queryByText('NaN')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.getByText(/Glucose in "lab-report.pdf" is missing: value/)).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('updates biomarker name when edited', () => {
       const onReviewChange = vi.fn();
       renderReviewStep({ onReviewChange });
@@ -412,6 +475,32 @@ describe('ReviewStep', () => {
       const newResults = onReviewChange.mock.calls[0][0];
       expect(newResults[0].editedBiomarkers.length).toBe(0);
     });
+
+    function ThreeValues() {
+      const values = [1, 2, 3].map((value) => ({ ...mockReviewedResult.editedBiomarkers[0], value }));
+      const [reviewed, setReviewed] = useState<ReviewedResult[]>([
+        { ...mockReviewedResult, editedBiomarkers: values },
+      ]);
+      return <ReviewStep {...defaultProps} reviewedResults={reviewed} onReviewChange={setReviewed} />;
+    }
+
+    it.each([
+      ['a row above it', 0, '3'],
+      ['the row itself', 2, null],
+    ])('keeps the edited row on its value when %s is removed', (_, removed, shown) => {
+      render(
+        <MantineProvider env="test">
+          <ThreeValues />
+        </MantineProvider>
+      );
+      fireEvent.click(screen.getAllByLabelText('Edit biomarker')[2]);
+      expect(screen.getByPlaceholderText('Value')).toHaveValue('3');
+
+      fireEvent.click(screen.getAllByLabelText('Remove biomarker')[removed]);
+
+      if (shown === null) expect(screen.queryByPlaceholderText('Value')).not.toBeInTheDocument();
+      else expect(screen.getByPlaceholderText('Value')).toHaveValue(shown);
+    });
   });
 
   describe('Add biomarker', () => {
@@ -432,7 +521,8 @@ describe('ReviewStep', () => {
       const newResults = onReviewChange.mock.calls[0][0];
       expect(newResults[0].editedBiomarkers.length).toBe(2);
       expect(newResults[0].editedBiomarkers[1].name).toBe('');
-      expect(newResults[0].editedBiomarkers[1].value).toBe(0);
+      // No number until one is typed: 0 would be a reading of its own
+      expect(newResults[0].editedBiomarkers[1].value).toBeNaN();
     });
   });
 
@@ -486,7 +576,7 @@ describe('ReviewStep', () => {
       fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
 
       expect(onComplete).toHaveBeenCalledTimes(1);
-      expect(onComplete).toHaveBeenCalledWith([mockReviewedResult]);
+      expect(onComplete).toHaveBeenCalled();
     });
 
     it('disables continue button when no biomarkers', () => {
@@ -526,6 +616,26 @@ describe('ReviewStep', () => {
       expect(screen.getByText('Cannot Continue')).toBeInTheDocument();
       expect(screen.getByText(/missing: name/i)).toBeInTheDocument();
       expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    it('folds the list of problems again each time Continue finds some', () => {
+      const unnamed = Array.from({ length: 7 }, (_, index) => ({
+        name: '',
+        value: index,
+        unit: 'mg/dL',
+        confidence: 0.9,
+        isExactMatch: false,
+        normalizedUnit: 'mg/dL',
+      }));
+      renderReviewStep({ reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: unnamed }] });
+      const continueButton = screen.getByRole('button', { name: /Continue to Confirm/i });
+
+      fireEvent.click(continueButton);
+      fireEvent.click(screen.getByRole('button', { name: 'Show 2 more' }));
+      expect(screen.queryByRole('button', { name: /more$/ })).not.toBeInTheDocument();
+
+      fireEvent.click(continueButton);
+      expect(screen.getByRole('button', { name: 'Show 2 more' })).toBeInTheDocument();
     });
 
     it('shows validation error when biomarker has no unit (for non-unitless biomarkers)', () => {
@@ -827,6 +937,85 @@ describe('ReviewStep', () => {
       fireEvent.click(closeButton!);
 
       expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('A value left out for another value of its line', () => {
+    const nrbcPercentage = {
+      key: 'nucleated-red-blood-cells-percentage',
+      name: 'Nucleated Red Blood Cells Percentage',
+      canonicalUnit: '/100 WBC',
+      aliases: [],
+      category: 'cbc' as const,
+      description: '',
+      alternativeUnits: ['%'],
+      related: [],
+    };
+    const share = {
+      name: 'Eritroblasti',
+      value: 0.2,
+      unit: '%',
+      confidence: 0.95,
+      isExactMatch: false,
+      normalizedUnit: '%',
+      identifiedBy: 'ai' as const,
+      identificationFlags: [],
+      dictionaryMatch: nrbcPercentage,
+      analyzed: { name: 'Eritroblasti', unit: '%' },
+    };
+    // The same test as a share no test is counted per
+    const twin = {
+      ...share,
+      value: 0.5,
+      unit: '/100 HPF',
+      normalizedUnit: '/100 HPF',
+      dictionaryMatch: undefined,
+      identificationFlags: ['unit-mismatch' as const],
+      suggestedMatch: nrbcPercentage,
+      analyzed: { name: 'Eritroblasti', unit: '/100 HPF' },
+    };
+
+    it('is labelled "Not saved", says how to keep it, and does not stop the import', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [twin, share] };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      expect(screen.getAllByText('Not saved:')).toHaveLength(1);
+      expect(
+        screen.getByText(/another Eritroblasti value is saved as Nucleated Red Blood Cells Percentage\. To keep this one, choose "Not in dictionary"\./)
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('asks no fix of it, even with no number, as it is not saved', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [{ ...twin, value: NaN }, share],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(screen.queryByText('Cannot Continue')).not.toBeInTheDocument();
+      expect(onComplete).toHaveBeenCalled();
+    });
+
+    it('still stops the import when it is the only value of its line', () => {
+      const onComplete = vi.fn();
+      const reviewed: ReviewedResult = { ...mockReviewedResult, editedBiomarkers: [twin] };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      expect(screen.queryByText('Not saved:')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(
+        screen.getByText(/\/100 HPF is not a unit for Nucleated Red Blood Cells Percentage/)
+      ).toBeInTheDocument();
+      expect(onComplete).not.toHaveBeenCalled();
     });
   });
 
@@ -1199,8 +1388,8 @@ describe('ReviewStep', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(screen.queryByText('Enter the lab date for "empty.pdf"')).not.toBeInTheDocument();
-    // Handed back in full, so going back from Confirm keeps the empty file and its edits
-    expect(onComplete).toHaveBeenCalledWith([mockReviewedResult, empty]);
+    // The empty file needs no date, so the import continues
+    expect(onComplete).toHaveBeenCalled();
   });
 
   it('shows what the report said when its date could not be read', () => {

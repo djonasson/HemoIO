@@ -4,6 +4,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
 
 /**
  * The Biomarkers item in the main menu
@@ -16,7 +17,7 @@ export function biomarkersNavItem(page: Page): Locator {
  * When I navigate to the Biomarkers page
  */
 export async function goToDictionary(page: Page): Promise<void> {
-  await biomarkersNavItem(page).click();
+  await openFromMenu(page, 'Biomarkers');
   await expect(page.getByRole('heading', { name: 'Biomarker Dictionary' })).toBeVisible();
 }
 

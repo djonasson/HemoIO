@@ -11,10 +11,11 @@
  */
 
 import { test, expect } from './fixtures';
-import type { Locator, Page } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import {
   BIOMARKERS,
+  expandButton,
   expandLabResult,
   goToTimeline,
   labResultCard,
@@ -40,13 +41,6 @@ import {
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { pickDate } from './steps/trends.steps';
 
-/**
- * Helper to navigate to timeline view
- */
-async function navigateToTimeline(page: Page) {
-  await page.getByRole('navigation').getByRole('button', { name: /^Timeline/ }).click();
-}
-
 function tagsInput(container: Locator): Locator {
   return container.locator('input[aria-label="Note tags"]');
 }
@@ -58,7 +52,7 @@ test.describe('User Notes', () => {
 
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Notes section would be visible when a lab result card is expanded
       // This test verifies the structure is ready for notes
@@ -84,7 +78,7 @@ test.describe('User Notes', () => {
       await page.goto('/');
       await setupOrUnlock(page);
 
-      await navigateToTimeline(page);
+      await goToTimeline(page);
 
       // Tab through the page
       await page.keyboard.press('Tab');
@@ -215,7 +209,7 @@ test.describe('Notes with Data', () => {
 
     // Clicking the indicator expands the card and shows the notes
     await badge.click();
-    await expect(jan).toHaveAttribute('aria-expanded', 'true');
+    await expect(expandButton(jan)).toHaveAttribute('aria-expanded', 'true');
     await expect(jan.getByText('First note', { exact: true })).toBeVisible();
 
     // A new note shows up in the indicator of the other result
@@ -542,7 +536,7 @@ test.describe('Notes view', () => {
       .click();
 
     const card = labResultCard(page, JAN_DAY);
-    await expect(card).toHaveAttribute('aria-expanded', 'true');
+    await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'true');
     await expect(card.getByText('Felt a headache after the fast', { exact: true })).toBeVisible();
   });
 

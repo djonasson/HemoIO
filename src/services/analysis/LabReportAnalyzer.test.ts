@@ -91,6 +91,8 @@ vi.mock('../../data/biomarkers/dictionary', () => ({
   matchBiomarkerName: (name: string) =>
     mockFindBiomarker(name) ?? mockFindBiomarker(name.toLowerCase().replace(/[^a-z0-9]/g, '')),
   findBiomarker: vi.fn().mockImplementation((name: string) => mockFindBiomarker(name)),
+  // No count in this dictionary has a percentage
+  percentageOf: () => undefined,
 }));
 
 function mockFindBiomarker(name: string) {

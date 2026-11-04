@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from 'react';
 import {
+  Box,
   Stack,
   Group,
   Button,
@@ -26,6 +27,7 @@ import {
   IconX,
   IconAlertCircle,
 } from '@tabler/icons-react';
+import { FileName } from './FileName';
 import { isSupportedDocument, SUPPORTED_MIME_TYPES } from '../../services/ocr';
 
 /**
@@ -84,7 +86,7 @@ function getFileIcon(file: File) {
 /**
  * Upload Step - file selection and upload
  */
-export function UploadStep({ onComplete, onCancel }: UploadStepProps) {
+export function UploadStep({ onComplete, onCancel }: UploadStepProps): React.JSX.Element {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,10 +165,10 @@ export function UploadStep({ onComplete, onCancel }: UploadStepProps) {
       >
         <Group justify="center" gap="xl" mih={200} style={{ pointerEvents: 'none' }}>
           <Dropzone.Accept>
-            <IconUpload size={52} stroke={1.5} color="var(--mantine-color-blue-6)" />
+            <IconUpload size={52} stroke={1.5} color="var(--mantine-color-blue-text)" />
           </Dropzone.Accept>
           <Dropzone.Reject>
-            <IconX size={52} stroke={1.5} color="var(--mantine-color-red-6)" />
+            <IconX size={52} stroke={1.5} color="var(--mantine-color-red-text)" />
           </Dropzone.Reject>
           <Dropzone.Idle>
             <IconUpload size={52} stroke={1.5} color="var(--mantine-color-dimmed)" />
@@ -217,7 +219,7 @@ export function UploadStep({ onComplete, onCancel }: UploadStepProps) {
           {files.map((uploadedFile) => (
             <Paper key={uploadedFile.id} p="sm" withBorder>
               <Group justify="space-between" wrap="nowrap">
-                <Group wrap="nowrap">
+                <Group wrap="nowrap" miw={0}>
                   {uploadedFile.preview ? (
                     <Image
                       src={uploadedFile.preview}
@@ -230,14 +232,12 @@ export function UploadStep({ onComplete, onCancel }: UploadStepProps) {
                   ) : (
                     getFileIcon(uploadedFile.file)
                   )}
-                  <div>
-                    <Text size="sm" fw={500} lineClamp={1}>
-                      {uploadedFile.file.name}
-                    </Text>
+                  <Box miw={0}>
+                    <FileName name={uploadedFile.file.name} size="sm" />
                     <Badge size="sm" variant="light">
                       {uploadedFile.formattedSize}
                     </Badge>
-                  </div>
+                  </Box>
                 </Group>
                 <ActionIcon
                   color="red"

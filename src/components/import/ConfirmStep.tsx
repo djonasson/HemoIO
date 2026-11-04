@@ -5,6 +5,7 @@
  */
 
 import {
+  Box,
   Stack,
   Group,
   Button,
@@ -15,6 +16,8 @@ import {
   Divider,
   SimpleGrid,
   ThemeIcon,
+  Alert,
+  List,
 } from '@mantine/core';
 import {
   IconArrowLeft,
@@ -23,21 +26,14 @@ import {
   IconBuilding,
   IconTestPipe,
   IconFiles,
+  IconInfoCircle,
 } from '@tabler/icons-react';
-import type { ReviewedResult } from './ReviewStep';
+import { ScrollBox } from '@components/common/ScrollBox';
 import { reviewedLabDate } from '@/utils/labDate';
-
-/**
- * Format a biomarker value for display, handling interval values
- */
-function formatBiomarkerValue(biomarker: ReviewedResult['editedBiomarkers'][0]): string {
-  // Check if this is an interval value
-  if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
-    return `${biomarker.intervalLow}-${biomarker.intervalHigh}`;
-  }
-  // Regular value
-  return String(biomarker.value);
-}
+import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewedValue';
+import { FileName } from './FileName';
+import type { SetAsideValue } from '@services/analysis/reviewedSave';
+import type { ReviewedResult } from './ReviewStep';
 
 /**
  * Props for ConfirmStep
@@ -51,8 +47,9 @@ export interface ConfirmStepProps {
   onBack: () => void;
   /** Whether the results are being saved */
   isSaving?: boolean;
+  /** Values left out because another value of their line is saved */
+  notSaved?: SetAsideValue[];
 }
-
 
 /**
  * Confirm Step - final confirmation before saving
@@ -62,6 +59,7 @@ export function ConfirmStep({
   onConfirm,
   onBack,
   isSaving = false,
+  notSaved = [],
 }: ConfirmStepProps): React.ReactNode {
   // Calculate totals
   const totalFiles = results.length;
@@ -168,10 +166,8 @@ export function ConfirmStep({
             {resultIndex > 0 && <Divider my="md" />}
 
             <Group justify="space-between" mb="sm">
-              <div>
-                <Text fw={500} size="sm">
-                  {result.fileName}
-                </Text>
+              <Box miw={0} style={{ flex: 1 }}>
+                <FileName name={result.fileName} size="sm" />
                 <Group gap="xs">
                   {reviewedLabDate(result) && (
                     <Badge size="xs" variant="light">
@@ -184,49 +180,63 @@ export function ConfirmStep({
                     </Badge>
                   )}
                 </Group>
-              </div>
+              </Box>
               <Badge>{result.editedBiomarkers.length} values</Badge>
             </Group>
 
-            <Table withTableBorder>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Biomarker</Table.Th>
-                  <Table.Th>Value</Table.Th>
-                  <Table.Th>Reference Range</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {result.editedBiomarkers.map((biomarker, bioIndex) => (
-                  <Table.Tr key={bioIndex}>
-                    <Table.Td>
-                      <Text size="sm">{biomarker.name}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={500}>
-                        {formatBiomarkerValue(biomarker)} {biomarker.unit}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {biomarker.referenceRange ? (
-                        <Text size="sm" c="dimmed">
-                          {biomarker.referenceRange.low ?? '?'} -{' '}
-                          {biomarker.referenceRange.high ?? '?'}{' '}
-                          {biomarker.referenceRange.unit}
-                        </Text>
-                      ) : (
-                        <Text size="sm" c="dimmed">
-                          —
-                        </Text>
-                      )}
-                    </Table.Td>
+            <ScrollBox label={`Values of ${result.fileName}`}>
+              <Table withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Biomarker</Table.Th>
+                    <Table.Th>Value</Table.Th>
+                    <Table.Th>Reference Range</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
+                </Table.Thead>
+                <Table.Tbody>
+                  {result.editedBiomarkers.map((biomarker, bioIndex) => (
+                    <Table.Tr key={bioIndex}>
+                      <Table.Td>
+                        <Text size="sm">{biomarker.name}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={500}>
+                          {formatReviewedValue(biomarker)} {biomarker.unit}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">
+                          {formatReviewedRange(biomarker) ?? '—'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </ScrollBox>
           </div>
         ))}
       </Paper>
+
+      {notSaved.length > 0 && (
+        <Alert
+          icon={<IconInfoCircle size={16} />}
+          title={`${notSaved.length} value${notSaved.length === 1 ? '' : 's'} not saved`}
+          color="blue"
+        >
+          <Text size="sm">
+            Their unit fits no test in the dictionary, and the same test is saved from another
+            value of their line. To keep one, go back and choose &quot;Not in dictionary&quot; for it.
+          </Text>
+          <List size="sm" mt={4}>
+            {notSaved.map(({ fileName, biomarker }, index) => (
+              <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>
+                {biomarker.name}: {formatReviewedValue(biomarker) || 'no number'} {biomarker.unit} in "{fileName}"
+              </List.Item>
+            ))}
+          </List>
+        </Alert>
+      )}
 
       {/* Confirmation message */}
       <Paper p="md" bg="var(--mantine-color-blue-light)" withBorder>

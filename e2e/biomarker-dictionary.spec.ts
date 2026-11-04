@@ -254,6 +254,15 @@ test.describe('Biomarker Dictionary', () => {
       await expect(loincLink).toHaveAttribute('href', 'https://loinc.org/2345-7');
       await expect(loincLink).toHaveAttribute('target', '_blank');
       await expect(loincLink).toHaveAttribute('rel', /noopener/);
+      await expect(detail.getByText('Glucose [Mass/volume] in Serum or Plasma')).toBeVisible();
+    });
+
+    test("names each biomarker's LOINC code by the test it is", async ({ page }) => {
+      // Scenario: Every biomarker's LOINC code is a LOINC code for that test
+      const detail = await viewDetail(page, 'Fructosamine');
+
+      await expect(detail.getByRole('link', { name: '15069-8' })).toBeVisible();
+      await expect(detail.getByText('Fructosamine [Moles/volume] in Serum or Plasma')).toBeVisible();
     });
 
     test('should show specimen type for whole blood biomarkers', async ({ page }) => {

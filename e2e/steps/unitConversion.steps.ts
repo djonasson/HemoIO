@@ -13,6 +13,8 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openFromMenu } from './app.steps';
+import { expectAnalysisFinished } from './importWizard.steps';
 import { configureOllamaProvider, mockOllama, type ExtractedBiomarkerFixture } from './ai.steps';
 import { seedLabData } from './data.steps';
 import { removeTempFile, writeTempFile } from './tempFiles';
@@ -175,12 +177,27 @@ export function buildTextPdf(lines: string[]): Buffer {
  * Given a lab report contains <biomarkers> / When the values are analyzed.
  *
  * Imports `reportCount` text PDFs with a mocked local AI that extracts
- * exactly `biomarkers` from each, and ends on the review step.
+ * exactly `biomarkers` from each, and ends on the review step. A single
+ * report may be given its file name; `onUploaded` runs once the files are
+ * chosen, before they are analyzed, and `onAnalyzed` once the analysis step
+ * is done, before going on to review. With `toReview: false` it stops on
+ * the analysis step — as it must when no file has values to review.
  */
 export async function analyzeReport(
   page: Page,
   biomarkers: ExtractedBiomarkerFixture[],
-  reportCount = 1
+  reportCount = 1,
+  {
+    fileName = 'lab-report.pdf',
+    onUploaded,
+    onAnalyzed,
+    toReview = true,
+  }: {
+    fileName?: string;
+    onUploaded?: () => Promise<void>;
+    onAnalyzed?: () => Promise<void>;
+    toReview?: boolean;
+  } = {}
 ): Promise<void> {
   await mockOllama(page, {
     biomarkers,
@@ -193,15 +210,20 @@ export async function analyzeReport(
   const reportText = biomarkers.map((b) => `${b.name} ${b.value} ${b.unit.replace('µ', 'u')}`);
   const pdf = buildTextPdf(['Laboratory report', ...reportText]);
   const pdfPaths = Array.from({ length: reportCount }, (_, i) =>
-    writeTempFile(reportCount === 1 ? 'lab-report.pdf' : `lab-report-${i + 1}.pdf`, pdf)
+    writeTempFile(reportCount === 1 ? fileName : `lab-report-${i + 1}.pdf`, pdf)
   );
   try {
-    await page.getByRole('navigation').getByRole('button', { name: /^Import/ }).click();
+    await openFromMenu(page, 'Import');
     await page.locator('input[type="file"]').setInputFiles(pdfPaths);
+    await onUploaded?.();
     await page.getByRole('button', { name: `Analyze (${reportCount})` }).click();
 
+    await expectAnalysisFinished(page);
+    await onAnalyzed?.();
+    if (!toReview) return;
+
     const review = page.getByRole('button', { name: /^Review Results/ });
-    await expect(review).toBeEnabled({ timeout: 30_000 });
+    await expect(review).toBeEnabled();
     await review.click();
     await expect(page.getByText('Review Extracted Values', { exact: true })).toBeVisible();
   } finally {
