@@ -5,20 +5,41 @@
  */
 import type { TestChoice, TestChoiceRequest } from './types';
 
+/** About how many tokens one value's choice takes in the answer */
+const TOKENS_PER_CHOICE = 40;
+
+/** The answer limit for choosing the tests of `count` values: room for each, never below the configured limit */
+export function choiceAnswerLimit(configured: number, count: number): number {
+  return Math.max(configured, count * TOKENS_PER_CHOICE);
+}
+
 /** No choice: the value stays undecided and goes to the user */
 function noChoice(id: string): TestChoice {
   return { id, code: null, confident: false };
 }
 
-/** The JSON object in a model's text answer, if any */
-function parseJsonObject(raw: string): unknown {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return undefined;
+/** A JSON value, or undefined for text that is not one */
+function tryParse(text: string): unknown {
   try {
-    return JSON.parse(match[0]);
+    return JSON.parse(text);
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The JSON object in a model's text answer, if any. An answer cut off at
+ * the length limit keeps the choices it completed: each choice is a flat
+ * object of its own.
+ */
+function parseJsonObject(raw: string): unknown {
+  const match = raw.match(/\{[\s\S]*\}/);
+  const whole = match ? tryParse(match[0]) : undefined;
+  if (whole !== undefined) return whole;
+  const start = raw.indexOf('"choices"');
+  if (start === -1) return undefined;
+  const choices = (raw.slice(start).match(/\{[^{}]*\}/g) ?? []).map(tryParse).filter((c) => c !== undefined);
+  return { choices };
 }
 
 /**

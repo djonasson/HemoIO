@@ -32,8 +32,9 @@ export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[
  * A printed value's test as far as it is known without the AI: the one
  * learned for its wording and unit (a learned "Not a LOINC test" too), else
  * the one test that clearly fits. A value the report gives no unit is never
- * matched on its name alone: it is saved under its own name unless the user
- * chooses a test. Otherwise the candidates are left to the AI and the user.
+ * matched on its name alone (nothing tells a mass from a molar test, or an
+ * ordinal from a count): its candidates, of any property, are left to the
+ * AI and the user, as those of any value several tests fit.
  */
 export function identifyLocally(
   catalog: Catalog,
@@ -55,14 +56,9 @@ export function identifyLocally(
       isExactMatch: true,
     };
   }
-  if (value.unit.trim() === '') {
-    return { candidates: match.candidates, identificationFlags: ['no-unit'], savedAsUnknown: true, isExactMatch: false };
-  }
-  return {
-    candidates: match.candidates,
-    identificationFlags: [match.candidates.length > 0 ? 'ambiguous' : 'not-identified'],
-    isExactMatch: false,
-  };
+  const flags: IdentificationFlag[] = [match.candidates.length > 0 ? 'ambiguous' : 'not-identified'];
+  if (value.unit.trim() === '') flags.push('no-unit');
+  return { candidates: match.candidates, identificationFlags: flags, isExactMatch: false };
 }
 
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */

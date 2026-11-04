@@ -114,11 +114,17 @@ describe('analyzeLabReport: identifying each value', () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('saves a value the report gives no unit under its own name, without asking the AI', async () => {
-    const { result, choose } = await analyze([extracted('Proteine (urine)', 15, '', 'urine')]);
-    expect(result.matchedBiomarkers[0]).toMatchObject({ savedAsUnknown: true, identificationFlags: ['no-unit'] });
-    expect(choose).not.toHaveBeenCalled();
-    expect(result.warnings).toEqual([]);
+  it('asks the AI about a value the report gives no unit, with tests of any property', async () => {
+    // A screening result: "Glucosio assente" read as a value
+    const { result, choose } = await analyze([extracted('Glucosio', 0, '', 'urine')], async (requests) =>
+      requests.map(({ id }) => ({ id, code: '2350-7', confident: true }))
+    );
+    expect(choose).toHaveBeenCalledTimes(1);
+    const [request] = choose.mock.calls[0][0];
+    expect(request).toMatchObject({ name: 'Glucosio', unit: '' });
+    expect(request.candidates.map((c) => c.code)).toContain('2350-7');
+    expect(result.matchedBiomarkers[0]).toMatchObject({ loincCode: '2350-7', identifiedBy: 'ai', identificationFlags: [] });
+    expect(result.matchedBiomarkers[0].savedAsUnknown).toBeFalsy();
   });
 
   it('gives a 24-hour urine value and a plasma value of one substance different codes, both kept', async () => {
@@ -140,5 +146,54 @@ describe('analyzeLabReport: identifying each value', () => {
     const { result } = await analyze([extracted('P-Glucosio', 8, 'mmol/L'), extracted('P-Glucosio', 90, 'mg/dL')]);
     expect(result.duplicateConflicts).toHaveLength(1);
     expect(result.matchedBiomarkers.every((b) => b.hasDuplicateConflict)).toBe(true);
+  });
+
+  /** The AI choosing by "name|unit" */
+  const choosing =
+    (codes: Record<string, string>) =>
+    async (requests: TestChoiceRequest[]): Promise<TestChoice[]> =>
+      requests.map(({ id, name, unit }) => ({ id, code: codes[`${name}|${unit}`] ?? null, confident: true }));
+
+  describe('values of one name with no code', () => {
+    it('keeps them apart in different units: nothing says they are one test', async () => {
+      const { result } = await analyze([extracted('Zorb', 5, 'mg/L'), extracted('Zorb', 3, 'µmol/L')]);
+      expect(saved(result)).toEqual(['Zorb: 5 mg/L', 'Zorb: 3 µmol/L']);
+      expect(result.duplicateConflicts).toEqual([]);
+    });
+
+    it('keeps one of the same value given twice in one unit', async () => {
+      const { result } = await analyze([extracted('Zorb', 5, 'mg/L'), extracted('Zorb', 5, 'mg/L')]);
+      expect(saved(result)).toEqual(['Zorb: 5 mg/L']);
+    });
+
+    it('keeps a value apart from one of its name with a code', async () => {
+      const { result } = await analyze(
+        [extracted('Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L')],
+        choosing({ 'Glucosio|mg/dL': '2345-7' })
+      );
+      expect(saved(result)).toEqual(['2345-7: 90 mg/dL', 'Glucosio: 5 mmol/L']);
+      expect(result.duplicateConflicts).toEqual([]);
+    });
+  });
+
+  it('keeps a serum and a blood value of one name apart: they are different tests', async () => {
+    const { result } = await analyze(
+      [extracted('Glucosio', 90, 'mg/dL'), extracted('Glucosio', 90, 'mg/dL', 'blood')],
+      async (requests) =>
+        requests.map(({ id, specimenHint }) => ({ id, code: specimenHint ? '2339-0' : '2345-7', confident: true }))
+    );
+    expect(saved(result)).toEqual(['2345-7: 90 mg/dL', '2339-0: 90 mg/dL']);
+    expect(result.duplicateConflicts).toEqual([]);
+  });
+
+  it('says only of values of one code that their units cannot be converted', async () => {
+    const { result } = await analyze(
+      [extracted('Glucosio', 90, 'mg/dL'), extracted('Glucosio', 3, 'U/L')],
+      undefined,
+      // As the user taught: one test, though U/L is no unit of it
+      { 'glucosio|mg/dL': '2345-7', 'glucosio|U/L': '2345-7' }
+    );
+    expect(result.duplicateConflicts).toHaveLength(1);
+    expect(result.duplicateConflicts[0].message).toMatch(/cannot be converted to each other/);
   });
 });

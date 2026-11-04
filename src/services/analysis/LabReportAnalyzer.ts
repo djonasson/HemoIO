@@ -19,8 +19,6 @@ import {
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
-import { getAddon } from '@data/loinc/addons';
-import { nameKey } from '@data/biomarkers/dictionary';
 import { identifyValues, type Identification, type LearnedTests } from './identification';
 import type {
   AIProviderConfig,
@@ -30,7 +28,15 @@ import type {
 } from '../ai';
 import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
-import { normalizeUnit, canConvert, convertValue, unitsMatch } from '../units';
+import { normalizeUnit } from '../units';
+import {
+  clusterMeasurements,
+  comparable,
+  groupBySameTest,
+  groupUnit,
+  preferredValue,
+  type ComparableValue,
+} from './sameMeasurement';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -485,149 +491,37 @@ function analyzingLabel(provider: AIProviderType, model: string | undefined): st
 }
 
 /**
- * Relative tolerance for comparing converted values (2% difference allowed)
- * This accounts for rounding errors that occur when:
- * 1. Labs round values before reporting
- * 2. Labs convert between units and round again
- * 3. Our conversion math introduces small floating point differences
- *
- * Example: Triglycerides 0.9 mmol/L = 79.65 mg/dL ≈ 80 mg/dL
- * vs the lab's direct measurement of 79 mg/dL - a 1.26% difference
- */
-const RELATIVE_TOLERANCE = 0.02;
-
-/** Decimal places used when converting values only to compare them */
-const COMPARISON_PRECISION = 10;
-
-/**
- * Half the last reported digit: how far rounding can have moved a value. A
- * small whole value counts as printed with one decimal (an HbA1c "6.0 %"
- * reaches the analyzer as 6): labs print small values with decimals.
- */
-function roundingAllowance(value: number): number {
-  const decimals = (String(value).split('.')[1] ?? '').length;
-  const printed = decimals === 0 && Math.abs(value) < 10 ? 1 : decimals;
-  return 0.5 * 10 ** -printed;
-}
-
-/** A value of a group, in the canonical unit when it could be converted */
-interface ComparableValue {
-  biomarker: MatchedBiomarker;
-  /** Unrounded value in the canonical unit (rounding before comparing adds error) */
-  comparison?: number;
-  /** Rounded value in the canonical unit, shown in conflict messages */
-  converted?: number;
-  /** How far the lab's rounding can have moved the value, in the canonical unit */
-  allowance: number;
-}
-
-/**
- * Whether two values are the same measurement, reported in the same or
- * different units.
- *
- * The tolerance is relative: an absolute allowance would treat small values
- * that differ substantially (e.g. creatinine 0.76 vs 1.5 mg/dL) as the same.
- * Values reported in different units may also differ by the rounding of each
- * (urea 3.06 mmol/L is 18.4 mg/dL, reported as 18). Anything outside is
- * flagged for review rather than merged: a borderline difference costs a
- * review, not data.
- */
-function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
-  if (a.comparison === undefined || b.comparison === undefined) return false;
-  if (a.comparison === b.comparison) return true;
-  const diff = Math.abs(a.comparison - b.comparison);
-  const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;
-  if (avg > 0 && diff / avg <= RELATIVE_TOLERANCE) return true;
-  const differentUnits = !unitsMatch(a.biomarker.unit, b.biomarker.unit);
-  return differentUnits && diff <= a.allowance + b.allowance;
-}
-
-/**
- * A group's value in the unit its values are compared in: the canonical
- * unit when the biomarker has one, else the unit the group's first value is
- * in (values in another unit then cannot be compared)
- */
-function comparable(
-  biomarker: MatchedBiomarker,
-  component: string | undefined,
-  canonicalUnit: string | undefined,
-  firstUnit: string
-): ComparableValue {
-  const unchanged = {
-    biomarker,
-    comparison: biomarker.value,
-    converted: biomarker.value,
-    allowance: roundingAllowance(biomarker.value),
-  };
-  const targetUnit = canonicalUnit ?? firstUnit;
-  if (unitsMatch(biomarker.unit, targetUnit)) return unchanged;
-  if (!component || !canonicalUnit || !canConvert(component, biomarker.unit, canonicalUnit)) {
-    return { biomarker, allowance: 0 };
-  }
-  try {
-    const convert = (value: number, precision?: number) =>
-      convertValue(component, value, biomarker.unit, canonicalUnit, precision).convertedValue;
-    const comparison = convert(biomarker.value, COMPARISON_PRECISION);
-    const step = roundingAllowance(biomarker.value);
-    return {
-      biomarker,
-      comparison,
-      converted: convert(biomarker.value),
-      allowance: Math.abs(convert(biomarker.value + step, COMPARISON_PRECISION) - comparison),
-    };
-  } catch {
-    return { biomarker, allowance: 0 };
-  }
-}
-
-/**
  * Deduplicate biomarkers reported more than once, as labs do when they give
  * a value in two units (SI and conventional).
  *
- * Values of one test that are the same measurement after conversion are
- * kept once, in the canonical unit when one of them is in it. A test's mass
- * and molar codes are one test here; its 24-hour urine and serum codes are
- * not. Distinct measurements reported under distinct names (a 24-hour and a
- * spot sample) are each kept. Anything else is flagged for the user to
- * review.
+ * Values of one test (see sameTestKey: a code's mass and molar forms are
+ * one test, its 24-hour urine and serum codes are not; a value with no code
+ * is one test only with values of its name in its unit) that are the same
+ * measurement after conversion are kept once, in the standard unit when one
+ * of them is in it. Distinct measurements reported under distinct names (a
+ * 24-hour and a spot sample) are each kept, and so are values of one name
+ * whose codes differ and cannot be compared: nothing says they are one.
+ * Anything else is flagged for the user to review.
  */
 function deduplicateBiomarkers(
   biomarkers: MatchedBiomarker[],
   catalog: Catalog
 ): { deduplicated: MatchedBiomarker[]; conflicts: DuplicateConflict[] } {
   const conflicts: DuplicateConflict[] = [];
-
-  // Group values by the trend group of their code, else by the name as reported
-  const groups = new Map<string, MatchedBiomarker[]>();
-  for (const biomarker of biomarkers) {
-    const groupKey = biomarker.loincCode
-      ? `code:${catalog.trendGroup(biomarker.loincCode)}`
-      : `name:${nameKey(biomarker.name)}`;
-    if (!groups.has(groupKey)) groups.set(groupKey, []);
-    groups.get(groupKey)!.push(biomarker);
-  }
-
   const deduplicated: MatchedBiomarker[] = [];
 
-  for (const group of groups.values()) {
+  for (const group of groupBySameTest(biomarkers, catalog)) {
     if (group.length === 1) {
       deduplicated.push(group[0]);
       continue;
     }
 
     const code = group[0].loincCode;
-    const test = code ? catalog.test(code) : undefined;
-    const name = test?.name ?? group[0].name;
-    const canonicalUnit = code ? getAddon(catalog, code)?.canonicalUnit : undefined;
-    const values = group.map((b) => comparable(b, test?.component, canonicalUnit, group[0].unit));
-
-    // Values that are the same measurement form one cluster
-    const clusters: ComparableValue[][] = [];
-    for (const value of values) {
-      const cluster = clusters.find((c) => sameMeasurement(c[0], value));
-      if (cluster) cluster.push(value);
-      else clusters.push([value]);
-    }
+    const name = (code && catalog.test(code)?.name) || group[0].name;
+    const unit = groupUnit(group, catalog);
+    const { canonicalUnit } = unit;
+    const values = group.map((b) => comparable(b, unit));
+    const clusters = clusterMeasurements(values);
 
     const reportedName = (value: ComparableValue) => value.biomarker.name.toLowerCase().trim();
     const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
@@ -637,14 +531,10 @@ function deduplicateBiomarkers(
         namesPerCluster.every((other, j) => i === j || !other.has([...names][0]))
     );
     const uncomparable = values.some((v) => v.comparison === undefined);
+    const oneCode = new Set(group.map((b) => b.loincCode)).size === 1;
 
-    if (clusters.length === 1 || (distinctNames && !uncomparable)) {
-      for (const cluster of clusters) {
-        const preferred =
-          cluster.find((v) => canonicalUnit !== undefined && unitsMatch(v.biomarker.unit, canonicalUnit)) ??
-          cluster[0];
-        deduplicated.push(preferred.biomarker);
-      }
+    if (clusters.length === 1 || (distinctNames && !uncomparable) || (uncomparable && !oneCode)) {
+      for (const cluster of clusters) deduplicated.push(preferredValue(cluster, unit).biomarker);
       continue;
     }
 

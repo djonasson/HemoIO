@@ -27,6 +27,10 @@ describe('the test choice prompt', () => {
     expect(TEST_CHOICE_SYSTEM_PROMPT).toMatch(/"confident" to false when two or more candidates fit/);
   });
 
+  it('says what a value printed with no unit is', () => {
+    expect(TEST_CHOICE_SYSTEM_PROMPT).toMatch(/empty unit means a result with no unit: a unitless or ordinal one/);
+  });
+
   it('lists each value with its unit, sample and every candidate, without scores', () => {
     const prompt = createTestChoicePrompt([
       {

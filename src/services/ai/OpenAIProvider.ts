@@ -22,7 +22,7 @@ import {
   createTestChoicePrompt,
   TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { parseTestChoices } from './testChoice';
+import { choiceAnswerLimit, parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -182,7 +182,11 @@ export class OpenAIProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(messages, options);
+      const response = await this.makeRequest(messages, {
+        ...options,
+        maxTokens: choiceAnswerLimit(this.config.maxTokens, requests.length),
+      });
+      // A cut-off answer keeps the choices it completed
       return parseTestChoices(response.choices[0]?.message?.content, requests);
     } catch (error) {
       if (error instanceof AIAnalysisError) {
@@ -281,12 +285,13 @@ export class OpenAIProvider implements AIProvider {
    */
   private async makeRequest(
     messages: OpenAIMessage[],
-    options: { rateLimit?: RateLimitOptions; signal?: AbortSignal } = {}
+    options: { rateLimit?: RateLimitOptions; signal?: AbortSignal; maxTokens?: number } = {}
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
 
     // Reasoning models spend tokens thinking, so they get a higher limit
-    const tokenLimit = this.isReasoningModel() ? REASONING_MODEL_MAX_TOKENS : this.config.maxTokens;
+    const limit = options.maxTokens ?? this.config.maxTokens;
+    const tokenLimit = this.isReasoningModel() ? Math.max(REASONING_MODEL_MAX_TOKENS, limit) : limit;
 
     // Build request body with correct parameters for model
     const requestBody: Record<string, unknown> = {

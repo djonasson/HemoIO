@@ -197,7 +197,7 @@ For each value you get the printed name, its unit, the sample the report names (
 
 RULES:
 1. Choose ONLY a code from that value's own candidate list, or null when none fits. Never invent a code and never use a code from another value's list.
-2. Judge by the printed name, the unit and the sample together: a concentration (per litre) differs from an amount per day, and a count from a percentage; urine differs from blood.
+2. Judge by the printed name, the unit and the sample together: a concentration (per litre) differs from an amount per day, and a count from a percentage; urine differs from blood. An empty unit means a result with no unit: a unitless or ordinal one (pH, specific gravity, negative/positive, 1+).
 3. Set "confident" to false when two or more candidates fit equally well, or when you are unsure. Set it to true only when one candidate clearly fits.
 4. Answer every value, using the same "id" it was given.
 

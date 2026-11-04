@@ -17,6 +17,7 @@ import {
   IconCheck,
 } from '@tabler/icons-react';
 import { planSave, type SavePlan } from '@services/analysis/reviewedSave';
+import { useCatalog } from '@contexts/useCatalog';
 import { UploadStep } from './UploadStep';
 import type { UploadedFile } from './UploadStep';
 import { AnalysisStep } from './AnalysisStep';
@@ -67,6 +68,7 @@ export function ImportWizard({
   getApiKey,
   aiModel,
 }: ImportWizardProps): React.JSX.Element {
+  const catalog = useCatalog();
   const [activeStep, setActiveStep] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
@@ -105,8 +107,8 @@ export function ImportWizard({
   // works out its own plan for its checks; this one is made only once the
   // confirm step is open, so it is not made again on every review edit.
   const { toSave, notSaved } = useMemo(
-    () => (activeStep === CONFIRM_STEP ? planSave(reviewedResults) : NOTHING_PLANNED),
-    [activeStep, reviewedResults]
+    () => (activeStep === CONFIRM_STEP ? planSave(reviewedResults, catalog) : NOTHING_PLANNED),
+    [activeStep, reviewedResults, catalog]
   );
 
   // Handler for final confirmation

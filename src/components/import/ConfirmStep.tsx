@@ -224,10 +224,18 @@ export function ConfirmStep({
           title={`${notSaved.length} value${notSaved.length === 1 ? '' : 's'} not saved`}
           color="blue"
         >
-          <Text size="sm">
-            Their unit cannot be read, and another value of the same name is saved. To keep
-            one, go back and choose its test or &quot;Not a LOINC test&quot;.
-          </Text>
+          {notSaved.some(({ reason }) => reason === 'twin') && (
+            <Text size="sm">
+              Their unit cannot be read, and another value of the same name is saved. To keep
+              one, go back and choose its test or &quot;Not a LOINC test&quot;.
+            </Text>
+          )}
+          {notSaved.some(({ reason }) => reason === 'duplicate') && (
+            <Text size="sm">
+              {notSaved.some(({ reason }) => reason === 'twin') ? 'Others are' : 'They are'} the same
+              measurement as another value of their test, which is saved.
+            </Text>
+          )}
           <List size="sm" mt={4}>
             {notSaved.map(({ fileName, biomarker }, index) => (
               <List.Item key={index} style={{ overflowWrap: 'anywhere' }}>

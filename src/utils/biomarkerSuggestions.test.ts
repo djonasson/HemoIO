@@ -98,7 +98,8 @@ describe('applyBiomarkerUnit', () => {
 
   it('identifies a value the report gave no unit once it has one', async () => {
     const screening = await analyzed('P-Glucosio', '');
-    expect(screening).toMatchObject({ savedAsUnknown: true, identificationFlags: ['no-unit'] });
+    expect(screening).toMatchObject({ identificationFlags: ['ambiguous', 'no-unit'] });
+    expect(screening.loincCode).toBeUndefined();
     const withUnit = applyBiomarkerUnit(screening, 'mg/dL', catalog);
     expect(withUnit).toMatchObject({ loincCode: '2345-7', identificationFlags: [] });
     expect(withUnit.savedAsUnknown).toBeUndefined();

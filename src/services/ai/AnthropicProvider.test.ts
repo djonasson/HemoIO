@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AnthropicProvider } from './AnthropicProvider';
+import { choiceAnswerLimit } from './testChoice';
 import { AIAnalysisError, AIConfigurationError } from './types';
 
 // Model IDs come from the user's selection at runtime; tests use a placeholder
@@ -477,6 +478,19 @@ describe('AnthropicProvider prompt caching', () => {
         { id: 'v1', code: '2350-7', confident: true },
         { id: 'v2', code: '9999-9', confident: true },
       ],
+    });
+
+    it('gives the answer room for every value of a long report', async () => {
+      const many = Array.from({ length: 600 }, (_, i) => ({ ...requests[1], id: `v${i}` }));
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ content: [{ type: 'text', text: '{"choices":[]}' }], stop_reason: 'end_turn' }),
+      } as Response);
+
+      await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).chooseTests(many);
+
+      const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+      expect(body.max_tokens).toBe(choiceAnswerLimit(16000, 600));
     });
 
     it('sends one request per report with every candidate\'s code and name', async () => {

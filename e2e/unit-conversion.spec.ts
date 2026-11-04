@@ -16,7 +16,9 @@ import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
-import { continueToConfirm } from './steps/importWizard.steps';
+import { continueToConfirm, main, reviewRow } from './steps/importWizard.steps';
+import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
+import type { TestChoiceMock } from './steps/ai.steps';
 import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
 import {
   ALT,
@@ -390,10 +392,20 @@ test.describe('Unit Conversion - International Aliases', () => {
         unit: '/100WBC',
         confidence: 0.95,
       },
-    ]);
+    ], 1, {
+      testChoice: {
+        choices: {
+          'Rapporto albumina/creatinina - screening (urine)|mg/gcr': { code: '9318-7', confident: true },
+        },
+      },
+    });
 
     await expect(reviewRows(page)).toHaveCount(3);
-    await expect(page.getByText("Unit doesn't fit")).toHaveCount(0);
+    await expect(page.getByText("Unit doesn't fit the test")).toHaveCount(0);
+    // The catalog finds no test for these two yet: they are saved under their names
+    for (const name of ['Rapporto proteine/creatinina', 'Eritroblasti']) {
+      await changeTest(page, reviewRow(page, name), NOT_A_LOINC_TEST);
+    }
     await continueToConfirm(page);
   });
 
@@ -467,6 +479,27 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
   // Analysis runs PDF text extraction and the (mocked) AI round trip
   test.slow();
 
+  /** The (mocked) AI sure of each value's test, by "name|unit" or name */
+  const aiChooses = (codes: Record<string, string>): TestChoiceMock => ({
+    choices: Object.fromEntries(
+      Object.entries(codes).map(([value, code]) => [value, { code, confident: true }])
+    ),
+  });
+  const SERUM_CREATININE = aiChooses({ 'Creatinine|µmol/L': '14682-9', 'Creatinine|mg/dL': '2160-0' });
+  const MOLAR_CREATININE = 'Creatinine [Moles/volume] in Serum or Plasma';
+
+  /** A 24-hour collection's concentration and its daily amount, each once */
+  async function expectConcentrationAndDailyAmount(page: Page): Promise<void> {
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(2);
+    const row = (value: string) =>
+      rows.filter({ has: page.getByRole('cell', { name: value, exact: true }) });
+    await expect(row('4582').getByRole('cell', { name: 'µmol/L', exact: true })).toBeVisible();
+    await expect(row('1.55').getByRole('cell', { name: 'g/24h', exact: true })).toBeVisible();
+    await expect(row('1.55').getByRole('cell', { name: '24h Urine', exact: true })).toBeVisible();
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  }
+
   test('should detect equivalent values in different units', async ({ page }) => {
     // Scenario: Detect equivalent values in different units
     // (creatinine 67 µmol/L and 0.76 mg/dL)
@@ -474,7 +507,7 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await analyzeReport(page, [
       { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95 },
       { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95 },
-    ]);
+    ], 1, { testChoice: SERUM_CREATININE });
 
     // Only one value is kept — the one in the standard unit
     const rows = reviewRows(page);
@@ -493,7 +526,9 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await analyzeReport(page, [
       { name: 'U-Creatinina', value: 3780, unit: 'µmol/L', confidence: 0.95 },
       { name: 'U-Creatinina', value: 0.42, unit: 'g/L', confidence: 0.95 },
-    ]);
+    ], 1, {
+      testChoice: aiChooses({ 'U-Creatinina|µmol/L': '14683-7', 'U-Creatinina|g/L': '2161-8' }),
+    });
 
     await expect(reviewRows(page)).toHaveCount(1);
     await expect(duplicateWarning(page)).toHaveCount(0);
@@ -506,7 +541,7 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await analyzeReport(page, [
       { name: 'U-Proteine/Creatinina', value: 15, unit: 'mg/mmolcreat.', confidence: 0.95 },
       { name: 'U-Proteine/Creatinina', value: 132, unit: 'mg/gcreat.', confidence: 0.95 },
-    ]);
+    ], 1, { testChoice: aiChooses({ 'U-Proteine/Creatinina': '2890-2' }) });
 
     await expect(reviewRows(page)).toHaveCount(1);
     await expect(duplicateWarning(page)).toHaveCount(0);
@@ -516,8 +551,6 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     // Scenario: Merge the values an Italian report gives in two units
     await openApp(page);
     await analyzeReport(page, [
-      { name: 'Urea', value: 3.06, unit: 'mmol/L', confidence: 0.95 },
-      { name: 'Urea', value: 18, unit: 'mg/dL', confidence: 0.95 },
       { name: 'Acido urico', value: 247, unit: 'µmol/L', confidence: 0.95 },
       { name: 'Acido urico', value: 4.15, unit: 'mg/dL', confidence: 0.95 },
       { name: 'Ferro', value: 38.4, unit: 'µmol/L', confidence: 0.95 },
@@ -530,16 +563,49 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name: 'Urea/L (urine)', value: 7, unit: 'g/L', confidence: 0.95 },
       { name: 'Er-EMOGLOBINA GLICATA', value: 42, unit: 'mmol/mol Hb', confidence: 0.95 },
       { name: 'Er-EMOGLOBINA GLICATA', value: 6.0, unit: '%', confidence: 0.95 },
-    ]);
+    ], 1, {
+      testChoice: aiChooses({
+        'Acido urico|µmol/L': '14933-6',
+        'Acido urico|mg/dL': '3084-1',
+        'Ferro|µmol/L': '14798-3',
+        'Ferro|µg/dL': '2498-4',
+        'Vitamina D (25-OH)|nmol/L': '68438-1',
+        'Vitamina D (25-OH)|ng/mL': '62292-8',
+        Reticolociti: '4679-7',
+        'Urea/L (urine)|mmol/L': '22700-9',
+        'Urea/L (urine)|g/L': '3092-4',
+        'Er-EMOGLOBINA GLICATA': '4548-4',
+      }),
+    });
 
-    // One value of each, in the standard unit; urea is not blood urea nitrogen
+    // One value of each, in the standard unit; reticulocytes have none yet, so the first is kept
     const rows = reviewRows(page);
-    await expect(rows).toHaveCount(7);
-    for (const value of ['18', '4.15', '214', '32.6', '1.67', '7', '6']) {
+    await expect(rows).toHaveCount(6);
+    for (const value of ['4.15', '214', '32.6', '16.7', '7', '6']) {
       await expect(rows.getByRole('cell', { name: value, exact: true })).toBeVisible();
     }
-    await expect(page.getByText(/Blood Urea Nitrogen/)).toHaveCount(0);
     await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should merge a value once I choose the test of the other value of its name', async ({ page }) => {
+    // Scenario: Merge a value once I choose its test
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95 },
+    ], 1, { testChoice: aiChooses({ 'Creatinine|mg/dL': '2160-0' }) });
+
+    // The AI is not sure of the molar value: it stays apart, its test to choose
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(2);
+    await expect(duplicateWarning(page)).toHaveCount(0);
+
+    await changeTest(page, rows.filter({ hasText: 'µmol/L' }), MOLAR_CREATININE);
+    await expect(main(page).getByText('the same measurement as 0.76 mg/dL, which is saved.')).toBeVisible();
+    await continueToConfirm(page);
+    await expect(main(page).getByRole('alert').filter({ hasText: '1 value not saved' })).toContainText(
+      'the same measurement as another value of their test'
+    );
   });
 
   test('should keep a share and an absolute count of the same cells apart', async ({ page }) => {
@@ -564,7 +630,12 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name: 'Creatinina (urine, 24h)', value: 1.55, unit: 'g/24h', confidence: 0.95 },
       { name: 'Creatinina (urine, spot)', value: 4367, unit: 'µmol/L', confidence: 0.95 },
       { name: 'Creatinina (urine, spot)', value: 0.49, unit: 'g/L', confidence: 0.95 },
-    ]);
+    ], 1, {
+      testChoice: aiChooses({
+        'Creatinina (urine, spot)|µmol/L': '14683-7',
+        'Creatinina (urine, spot)|g/L': '2161-8',
+      }),
+    });
 
     await expect(reviewRows(page)).toHaveCount(2);
     await expect(duplicateWarning(page)).toHaveCount(0);
@@ -597,15 +668,9 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name, value: 0.51, unit: 'g/L', confidence: 0.95 },
       { name, value: 13746, unit: 'µmol/24h', confidence: 0.95 },
       { name, value: 1.55, unit: 'g/24h', confidence: 0.95 },
-    ]);
+    ], 1, { testChoice: aiChooses({ [`${name}|g/L`]: '20624-3' }) });
 
-    const rows = reviewRows(page);
-    await expect(rows).toHaveCount(2);
-    const row = (value: string) =>
-      rows.filter({ has: page.getByRole('cell', { name: value, exact: true }) });
-    await expect(row('4582').getByRole('cell', { name: 'Urine', exact: true })).toBeVisible();
-    await expect(row('1.55').getByRole('cell', { name: '24h Urine', exact: true })).toBeVisible();
-    await expect(duplicateWarning(page)).toHaveCount(0);
+    await expectConcentrationAndDailyAmount(page);
   });
 
   test("should tell a 24-hour collection's concentration from its 24-hour amount", async ({
@@ -618,30 +683,28 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
       { name: 'Creatinina/L (urine 24h)', value: 0.51, unit: 'g/L', confidence: 0.95 },
       { name: 'Creatinina 24h (urine)', value: 13746, unit: 'µmol/24h', confidence: 0.95 },
       { name: 'Creatinina 24h (urine)', value: 1.55, unit: 'g/24h', confidence: 0.95 },
-    ]);
+    ], 1, {
+      testChoice: aiChooses({
+        'Creatinina/L (urine 24h)|µmol/L': '25886-3',
+        'Creatinina/L (urine 24h)|g/L': '20624-3',
+      }),
+    });
 
-    // Each filed under its own test: the specimen comes from the dictionary entry
-    const rows = reviewRows(page);
-    await expect(rows).toHaveCount(2);
-    const row = (value: string) =>
-      rows.filter({ has: page.getByRole('cell', { name: value, exact: true }) });
-    await expect(row('4582').getByRole('cell', { name: 'Urine', exact: true })).toBeVisible();
-    await expect(row('1.55').getByRole('cell', { name: '24h Urine', exact: true })).toBeVisible();
-    await expect(duplicateWarning(page)).toHaveCount(0);
+    // Each filed under its own test
+    await expectConcentrationAndDailyAmount(page);
   });
 
-  test('should explain values whose units cannot be compared', async ({ page }) => {
-    // Scenario: Explain values whose units cannot be compared
+  test('should keep values of an unknown test in two units apart', async ({ page }) => {
+    // Scenario: Keep values of an unknown test in two units apart
     await openApp(page);
     await analyzeReport(page, [
       { name: 'Zorblatin', value: 5, unit: 'mg/L', confidence: 0.95 },
       { name: 'Zorblatin', value: 3, unit: 'µmol/L', confidence: 0.95 },
     ]);
 
-    await expect(duplicateWarning(page)).toContainText(
-      'which cannot be converted to each other. Keep the value you want and delete the other.'
-    );
+    // Nothing says they are one test: both kept, the user to choose their tests
     await expect(reviewRows(page)).toHaveCount(2);
+    await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
   test('should flag genuinely different duplicate values as conflict', async ({ page }) => {
@@ -651,7 +714,7 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await analyzeReport(page, [
       { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95 },
       { name: 'Creatinine', value: 1.5, unit: 'mg/dL', confidence: 0.95 },
-    ]);
+    ], 1, { testChoice: SERUM_CREATININE });
 
     const warning = duplicateWarning(page);
     await expect(warning).toBeVisible();

@@ -363,9 +363,9 @@ export function ReviewStep({
   );
 
   // What the import saves, and the values it leaves out
-  const plan = useMemo(() => planSave(reviewedResults), [reviewedResults]);
+  const plan = useMemo(() => planSave(reviewedResults, catalog), [reviewedResults, catalog]);
   const setAside = useMemo(
-    () => new Set(plan.notSaved.map(({ biomarker }) => biomarker)),
+    () => new Map(plan.notSaved.map((value) => [value.biomarker, value])),
     [plan]
   );
 
@@ -378,7 +378,7 @@ export function ReviewStep({
       r.editedBiomarkers.forEach((b, index) => {
         // One left out for another value of its line is not saved: no fix
         if (setAside.has(b)) return;
-        const missing = missingFields(b);
+        const missing = missingFields(b, catalog);
         const biomarkerLabel = b.name || `Biomarker #${index + 1}`;
         if (missing.length > 0) {
           invalidBiomarkers.push(`${biomarkerLabel} in "${r.fileName}" is missing: ${missing.join(', ')}`);
@@ -406,7 +406,7 @@ export function ReviewStep({
 
     setProblems(null);
     onComplete();
-  }, [reviewedResults, plan, setAside, onComplete]);
+  }, [reviewedResults, plan, setAside, catalog, onComplete]);
 
   return (
     <Stack gap="lg">
@@ -652,13 +652,22 @@ export function ReviewStep({
                                   updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, code))
                                 }
                               />
-                              {setAside.has(biomarker) && (
+                              {setAside.get(biomarker)?.reason === 'twin' && (
                                 <Text size="xs" c="dimmed" mt={4}>
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
                                   </Text>{' '}
                                   its unit cannot be read, and another {getDisplayName(biomarker)} value
                                   is saved. To keep this one, choose its test or &quot;{NOT_A_LOINC_TEST}&quot;.
+                                </Text>
+                              )}
+                              {setAside.get(biomarker)?.savedAs && (
+                                <Text size="xs" c="dimmed" mt={4}>
+                                  <Text span fw={700} size="xs" inherit>
+                                    Not saved:
+                                  </Text>{' '}
+                                  the same measurement as {setAside.get(biomarker)?.savedAs?.value}{' '}
+                                  {setAside.get(biomarker)?.savedAs?.unit}, which is saved.
                                 </Text>
                               )}
                             </Table.Td>

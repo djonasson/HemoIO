@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { fixtureCatalog } from '@/test/loincFixture';
+import { loadCatalog } from '@data/loinc/catalog';
+import { chooseTest } from '@/utils/biomarkerSuggestions';
 import { toUcum } from '@services/units/ucum';
-import { missingFields, planSave, targetTest } from './reviewedSave';
+import { missingFields, planSave, targetTest, unitMisfits } from './reviewedSave';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
+
+const catalog = fixtureCatalog();
 
 /** A share of 100 of something UCUM cannot read */
 const UNREADABLE_SHARE = '/100 HPF';
@@ -51,11 +56,31 @@ function file(editedBiomarkers: MatchedBiomarker[], fileName = 'a.pdf') {
 }
 
 function leftOut(values: MatchedBiomarker[]): MatchedBiomarker[] {
-  return planSave([file(values)]).notSaved.map(({ biomarker }) => biomarker);
+  return planSave([file(values)], catalog).notSaved.map(({ biomarker }) => biomarker);
 }
 
 it(`${UNREADABLE_SHARE} is a share UCUM cannot read`, () => {
   expect(toUcum(UNREADABLE_SHARE)).toBeNull();
+});
+
+describe('unitMisfits', () => {
+  const glucose = { ...CODED, loincCode: '2345-7', unit: 'mg/dL' };
+
+  it("says when a value's unit is not one of its test's kind", () => {
+    expect(unitMisfits({ ...glucose, unit: 'U/L' }, catalog)).toBe(true);
+    expect(unitMisfits({ ...glucose, unit: 'g/24h' }, catalog)).toBe(true);
+  });
+
+  it("takes the test's unit, and its molar form, as fitting", () => {
+    expect(unitMisfits(glucose, catalog)).toBe(false);
+    expect(unitMisfits({ ...glucose, unit: 'mmol/L' }, catalog)).toBe(false);
+  });
+
+  it('says nothing of a unit it cannot read, no unit, or no test', () => {
+    expect(unitMisfits({ ...glucose, unit: UNREADABLE_SHARE }, catalog)).toBe(false);
+    expect(unitMisfits({ ...glucose, unit: '' }, catalog)).toBe(false);
+    expect(unitMisfits({ ...glucose, loincCode: undefined, unit: 'U/L' }, catalog)).toBe(false);
+  });
 });
 
 describe('targetTest', () => {
@@ -80,6 +105,13 @@ describe('missingFields', () => {
     expect(missingFields(typed)).toEqual(['unit']);
   });
 
+  it('asks no unit of a row typed in review whose test has none (an ordinal, pH, specific gravity)', async () => {
+    const real = await loadCatalog();
+    const typed = (loincCode: string): MatchedBiomarker => ({ ...CODED, analyzed: undefined, unit: '', loincCode });
+    expect(missingFields(typed('718-7'), real)).toEqual(['unit']);
+    for (const unitless of ['5802-4', '2756-5', '2965-2']) expect(missingFields(typed(unitless), real)).toEqual([]);
+  });
+
   it('asks no unit of a value the report gave none', () => {
     const screening = analyzed({ name: 'Proteine', unit: '', loincCode: undefined, savedAsUnknown: true });
     expect(missingFields(screening)).toEqual([]);
@@ -88,19 +120,50 @@ describe('missingFields', () => {
 
 describe('planSave', () => {
   it('saves the files that have values and leaves out the rest', () => {
-    const plan = planSave([file([CODED], 'a.pdf'), file([], 'b.pdf')]);
+    const plan = planSave([file([CODED], 'a.pdf'), file([], 'b.pdf')], catalog);
     expect(plan.toSave.map((f) => f.fileName)).toEqual(['a.pdf']);
     expect(plan.notSaved).toEqual([]);
   });
 
   it('leaves out a value with no test next to the same printed name saved with a code, in a unit UCUM cannot read', () => {
-    const plan = planSave([file([TWIN, CODED])]);
+    const plan = planSave([file([TWIN, CODED])], catalog);
     expect(plan.toSave[0].editedBiomarkers).toEqual([CODED]);
-    expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: TWIN }]);
+    expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: TWIN, reason: 'twin' }]);
   });
 
   it('matches the printed name whatever its case or spacing', () => {
     expect(leftOut([{ ...TWIN, name: 's-alt ', analyzed: { ...TWIN.analyzed!, name: 's-alt ' } }, CODED])).toHaveLength(1);
+  });
+
+  describe('a value the user gives the test of another value of its file', () => {
+    const SERUM = analyzed({ name: 'Glucosio', value: 90, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+    const undecided = (value: number) =>
+      analyzed({
+        name: 'Glucosio',
+        value,
+        unit: 'mmol/L',
+        normalizedUnit: 'mmol/L',
+        loincCode: undefined,
+        identifiedBy: undefined,
+        identificationFlags: ['ambiguous'],
+        isExactMatch: false,
+      });
+
+    it('is left out once it is the same measurement in another unit, the standard unit kept', () => {
+      const molar = chooseTest(undecided(5), '14749-6');
+      const plan = planSave([file([molar, SERUM])], catalog);
+      expect(plan.toSave[0].editedBiomarkers).toEqual([SERUM]);
+      expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: molar, reason: 'duplicate', savedAs: SERUM }]);
+    });
+
+    it('is kept when it is another measurement, or still has no test', () => {
+      expect(leftOut([chooseTest(undecided(8), '14749-6'), SERUM])).toEqual([]);
+      expect(leftOut([undecided(5), SERUM])).toEqual([]);
+    });
+
+    it('is kept when its test is the same substance in another sample', () => {
+      expect(leftOut([chooseTest(undecided(5), '15074-8'), SERUM])).toEqual([]);
+    });
   });
 
   describe('still asks for a test, leaving nothing out', () => {

@@ -21,7 +21,7 @@ import {
   createTestChoicePrompt,
   TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { parseTestChoices } from './testChoice';
+import { choiceAnswerLimit, parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -190,10 +190,11 @@ export class AnthropicProvider implements AIProvider {
         messages,
         TEST_CHOICE_SYSTEM_PROMPT,
         options.rateLimit,
-        options.signal
+        options.signal,
+        choiceAnswerLimit(this.config.maxTokens, requests.length)
       );
-      // Thinking blocks may come first; a refusal or cut-off has no readable
-      // choices, which is no choice for any value
+      // Thinking blocks may come first; a refusal has no readable choices,
+      // which is no choice for any value; a cut-off keeps those it completed
       const content = response.content.find((block) => block.type === 'text')?.text;
       return parseTestChoices(content, requests);
     } catch (error) {
@@ -255,7 +256,8 @@ export class AnthropicProvider implements AIProvider {
     messages: AnthropicMessage[],
     systemPrompt: string,
     rateLimit?: RateLimitOptions,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    maxTokens: number = this.config.maxTokens
   ): Promise<AnthropicResponse> {
     const url = `${this.config.baseUrl}/messages`;
 
@@ -271,11 +273,10 @@ export class AnthropicProvider implements AIProvider {
         // Cached: the same instructions and test list open every file's request
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages,
-        max_tokens: this.config.maxTokens,
+        max_tokens: maxTokens,
       }),
       signal,
     }, rateLimit);
-
 
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as AnthropicErrorResponse;

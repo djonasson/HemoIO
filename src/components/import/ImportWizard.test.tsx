@@ -20,11 +20,17 @@ vi.mock('../../services/analysis', () => ({
   analyzeLabReport: vi.fn(),
 }));
 
+import { CatalogContext } from '@contexts/useCatalog';
+import { fixtureCatalog } from '@/test/loincFixture';
 import { ImportWizard } from './ImportWizard';
 
-// Wrapper with Mantine provider
+const catalog = fixtureCatalog();
+
+// Wrapper with Mantine and the LOINC catalog
 const TestWrapper = ({ children }: { children: React.ReactNode }) => (
-  <MantineProvider env="test">{children}</MantineProvider>
+  <MantineProvider env="test">
+    <CatalogContext.Provider value={catalog}>{children}</CatalogContext.Provider>
+  </MantineProvider>
 );
 
 describe('ImportWizard', () => {

@@ -832,6 +832,34 @@ describe('ReviewStep', () => {
     });
   });
 
+  describe('A value given the test of another value of its file', () => {
+    it('is not saved when it is the same measurement in another unit, and says which is', () => {
+      const onComplete = vi.fn();
+      const molar: MatchedBiomarker = {
+        name: 'Glucose',
+        value: 5.55,
+        unit: 'mmol/L',
+        confidence: 0.95,
+        isExactMatch: false,
+        normalizedUnit: 'mmol/L',
+        candidates: [],
+        loincCode: '14749-6',
+        identifiedBy: 'user',
+        identificationFlags: [],
+      };
+      const reviewed: ReviewedResult = {
+        ...mockReviewedResult,
+        editedBiomarkers: [...mockReviewedResult.editedBiomarkers, molar],
+      };
+
+      renderReviewStep({ reviewedResults: [reviewed], onComplete });
+
+      expect(screen.getByText(/the same measurement as 100 mg\/dL, which is saved\./)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Continue to Confirm/i }));
+      expect(onComplete).toHaveBeenCalled();
+    });
+  });
+
   describe('Multiple files', () => {
     it('displays multiple files in accordion', () => {
       const secondResult: ReviewedResult = {

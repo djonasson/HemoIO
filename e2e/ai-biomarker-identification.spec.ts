@@ -185,15 +185,40 @@ test.describe('Identifying the test of each value', () => {
     await expectNoCheckLabel(rowFor(page, '3'));
   });
 
+  const URINE_PH: ExtractedBiomarkerFixture = { name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 };
+
   test('never matches a value with no unit on its name alone', async ({ page }) => {
     // Scenario: A value with no unit is never matched on its name alone
-    const ai = await analyzeReport(page, [
-      { name: 'Proteine (urine)', value: 15, unit: '', confidence: 0.95, specimenHint: 'urine' },
-    ]);
-    const row = rowFor(page, '15');
-    await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
+    const ai = await analyzeReport(page, [URINE_PH], 1, {
+      testChoice: { choices: { 'pH (urine)': { code: '2756-5', confident: true } } },
+    });
+    expect(ai.choiceRequests).toHaveLength(1);
+    const [asked] = ai.choiceRequests[0];
+    expect(asked).toMatchObject({ name: 'pH (urine)', unit: '' });
+    expect(asked.candidates.map((c) => c.code)).toContain('2756-5');
+    await expect(savedAsCell(rowFor(page, '6'))).toHaveText('pH of Urine');
+    await continueToConfirm(page);
+  });
+
+  test('asks me the test of a value with no unit the AI is not sure of', async ({ page }) => {
+    // Scenario: I choose the test of a value with no unit the AI is not sure of
+    await analyzeReport(page, [URINE_PH]);
+    const row = rowFor(page, '6');
+    await expect(savedAsCell(row)).toHaveText('No test chosen');
     await expect(row.getByText('No unit in report')).toBeVisible();
-    expect(ai.choiceRequests).toHaveLength(0);
+    await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(main(page).getByText(/pH \(urine\) in ".*" needs a test/)).toBeVisible();
+    await changeTest(page, row, NOT_A_LOINC_TEST);
+    await continueToConfirm(page);
+  });
+
+  test('points out a unit that does not fit the chosen test', async ({ page }) => {
+    // Scenario: A unit that does not fit the chosen test is pointed out
+    await analyzeReport(page, [S_ALT]);
+    const row = rowFor(page, String(S_ALT.value));
+    await expect(row.getByText("Unit doesn't fit the test")).toHaveCount(0);
+    await changeTest(page, row, SERUM_GLUCOSE);
+    await expect(row.getByText("Unit doesn't fit the test")).toBeVisible();
     await continueToConfirm(page);
   });
 

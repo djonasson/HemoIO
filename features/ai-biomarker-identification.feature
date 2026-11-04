@@ -87,11 +87,24 @@ Feature: Identifying the test of each value
     And a later report printing "Zorblatina" in mg/dL should be saved as "Not a LOINC test" without asking
 
   Scenario: A value with no unit is never matched on its name alone
-    Given a report prints "Proteine (urine)" without a unit
+    Given a report prints "pH (urine)" without a unit, as pH and specific gravity have none
     When the report is analyzed
-    Then the value should be saved as "Not a LOINC test", labelled "No unit in report"
-    And the AI should not be asked which test it is
+    Then the AI should be asked which test it is, among tests of any kind for its name
+    And when the AI is sure it is "pH of Urine", the value should be saved as that test
     And I should be able to continue without giving it a unit
+
+  Scenario: I choose the test of a value with no unit the AI is not sure of
+    Given a report prints "pH (urine)" without a unit
+    And the AI is not sure which test it is
+    When the report is analyzed
+    Then the value should show "No test chosen", labelled "No unit in report"
+    And I should not be able to continue until I choose its test or "Not a LOINC test"
+
+  Scenario: A unit that does not fit the chosen test is pointed out
+    Given a report prints "S-ALT" in U/L
+    When I choose "Glucose [Mass/volume] in Serum or Plasma" as its test
+    Then the value should be labelled "Unit doesn't fit the test"
+    But I should still be able to continue
 
   Scenario: Editing the printed name reads it again
     Given the AI is not sure which test "Glucosio" in mg/dL is

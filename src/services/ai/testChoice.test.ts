@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTestChoices } from './testChoice';
+import { choiceAnswerLimit, parseTestChoices } from './testChoice';
 import type { TestChoiceRequest } from './types';
 
 const requests: TestChoiceRequest[] = [
@@ -48,6 +48,14 @@ describe('parseTestChoices', () => {
     expect(parseTestChoices({ choices: 'x' }, requests)).toEqual(none);
   });
 
+  it('keeps the complete choices of an answer cut off, the rest no choice', () => {
+    const cutOff = '{"choices": [{"id": "a", "code": "2339-0", "confident": true}, {"id": "b", "co';
+    expect(parseTestChoices(cutOff, requests)).toEqual([
+      { id: 'a', code: '2339-0', confident: true },
+      { id: 'b', code: null, confident: false },
+    ]);
+  });
+
   it('keeps ids that were asked about only', () => {
     const raw = { choices: [{ id: 'zzz', code: '2345-7', confident: true }, { id: 'a', code: '2345-7', confident: true }] };
     const result = parseTestChoices(raw, requests);
@@ -58,5 +66,13 @@ describe('parseTestChoices', () => {
   it('is not confident unless the model said so with a boolean', () => {
     const raw = { choices: [{ id: 'a', code: '2345-7', confident: 'yes' }] };
     expect(parseTestChoices(raw, requests)[0]).toEqual({ id: 'a', code: '2345-7', confident: false });
+  });
+});
+
+describe('choiceAnswerLimit', () => {
+  it('gives each value room for its choice, never less than the configured limit', () => {
+    expect(choiceAnswerLimit(4096, 2)).toBe(4096);
+    expect(choiceAnswerLimit(4096, 300)).toBeGreaterThan(4096);
+    expect(choiceAnswerLimit(4096, 300)).toBe(choiceAnswerLimit(1000, 300));
   });
 });

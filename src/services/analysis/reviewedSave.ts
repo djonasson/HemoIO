@@ -4,8 +4,11 @@
  */
 
 import { isPerHundredCounted } from '@/utils/unitSpelling';
+import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/biomarkers/dictionary';
-import { toUcum } from '@services/units/ucum';
+import { toUcum, ucumProperties } from '@services/units/ucum';
+import { clusterMeasurements, comparable, groupBySameTest, groupUnit, preferredValue } from './sameMeasurement';
+import type { Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /** A reviewed file: its name and its values as edited */
@@ -14,10 +17,20 @@ export interface ReviewedFile {
   editedBiomarkers: MatchedBiomarker[];
 }
 
+/**
+ * Why a value is left out: a twin in a unit that cannot be read next to a
+ * value of its name with a code, or a duplicate, the same measurement as
+ * another value of its test that is saved
+ */
+export type SetAsideReason = 'twin' | 'duplicate';
+
 /** A value an import leaves out, and the file it came from */
 export interface SetAsideValue {
   fileName: string;
   biomarker: MatchedBiomarker;
+  reason: SetAsideReason;
+  /** For a duplicate: the value saved in its place */
+  savedAs?: MatchedBiomarker;
 }
 
 /** The files an import saves and the values it leaves out */
@@ -34,23 +47,56 @@ export function targetTest(biomarker: MatchedBiomarker): string | null {
   return biomarker.loincCode ?? null;
 }
 
+/** Standard units of tests whose results have no unit: pH, specific gravity */
+const NO_UNIT = new Set(['', '1', '[pH]']);
+
+/** Whether a LOINC test's results come with no unit: an ordinal, a pH, a specific gravity */
+function hasNoUnit(catalog: Catalog, code: string): boolean {
+  const test = catalog.test(code);
+  if (!test) return false;
+  const canonical = getAddon(catalog, code)?.canonicalUnit;
+  return test.scale !== 'Qn' || test.property === 'SpGrav' || (canonical !== undefined && NO_UNIT.has(canonical));
+}
+
 /**
  * What a value lacks to be saved: a name, a number, or a unit. A value the
- * report gave no unit may have none (a screening result, a ratio); one the
- * user emptied, or a row typed in review, needs one.
+ * report gave no unit may have none (a screening result, a ratio), and so
+ * may one of a test whose results have none; one the user emptied, or a
+ * row typed in review, otherwise needs one.
  */
-export function missingFields(biomarker: MatchedBiomarker): MissingField[] {
+export function missingFields(biomarker: MatchedBiomarker, catalog?: Catalog): MissingField[] {
   const missing: MissingField[] = [];
   if (!biomarker.name) missing.push('name');
   if (!Number.isFinite(biomarker.value)) missing.push('value');
   const reportGaveUnit = !biomarker.analyzed || biomarker.analyzed.unit.trim() !== '';
-  if (!biomarker.unit.trim() && reportGaveUnit) missing.push('unit');
+  const testHasUnit = !(catalog && biomarker.loincCode && hasNoUnit(catalog, biomarker.loincCode));
+  if (!biomarker.unit.trim() && reportGaveUnit && testHasUnit) missing.push('unit');
   return missing;
 }
 
+/** The kind of a LOINC property, a mass and a molar one alike: MCnc and SCnc are both "Cnc" */
+function propertyKind(property: string): string {
+  return /^[MS](?:Cnc|Rat|Cnt|Rto)$/.test(property) ? property.slice(1) : property;
+}
+
+/**
+ * Whether a value's unit is surely not one of its test's kind: a U/L value
+ * saved as a mass concentration, a daily amount as a concentration. A unit
+ * UCUM cannot read, or that tells nothing certain, is not judged.
+ */
+export function unitMisfits(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
+  const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
+  const ucum = biomarker.unit.trim() ? toUcum(biomarker.unit) : null;
+  if (!test || !ucum) return false;
+  const kinds = ucumProperties(ucum).map(propertyKind);
+  return kinds.length > 0 && !kinds.includes(propertyKind(test.property));
+}
+
 /** Whether a value has its test or "Not a LOINC test", and nothing missing */
-function isReady(biomarker: MatchedBiomarker): boolean {
-  return missingFields(biomarker).length === 0 && (!!biomarker.loincCode || !!biomarker.savedAsUnknown);
+function isReady(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
+  return (
+    missingFields(biomarker, catalog).length === 0 && (!!biomarker.loincCode || !!biomarker.savedAsUnknown)
+  );
 }
 
 /**
@@ -80,13 +126,49 @@ function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
  * test in two forms keeps the one it can read, and the user need not remove
  * the other by hand.
  */
-function setAside(values: readonly MatchedBiomarker[]): Set<MatchedBiomarker> {
+function twins(values: readonly MatchedBiomarker[], catalog: Catalog): MatchedBiomarker[] {
   const candidates = values.filter(mayLeaveOut);
-  if (candidates.length === 0) return new Set();
+  if (candidates.length === 0) return [];
   const coded = new Set(
-    values.filter((value) => value.loincCode && isReady(value)).map((value) => nameKey(value.name))
+    values.filter((value) => value.loincCode && isReady(value, catalog)).map((value) => nameKey(value.name))
   );
-  return new Set(candidates.filter((value) => coded.has(nameKey(value.name))));
+  return candidates.filter((value) => coded.has(nameKey(value.name)));
+}
+
+/**
+ * The values of a file that are the same measurement as another value of
+ * their test, each with the one saved in its place (in the standard unit,
+ * else the first): a value the analyzer could not merge, as it had no test
+ * then, is merged once the user gives it one
+ */
+function duplicates(
+  values: readonly MatchedBiomarker[],
+  catalog: Catalog
+): Map<MatchedBiomarker, MatchedBiomarker> {
+  const left = new Map<MatchedBiomarker, MatchedBiomarker>();
+  const coded = values.filter((value) => value.loincCode && isReady(value, catalog));
+  for (const group of groupBySameTest(coded, catalog)) {
+    if (group.length === 1) continue;
+    const unit = groupUnit(group, catalog);
+    for (const cluster of clusterMeasurements(group.map((b) => comparable(b, unit)))) {
+      const kept = preferredValue(cluster, unit).biomarker;
+      for (const { biomarker } of cluster) if (biomarker !== kept) left.set(biomarker, kept);
+    }
+  }
+  return left;
+}
+
+/** The values of a file the import leaves out, and why */
+function setAside(
+  values: readonly MatchedBiomarker[],
+  catalog: Catalog
+): Map<MatchedBiomarker, Omit<SetAsideValue, 'fileName'>> {
+  const left = new Map<MatchedBiomarker, Omit<SetAsideValue, 'fileName'>>();
+  for (const biomarker of twins(values, catalog)) left.set(biomarker, { biomarker, reason: 'twin' });
+  for (const [biomarker, savedAs] of duplicates(values, catalog)) {
+    left.set(biomarker, { biomarker, reason: 'duplicate', savedAs });
+  }
+  return left;
 }
 
 /**
@@ -94,12 +176,12 @@ function setAside(values: readonly MatchedBiomarker[]): Set<MatchedBiomarker> {
  * values. A file left without values (a failed file the user did not fill
  * in) is not saved, but stays in the review so going back keeps its edits.
  */
-export function planSave<T extends ReviewedFile>(results: readonly T[]): SavePlan<T> {
+export function planSave<T extends ReviewedFile>(results: readonly T[], catalog: Catalog): SavePlan<T> {
   const toSave: T[] = [];
   const notSaved: SetAsideValue[] = [];
   for (const result of results) {
-    const left = setAside(result.editedBiomarkers);
-    for (const biomarker of left) notSaved.push({ fileName: result.fileName, biomarker });
+    const left = setAside(result.editedBiomarkers, catalog);
+    for (const value of left.values()) notSaved.push({ fileName: result.fileName, ...value });
     const kept =
       left.size === 0
         ? result

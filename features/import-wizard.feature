@@ -102,6 +102,11 @@ Feature: Import Wizard
     Then I should be able to enter its name, value and unit
     And its test should be found from the name and unit I typed
 
+  Scenario: User adds a value of a test that has no unit
+    Given the AI missed the specific gravity of the urine
+    When I add it with no unit and choose the test "Specific gravity of Urine"
+    Then I should be able to continue without giving it a unit
+
   Scenario: A value whose number is cleared must be filled in before saving
     Given I am editing a value of 14.5 g/dL on the review step
     When I clear its number

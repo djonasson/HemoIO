@@ -376,6 +376,23 @@ test.describe('Import Wizard', () => {
       await expect(main(page).getByText('3 biomarker(s) from 1 file(s)')).toBeVisible();
     });
 
+    test('adds a value of a test that has no unit', async ({ page }) => {
+      // Scenario: User adds a value of a test that has no unit
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      await main(page).getByRole('button', { name: 'Add Biomarker' }).click();
+      const editing = editingRow(page);
+      await editing.getByPlaceholder('Biomarker name').fill('Peso specifico');
+      await editing.getByPlaceholder('Value', { exact: true }).fill('1.02');
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+      const row = reviewRow(page, 'Peso specifico');
+      await changeTest(page, row, 'Specific gravity of Urine');
+
+      await continueToConfirm(page);
+      await expect(main(page).getByRole('row').filter({ hasText: 'Peso specifico' })).toBeVisible();
+    });
+
     test('asks for a cleared number, and keeps a negative one as typed', async ({ page }) => {
       // Scenario: A value whose number is cleared must be filled in before saving
       await loginWithOllama(page);

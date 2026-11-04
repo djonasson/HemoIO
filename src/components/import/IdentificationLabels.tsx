@@ -3,24 +3,29 @@
  */
 import { Badge, Group, Tooltip } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
+import { useCatalog } from '@contexts/useCatalog';
+import { unitMisfits } from '@services/analysis/reviewedSave';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
-import { IDENTIFICATION_LABELS } from './identificationLabelText';
+import { IDENTIFICATION_LABELS, UNIT_MISFIT_LABEL } from './identificationLabelText';
 
 interface IdentificationLabelsProps {
   biomarker: MatchedBiomarker;
 }
 
-/** What a value's identification needs checked, as text */
+/**
+ * What a value's identification needs checked, as text; also a unit not of
+ * its test's kind, which does not stop the import (the user may know better)
+ */
 export function IdentificationLabels({ biomarker }: IdentificationLabelsProps) {
-  const flags = biomarker.identificationFlags ?? [];
-  if (flags.length === 0) return null;
+  const catalog = useCatalog();
+  const labels = (biomarker.identificationFlags ?? []).map((flag) => IDENTIFICATION_LABELS[flag]);
+  if (unitMisfits(biomarker, catalog)) labels.push(UNIT_MISFIT_LABEL);
+  if (labels.length === 0) return null;
   return (
     <Group gap={4} data-testid="check-labels">
-      {flags.map((flag) => {
-        const label = IDENTIFICATION_LABELS[flag];
-        return (
+      {labels.map((label) => (
           // Wraps rather than cuts the text off; the full text also on hover
-          <Tooltip key={flag} label={label} multiline maw={260} openDelay={300}>
+          <Tooltip key={label} label={label} multiline maw={260} openDelay={300}>
             <Badge
               size="xs"
               variant="light"
@@ -34,8 +39,7 @@ export function IdentificationLabels({ biomarker }: IdentificationLabelsProps) {
               {label}
             </Badge>
           </Tooltip>
-        );
-      })}
+      ))}
     </Group>
   );
 }

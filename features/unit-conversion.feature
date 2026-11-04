@@ -96,6 +96,7 @@ Feature: Unit Conversion
   # Duplicate Value Detection (Same Measurement in Different Units)
   Scenario: Detect equivalent values in different units
     Given a lab report contains creatinine as both 67 µmol/L and 0.76 mg/dL
+    And the AI knows the LOINC test of each
     When the values are analyzed
     Then they should be recognized as the same measurement
     And only one value should be kept
@@ -103,29 +104,41 @@ Feature: Unit Conversion
 
   Scenario: Detect equivalent urine creatinine values
     Given a lab report contains urine creatinine as both 3780 µmol/L and 0.42 g/L
+    And the AI knows the LOINC test of each
     When the values are analyzed
     Then they should be recognized as equivalent after unit conversion
     And the values should be merged without conflict
 
   Scenario: Detect equivalent protein/creatinine ratio values
     Given a lab report contains protein/creatinine ratio as both 15 mg/mmolcreat. and 132 mg/gcreat.
+    And the AI knows the LOINC test of each
     When the values are analyzed
     Then they should be recognized as equivalent measurements
     And the values should be merged without conflict
 
   Scenario: Merge the values an Italian report gives in two units
-    Given a lab report gives urea as 3.06 mmol/L and 18 mg/dL, uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L, and HbA1c as 42 mmol/mol Hb and 6.0 %
+    Given a lab report gives uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L, and HbA1c as 42 mmol/mol Hb and 6.0 %
     When the values are analyzed
+    And the AI knows the LOINC test of each value
     Then each should be recognized as one measurement in two units
     And only one value of each should be kept
-    And urea should not be taken for blood urea nitrogen
     And no duplicate conflict warning should be shown
+
+  Scenario: Merge a value once I choose its test
+    Given a lab report gives creatinine as 67 µmol/L and 0.76 mg/dL
+    And the AI knows the test of the mg/dL value but is not sure of the µmol/L one
+    When the values are analyzed
+    Then both values should be kept, with no duplicate conflict warning
+    When I choose "Creatinine [Moles/volume] in Serum or Plasma" for the µmol/L value
+    Then it should be marked "Not saved", as the same measurement as 0.76 mg/dL
+    And the confirmation should say it is not saved
 
   Scenario: Read the units Italian reports write for ratios to creatinine and cells per 100 white cells
     Given a lab report gives the protein/creatinine ratio in "mg/g cr", the albumin/creatinine ratio in "mg/gcr" and nucleated red cells ("Eritroblasti") in "/100WBC"
     When the values are reviewed
     Then each unit should be read as a unit of its test
-    And nothing should stop me from saving them
+    And none should be labelled "Unit doesn't fit the test"
+    And once I choose "Not a LOINC test" for the values no test was found for, nothing should stop me from saving them
 
   Scenario: Keep a share and an absolute count of the same cells apart
     Given a lab report gives nucleated red cells as 0 /100 WBC and as 0 10^9/L, and reticulocytes as 81.3 10^9/L and as 1.67 %
@@ -135,6 +148,7 @@ Feature: Unit Conversion
 
   Scenario: Keep separate urine samples and 24-hour amounts apart
     Given a lab report gives creatinine from a 24-hour collection, as 13746 µmol/24h and 1.55 g/24h, and from a spot sample, as 4367 µmol/L and 0.49 g/L
+    And the AI knows the LOINC test of each value
     When the values are analyzed
     Then one value should be kept for the 24-hour amount and one for the spot sample
     And no duplicate conflict warning should be shown
@@ -147,24 +161,27 @@ Feature: Unit Conversion
 
   Scenario: Tell a 24-hour collection named once from its concentration
     Given a lab report names the creatinine of a 24-hour urine collection "Creatinina (urine, 24h)" for its concentration, 4582 µmol/L and 0.51 g/L, and for its 24-hour amount, 13746 µmol/24h and 1.55 g/24h
+    And the AI knows the LOINC test of each value
     When the values are analyzed
     Then one value should be kept for the concentration and one for the 24-hour amount
     And no duplicate conflict warning should be shown
 
   Scenario: Tell a 24-hour collection's concentration from its 24-hour amount
     Given a lab report gives, for one 24-hour urine collection, "Creatinina/L (urine 24h)" as 4582 µmol/L and 0.51 g/L, and "Creatinina 24h (urine)" as 13746 µmol/24h and 1.55 g/24h
+    And the AI knows the LOINC test of each value
     When the values are analyzed
     Then one value should be kept for the concentration and one for the 24-hour amount
     And no duplicate conflict warning should be shown
 
-  Scenario: Explain values whose units cannot be compared
-    Given a lab report gives a test the dictionary does not know in mg/L and in µmol/L
+  Scenario: Keep values of an unknown test in two units apart
+    Given a lab report gives a test no LOINC test fits in mg/L and in µmol/L
     When the values are analyzed
-    Then a duplicate conflict warning should say the two units cannot be converted to each other
-    And the user should choose which value to keep
+    Then both values should be kept, as nothing says they are one test
+    And no duplicate conflict warning should be shown
 
   Scenario: Flag genuinely different duplicate values as conflict
     Given a lab report contains creatinine as both 67 µmol/L and 1.5 mg/dL
+    And the AI knows the LOINC test of each
     When the values are analyzed
     Then they should be recognized as conflicting values
     And a duplicate conflict warning should be shown

@@ -116,6 +116,7 @@ describe('ConfirmStep', () => {
         {
           fileName: 'lab-report.pdf',
           biomarker: { ...mockResult.editedBiomarkers[0], name: 'Eritroblasti', value: 0, unit: '/100 HPF' },
+          reason: 'twin',
         },
       ],
     });
@@ -123,6 +124,24 @@ describe('ConfirmStep', () => {
     // An alert, so a screen reader says it as the step appears
     expect(screen.getByRole('alert')).toHaveTextContent('1 value not saved');
     expect(screen.getByText('Eritroblasti: 0 /100 HPF in "lab-report.pdf"')).toBeInTheDocument();
+  });
+
+  it('says a value left out is the same measurement as one saved', () => {
+    renderConfirmStep({
+      notSaved: [
+        {
+          fileName: 'lab-report.pdf',
+          biomarker: { ...mockResult.editedBiomarkers[0], value: 5.5, unit: 'mmol/L' },
+          reason: 'duplicate',
+          savedAs: mockResult.editedBiomarkers[0],
+        },
+      ],
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'They are the same measurement as another value of their test, which is saved.'
+    );
+    expect(screen.queryByText(/unit cannot be read/)).not.toBeInTheDocument();
   });
 
   it("holds each file's values in their own scroll box, so a phone scrolls only the table", () => {

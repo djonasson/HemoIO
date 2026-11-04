@@ -23,7 +23,10 @@ export interface TestChoiceFixture {
   confident: boolean;
 }
 
-/** How the mocked AI answers the test choice: by printed name; any other value gets no choice */
+/**
+ * How the mocked AI answers the test choice: by "name|unit" or, for any
+ * unit, by printed name; any other value gets no choice
+ */
 export interface TestChoiceMock {
   choices?: Record<string, TestChoiceFixture>;
   /** The test choice request fails, as an unreachable AI would */
@@ -119,9 +122,10 @@ export async function mockOllama(
           await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"unavailable"}' });
           return;
         }
-        const choices = asked.map(({ id, name }) => ({
+        const answers: Record<string, TestChoiceFixture> = { ...DEFAULT_TEST_CHOICES, ...testChoice.choices };
+        const choices = asked.map(({ id, name, unit }) => ({
           id,
-          ...({ ...DEFAULT_TEST_CHOICES, ...testChoice.choices }[name] ?? { code: null, confident: false }),
+          ...(answers[`${name}|${unit}`] ?? answers[name] ?? { code: null, confident: false }),
         }));
         await route.fulfill({
           status: 200,

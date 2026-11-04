@@ -55,12 +55,20 @@ describe('identifyLocally', () => {
     expect(needsChoice(identification)).toBe(false);
   });
 
-  it('never matches a value with no unit on its name alone: it is saved under its name', () => {
+  it('never matches a value with no unit on its name alone: the AI or the user chooses among tests of any property', () => {
     const identification = identifyLocally(catalog, { name: 'P-Glucosio', unit: '' });
-    expect(identification).toMatchObject({ savedAsUnknown: true, identificationFlags: ['no-unit'] });
+    expect(identification.identificationFlags).toEqual(['ambiguous', 'no-unit']);
     expect(identification.loincCode).toBeUndefined();
-    expect(identification.identifiedBy).toBeUndefined();
-    expect(needsChoice(identification)).toBe(false);
+    expect(identification.savedAsUnknown).toBeFalsy();
+    // Mass and molar codes both: the unit tells nothing apart
+    expect(identification.candidates.map((c) => c.code)).toEqual(expect.arrayContaining(['2345-7', '14749-6']));
+    expect(needsChoice(identification)).toBe(true);
+  });
+
+  it('asks the user about a value with no unit no test fits', () => {
+    const identification = identifyLocally(catalog, { name: 'Zorblatina', unit: '' });
+    expect(identification).toMatchObject({ candidates: [], identificationFlags: ['not-identified', 'no-unit'] });
+    expect(identification.savedAsUnknown).toBeFalsy();
   });
 
   it('uses a test learned for a wording with no unit', () => {
@@ -185,7 +193,7 @@ describe('toLearn', () => {
     });
   });
 
-  it('does not confirm what was learned, or a value with no unit saved under its name', async () => {
+  it('does not confirm what was learned, or a value still undecided', async () => {
     expect(toLearn(await analyzed('Glucosio', '')).confirmed).toBe(false);
     const learned = await identifyValues(catalog, [extracted('Zorb', 1, 'mg/dL')], { learned: { 'zorb|mg/dL': '2339-0' } });
     expect(toLearn(learned.values[0]).confirmed).toBe(false);

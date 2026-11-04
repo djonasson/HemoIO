@@ -22,7 +22,7 @@ import {
   createTestChoicePrompt,
   TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { parseTestChoices } from './testChoice';
+import { choiceAnswerLimit, parseTestChoices } from './testChoice';
 import {
   OLLAMA_DEFAULTS,
   isOllamaRunning,
@@ -162,14 +162,14 @@ export class OllamaProvider implements AIProvider {
     // About 40 tokens of answer per value, never below the configured limit
     const { size, answerRoom } = ollamaContext(
       characters,
-      Math.max(this.maxTokens, requests.length * 40),
+      choiceAnswerLimit(this.maxTokens, requests.length),
       0,
       CONTEXT_SLACK
     );
 
     try {
       const response = await this.sendAtKeptSize(messages, modelToUse, options, size, answerRoom);
-      // A cut-off or empty answer has no readable choices: no choice for any value
+      // An empty answer has no choices; a cut-off one keeps those it completed
       return parseTestChoices(response.message?.content, requests);
     } catch (error) {
       if (error instanceof AIAnalysisError) {
@@ -548,12 +548,6 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
   }
 
   /**
-   * One chat request with a context of `size`, remembered for the model
-   * once Ollama accepted it. A size no larger than the one kept that Ollama
-   * refused, or that ran out of time, means that one no longer fits either
-   * (less free memory), so it is forgotten; a larger one leaves it.
-   */
-  /**
    * Ask at the larger context kept from before, so Ollama need not reload
    * the model, else at the request's own size; the own size also when the
    * kept one no longer fits (less free memory)
@@ -575,6 +569,12 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     }
   }
 
+  /**
+   * One chat request with a context of `size`, remembered for the model
+   * once Ollama accepted it. A size no larger than the one kept that Ollama
+   * refused, or that ran out of time, means that one no longer fits either
+   * (less free memory), so it is forgotten; a larger one leaves it.
+   */
   private async chat(
     messages: ChatMessage[],
     model: string,

@@ -8,3 +8,6 @@ export const IDENTIFICATION_LABELS: Record<IdentificationFlag, string> = {
   'not-identified': 'Not identified',
   'no-unit': 'No unit in report',
 };
+
+/** A unit not of the kind of the value's test: a daily amount saved as a concentration */
+export const UNIT_MISFIT_LABEL = "Unit doesn't fit the test";

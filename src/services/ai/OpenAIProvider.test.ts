@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
+import { choiceAnswerLimit } from './testChoice';
 import { AIAnalysisError, AIConfigurationError } from './types';
 
 // Model IDs come from the user's selection at runtime; tests use a placeholder
@@ -400,6 +401,19 @@ describe('OpenAIProvider quota', () => {
         { id: 'v1', code: '2350-7', confident: true },
         { id: 'v2', code: null, confident: false },
       ]);
+    });
+
+    it('gives the answer room for every value of a long report', async () => {
+      const many = Array.from({ length: 300 }, (_, i) => ({ ...requests[1], id: `v${i}` }));
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ choices: [{ message: { content: '{"choices":[]}' }, finish_reason: 'stop' }] }),
+      } as Response);
+
+      await new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL }).chooseTests(many);
+
+      const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+      expect(body.max_completion_tokens ?? body.max_tokens).toBe(choiceAnswerLimit(4096, 300));
     });
 
     it('makes no call without requests', async () => {
