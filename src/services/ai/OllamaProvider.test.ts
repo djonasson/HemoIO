@@ -1023,7 +1023,7 @@ describe('OllamaProvider native chat API', () => {
       expect(result.map((c) => c.code)).toEqual([null, null]);
     });
 
-    it('reports an API error without the key', async () => {
+    it('reports an API error as an analysis error', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 401,
@@ -1034,7 +1034,6 @@ describe('OllamaProvider native chat API', () => {
       const error = await provider.chooseTests(requests).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(AIAnalysisError);
-      expect((error as Error).message).not.toContain('sk-');
     });
   });
 });

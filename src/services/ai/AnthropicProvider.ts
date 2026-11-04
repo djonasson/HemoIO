@@ -26,6 +26,7 @@ import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
+import { withoutKey } from './withoutKey';
 
 /**
  * Default Anthropic configuration.
@@ -282,7 +283,7 @@ export class AnthropicProvider implements AIProvider {
       const errorData = (await response.json().catch(() => ({}))) as AnthropicErrorResponse;
       const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
       throw new AIAnalysisError(
-        `Anthropic API error: ${errorMessage}`,
+        `Anthropic API error: ${withoutKey(errorMessage, this.config.apiKey)}`,
         'anthropic',
         errorData.error?.type
       );

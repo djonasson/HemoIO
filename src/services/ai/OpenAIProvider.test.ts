@@ -438,14 +438,14 @@ describe('OpenAIProvider quota', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 401,
-        json: () => Promise.resolve({ error: { message: 'Invalid key', type: 'x', code: 'invalid_api_key' } }),
+        json: () => Promise.resolve({ error: { message: 'Incorrect API key provided: sk-test-key', type: 'x', code: 'invalid_api_key' } }),
       } as Response);
 
       const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
       const error = await provider.chooseTests(requests).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(AIAnalysisError);
-      expect((error as Error).message).not.toContain('sk-');
+      expect((error as Error).message).not.toContain('sk-test-key');
     });
   });
 });

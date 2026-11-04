@@ -26,6 +26,7 @@ import { choiceAnswerLimit, parseTestChoices } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
+import { withoutKey } from './withoutKey';
 
 /**
  * Default OpenAI configuration.
@@ -333,7 +334,7 @@ export class OpenAIProvider implements AIProvider {
       const errorData = (await response.json().catch(() => ({}))) as OpenAIErrorResponse;
       const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
       throw new AIAnalysisError(
-        `OpenAI API error: ${errorMessage}`,
+        `OpenAI API error: ${withoutKey(errorMessage, this.config.apiKey)}`,
         'openai',
         errorData.error?.code
       );

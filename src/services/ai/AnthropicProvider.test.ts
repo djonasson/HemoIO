@@ -539,14 +539,14 @@ describe('AnthropicProvider prompt caching', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 401,
-        json: () => Promise.resolve({ error: { message: 'Invalid key', type: 'x', code: 'invalid_api_key' } }),
+        json: () => Promise.resolve({ error: { message: 'Incorrect API key provided: sk-ant-test-key', type: 'x', code: 'invalid_api_key' } }),
       } as Response);
 
       const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
       const error = await provider.chooseTests(requests).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(AIAnalysisError);
-      expect((error as Error).message).not.toContain('sk-');
+      expect((error as Error).message).not.toContain('sk-ant-test-key');
     });
   });
 });
