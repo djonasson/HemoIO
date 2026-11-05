@@ -18,15 +18,8 @@ import {
   startAnalysis,
   uploadFiles,
 } from '../steps/importWizard.steps';
+import { waitForServiceWorker } from '../steps/serviceWorker.steps';
 import { removeTempFile } from '../steps/tempFiles';
-
-/** Wait until the service worker controls the page */
-async function waitForServiceWorker(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-    while (!navigator.serviceWorker.controller) await new Promise((r) => setTimeout(r, 100));
-  });
-}
 
 /** The OCR files the service worker has cached, by path */
 function cachedOcrFiles(page: Page): Promise<string[]> {

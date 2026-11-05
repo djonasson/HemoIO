@@ -76,3 +76,12 @@ Feature: Progressive Web App
     And I open the app
     Then the app should load from cache
     And I should be able to view my saved data
+
+  @pwa @offline
+  Scenario: The test catalog works offline after a first online visit
+    Given I unlocked the app once while online
+    Then the LOINC test catalog should have been kept on this device
+    When I go offline
+    And I open the app and unlock it
+    Then the test catalog should load
+    And I should be able to look up a test in the biomarker dictionary
