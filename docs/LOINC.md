@@ -129,8 +129,11 @@ it is committed, so building the app never needs the release:
    treats an unranked test as the least common one, so it sorts after every
    ranked test and never wins a "more common" tie-break against one.
 
-   Of the Italian linguistic variant only the component is kept: its
-   RELATEDNAMES2 is a sentence of property and system words, not a list.
+   A test's names are its component, related names and short name, the
+   abbreviation leading the short name when the component is one part
+   ("Hct" of "Hct VFr Bld Auto"), and the Italian component. Of the Italian
+   linguistic variant only the component is kept: its RELATEDNAMES2 is a
+   sentence of property and system words, not a list.
 3. Commit the regenerated file.
 
 The output is deterministic, so an unchanged release gives an unchanged file.

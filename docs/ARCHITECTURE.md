@@ -76,7 +76,7 @@ The application follows a layered architecture:
 │         (React Context, Business Logic, Hooks)          │
 ├─────────────────────────────────────────────────────────┤
 │                   Service Layer                         │
-│    (Document Analysis, Export, Biomarker Dictionary)    │
+│   (Document Analysis, Test Identification, Units)       │
 ├─────────────────────────────────────────────────────────┤
 │                    Data Layer                           │
 │        (Dexie.js, Storage Providers, Encryption)        │
@@ -110,10 +110,10 @@ Business logic and application state. Responsible for:
 Domain-specific services. Responsible for:
 
 - Document analysis orchestration
+- Identifying each value's LOINC test (see Biomarker Identification)
 - Data import/export operations
-- Unit conversion and normalization
-- Biomarker dictionary management
-- Reference range handling
+- Unit reading and conversion (UCUM)
+- Trend lines, statistics and alerts over LOINC trend codes
 
 ### Data Layer
 
@@ -122,7 +122,7 @@ Data persistence and retrieval. Responsible for:
 - Database operations (Dexie.js)
 - Encryption/decryption of data
 - Storage provider abstraction
-- Data migration between schema versions
+- The LOINC catalog and HemoIO's add-ons to it (`src/data/loinc/`)
 
 ### Integration Layer
 
@@ -134,35 +134,71 @@ External service communication. Responsible for:
 
 ## Data Model
 
-High-level entity relationships:
+Tests are identified by LOINC codes. HemoIO keeps no test table of its own:
+the tests come from the shipped LOINC catalog (see LOINC Catalog), and
+everything the user stores per test is keyed by a code.
 
 ```text
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   LabResult  │────<│  TestValue   │>────│  Biomarker   │
-│              │     │              │     │  (reference) │
-│ - date       │     │ - value      │     │              │
-│ - labName    │     │ - unit       │     │ - name       │
-│ - notes      │     │ - refRangeLo │     │ - category   │
-└──────────────┘     │ - refRangeHi │     │ - units[]    │
-                     │ - qualType   │     │ - description│
-                     └──────────────┘     └──────────────┘
-
-┌──────────────┐     ┌──────────────┐
-│    User      │     │   Settings   │
-│  Preferences │     │              │
-│              │     │ - storageProvider
-│ - unitPrefs  │     │ - aiProvider │
-│ - targets    │     │ - theme      │
-└──────────────┘     └──────────────┘
+┌──────────────┐     ┌────────────────────┐     ┌────────────────────┐
+│   LabResult  │────<│     TestValue      │>────│  CatalogTest       │
+│              │     │                    │     │  (shipped, read-   │
+│ - date       │     │ - biomarkerKey     │     │   only LOINC data) │
+│ - labName    │     │   (LOINC code, or  │     │ - code, long name  │
+│ - notes      │     │   unknown:<name>)  │     │ - component, prop, │
+└──────────────┘     │ - value, unit      │     │   system, method   │
+                     │ - refRangeLo/Hi    │     │ - names, units     │
+                     │ - rawText (printed │     │ - rank, groups     │
+                     │   name)            │     └─────────┬──────────┘
+                     └────────────────────┘               │ 0..1
+                                                ┌─────────┴──────────┐
+┌────────────────────┐   ┌──────────────┐       │  TestAddon         │
+│  UserPreferences   │   │   UserNote   │       │  (addons.ts)       │
+│                    │   │              │       │ - short name       │
+│ - unitPreferences  │   │ - content    │       │ - description      │
+│ - personalTargets  │   │ - biomarker- │       │ - standard range   │
+│ - acknowledged-    │   │   Key (trend │       │ - units offered    │
+│   Alerts           │   │   code)      │       └────────────────────┘
+│   (by trend code)  │   │ - labResult/ │
+│ - learnedTests     │   │   testValue  │       ┌──────────────┐
+│   (wording|unit →  │   └──────────────┘       │   Settings   │
+│    code)           │                          │ - storage,   │
+│ - theme, dateFormat│                          │   AI config  │
+└────────────────────┘                          └──────────────┘
 ```
 
 ### Key Entities
 
 - **LabResult**: A single lab report/visit (date, lab name, notes)
-- **TestValue**: Individual test measurement within a lab result
-- **Biomarker**: Reference data about a type of test (canonical units, description, category)
-- **UserPreferences**: User's display preferences, personal target ranges
-- **Settings**: Application configuration (storage provider, AI keys, etc.)
+- **TestValue**: One measurement. `biomarkerKey` holds the test's LOINC code
+  ("2345-7"), or `unknown:<name key>` for a value the user saved as "not a
+  LOINC test", which is then trended by its printed name and unit only.
+- **CatalogTest**: A LOINC test of the shipped catalog. Never stored in the
+  database: a value refers to it by code.
+- **TestAddon**: What HemoIO adds to LOINC for the tests it describes: a
+  short name, a description, a standard adult range and the units it offers.
+  A code without an add-on uses that of a code it trends with, else shows its
+  LOINC name and the range printed on the report.
+- **UserPreferences**: Preferred units, personal targets and acknowledged
+  alerts, each keyed by **trend code**; the tests the user taught
+  (`learnedTests`: a lab's wording and UCUM unit → the code chosen); theme
+  and date format.
+- **UserNote**: A note on a lab result, a value, or a test (by trend code).
+- **Settings**: Device configuration (storage provider, AI provider and key).
+
+### Trend Codes
+
+Several LOINC codes can be one test to the user: glucose in mg/dL (2345-7)
+and in mmol/L (14749-6), a day's creatinine in g and in mmol, a
+protein/creatinine ratio in mg/g and in mg/mmol, or a test's blood, serum
+and plasma codes when LOINC groups them. `Catalog.trendGroup` joins them,
+from LOINC's group files: a parent group that joins mass and substance
+concentrations, the groups of a rate's or a ratio's mass and molar forms
+(same component and sample), else a group of a test in any of blood, serum
+or plasma. `trendCode` (`display.ts`) names a group by the member HemoIO
+describes, else its most common code. Trend lines, alerts, targets, unit
+preferences, notes, the Biomarkers page and the CSV export are keyed by it; each
+value still converts through its own code, so a value whose unit cannot be
+converted gets a line of its own instead of being dropped.
 
 ## Storage Architecture
 
@@ -173,15 +209,18 @@ All user data is stored in IndexedDB via Dexie.js:
 ```typescript
 // Current schema: only IDs and links are indexed, the rest is encrypted
 const db = new Dexie('HemoIO');
-db.version(5).stores({
+db.version(7).stores({
   labResults: '++id',
   testValues: '++id, labResultId',
-  biomarkers: '++id, name, category',
   userPreferences: '++id',
   settings: '++id',
   userNotes: '++id, labResultId, testValueId',
 });
 ```
+
+Version 7 moved tests onto LOINC codes. There is no migration: the upgrade
+clears lab results, values, notes and preferences and keeps the settings,
+and backups made before it are refused with a message saying why.
 
 ### Encryption
 
@@ -344,56 +383,127 @@ Document analysis uses a hybrid approach: text extraction happens locally in the
 AI services receive extracted text (not raw documents) and perform intelligent parsing:
 
 - Identify document structure and layout semantics
-- Extract biomarker names, values, units, and reference ranges
+- Extract each value's printed name, value, unit, reference range and the
+  sample the report names for it (its specimen hint)
 - Handle varied lab report formats
 - Assign confidence scores to extractions
+- Choose, for the values the catalog search leaves open, one of the
+  candidate LOINC tests it is given, or none
+
+The extraction asks for no codes: the AI never names a LOINC code itself.
 
 ```typescript
+// src/services/ai/types.ts (abridged)
 interface AIProvider {
-  analyzeLabReport(extractedText: string): Promise<AnalysisResult>;
+  analyzeLabReport(text: string, options?: AnalysisOptions): Promise<LabReportAnalysisResult>;
+  chooseTests(requests: TestChoiceRequest[], options?: …): Promise<TestChoice[]>;
 }
 
-interface AnalysisResult {
-  labDate: ValueWithConfidence<Date>;
-  labName: ValueWithConfidence<string>;
-  values: ExtractedValue[];
-}
-
-interface ExtractedValue {
-  biomarkerName: string;
-  value: string | number;
+interface ExtractedBiomarker {
+  name: string; // as printed
+  value: number;
   unit: string;
-  referenceRange?: { low?: number; high?: number };
+  referenceRange?: { low?: number; high?: number; unit: string };
+  specimenHint?: string; // "urine", "24h urine", "serum", "blood"
   confidence: number; // 0-1
-  rawText: string; // Original text this was extracted from
 }
 
-interface ValueWithConfidence<T> {
-  value: T;
-  confidence: number;
+interface TestChoiceRequest {
+  id: string;
+  name: string;
+  unit: string;
+  specimenHint?: string;
+  candidates: TestCandidate[]; // code and LOINC long common name
+}
+
+interface TestChoice {
+  id: string;
+  code: string | null; // one of the candidates, or none
+  confident: boolean;
 }
 ```
 
-Multiple AI providers can be supported (OpenAI, Anthropic, etc.) behind this interface.
+OpenAI, Anthropic and Ollama implement this interface.
 
 ### Biomarker Identification
 
-Each extracted value is filed under a LOINC code from the shipped catalog (`src/data/loinc/`), or saved as "not a LOINC test" under its printed name.
+Each extracted value is filed under a LOINC code from the shipped catalog (`src/data/loinc/`), or saved as "not a LOINC test" under its printed name. The steps run in order, each only for the values the one before left open: learned, local, AI, user. What the user confirms is learned when the import is saved.
 
 - **Learned.** A code the user saved for the same printed name and unit is taken first.
-- **Locally** (`src/services/analysis/loincMatch.ts`). The printed name is searched in the catalog's English and Italian names, read with its sample (a prefix such as "S-" or "U-", sample words anywhere in the name such as "urina", "siero" or "sangue", or the AI's specimen hint) and with the LOINC properties its UCUM unit implies. "Blood" is said loosely of serum tests too, so a blood word or hint leaves blood and serum tests both open. A LOINC long common name printed in full is that test. A bracket counts as another name or a qualifier ("Tirotropina (TSH)"); Italian and English word endings count as one word ("proteine", "protein"). A test HemoIO describes in a unit LOINC files under another property (HbA1c in mmol/mol) is a candidate only when no test of the unit's own property fits. A test is taken without asking when its name fits best by a margin, or when the tests that fit as well differ in what the name does not say: a test and its variants by method or collection time are one fit (variants that each name a method, such as D-dimer FEU and DDU, are not), and among different tests the one HemoIO describes, or one at least ten times more common by LOINC's rank, is the usual meaning. So with no sample said, the serum test is usually taken over the blood one ("Potassio" from a blood gas report too). Other values keep up to eight candidates; a name that fits nothing well gets the most common tests of its sample and unit as well. A value without a readable unit is never matched.
+- **Locally** (`src/services/analysis/loincMatch.ts`). The printed name is searched in the catalog's English and Italian names, read with its sample (a prefix such as "S-" or "U-", sample words anywhere in the name such as "urina", "siero" or "sangue", or the AI's specimen hint) and with the LOINC properties its UCUM unit implies. "Blood" is said loosely of serum tests too, so a blood word or hint leaves blood and serum tests both open. A LOINC long common name printed in full is that test. A bracket counts as another name or a qualifier ("Tirotropina (TSH)"); Italian and English word endings count as one word ("proteine", "protein"); a word no name has may be two name words written as one ("Alfafetoproteina"); a name ending in "-uria" is its substance in urine ("Microalbuminuria"). There is no alias list: a wording LOINC does not know ("Glicemia", "PCR") goes to the AI or the user, and is learned once chosen. A test HemoIO describes in a unit LOINC files under another property (HbA1c in mmol/mol) is a candidate only when no test of the unit's own property fits. A test is taken without asking when its name fits best by a margin, or when the tests that fit as well differ in what the name does not say: a test and its variants by method or collection time are one fit (variants that each name a method, such as D-dimer FEU and DDU, are not), and among different tests the one HemoIO describes, or one at least ten times more common by LOINC's rank, is the usual meaning. So with no sample said, the serum test is usually taken over the blood one ("Potassio" from a blood gas report too). Other values keep up to eight candidates; a name that fits nothing well gets the most common tests of its sample and unit as well. A value without a readable unit is never matched.
 - **By the AI.** The undecided values go to the configured AI in one request with their candidates; it picks one, or none. It never invents a code.
-- **Review** shows each value's code with its LOINC name, the candidates, and labels for what needs checking. The user's choice is learned when the import is saved.
+- **Review** shows each value's code with its LOINC name, the candidates, and labels for what needs checking. The user may pick another candidate, search the whole catalog, or choose "Not a LOINC test". Values of one test given in two units are merged once they have one (in the analysis, or when the user gives a value the test of another), unless the test's values conflict.
+- **Learned on save.** Each value whose test the user chose is remembered under its printed name and UCUM unit (`learnedTests`), so the next report with that wording is matched without asking. Settings lists what was learned and lets the user remove it.
 - The tuning runner `scripts/match-reports.ts` (run with `vitest.match-reports.config.ts`) prints, for local reports, each printed name, unit, local status and top candidates, never a value.
 - **Ollama** is called through its native `/api/chat` with a context size fitted to the prompt (its OpenAI-compatible endpoint cannot set one).
+
+## LOINC Catalog
+
+LOINC (Logical Observation Identifiers Names and Codes) is the code system
+for lab tests. HemoIO ships a generated subset of it; the LOINC notice is in
+the README and under Settings → About. See `docs/LOINC.md` for downloading a
+release.
+
+- **Generated subset.** `npm run loinc:catalog` (`scripts/loinc-catalog.mjs`)
+  reads a release in `~/loinc/<version>/files` and writes
+  `src/data/loinc/catalog.generated.json` (about 18,000 tests, 13 MB). It
+  keeps the active laboratory codes that LOINC ranks as common tests, plus
+  the unranked codes HemoIO needs (`EXTRA_CODES`). Each test carries its
+  long common name, short name, component, property, system, scale and
+  method, class, example UCUM units, common-test rank, LOINC groups, and
+  its names: the component, its related names, the short name and the
+  abbreviation leading it, and the Italian component. The file is
+  committed and deterministic, so building never needs the release. Tests
+  of the generator run on fixture rows cut from the release.
+- **Fetched, not bundled.** The build emits the file as a hashed JSON
+  asset. `loadCatalog` fetches it once the app is unlocked (a failed
+  `import()` stays failed in a browser, a failed fetch can be tried again);
+  `CatalogProvider` shows a loader, then the app, or an error with "Try
+  again". Unit tests import the file instead.
+- **Runtime cache.** The service worker caches the file on first use
+  (CacheFirst, one entry, as the hashed name changes with its content)
+  instead of precaching it, which it is too large for. After one online
+  visit the app works offline; before it, offline shows the catalog error.
+- **Runtime catalog** (`catalog.ts`). `createCatalog` builds the indexes
+  once: tests by code and long name, a word index weighted by rarity, and
+  trend groups (see Trend Codes). `search`/`scoredSearch` score names
+  (1 for a name equal to the query, up to 0.9 for one sharing its words,
+  less for close word forms), ignoring sample and other generic words;
+  `common` lists the most common tests of a property and sample.
+- **Display** (`display.ts`). A test's name is the add-on's short name,
+  else LOINC's short name, else its long name; codes are shown with their
+  LOINC long common name. A standard range is only offered in a unit the
+  code itself has.
+
+## Units (UCUM)
+
+Units are read and converted with UCUM, through `@lhncbc/ucum-lhc`
+(`src/services/units/ucum.ts`); its notice, and that of is-finite which it
+ships, are in the README and under Settings → About, with the library's
+installed version (`packageVersions.config.ts`).
+
+- **`toUcum`** turns a printed spelling into UCUM ("x10³/µL" → "10*3/uL",
+  "mUI/mL" → "m[IU]/mL", "/24h" → "/(24.h)"), or null when UCUM rejects it.
+  The library's own console output on rejected units is silenced.
+- **`ucumProperties`** reads which LOINC properties a unit implies from its
+  dimension: mass per volume is MCnc, amount per volume SCnc, a share NFr,
+  MFr or VFr, and so on. The per-cell properties (MCV, MCH, MCHC) are read
+  only from fL, pg and g/dL or g/L. Matching searches only tests of these
+  properties.
+- **`convertUcum`** converts between units of one dimension; it never
+  returns NaN or Infinity. Mass ↔ molar conversion needs a molar mass:
+  `definitions.ts` holds them by LOINC component (and property or sample
+  where the component alone is not enough), so each value converts through
+  its own code's component.
 
 ### Offline Capability
 
 With local text extraction:
 
-- **Fully offline**: Viewing data, manual entry, trends, export
+- **Fully offline**: Viewing data, manual entry, trends, export, once the
+  LOINC catalog was loaded online once
 - **Partially offline**: Text extraction from documents (PDF.js, Tesseract.js)
-- **Requires internet**: AI-powered intelligent parsing of extracted text, and the first download of the OCR files
+- **Requires internet**: AI-powered intelligent parsing of extracted text, and the first download of the OCR files and of the LOINC catalog
 
 Users could potentially extract text offline and queue documents for AI processing when connectivity is restored (future enhancement).
 
@@ -457,7 +567,7 @@ npm run preview  # Preview production build
 
 The application is configured as a Progressive Web App via `vite-plugin-pwa`:
 
-- **Offline support**: Service worker caches application shell
+- **Offline support**: Service worker precaches the application shell, and caches the OCR files and the LOINC catalog on first use
 - **Installable**: Can be installed on desktop and mobile
 - **Updates**: Prompt user when new version is available
 
@@ -492,15 +602,19 @@ hemoio/
 │   │   ├── ai/             # AI provider integrations
 │   │   ├── ocr/            # PDF.js and Tesseract.js wrappers
 │   │   ├── export/         # Data export functionality
-│   │   └── analysis/       # Document analysis orchestration
+│   │   ├── units/          # UCUM reading and unit conversion
+│   │   ├── statistics/     # Trend lines and statistics
+│   │   └── analysis/       # Document analysis and LOINC matching
 │   ├── data/               # Data layer
 │   │   ├── db/             # Dexie.js database setup
+│   │   ├── loinc/          # LOINC catalog, add-ons, display, keys
 │   │   ├── storage/        # Storage provider implementations
 │   │   └── encryption/     # Encryption utilities
 │   ├── types/              # TypeScript type definitions
 │   ├── utils/              # Utility functions
 │   ├── App.tsx             # Root component
 │   └── main.tsx            # Entry point
+├── scripts/                # LOINC download and catalog generator, tuning runner
 ├── features/               # Gherkin feature files
 ├── e2e/                    # Playwright tests and step definitions
 ├── index.html
@@ -517,5 +631,5 @@ Items not in initial release but architecturally accommodated:
 - **Additional AI providers**: New providers implement `AIProvider` interface
 - **Cloud storage providers**: New providers implement `StorageProvider` interface
 - **Patient portal integration**: New data sources implement an import interface
-- **Additional test types**: Biomarker reference data can be extended
+- **Additional test types**: Any LOINC test in the catalog already works; an add-on in `addons.ts` gives one a description, range and units
 - **Localization**: Component structure supports i18n integration
