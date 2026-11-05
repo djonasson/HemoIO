@@ -5,7 +5,7 @@ import { notifications } from '@mantine/notifications';
 import { SaveError } from '@data/db/saveError';
 import { CatalogContext } from '@contexts/useCatalog';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { LearnedAliases } from './LearnedAliases';
+import { LearnedTests } from './LearnedTests';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
@@ -23,13 +23,13 @@ function renderList() {
   render(
     <MantineProvider env="test">
       <CatalogContext.Provider value={catalog}>
-        <LearnedAliases />
+        <LearnedTests />
       </CatalogContext.Provider>
     </MantineProvider>
   );
 }
 
-describe('LearnedAliases', () => {
+describe('LearnedTests', () => {
   it('lists each learned wording and unit with its LOINC test, and removes one', () => {
     learnedTests = { 'zorb|mg/dL': '2339-0', 'nitriti|': 'unknown:nitriti' };
     renderList();

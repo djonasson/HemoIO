@@ -21,7 +21,7 @@ import { ChangePassword } from './ChangePassword';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets } from './PersonalTargets';
-import { LearnedAliases } from './LearnedAliases';
+import { LearnedTests } from './LearnedTests';
 import { AboutSettings } from './AboutSettings';
 import { toPersonalTarget, type PersonalTarget } from './personalTarget';
 import { StorageSettings } from './StorageSettings';
@@ -378,7 +378,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         </Tabs.Panel>
 
         <Tabs.Panel value="biomarkers" pt="md">
-          <LearnedAliases />
+          <LearnedTests />
         </Tabs.Panel>
 
         <Tabs.Panel value="about" pt="md">

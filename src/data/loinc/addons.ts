@@ -961,15 +961,12 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
 };
 
 /**
- * The add-on for a code: its own entry, else the entry of its trend group,
- * else that of the first code in the group that has one
+ * The add-on for a code: its own entry, else that of the first code it
+ * trends with that has one
  */
 export function getAddon(catalog: Catalog, code: string): TestAddon | undefined {
   const own = TEST_ADDONS[code];
   if (own) return own;
-  const trendGroup = catalog.trendGroup(code);
-  const groupEntry = TEST_ADDONS[trendGroup];
-  if (groupEntry) return groupEntry;
-  const member = catalog.groupCodes(trendGroup).find((other) => TEST_ADDONS[other]);
+  const member = catalog.groupCodes(catalog.trendGroup(code)).find((other) => TEST_ADDONS[other]);
   return member ? TEST_ADDONS[member] : undefined;
 }

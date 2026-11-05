@@ -7,7 +7,7 @@
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { toUcum, ucumProperties } from '@services/units/ucum';
-import { isPanel, type Catalog, type CatalogTest } from '@data/loinc/catalog';
+import { byRank, isDayUrine, isPanel, type Catalog, type CatalogTest, type ScoredTest } from '@data/loinc/catalog';
 
 /** A value as the report prints it */
 export interface PrintedValue {
@@ -104,9 +104,6 @@ const URINE_WORD = /\burin(?:a|e|ari[oa])\b/gi;
 /** A substance said of urine by its ending: "Microalbuminuria", "Proteinuria" */
 const URINE_ENDING = /(\p{L}{4,})uria\b/giu;
 const DAY_WORD = /\b24\s*(?:h|ore)\b/gi;
-
-/** A LOINC long common name of a 24-hour urine test: "... in 24 hour Urine" */
-const DAY_URINE_NAME = /\b24 ?(?:hour|hr|h) urine\b/i;
 
 /** The name without a leading sample prefix, and the systems the prefix means */
 function stripPrefix(name: string): { name: string; systems?: string[] } {
@@ -210,6 +207,25 @@ function findTests(catalog: Catalog, name: string, scope: Scope): Found[] {
 }
 
 /**
+ * The catalog with each search's result kept for the value being matched:
+ * the name's forms, the described-unit pass and the prefix checks repeat
+ * the same searches.
+ */
+function withSearchesKept(catalog: Catalog): Catalog {
+  const kept = new Map<string, ScoredTest[]>();
+  const scoredSearch: Catalog['scoredSearch'] = (query, filter) => {
+    const key = JSON.stringify([query, filter?.properties, filter?.systems]);
+    let result = kept.get(key);
+    if (!result) {
+      result = catalog.scoredSearch(query, filter);
+      kept.set(key, result);
+    }
+    return result;
+  };
+  return { ...catalog, scoredSearch };
+}
+
+/**
  * The ways a printed name may name its test: whole, without its brackets,
  * and each bracket alone, each with what it leaves out. A bracket holds
  * another name ("Tirotropina (TSH)") or a qualifier the catalog does not
@@ -251,16 +267,12 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
 
 /** Whether a test is from a sample the matcher names, with 24-hour urine apart */
 function fitsSystem(test: CatalogTest, system: string): boolean {
-  if (system === DAY_URINE) return test.system === 'Urine' && DAY_URINE_NAME.test(test.name);
-  if (system === 'Urine') return test.system === 'Urine' && !DAY_URINE_NAME.test(test.name);
+  if (system === DAY_URINE) return isDayUrine(test);
+  if (system === 'Urine') return test.system === 'Urine' && !isDayUrine(test);
   return test.system === system;
 }
 
-/** Lower rank first; an unranked test (0) last */
-function byRank(a: CatalogTest, b: CatalogTest): number {
-  return rankOf(a.rank) - rankOf(b.rank);
-}
-
+/** A rank to compare: an unranked test (0) last */
 function rankOf(rank: number): number {
   return rank || Number.POSITIVE_INFINITY;
 }
@@ -352,10 +364,11 @@ function toCandidate(test: CatalogTest, score: number): Candidate {
  * user may know a wording LOINC does not ("Glicemia").
  */
 export function matchLocally(
-  catalog: Catalog,
+  fullCatalog: Catalog,
   value: PrintedValue,
   learned?: (key: string) => string | undefined
 ): LocalMatch {
+  const catalog = withSearchesKept(fullCatalog);
   const learnedCode = learned?.(learnedKey(value));
   const learnedTest = learnedCode ? catalog.test(learnedCode) : undefined;
   if (learnedTest) {

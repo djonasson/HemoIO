@@ -3,7 +3,7 @@
  * targets list and the target editor show it. A target is the test's, so it
  * applies to every code of its trend group; it is kept under the trend code.
  */
-import { standardRange, testDisplayName, testUnits } from '@data/loinc/display';
+import { standardRange, targetUnit, testDisplayName } from '@data/loinc/display';
 import type { Catalog } from '@data/loinc/catalog';
 
 export interface PersonalTarget {
@@ -40,7 +40,7 @@ export function toPersonalTarget(
   return {
     biomarkerKey: code,
     biomarkerName: testDisplayName(catalog, { biomarkerKey: code }),
-    unit: testUnits(catalog, code)?.canonicalUnit ?? standard?.unit ?? catalog.test(code)?.units[0] ?? '',
+    unit: targetUnit(catalog, code),
     standardLow: standard?.low,
     standardHigh: standard?.high,
     personalLow: target?.low,

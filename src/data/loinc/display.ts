@@ -8,19 +8,13 @@
  */
 import { unitsMatch } from '@/utils/unitSpelling';
 import { TEST_ADDONS, getAddon } from './addons';
-import type { Catalog, CatalogTest } from './catalog';
+import { byRank, isDayUrine, type Catalog, type CatalogTest } from './catalog';
 
 /** What a stored value says about its test */
 export interface StoredTest {
   biomarkerKey: string;
   /** The name the report printed */
   rawText?: string;
-}
-
-/** Lower rank first; an unranked test (0) last, as the catalog's search orders ties */
-function byRank(a: CatalogTest, b: CatalogTest): number {
-  const rank = (test: CatalogTest): number => test.rank || Number.POSITIVE_INFINITY;
-  return rank(a) - rank(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 }
 
 /**
@@ -94,6 +88,23 @@ export function testUnits(catalog: Catalog, code: string): TestUnits | undefined
   };
 }
 
+/** The units offered for a test's values: HemoIO's standard and other units for it, else LOINC's examples */
+export function unitOptions(catalog: Catalog, code: string): string[] {
+  const units = testUnits(catalog, code);
+  const options = units ? [units.canonicalUnit, ...units.alternativeUnits] : (catalog.test(code)?.units ?? []);
+  return [...new Set(options.filter(Boolean))];
+}
+
+/** The unit a test's target is given in: its standard unit, else its range's, else the first LOINC gives */
+export function targetUnit(catalog: Catalog, code: string): string {
+  return (
+    testUnits(catalog, code)?.canonicalUnit ??
+    standardRange(catalog, code)?.unit ??
+    catalog.test(code)?.units[0] ??
+    ''
+  );
+}
+
 /** Readable names of the LOINC systems (samples) */
 const SYSTEM_LABELS: Readonly<Record<string, string>> = {
   'Ser/Plas': 'Serum/Plasma',
@@ -112,7 +123,7 @@ const SYSTEM_LABELS: Readonly<Record<string, string>> = {
 
 /** The sample of a test, as its LOINC system and timing give it ("24h Urine") */
 export function sampleLabel(test: CatalogTest): string {
-  if (test.system === 'Urine' && /\b24 ?(?:hour|hr|h) urine\b/i.test(test.name)) return '24h Urine';
+  if (isDayUrine(test)) return '24h Urine';
   return SYSTEM_LABELS[test.system] ?? test.system;
 }
 

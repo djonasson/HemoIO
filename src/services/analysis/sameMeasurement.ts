@@ -6,7 +6,7 @@
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { canConvert, convertValue, normalizeUnit, unitsMatch } from '../units';
-import type { Catalog } from '@data/loinc/catalog';
+import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
@@ -23,12 +23,6 @@ const RELATIVE_TOLERANCE = 0.02;
 
 /** Decimal places used when converting values only to compare them */
 const COMPARISON_PRECISION = 10;
-
-/**
- * LOINC properties that come as a mass and a molar pair: MCnc and SCnc,
- * MRat and SRat… A ratio to creatinine in mg/g is MRto, in mg/mmol Ratio.
- */
-const MASS_OR_MOLAR = /^(?:[MS](?:Cnc|Rat|Cnt|Rto)|Ratio)$/;
 
 /**
  * Half the last reported digit: how far rounding can have moved a value. A
@@ -56,10 +50,11 @@ export function sameTestKey(biomarker: MatchedBiomarker, catalog: Catalog): stri
       ? `code:${biomarker.loincCode}`
       : `name:${nameKey(biomarker.name)}|${normalizeUnit(biomarker.unit)}`;
   }
-  if (!MASS_OR_MOLAR.test(test.property)) return `code:${test.code}`;
+  const quantity = quantityKind(test.property);
+  // A property with no mass and molar pair is the code's own
+  if (quantity === test.property) return `code:${test.code}`;
   // "Creatinine [Mass/time] in 24 hour Urine" and "[Moles/time]": one name without the property
   const name = nameKey(test.name.replace(/\s*\[[^\]]*\]/, ''));
-  const quantity = test.property === 'Ratio' ? 'Rto' : test.property.slice(1);
   return `test:${test.component}|${quantity}|${test.system}|${test.method}|${name}`;
 }
 
@@ -175,7 +170,7 @@ export function clusterMeasurements(values: readonly ComparableValue[]): Compara
  */
 export function isSettled(values: readonly ComparableValue[], clusters: readonly ComparableValue[][]): boolean {
   if (clusters.length === 1) return true;
-  const reportedName = (value: ComparableValue) => value.biomarker.name.toLowerCase().trim();
+  const reportedName = (value: ComparableValue) => nameKey(value.biomarker.name);
   const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
   const distinctNames = namesPerCluster.every(
     (names, i) =>

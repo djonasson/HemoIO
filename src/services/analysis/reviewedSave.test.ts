@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { loadCatalog } from '@data/loinc/catalog';
-import { chooseTest } from '@/utils/biomarkerSuggestions';
+import { chooseTest } from './reviewEdits';
 import { toUcum } from '@services/units/ucum';
-import { missingFields, planSave, targetTest, unitMisfits } from './reviewedSave';
+import { missingFields, planSave, unitMisfits } from './reviewedSave';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 const catalog = fixtureCatalog();
@@ -18,21 +18,19 @@ function analyzed(overrides: Partial<MatchedBiomarker>): MatchedBiomarker {
     value: 30,
     unit: 'U/L',
     confidence: 0.95,
-    isExactMatch: true,
-    normalizedUnit: 'U/L',
     loincCode: '1742-6',
     candidates: [{ code: '1742-6', name: 'Alanine aminotransferase', score: 1 }],
     identifiedBy: 'local',
     identificationFlags: [],
     ...overrides,
   };
-  const { loincCode, candidates, identifiedBy, identificationFlags = [], savedAsUnknown, isExactMatch } = value;
+  const { loincCode, candidates, identifiedBy, identificationFlags = [], savedAsUnknown } = value;
   return {
     ...value,
     analyzed: {
       name: value.name,
       unit: value.unit,
-      identification: { loincCode, candidates, identifiedBy, identificationFlags, savedAsUnknown, isExactMatch },
+      identification: { loincCode, candidates, identifiedBy, identificationFlags, savedAsUnknown },
     },
   };
 }
@@ -44,11 +42,9 @@ const CODED = analyzed({});
 const TWIN = analyzed({
   value: 0.5,
   unit: UNREADABLE_SHARE,
-  normalizedUnit: UNREADABLE_SHARE,
   loincCode: undefined,
   identifiedBy: undefined,
   identificationFlags: ['ambiguous'],
-  isExactMatch: false,
 });
 
 function file(editedBiomarkers: MatchedBiomarker[], fileName = 'a.pdf') {
@@ -76,17 +72,15 @@ describe('unitMisfits', () => {
     expect(unitMisfits({ ...glucose, unit: 'mmol/L' }, catalog)).toBe(false);
   });
 
+  it('takes a ratio to creatinine in mg/mmol as fitting its mg/g test', () => {
+    // 2890-2 is Protein/Creatinine [Mass Ratio] (MRto); mg/mmol reads as Ratio
+    expect(unitMisfits({ ...CODED, loincCode: '2890-2', unit: 'mg/mmol' }, catalog)).toBe(false);
+  });
+
   it('says nothing of a unit it cannot read, no unit, or no test', () => {
     expect(unitMisfits({ ...glucose, unit: UNREADABLE_SHARE }, catalog)).toBe(false);
     expect(unitMisfits({ ...glucose, unit: '' }, catalog)).toBe(false);
     expect(unitMisfits({ ...glucose, loincCode: undefined, unit: 'U/L' }, catalog)).toBe(false);
-  });
-});
-
-describe('targetTest', () => {
-  it("is the value's LOINC code, or none", () => {
-    expect(targetTest(CODED)).toBe('1742-6');
-    expect(targetTest(TWIN)).toBeNull();
   });
 });
 
@@ -136,17 +130,15 @@ describe('planSave', () => {
   });
 
   describe('a value the user gives the test of another value of its file', () => {
-    const SERUM = analyzed({ name: 'Glucosio', value: 90, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+    const SERUM = analyzed({ name: 'Glucosio', value: 90, unit: 'mg/dL', loincCode: '2345-7' });
     const undecided = (value: number) =>
       analyzed({
         name: 'Glucosio',
         value,
         unit: 'mmol/L',
-        normalizedUnit: 'mmol/L',
         loincCode: undefined,
         identifiedBy: undefined,
         identificationFlags: ['ambiguous'],
-        isExactMatch: false,
       });
 
     it('is left out once it is the same measurement in another unit, the standard unit kept', () => {
@@ -164,12 +156,12 @@ describe('planSave', () => {
     it('is kept, as the analyzer keeps them, when another measurement of its test shares a printed name', () => {
       // 90 mg/dL and 5 mmol/L are one measurement, but a second "Glucosio" of
       // 120 mg/dL makes the three a conflict the user settles
-      const other = analyzed({ name: 'Glucosio', value: 120, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+      const other = analyzed({ name: 'Glucosio', value: 120, unit: 'mg/dL', loincCode: '2345-7' });
       expect(leftOut([chooseTest(undecided(5), '14749-6'), SERUM, other])).toEqual([]);
     });
 
     it('is left out when the other measurements of its test have names of their own', () => {
-      const fasting = analyzed({ name: 'Glicemia', value: 120, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+      const fasting = analyzed({ name: 'Glicemia', value: 120, unit: 'mg/dL', loincCode: '2345-7' });
       const molar = chooseTest(undecided(5), '14749-6');
       expect(leftOut([molar, SERUM, fasting])).toEqual([molar]);
     });
@@ -193,7 +185,7 @@ describe('planSave', () => {
     });
 
     it('when its unit is one UCUM reads: it may be another measurement', () => {
-      const perDay = analyzed({ ...TWIN, unit: 'mmol/24h', normalizedUnit: 'mmol/24h' });
+      const perDay = analyzed({ ...TWIN, unit: 'mmol/24h'});
       expect(leftOut([perDay, CODED])).toEqual([]);
     });
 

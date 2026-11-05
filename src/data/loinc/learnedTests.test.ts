@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNotALoincTest, learnFromSaved, learnedWording } from './learnedTests';
+import { learnFromSaved, learnedWording } from './learnedTests';
 
 describe('learnFromSaved', () => {
   it('learns the code of every saved value the user confirmed', () => {
@@ -34,10 +34,5 @@ describe('learned keys and codes', () => {
   it('reads a key as its wording and unit', () => {
     expect(learnedWording('glucosio|mg/dL')).toBe('glucosio (mg/dL)');
     expect(learnedWording('nitriti|')).toBe('nitriti');
-  });
-
-  it('tells "Not a LOINC test" from a code', () => {
-    expect(isNotALoincTest('unknown:zorb')).toBe(true);
-    expect(isNotALoincTest('2339-0')).toBe(false);
   });
 });

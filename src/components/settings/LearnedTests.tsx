@@ -6,18 +6,19 @@ import { ActionIcon, Group, List, Stack, Text, Title } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { usePreferences } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
-import { isNotALoincTest, learnedWording } from '@data/loinc/learnedTests';
+import { isUnknownKey } from '@data/loinc/keys';
+import { learnedWording } from '@data/loinc/learnedTests';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import type { Catalog } from '@data/loinc/catalog';
 
 /** What a wording was learned as: a LOINC test with its code, or "Not a LOINC test" */
 function learnedAs(catalog: Catalog, code: string): string {
-  if (isNotALoincTest(code)) return 'Not a LOINC test';
+  if (isUnknownKey(code)) return 'Not a LOINC test';
   const name = catalog.test(code)?.name;
   return name ? `${name} · ${code}` : `LOINC ${code}`;
 }
 
-export function LearnedAliases() {
+export function LearnedTests() {
   const { learnedTests, removeLearnedTest } = usePreferences();
   const catalog = useCatalog();
   const entries = Object.entries(learnedTests).sort(([a], [b]) => a.localeCompare(b));

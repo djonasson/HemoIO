@@ -6,6 +6,7 @@
  * The data file is large (about 13 MB), so it is fetched on first use as a
  * file of its own and never with the app's start.
  */
+import { nameKey } from './keys';
 
 /** One LOINC test as the generated catalog holds it */
 export interface CatalogTest {
@@ -146,11 +147,6 @@ const MIN_STEM = 4;
 /** Most letters a close form may add to its stem (Italian endings) */
 const MAX_ENDING = 2;
 
-/** A name as the generator normalised it (same rule as nameKey in keys.ts) */
-function normalise(name: string): string {
-  return name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function wordsOf(name: string): string[] {
   return name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 }
@@ -194,6 +190,16 @@ function jointKey(group: CatalogGroup): string | undefined {
   return undefined;
 }
 
+/**
+ * A LOINC property with mass and molar alike: MCnc and SCnc are both
+ * "Cnc", MRat and SRat "Rat"; a ratio to creatinine in mg/g (MRto) and in
+ * mg/mmol (Ratio) both "Rto"
+ */
+export function quantityKind(property: string): string {
+  if (property === 'Ratio') return 'Rto';
+  return /^[MS](?:Cnc|Rat|Cnt|Rto)$/.test(property) ? property.slice(1) : property;
+}
+
 /** Whether a group joins a test's blood, serum and plasma codes */
 function joinsSampleTypes(group: CatalogGroup): boolean {
   return group.name.includes('ANYBldSerPl');
@@ -204,23 +210,28 @@ export function isPanel(test: CatalogTest): boolean {
   return test.classCode.startsWith('PANEL.');
 }
 
-/** Lower rank first; an unranked test (0) last */
-function byRank(a: CatalogTest, b: CatalogTest): number {
+/** Whether a test is of a 24-hour urine collection: "... in 24 hour Urine" */
+export function isDayUrine(test: CatalogTest): boolean {
+  return test.system === 'Urine' && /\b24 ?(?:hour|hr|h) urine\b/i.test(test.name);
+}
+
+/** Lower rank first; an unranked test (0) last; equal ranks by code */
+export function byRank(a: CatalogTest, b: CatalogTest): number {
   const rank = (test: CatalogTest): number => test.rank || Number.POSITIVE_INFINITY;
   return rank(a) - rank(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 }
 
-/** The runtime catalog over a catalog file; indexes are built once here */
-export function createCatalog(file: CatalogFile): Catalog {
-  const tests = new Map(file.tests.map((test) => [test.code, test]));
-  const groups = new Map(file.groups.map((group) => [group.id, group]));
-
+/**
+ * The name search over a catalog file. Its indexes are the costliest part
+ * of the catalog to build, so they are built on the first search, not with
+ * the catalog: most screens only look tests up by code.
+ */
+function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearchFilter) => ScoredTest[] {
   // The long common name's words count too ("Hematocrit", "Specific gravity")
-  const exactNames = file.tests.map((test) => new Set([...test.names, normalise(test.name)]));
-  const wordSets = exactNames.map((names) => new Set([...names].flatMap(wordsOf)));
+  const exactNames = file.tests.map((test) => new Set([...test.names, nameKey(test.name)]));
   const testsByWord = new Map<string, number[]>();
-  wordSets.forEach((words, index) => {
-    for (const word of words) {
+  exactNames.forEach((names, index) => {
+    for (const word of new Set([...names].flatMap(wordsOf))) {
       const list = testsByWord.get(word);
       if (list) list.push(index);
       else testsByWord.set(word, [index]);
@@ -281,6 +292,75 @@ export function createCatalog(file: CatalogFile): Catalog {
       .map((candidate) => ({ word: candidate, factor: CLOSE_FORM_FACTOR }));
   }
 
+  /**
+   * A word no name has, read as two name words written as one
+   * ("alfafetoproteina" for "alfa" and "fetoproteina"), else itself
+   */
+  function partsOf(word: string): string[] {
+    if (testsByWord.has(word) || matchesOf(word).length) return [word];
+    for (let cut = MIN_STEM; cut <= word.length - MIN_STEM; cut++) {
+      const parts = [word.slice(0, cut), word.slice(cut)];
+      if (parts.every((part) => testsByWord.has(part) && tellsTest(part))) return parts;
+    }
+    return [word];
+  }
+
+  function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
+    const phrase = nameKey(query);
+    // A query of sample, quantity or other generic words alone names no test
+    const words = [...new Set(wordsOf(phrase).flatMap(partsOf))].filter(tellsTest).map((word) => ({
+      word,
+      matches: matchesOf(word),
+    }));
+    if (words.length === 0) return [];
+    const queryKey = wordsKey(phrase);
+    // A word matching nothing still counts against the fit, as a rare word would
+    // A word counts as much as it tells, in whichever form a name has it
+    const fullWeight = (word: string, matches: { word: string }[]): number =>
+      testsByWord.has(word) || !matches.length
+        ? weightOf(word)
+        : Math.max(...matches.map((match) => weightOf(match.word)));
+    const weights = words.map(({ word, matches }) => fullWeight(word, matches));
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+    // Each test's covered weight, from the lists of the name words it has
+    const covered = new Map<number, number>();
+    words.forEach(({ matches }, i) => {
+      const best = new Map<number, number>();
+      for (const match of matches) {
+        for (const index of testsByWord.get(match.word) ?? []) {
+          best.set(index, Math.max(best.get(index) ?? 0, match.factor));
+        }
+      }
+      for (const [index, factor] of best) covered.set(index, (covered.get(index) ?? 0) + factor * weights[i]);
+    });
+    const scored: ScoredTest[] = [];
+    // A name the query spells out comes before one with only the same words
+    const spelled = new Set<CatalogTest>();
+    for (const [index, weight] of covered) {
+      const test = file.tests[index];
+      if (filter.properties && !filter.properties.includes(test.property)) continue;
+      if (filter.systems && !filter.systems.includes(test.system)) continue;
+      const isSpelled = exactNames[index].has(phrase);
+      if (isSpelled) spelled.add(test);
+      const isName = isSpelled || nameKeysOf(index).has(queryKey);
+      const score = isName ? 1 : (OVERLAP_CEILING * weight) / totalWeight;
+      scored.push({ test, score });
+    }
+    const spelledFirst = (a: ScoredTest, b: ScoredTest): number =>
+      Number(spelled.has(b.test)) - Number(spelled.has(a.test));
+    scored.sort((a, b) => b.score - a.score || spelledFirst(a, b) || byRank(a.test, b.test));
+    return scored;
+  }
+
+  return scoredSearch;
+}
+
+/** The runtime catalog over a catalog file; lookups by code and the trend groups are built here */
+export function createCatalog(file: CatalogFile): Catalog {
+  const tests = new Map(file.tests.map((test) => [test.code, test]));
+  const groups = new Map(file.groups.map((group) => [group.id, group]));
+
   // A rate's, or a ratio's, mass and molar groups trend as the first of them
   const jointGroups = new Map<string, string>();
   for (const group of [...file.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
@@ -308,66 +388,26 @@ export function createCatalog(file: CatalogFile): Catalog {
   // Built the first time a long name is looked up
   let longNames: Map<string, CatalogTest> | undefined;
   const byLongName = (name: string): CatalogTest | undefined => {
-    longNames ??= new Map([...file.tests].reverse().map((test) => [normalise(test.name), test]));
-    return longNames.get(normalise(name));
+    longNames ??= new Map([...file.tests].reverse().map((test) => [nameKey(test.name), test]));
+    return longNames.get(nameKey(name));
   };
 
-  /**
-   * A word no name has, read as two name words written as one
-   * ("alfafetoproteina" for "alfa" and "fetoproteina"), else itself
-   */
-  function partsOf(word: string): string[] {
-    if (testsByWord.has(word) || matchesOf(word).length) return [word];
-    for (let cut = MIN_STEM; cut <= word.length - MIN_STEM; cut++) {
-      const parts = [word.slice(0, cut), word.slice(cut)];
-      if (parts.every((part) => testsByWord.has(part) && tellsTest(part))) return parts;
-    }
-    return [word];
-  }
+  let search: ReturnType<typeof createSearch> | undefined;
+  const scoredSearch = (query: string, filter?: CatalogSearchFilter): ScoredTest[] =>
+    (search ??= createSearch(file))(query, filter);
 
-  function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
-    const phrase = normalise(query);
-    // A query of sample, quantity or other generic words alone names no test
-    const words = [...new Set(wordsOf(phrase).flatMap(partsOf))].filter(tellsTest).map((word) => ({
-      word,
-      matches: matchesOf(word),
-    }));
-    if (words.length === 0) return [];
-    const queryKey = wordsKey(phrase);
-    // A word matching nothing still counts against the fit, as a rare word would
-    // A word counts as much as it tells, in whichever form a name has it
-    const fullWeight = (word: string, matches: { word: string }[]): number =>
-      testsByWord.has(word) || !matches.length
-        ? weightOf(word)
-        : Math.max(...matches.map((match) => weightOf(match.word)));
-    const weights = words.map(({ word, matches }) => fullWeight(word, matches));
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-    const candidates = new Set(
-      words.flatMap(({ matches }) => matches.flatMap((match) => testsByWord.get(match.word) ?? []))
-    );
-    const scored: ScoredTest[] = [];
-    // A name the query spells out comes before one with only the same words
-    const spelled = new Set<CatalogTest>();
-    for (const index of candidates) {
-      const test = file.tests[index];
-      if (filter.properties && !filter.properties.includes(test.property)) continue;
-      if (filter.systems && !filter.systems.includes(test.system)) continue;
-      let covered = 0;
-      words.forEach(({ matches }, i) => {
-        const present = matches.filter((match) => wordSets[index].has(match.word));
-        if (present.length) covered += Math.max(...present.map((match) => match.factor)) * weights[i];
-      });
-      const isSpelled = exactNames[index].has(phrase);
-      if (isSpelled) spelled.add(test);
-      const isName = isSpelled || nameKeysOf(index).has(queryKey);
-      const score = isName ? 1 : (OVERLAP_CEILING * covered) / totalWeight;
-      scored.push({ test, score });
+  // Tests that are one value, most common first: built the first time common tests are asked for
+  let byCommonness: CatalogTest[] | undefined;
+  function common({ properties, systems }: CatalogSearchFilter, limit: number): CatalogTest[] {
+    byCommonness ??= file.tests.filter((test) => !isPanel(test)).sort(byRank);
+    const found: CatalogTest[] = [];
+    for (const test of byCommonness) {
+      if (found.length >= limit) break;
+      if ((!properties || properties.includes(test.property)) && (!systems || systems.includes(test.system))) {
+        found.push(test);
+      }
     }
-    const spelledFirst = (a: ScoredTest, b: ScoredTest): number =>
-      Number(spelled.has(b.test)) - Number(spelled.has(a.test));
-    scored.sort((a, b) => b.score - a.score || spelledFirst(a, b) || byRank(a.test, b.test));
-    return scored;
+    return found;
   }
 
   return {
@@ -375,16 +415,7 @@ export function createCatalog(file: CatalogFile): Catalog {
     test: (code) => tests.get(code),
     search: (query, filter) => scoredSearch(query, filter).map(({ test }) => test),
     scoredSearch,
-    common: ({ properties, systems }, limit) =>
-      file.tests
-        .filter(
-          (test) =>
-            !isPanel(test) &&
-            (!properties || properties.includes(test.property)) &&
-            (!systems || systems.includes(test.system))
-        )
-        .sort(byRank)
-        .slice(0, limit),
+    common,
     byLongName,
     trendGroup: (code) => trendGroups.get(code) ?? code,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
@@ -412,7 +443,6 @@ async function readCatalogFile(): Promise<CatalogFile> {
 }
 
 let loading: Promise<Catalog> | undefined;
-let loaded: Catalog | undefined;
 
 /**
  * The catalog, loaded on first call and shared after. A failed load is not
@@ -420,21 +450,10 @@ let loaded: Catalog | undefined;
  */
 export function loadCatalog(): Promise<Catalog> {
   loading ??= readCatalogFile()
-    .then((file) => {
-      loaded = createCatalog(file);
-      return loaded;
-    })
+    .then(createCatalog)
     .catch((error: unknown) => {
       loading = undefined;
       throw error;
     });
   return loading;
-}
-
-/**
- * The catalog if it has loaded, for code that cannot wait for it. Everything
- * inside the unlocked app renders after it has loaded (see CatalogProvider).
- */
-export function loadedCatalog(): Catalog | undefined {
-  return loaded;
 }

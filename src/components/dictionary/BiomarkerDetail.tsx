@@ -36,8 +36,10 @@ import { getAddon } from '@data/loinc/addons';
 import {
   sampleLabel,
   standardRange,
+  targetUnit,
   testDisplayName,
   testUnits,
+  unitOptions,
 } from '@data/loinc/display';
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
@@ -98,9 +100,10 @@ export function BiomarkerDetail({
   const name = testDisplayName(catalog, { biomarkerKey: code });
   const addon = getAddon(catalog, code);
   const range = standardRange(catalog, code);
-  const units = testUnits(catalog, code);
-  const shownUnits = units ? [units.canonicalUnit, ...units.alternativeUnits] : test.units;
-  const targetUnit = units?.canonicalUnit ?? range?.unit ?? test.units[0] ?? '';
+  const shownUnits = unitOptions(catalog, code);
+  // Only HemoIO's own units have a standard one, outlined first
+  const hasStandardUnit = testUnits(catalog, code) !== undefined;
+  const targetIn = targetUnit(catalog, code);
   const hasTarget = hasTargetRange(personalTarget);
   // The codes the test's values may also be saved under: glucose in mmol/L for glucose in mg/dL
   const otherCodes = catalog
@@ -238,7 +241,7 @@ export function BiomarkerDetail({
                   <IconTarget size={16} aria-hidden />
                   <Badge color="blue">Your target</Badge>
                   <Text size="sm" fw={500}>
-                    {formatRange(personalTarget.low, personalTarget.high)} {targetUnit}
+                    {formatRange(personalTarget.low, personalTarget.high)} {targetIn}
                   </Text>
                 </Group>
               </Paper>
@@ -261,7 +264,7 @@ export function BiomarkerDetail({
             </Text>
             <Group gap="xs">
               {shownUnits.map((unit, index) => (
-                <Badge key={unit} variant={units && index === 0 ? 'outline' : 'light'} color="gray">
+                <Badge key={unit} variant={hasStandardUnit && index === 0 ? 'outline' : 'light'} color="gray">
                   {unit}
                 </Badge>
               ))}

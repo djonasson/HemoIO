@@ -15,7 +15,7 @@ import {
   isSettled,
   preferredValue,
 } from './sameMeasurement';
-import type { Catalog } from '@data/loinc/catalog';
+import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /** A reviewed file: its name and its values as edited */
@@ -49,11 +49,6 @@ export interface SavePlan<T extends ReviewedFile> {
 /** What a value lacks to be saved */
 export type MissingField = 'name' | 'value' | 'unit';
 
-/** The LOINC code a value is saved under; none while undecided or "Not a LOINC test" */
-export function targetTest(biomarker: MatchedBiomarker): string | null {
-  return biomarker.loincCode ?? null;
-}
-
 /** Standard units of tests whose results have no unit: pH, specific gravity */
 const NO_UNIT = new Set(['', '1', '[pH]']);
 
@@ -81,11 +76,6 @@ export function missingFields(biomarker: MatchedBiomarker, catalog?: Catalog): M
   return missing;
 }
 
-/** The kind of a LOINC property, a mass and a molar one alike: MCnc and SCnc are both "Cnc" */
-function propertyKind(property: string): string {
-  return /^[MS](?:Cnc|Rat|Cnt|Rto)$/.test(property) ? property.slice(1) : property;
-}
-
 /**
  * Whether a value's unit is surely not one of its test's kind: a U/L value
  * saved as a mass concentration, a daily amount as a concentration. A unit
@@ -95,8 +85,8 @@ export function unitMisfits(biomarker: MatchedBiomarker, catalog: Catalog): bool
   const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
   const ucum = biomarker.unit.trim() ? toUcum(biomarker.unit) : null;
   if (!test || !ucum) return false;
-  const kinds = ucumProperties(ucum).map(propertyKind);
-  return kinds.length > 0 && !kinds.includes(propertyKind(test.property));
+  const kinds = ucumProperties(ucum).map(quantityKind);
+  return kinds.length > 0 && !kinds.includes(quantityKind(test.property));
 }
 
 /** Whether a value has its test or "Not a LOINC test", and nothing missing */

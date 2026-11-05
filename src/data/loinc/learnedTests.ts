@@ -8,9 +8,6 @@
  * name, normalised, then "|" and the unit as UCUM.
  */
 
-/** The prefix of a value's unknown key, which "Not a LOINC test" is learned as */
-const NOT_A_LOINC_TEST_PREFIX = 'unknown:';
-
 /** A saved value as learning reads it */
 export interface SavedValue {
   /** The value's learned key: its printed wording and unit */
@@ -39,11 +36,6 @@ export function learnFromSaved(
     if (confirmed && key && code) next[key] = code;
   }
   return next;
-}
-
-/** Whether a learned code is "Not a LOINC test" */
-export function isNotALoincTest(code: string): boolean {
-  return code.startsWith(NOT_A_LOINC_TEST_PREFIX);
 }
 
 /** A learned key as the user reads it: "glucosio (mg/dL)", or the wording alone with no unit */
