@@ -148,6 +148,16 @@ describe('saveImportResults', () => {
     expect(result.values[0].biomarkerKey).toBe('unknown:glucose');
   });
 
+  it('saves a "Not a LOINC test" learned for its wording under the key learned', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Xyz test', 3, 'mg/dL', { savedAsUnknown: true, unknownKey: 'unknown:xyz' }),
+      ])
+    );
+
+    expect(result.values[0].biomarkerKey).toBe('unknown:xyz');
+  });
+
   it('saves a value without a code under its own name: the name alone never picks a test', async () => {
     const result = await saveOne(
       createMockReviewedResult('test.pdf', [createMockBiomarker('Glucose', 95, 'mmol/24h')])

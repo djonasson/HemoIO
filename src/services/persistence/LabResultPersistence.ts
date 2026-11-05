@@ -4,12 +4,12 @@
  * Transforms reviewed import results into database format and saves them.
  */
 
+import { unknownKeyOf } from '@services/analysis/identification';
+import { normalizeLabDate } from '@/utils/labDate';
 import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb, LabResultWithValues } from '@data/db/encryptedDb';
 import type { LabResult, TestValue } from '@/types';
-import { unknownBiomarkerKey } from '@data/loinc/keys';
-import { normalizeLabDate } from '@/utils/labDate';
 
 /**
  * What an import saved
@@ -35,13 +35,11 @@ function parseLabDate(dateStr: string | undefined): Date {
 
 /**
  * The stored key of a value: its LOINC code, else ("Not a LOINC test", or
- * a value from elsewhere with no code) the unknown key of its printed name.
+ * a value from elsewhere with no code) its unknown key (see unknownKeyOf).
  * The name alone never picks a test.
  */
 function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
-  return biomarker.savedAsUnknown || !biomarker.loincCode
-    ? unknownBiomarkerKey(biomarker.name)
-    : biomarker.loincCode;
+  return biomarker.savedAsUnknown || !biomarker.loincCode ? unknownKeyOf(biomarker) : biomarker.loincCode;
 }
 
 /**

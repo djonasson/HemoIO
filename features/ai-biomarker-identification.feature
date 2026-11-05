@@ -89,6 +89,18 @@ Feature: Identifying the test of each value
     Then the timeline should show the value as "Zorblatina"
     And a later report printing "Zorblatina" in mg/dL should be saved as "Not a LOINC test" without asking
 
+  Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series
+    Given a report prints "Zorblatina" in mg/dL, which no LOINC test fits
+    When I rename it "Zorb", choose "Not a LOINC test" for it and save the import
+    And I save a later report printing "Zorblatina" in mg/dL
+    Then Trends should show both values in one series
+
+  Scenario: Correcting a test reached through a learned wording is remembered
+    Given "Glucosio" in mg/dL was learned as "Glucose [Mass/volume] in Blood"
+    And "Glicemia" in mg/dL was learned as another test
+    When a report prints "Glicemia" in mg/dL and I rename it "Glucosio" before saving
+    Then a later report printing "Glicemia" in mg/dL should be saved as "Glucose [Mass/volume] in Blood"
+
   Scenario: A value with no unit is never matched on its name alone
     Given a report prints "pH (urine)" without a unit, as pH and specific gravity have none
     When the report is analyzed

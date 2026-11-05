@@ -20,6 +20,8 @@ export interface Identification {
   identifiedBy?: IdentifiedBy;
   identificationFlags: IdentificationFlag[];
   savedAsUnknown?: boolean;
+  /** For "Not a LOINC test" learned for the wording: the unknown key it was saved under */
+  unknownKey?: string;
 }
 
 /** Asks the AI which candidate each value is */
@@ -40,7 +42,8 @@ export function identifyLocally(
 ): Identification {
   const taught = learned[learnedKey(value)];
   if (taught && isUnknownKey(taught)) {
-    return { candidates: [], identifiedBy: 'learned', identificationFlags: [], savedAsUnknown: true };
+    // Saved under the key learned, so a wording the user renamed joins the series it was saved in
+    return { candidates: [], identifiedBy: 'learned', identificationFlags: [], savedAsUnknown: true, unknownKey: taught };
   }
 
   const match = matchLocally(catalog, value, (key) => learned[key]);
@@ -154,14 +157,24 @@ export function identificationOf(value: MatchedBiomarker): Identification {
     identifiedBy: value.identifiedBy,
     identificationFlags: value.identificationFlags ?? [],
     savedAsUnknown: value.savedAsUnknown,
+    unknownKey: value.unknownKey,
   };
+}
+
+/**
+ * The key a "Not a LOINC test" value is stored under: the one learned for
+ * its wording, else the unknown key of its name
+ */
+export function unknownKeyOf(value: Pick<MatchedBiomarker, 'name' | 'unknownKey'>): string {
+  return value.unknownKey ?? unknownBiomarkerKey(value.name);
 }
 
 /**
  * What saving a value teaches: its code under the wording and unit the
  * report printed. It is the user's decision when they chose the test, saved
- * the AI's choice, or edited the value until it matched; a test matched with
- * no edit, or learned, is matched the same way next time anyway.
+ * the AI's choice, or edited the value until it matched (by name and unit,
+ * or through a wording learned before: a correction sticks); a test matched
+ * with no edit, or learned, is matched the same way next time anyway.
  */
 export function toLearn(value: MatchedBiomarker): SavedValue {
   const printed = value.analyzed ?? value;
@@ -169,7 +182,7 @@ export function toLearn(value: MatchedBiomarker): SavedValue {
   const by = value.identifiedBy;
   return {
     key: learnedKey(printed),
-    code: value.savedAsUnknown ? unknownBiomarkerKey(value.name) : value.loincCode,
-    confirmed: by === 'ai' || by === 'user' || (by === 'local' && edited),
+    code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
+    confirmed: by === 'ai' || by === 'user' || (edited && isFoundWithoutAsking(value)),
   };
 }

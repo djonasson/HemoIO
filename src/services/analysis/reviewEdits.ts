@@ -33,6 +33,7 @@ function identified(biomarker: MatchedBiomarker, identification: Identification)
     identifiedBy: identification.identifiedBy,
     identificationFlags: identification.identificationFlags,
     savedAsUnknown: identification.savedAsUnknown,
+    unknownKey: identification.unknownKey,
   };
 }
 
@@ -96,5 +97,7 @@ export function chooseTest(biomarker: MatchedBiomarker, code: string | null): Ma
     identifiedBy: 'user',
     identificationFlags: [],
     savedAsUnknown: code === null,
+    // The user's own choice: saved under the name they gave it
+    unknownKey: undefined,
   };
 }

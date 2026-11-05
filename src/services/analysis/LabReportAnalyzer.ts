@@ -76,6 +76,8 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   identificationFlags?: IdentificationFlag[];
   /** Saved under the unknown key of its printed name: "Not a LOINC test" */
   savedAsUnknown?: boolean;
+  /** The unknown key learned for its wording, which it is saved under instead */
+  unknownKey?: string;
 }
 
 export type IdentifiedBy = 'learned' | 'local' | 'ai' | 'user';

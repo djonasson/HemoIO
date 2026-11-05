@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { identifyLocally, identifyValues, needsChoice, toLearn } from './identification';
+import { learnFromSaved } from '@data/loinc/learnedTests';
+import { identifyLocally, identifyValues, needsChoice, toLearn, unknownKeyOf } from './identification';
+import { applyBiomarkerName, chooseTest } from './reviewEdits';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoiceRequest } from '../ai';
 
@@ -192,6 +194,36 @@ describe('toLearn', () => {
       code: '2345-7',
       confirmed: true,
     });
+  });
+
+  it('confirms an edit that reaches a test through a wording learned before: a correction sticks', async () => {
+    // The printed wording was once learned as the wrong test
+    const learned = { 'zorb fasting|mg/dL': '2339-0', 'zorb|mg/dL': '2345-7' };
+    const { values } = await identifyValues(catalog, [extracted('Zorb fasting', 1, 'mg/dL')], { learned });
+    const corrected = applyBiomarkerName(values[0], 'Zorb', catalog, learned);
+    expect(corrected).toMatchObject({ loincCode: '2345-7', identifiedBy: 'learned' });
+    const saved = toLearn(corrected);
+    expect(saved).toEqual({ key: 'zorb fasting|mg/dL', code: '2345-7', confirmed: true });
+
+    const next = await identifyValues(catalog, [extracted('Zorb fasting', 1, 'mg/dL')], {
+      learned: learnFromSaved(learned, [saved]),
+    });
+    expect(next.values[0].loincCode).toBe('2345-7');
+  });
+
+  it('saves a renamed "Not a LOINC test" and later imports of its wording under one key', async () => {
+    const { values } = await identifyValues(catalog, [extracted('Xyz test', 3, 'mg/dL')], {});
+    const first = chooseTest(applyBiomarkerName(values[0], 'Xyz', catalog), null);
+    const saved = toLearn(first);
+    expect(saved).toEqual({ key: 'xyz test|mg/dL', code: 'unknown:xyz', confirmed: true });
+
+    const later = await identifyValues(catalog, [extracted('Xyz test', 3, 'mg/dL')], {
+      learned: learnFromSaved({}, [saved]),
+    });
+    expect(later.values[0]).toMatchObject({ savedAsUnknown: true, name: 'Xyz test' });
+    expect(unknownKeyOf(later.values[0])).toBe(unknownKeyOf(first));
+    // Chosen again by the user, it is saved under the name they give it
+    expect(unknownKeyOf(chooseTest(later.values[0], null))).toBe('unknown:xyztest');
   });
 
   it('does not confirm what was learned, or a value still undecided', async () => {

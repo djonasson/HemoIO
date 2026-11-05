@@ -10,6 +10,7 @@ import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
 import { continueToConfirm, main } from './steps/importWizard.steps';
 import { expandLabResult, goToTimeline } from './steps/timeline.steps';
+import { biomarkerSelect, goToTrends } from './steps/trends.steps';
 import {
   changeTest,
   editingRow,
@@ -190,6 +191,46 @@ test.describe('Identifying the test of each value', () => {
     await analyzeReport(page, [zorblatina]);
     await expect(savedAsCell(rowFor(page, '3'))).toHaveText(NOT_A_LOINC_TEST);
     await expectNoCheckLabel(rowFor(page, '3'));
+  });
+
+  test('saves a renamed "Not a LOINC test" and later reports of its wording as one series', async ({ page }) => {
+    // Two imports, each analyzed
+    test.slow();
+    // Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series
+    const zorblatina = { name: 'Zorblatina', value: 3, unit: 'mg/dL', confidence: 0.95 };
+    await analyzeReport(page, [zorblatina]);
+    await editRow(page, rowFor(page, '3'), { name: 'Zorb' });
+    await changeTest(page, rowFor(page, '3'), NOT_A_LOINC_TEST);
+    await saveReviewed(page);
+
+    await analyzeReport(page, [{ ...zorblatina, value: 4 }]);
+    await expect(savedAsCell(rowFor(page, '4'))).toHaveText(NOT_A_LOINC_TEST);
+    await saveReviewed(page);
+
+    await goToTrends(page);
+    await biomarkerSelect(page).click();
+    await expect(page.getByRole('option', { name: /\(2 values\)$/ })).toHaveCount(1);
+    await expect(page.getByRole('option', { name: /^Zorblatina \(/ })).toHaveCount(0);
+  });
+
+  test('remembers a correction reached through a learned wording', async ({ page }) => {
+    // Three imports, each analyzed
+    test.slow();
+    // Scenario: Correcting a test reached through a learned wording is remembered
+    await learnGlucosio(page);
+    const glicemia = { ...GLUCOSIO, name: 'Glicemia', value: 88 };
+    await analyzeReport(page, [glicemia]);
+    await changeTest(page, rowFor(page, '88'), SERUM_GLUCOSE, { search: false });
+    await saveReviewed(page);
+
+    await analyzeReport(page, [{ ...glicemia, value: 89 }]);
+    await expect(savedAsCell(rowFor(page, '89'))).toHaveText(SERUM_GLUCOSE);
+    await editRow(page, rowFor(page, '89'), { name: 'Glucosio' });
+    await expect(savedAsCell(rowFor(page, '89'))).toHaveText(BLOOD_GLUCOSE);
+    await saveReviewed(page);
+
+    await analyzeReport(page, [{ ...glicemia, value: 90 }]);
+    await expect(savedAsCell(rowFor(page, '90'))).toHaveText(BLOOD_GLUCOSE);
   });
 
   const URINE_PH: ExtractedBiomarkerFixture = { name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 };
