@@ -121,7 +121,7 @@ function splitList(value) {
  * of the folder that holds it (<version>/files), as the download script lays
  * it out.
  * @param {string} dir the release's `files` folder
- * @returns {{ version: string, tests: object[], groups: object[] }} a CatalogFile
+ * @returns {import('../src/data/loinc/catalog').CatalogFile}
  */
 export function buildCatalog(dir) {
   const version = path.basename(path.dirname(path.resolve(dir)));
@@ -132,10 +132,10 @@ export function buildCatalog(dir) {
   if (fs.existsSync(linguistic)) {
     for (const row of readRows(linguistic)) {
       // The Italian RELATEDNAMES2 is one space-joined sentence of property and
-      // system words, not a ";" list like the English one; as a single name it
-      // would match nothing, so it is used only when it is a real list.
-      const related = row.RELATEDNAMES2.includes(';') ? splitList(row.RELATEDNAMES2) : [];
-      italian.set(row.LOINC_NUM, [row.COMPONENT, ...related]);
+      // system words, not a ";" list like the English one: a ";" in it ends an
+      // HTML entity ("&amp;") or a clause, never a name. As names its parts
+      // would only add noise, so only the component is used.
+      italian.set(row.LOINC_NUM, [row.COMPONENT]);
     }
   }
 

@@ -42,6 +42,13 @@ describe('buildCatalog', () => {
     expect(find('2345-7')!.names.some((n) => n.startsWith('chimica concentrazione'))).toBe(false);
   });
 
+  it('ignores the Italian related-name sentence even when it holds a ";"', () => {
+    // Its ";" ends an HTML entity ("proteine sieriche &amp; proteine urinarie"), not a name
+    const names = find('102975-0')!.names;
+    expect(names).toContain('ratto, epitelio+proteine sieriche+proteine urinarie ab.ige');
+    expect(names.filter((n) => n.includes('&amp') || n.includes('punto nel tempo'))).toEqual([]);
+  });
+
   it('normalises names and removes duplicates', () => {
     const names = find('2345-7')!.names;
     expect(new Set(names).size).toBe(names.length);

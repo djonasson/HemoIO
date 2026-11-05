@@ -124,6 +124,13 @@ it is committed, so building the app never needs the release:
    describes, or that reports need, but LOINC does not rank are kept too:
    list them in `EXTRA_CODES` in the script (they get rank 0). Use `--from <files dir>`
    and `--out <path>` to override.
+
+   Rank 0 means unranked: LOINC gives no rank, or one of 0 or less. The app
+   treats an unranked test as the least common one, so it sorts after every
+   ranked test and never wins a "more common" tie-break against one.
+
+   Of the Italian linguistic variant only the component is kept: its
+   RELATEDNAMES2 is a sentence of property and system words, not a list.
 3. Commit the regenerated file.
 
 The output is deterministic, so an unchanged release gives an unchanged file.
