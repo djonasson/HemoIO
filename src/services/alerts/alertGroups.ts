@@ -7,6 +7,10 @@ import { SEVERITY_ORDER, type AlertSeverity, type AlertType } from './alertRules
 
 /** What grouping needs to know about an alert */
 export interface GroupableAlert {
+  /**
+   * The test, as its trend code: the codes of one trend group (glucose in
+   * mg/dL and in mmol/L) are one test, so their alerts share a card
+   */
   biomarkerKey: string;
   type: AlertType;
   severity: AlertSeverity;

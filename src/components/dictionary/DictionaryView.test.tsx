@@ -1,9 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DictionaryView } from './DictionaryView';
 import { SaveError } from '@data/db/saveError';
+import { loadCatalog, type Catalog } from '@data/loinc/catalog';
+import { CatalogContext } from '@contexts/useCatalog';
+
+// The list, its search and each detail come from the catalog, loaded as in the unlocked app
+let catalog: Catalog;
+beforeAll(async () => {
+  catalog = await loadCatalog();
+});
+
+const GLUCOSE = '2345-7';
 
 const mockSetPersonalTarget = vi.fn();
 let mockTargets: Record<string, { low?: number; high?: number }> = {};
@@ -29,9 +39,10 @@ vi.mock('@hooks/useLabResults', () => ({
           {
             id: 1,
             labResultId: 1,
-            biomarkerKey: 'glucose',
-            value: 120,
-            unit: 'mg/dL',
+            // Glucose in mmol/L: one test with glucose in mg/dL
+            biomarkerKey: '14749-6',
+            value: 7,
+            unit: 'mmol/L',
             status: 'high',
           },
         ],
@@ -53,7 +64,9 @@ function renderView(initialBiomarkerKey?: string) {
   const onOpenTrend = vi.fn();
   const { container } = render(
     <MantineProvider env="test">
-      <DictionaryView onOpenTrend={onOpenTrend} initialBiomarkerKey={initialBiomarkerKey} />
+      <CatalogContext.Provider value={catalog}>
+        <DictionaryView onOpenTrend={onOpenTrend} initialBiomarkerKey={initialBiomarkerKey} />
+      </CatalogContext.Provider>
     </MantineProvider>
   );
   return { onOpenTrend, container };
@@ -94,41 +107,26 @@ describe('DictionaryView', () => {
     expect(scrollTo).toHaveBeenLastCalledWith(0, 240);
   });
 
-  it('returns to the list, not the previous detail, after a related biomarker', async () => {
-    renderView();
-    await openFromSearch('gluc', 'Glucose');
-    await userEvent.click(
-      within(screen.getByRole('region', { name: 'Related biomarkers' })).getByRole('button', {
-        name: 'Hemoglobin A1c (HbA1c)',
-      })
-    );
-    expect(screen.getByRole('heading', { level: 3, name: 'Hemoglobin A1c' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Back to biomarker list' }));
-
-    expect(screen.getByRole('textbox', { name: 'Search biomarkers' })).toHaveValue('gluc');
-    expect(screen.getByRole('button', { name: 'View details for Glucose' })).toHaveFocus();
-  });
-
   it('summarises your results and opens the trend', async () => {
     const { onOpenTrend } = renderView();
     await openFromSearch('gluc', 'Glucose');
     const yours = screen.getByRole('region', { name: 'Your results' });
-    expect(within(yours).getByText('120 mg/dL')).toBeInTheDocument();
+    // 7 mmol/L, in glucose's standard unit
+    expect(within(yours).getByText('126 mg/dL')).toBeInTheDocument();
 
     await userEvent.click(within(yours).getByRole('button', { name: 'View trend' }));
-    expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+    expect(onOpenTrend).toHaveBeenCalledWith(GLUCOSE);
   });
 
-  it('opens on the requested biomarker', () => {
-    renderView('glucose');
+  it('opens on the requested biomarker, by any code of its trend group', () => {
+    renderView('14749-6');
 
     expect(screen.getByRole('heading', { level: 3, name: 'Glucose' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Search biomarkers' })).not.toBeInTheDocument();
   });
 
   it('builds the list only when Back asks for it, then focuses its search', async () => {
-    const { container } = renderView('glucose');
+    const { container } = renderView(GLUCOSE);
     expect(container.querySelector('[data-biomarker-key]')).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: 'Back to biomarker list' }));
@@ -140,7 +138,7 @@ describe('DictionaryView', () => {
     expect(scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 
-  it('shows the list for a biomarker the dictionary does not have', () => {
+  it('shows the list for a value that is not a LOINC test', () => {
     renderView('unknown:zorblatin');
 
     expect(screen.getByRole('textbox', { name: 'Search biomarkers' })).toBeInTheDocument();
@@ -160,7 +158,7 @@ describe('DictionaryView', () => {
     await userEvent.type(screen.getByLabelText('Personal target high value'), '90');
     await userEvent.click(screen.getByRole('button', { name: 'Save Target' }));
 
-    expect(mockSetPersonalTarget).toHaveBeenCalledWith('glucose', { low: 70, high: 90 });
+    expect(mockSetPersonalTarget).toHaveBeenCalledWith(GLUCOSE, { low: 70, high: 90 });
   });
 
   it('tells the user when the target could not be saved', async () => {

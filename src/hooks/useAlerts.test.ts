@@ -33,37 +33,11 @@ vi.mock('./usePreferences', () => ({
   }),
 }));
 
-// Mock biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => {
-  const mock = {
-  findBiomarker: vi.fn((name: string) => {
-    if (name === 'Glucose' || name.toLowerCase().includes('glucose')) {
-      return {
-        name: 'Glucose',
-        category: 'metabolic',
-        canonicalUnit: 'mg/dL',
-        alternativeUnits: ['mmol/L'],
-      };
-    }
-    if (name === 'Hemoglobin' || name.toLowerCase().includes('hemoglobin')) {
-      return {
-        name: 'Hemoglobin',
-        category: 'cbc',
-        canonicalUnit: 'g/dL',
-        alternativeUnits: ['g/L', 'mmol/L'],
-      };
-    }
-    return null;
-  }),
-  };
-  return {
-    ...mock,
-    // By the stored key, as the app does; this mock's names stand for its keys
-    getBiomarkerByKey: (key: string) => mock.findBiomarker(key) ?? undefined,
-    getBiomarkerForTestValue: (tv: { biomarkerKey: string }) => mock.findBiomarker(tv.biomarkerKey) ?? undefined,
-    getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
-      mock.findBiomarker(tv.biomarkerKey)?.name || tv.rawText || 'Unknown biomarker',
-  };
+// The fixture LOINC catalog: 2345-7 glucose (mg/dL), 14749-6 glucose (mmol/L), 718-7 hemoglobin
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
 });
 
 function createMockTestValue(
@@ -74,7 +48,7 @@ function createMockTestValue(
   return {
     id,
     labResultId,
-    biomarkerKey: options.biomarkerKey || 'marker-1',
+    biomarkerKey: options.biomarkerKey || '2345-7',
     value: options.value ?? 100,
     unit: options.unit || 'mg/dL',
     status: options.status || 'normal',
@@ -122,7 +96,7 @@ describe('useAlerts', () => {
 
   it('keeps a trend whose values were recorded in two other units than the preferred one', () => {
     // No direct mmol/L → g/L factor exists; the values go through g/dL
-    mockUnitPreferences = { hemoglobin: 'g/L' };
+    mockUnitPreferences = { '718-7': 'g/L' };
     const values: Array<[number, string]> = [
       [17, 'g/dL'],
       [10.9, 'mmol/L'],
@@ -133,7 +107,7 @@ describe('useAlerts', () => {
       values.map(([value, unit], i) =>
         createMockResult(i + 1, `2024-0${i + 1}-10`, [
           createMockTestValue(i + 1, i + 1, {
-            biomarkerKey: 'hemoglobin',
+            biomarkerKey: '718-7',
             rawText: 'Hemoglobin',
             value,
             unit,
@@ -149,11 +123,11 @@ describe('useAlerts', () => {
   });
 
   it('reports an out-of-range value in the preferred unit', () => {
-    mockUnitPreferences = { glucose: 'mmol/L' };
+    mockUnitPreferences = { '2345-7': 'mmol/L' };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
-          biomarkerKey: 'glucose',
+          biomarkerKey: '2345-7',
           value: 120,
           status: 'high',
           referenceRangeLow: 70,
@@ -285,7 +259,7 @@ describe('useAlerts', () => {
       status: 'low',
       referenceRangeLow: 12,
       rawText: 'Hemoglobin',
-      biomarkerKey: 'marker-2',
+      biomarkerKey: '718-7',
     });
 
     vi.mocked(useLabResults).mockReturnValue({
@@ -338,7 +312,7 @@ describe('useAlerts', () => {
           value: 110,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -346,7 +320,7 @@ describe('useAlerts', () => {
           value: 200, // Very high - critical
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-2',
+          biomarkerKey: '718-7',
           rawText: 'Different',
         }),
       ]),
@@ -383,7 +357,7 @@ describe('useAlerts', () => {
       result.current.dismissGroup(result.current.groups[0]);
     });
 
-    expect(alertState.dismiss).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
+    expect(alertState.dismiss).toHaveBeenCalledWith('2345-7', new Date('2024-03-10'));
   });
 
   it('leaves dismissed cards out, and out of the count', () => {
@@ -392,13 +366,39 @@ describe('useAlerts', () => {
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
-    alertState.dismissedThrough = { 'marker-1': new Date('2024-01-15') };
+    alertState.dismissedThrough = { '2345-7': new Date('2024-01-15') };
 
     const { result } = renderHook(() => useAlerts());
 
     expect(result.current.groups).toHaveLength(0);
     expect(result.current.unacknowledgedCount).toBe(0);
     expect(result.current.hiddenCount).toBe(1);
+  });
+
+  it('groups alerts by trend group', () => {
+    // Glucose under its mass code, then under its molar code: one card
+    mockResults([
+      createMockResult(1, '2024-01-15', [
+        createMockTestValue(1, 1, { value: 130, status: 'high', referenceRangeHigh: 100 }),
+      ]),
+      createMockResult(2, '2024-02-15', [
+        createMockTestValue(2, 2, {
+          biomarkerKey: '14749-6',
+          rawText: 'Glicemia',
+          value: 7.5,
+          unit: 'mmol/L',
+          status: 'high',
+          referenceRangeHigh: 5.6,
+        }),
+      ]),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    expect(result.current.groups).toHaveLength(1);
+    const [card] = result.current.groups;
+    expect(card).toMatchObject({ biomarkerKey: '2345-7', resultCount: 2 });
+    expect(card.headline).toMatchObject({ biomarkerName: 'Glucose', value: 7.5, unit: 'mmol/L' });
   });
 
   it('should group alerts by biomarker', () => {
@@ -408,7 +408,7 @@ describe('useAlerts', () => {
           value: 110,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
         }),
       ]),
@@ -417,7 +417,7 @@ describe('useAlerts', () => {
           value: 115,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
         }),
       ]),
@@ -440,21 +440,21 @@ describe('useAlerts', () => {
     expect(result.current.groups[0].headline.biomarkerName).toBe('Glucose');
   });
 
-  it("gives each card its test's category", () => {
+  it("gives each card its test's LOINC class", () => {
     const results = [
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'glucose',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
         }),
         createMockTestValue(2, 1, {
           value: 10,
           status: 'low',
           referenceRangeLow: 12,
-          biomarkerKey: 'hemoglobin',
+          biomarkerKey: '718-7',
           rawText: 'Hemoglobin',
         }),
       ]),
@@ -473,7 +473,7 @@ describe('useAlerts', () => {
     const { result } = renderHook(() => useAlerts());
 
     const categories = result.current.groups.map((g) => g.headline.category).sort();
-    expect(categories).toEqual(['cbc', 'metabolic']);
+    expect(categories).toEqual(['Chemistry', 'Hematology']);
   });
 
   it('should get alerts for specific biomarker', () => {
@@ -483,7 +483,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -491,7 +491,7 @@ describe('useAlerts', () => {
           value: 155,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
         }),
       ]),
       createMockResult(3, '2024-01-25', [
@@ -499,7 +499,7 @@ describe('useAlerts', () => {
           value: 10,
           status: 'low',
           referenceRangeLow: 12,
-          biomarkerKey: 'marker-2',
+          biomarkerKey: '718-7',
           rawText: 'Hemoglobin',
         }),
       ]),
@@ -519,8 +519,8 @@ describe('useAlerts', () => {
 
     const resultsFor = (key: string) =>
       result.current.groups.find((group) => group.biomarkerKey === key)?.resultCount;
-    expect(resultsFor('marker-1')).toBe(2);
-    expect(resultsFor('marker-2')).toBe(1);
+    expect(resultsFor('2345-7')).toBe(2);
+    expect(resultsFor('718-7')).toBe(1);
   });
 
   it('should detect improvement when value returns to normal', () => {
@@ -530,7 +530,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
         }),
       ]),
@@ -540,7 +540,7 @@ describe('useAlerts', () => {
           status: 'normal',
           referenceRangeLow: 70,
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
         }),
       ]),
@@ -593,7 +593,7 @@ describe('useAlerts', () => {
           value: 150,
           status: 'high',
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
         }),
       ]),
       createMockResult(2, '2024-01-20', [
@@ -602,7 +602,7 @@ describe('useAlerts', () => {
           status: 'normal',
           referenceRangeLow: 70,
           referenceRangeHigh: 100,
-          biomarkerKey: 'marker-1',
+          biomarkerKey: '2345-7',
         }),
       ]),
     ];
@@ -624,7 +624,7 @@ describe('useAlerts', () => {
     expect(result.current.unacknowledgedCount).toBe(outOfRangeAlerts.length);
   });
   it('counts results acknowledged through their date as not new, and newer ones as new', async () => {
-    alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
+    alertState.acknowledgedThrough = { '2345-7': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
@@ -661,7 +661,7 @@ describe('useAlerts', () => {
   });
 
   it('counts the cards acknowledgements hide', async () => {
-    alertState.acknowledgedThrough = { 'marker-1': new Date('2024-02-01') };
+    alertState.acknowledgedThrough = { '2345-7': new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
@@ -706,7 +706,7 @@ describe('useAlerts', () => {
 
     await result.current.acknowledgeGroup(result.current.groups[0]);
 
-    expect(alertState.acknowledge).toHaveBeenCalledWith('marker-1', new Date('2024-03-10'));
+    expect(alertState.acknowledge).toHaveBeenCalledWith('2345-7', new Date('2024-03-10'));
   });
 
   it('raises a trend alert for four consecutive decreasing values', async () => {
@@ -742,7 +742,7 @@ describe('useAlerts', () => {
             unit: 'mUI/dL',
             status: 'high',
             referenceRangeHigh: 100,
-            biomarkerKey: 'glucose',
+            biomarkerKey: '2345-7',
             rawText: 'Glucose',
           }),
         ])

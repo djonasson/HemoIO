@@ -7,6 +7,8 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { SaveError } from '@data/db/saveError';
+import { trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
 
@@ -80,7 +82,10 @@ export interface UseNotesResult {
   refresh: () => Promise<void>;
   /** Get notes for a specific lab result */
   getNotesForLabResult: (labResultId: number) => UserNote[];
-  /** Get notes for a specific biomarker */
+  /**
+   * Get the notes of a test: those kept under any code of its trend group,
+   * since the codes of one group are one test on screen
+   */
   getNotesForBiomarker: (biomarkerKey: string) => UserNote[];
   /** Get notes for a specific test value */
   getNotesForTestValue: (testValueId: number) => UserNote[];
@@ -92,6 +97,7 @@ export interface UseNotesResult {
  * Hook for managing user notes
  */
 export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
+  const catalog = useCatalog();
   const { db, isReady } = useEncryptedDb();
   const [notes, setNotes] = useState<UserNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -245,9 +251,12 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
    */
   const getNotesForBiomarker = useCallback(
     (biomarkerKey: string): UserNote[] => {
-      return notes.filter((n) => n.biomarkerKey === biomarkerKey);
+      const test = trendCode(catalog, biomarkerKey);
+      return notes.filter(
+        (n) => n.biomarkerKey !== undefined && trendCode(catalog, n.biomarkerKey) === test
+      );
     },
-    [notes]
+    [catalog, notes]
   );
 
   /**

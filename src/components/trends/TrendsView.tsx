@@ -35,23 +35,13 @@ import {
   analyzeTrend,
   type TrendDataPoint,
 } from '@services/statistics/trendAnalysis';
-import {
-  getBiomarkerByKey,
-  getBiomarkerDisplayName,
-  getBiomarkerForTestValue,
-} from '@data/biomarkers/dictionary';
-import {
-  componentForBiomarker,
-  convertMeasurement,
-  preferredUnitOptions,
-  resolveDisplayUnit,
-} from '@services/units';
+import { buildTrendLines } from '@services/statistics/trendLines';
+import { trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import { notePreview } from '@services/notes';
 import { isWithinDays } from '@/utils/localDate';
-import { isTrendable } from '@/utils/isTrendable';
 import { MeasurementNotesDialog } from './MeasurementNotesDialog';
 import { PreferredUnitSelect } from './PreferredUnitSelect';
-import type { BiomarkerCategory } from '@/types';
 
 /**
  * Chart colors for multi-marker comparison
@@ -81,17 +71,19 @@ export interface TrendsViewProps {
   onOpenReference?: (biomarkerKey: string) => void;
 }
 
+/** Why some of a test's values are on lines of their own */
+function elsewhereMessage(elsewhere: { count: number; units: string[] }, unit: string): string {
+  const one = elsewhere.count === 1;
+  return `${elsewhere.count} ${one ? 'value' : 'values'} recorded in ${elsewhere.units.join(', ')} ${
+    one ? 'is' : 'are'
+  } shown on ${one ? 'a line of its own' : 'lines of their own'}: ${
+    one ? 'it' : 'they'
+  } cannot be converted to ${unit}.`;
+}
+
 /**
  * TrendsView component
  */
-/** Why some of a biomarker's values are missing from its chart */
-function excludedValuesMessage(excluded: { count: number; units: string[] }, unit: string): string {
-  const one = excluded.count === 1;
-  return `${excluded.count} ${one ? 'value' : 'values'} recorded in ${excluded.units.join(', ')} ${
-    one ? 'is' : 'are'
-  } not shown: ${one ? 'it' : 'they'} cannot be converted to ${unit}.`;
-}
-
 export function TrendsView({
   onNavigateToImport,
   onNavigateToAlerts,
@@ -99,6 +91,7 @@ export function TrendsView({
   highlightDate,
   onOpenReference,
 }: TrendsViewProps = {}) {
+  const catalog = useCatalog();
   const { results, isLoading, error } = useLabResults();
   const { unacknowledgedCount: alertCount } = useAlerts();
   const { unitPreferences, setPreferredUnit } = usePreferences();
@@ -110,32 +103,45 @@ export function TrendsView({
     getNotesForTestValue,
   } = useNotes();
 
+  // A test opened from elsewhere is its trend group's line
+  const initialLine = initialBiomarkerKey ? trendCode(catalog, initialBiomarkerKey) : undefined;
+
   // State
   const [selectedBiomarkerId, setSelectedBiomarkerId] = useState<string | null>(
-    initialBiomarkerKey ?? null
+    initialLine ?? null
   );
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [compareMarkers, setCompareMarkers] = useState<string[]>([]);
 
+  // Every line of a test, and all a test's own (notes, targets, preferred
+  // unit), are kept under the test's trend code
+  const trendLines = useMemo(
+    () => buildTrendLines(catalog, results, unitPreferences),
+    [catalog, results, unitPreferences]
+  );
+  const selectedTest = selectedBiomarkerId
+    ? (trendLines.get(selectedBiomarkerId)?.trendCode ?? selectedBiomarkerId)
+    : null;
+
   // Get notes for selected biomarker
   const selectedBiomarkerNotes = useMemo(() => {
-    if (!selectedBiomarkerId) return [];
-    return getNotesForBiomarker(selectedBiomarkerId);
-  }, [selectedBiomarkerId, getNotesForBiomarker]);
+    if (!selectedTest) return [];
+    return getNotesForBiomarker(selectedTest);
+  }, [selectedTest, getNotesForBiomarker]);
 
   // Handle note creation for selected biomarker
   const handleCreateNote = useCallback(
     async (content: string, tags: string[]) => {
-      if (!selectedBiomarkerId) return;
+      if (!selectedTest) return;
       await createNote({
-        biomarkerKey: selectedBiomarkerId,
+        biomarkerKey: selectedTest,
         content,
         tags,
       });
     },
-    [selectedBiomarkerId, createNote]
+    [selectedTest, createNote]
   );
 
   // Handle note update
@@ -180,131 +186,49 @@ export function TrendsView({
 
   const handleCreateMeasurementNote = useCallback(
     async (content: string, tags: string[]) => {
-      if (!selectedBiomarkerId || selectedPoint?.testValueId === undefined) return;
+      if (!selectedTest || selectedPoint?.testValueId === undefined) return;
       await createNote({
-        biomarkerKey: selectedBiomarkerId,
+        biomarkerKey: selectedTest,
         testValueId: selectedPoint.testValueId,
         labResultId: selectedPoint.labResultId,
         content,
         tags,
       });
     },
-    [selectedBiomarkerId, selectedPoint, createNote]
+    [selectedTest, selectedPoint, createNote]
   );
-
-  // Build map of biomarker data with unit conversion to canonical units
-  const biomarkerDataMap = useMemo(() => {
-    const map = new Map<string, {
-      name: string;
-      unit: string;
-      unitOptions: string[];
-      category: BiomarkerCategory;
-      dataPoints: TrendDataPoint[];
-      /** Values left off the chart: their unit cannot be converted to the chart's */
-      excluded: { count: number; units: string[] };
-    }>();
-
-    for (const result of results) {
-      for (const testValue of result.testValues) {
-        if (!isTrendable(testValue)) continue;
-
-        const biomarkerKey = testValue.biomarkerKey;
-
-        if (!map.has(biomarkerKey)) {
-          const biomarkerDef = getBiomarkerForTestValue(testValue);
-          // The preferred unit when the biomarker offers it, else its standard
-          // unit; biomarkers outside the dictionary keep their first unit
-          map.set(biomarkerKey, {
-            name: getBiomarkerDisplayName(testValue),
-            unit: resolveDisplayUnit(biomarkerDef, unitPreferences[biomarkerKey]) ?? testValue.unit,
-            unitOptions: biomarkerDef ? preferredUnitOptions(biomarkerDef) : [],
-            category: biomarkerDef?.category || 'other',
-            dataPoints: [],
-            excluded: { count: 0, units: [] },
-          });
-        }
-
-        const entry = map.get(biomarkerKey)!;
-
-        // Convert to the biomarker's chart unit; values that cannot be
-        // converted keep the unit they were measured in
-        const converted = convertMeasurement(
-          componentForBiomarker(entry.name),
-          {
-            value: testValue.value,
-            unit: testValue.unit,
-            referenceRangeLow: testValue.referenceRangeLow,
-            referenceRangeHigh: testValue.referenceRangeHigh,
-          },
-          entry.unit
-        );
-
-        entry.dataPoints.push({
-          date: result.date,
-          value: converted.value,
-          unit: converted.unit,
-          status: testValue.status,
-          referenceRange: converted.referenceRange,
-          labName: result.labName,
-          testValueId: testValue.id,
-          labResultId: testValue.labResultId,
-        });
-      }
-    }
-
-    for (const entry of map.values()) {
-      // One chart, one scale: a value that could not be converted to the
-      // chart's unit would be read on the wrong scale and skew the statistics
-      const inChartUnit = entry.dataPoints.filter((p) => p.unit === entry.unit);
-      const others = entry.dataPoints.filter((p) => p.unit !== entry.unit);
-      const otherUnits = [...new Set(others.map((p) => p.unit))];
-      if (inChartUnit.length === 0 && otherUnits.length === 1) {
-        // All recorded in one unit the chart unit cannot convert: chart them in it
-        entry.unit = otherUnits[0];
-      } else {
-        entry.dataPoints = inChartUnit;
-        entry.excluded = { count: others.length, units: otherUnits };
-      }
-      entry.dataPoints.sort((a, b) => a.date.getTime() - b.date.getTime());
-    }
-
-    return map;
-  }, [results, unitPreferences]);
 
   // Build biomarker options for dropdown
   const biomarkerOptions = useMemo((): BiomarkerOption[] => {
     const options: BiomarkerOption[] = [];
 
-    for (const [biomarkerKey, data] of biomarkerDataMap.entries()) {
+    for (const line of trendLines.values()) {
       options.push({
-        value: biomarkerKey,
-        label: data.name,
-        category: data.category,
-        dataPointCount: data.dataPoints.length,
+        value: line.key,
+        label: line.name,
+        category: line.classLabel,
+        dataPointCount: line.dataPoints.length,
       });
     }
 
     return options.sort((a, b) => b.dataPointCount - a.dataPointCount);
-  }, [biomarkerDataMap]);
+  }, [trendLines]);
 
   // Get selected biomarker data
   const selectedBiomarkerData = useMemo(() => {
     if (!selectedBiomarkerId) return null;
-    return biomarkerDataMap.get(selectedBiomarkerId) || null;
-  }, [selectedBiomarkerId, biomarkerDataMap]);
+    return trendLines.get(selectedBiomarkerId) || null;
+  }, [selectedBiomarkerId, trendLines]);
 
   const showUnitChoice = (selectedBiomarkerData?.unitOptions.length ?? 0) > 1;
-  // Only biomarkers in the dictionary have a reference page
+  // Only LOINC tests have a reference page
   const referenceButton =
-    onOpenReference &&
-    selectedBiomarkerData &&
-    selectedBiomarkerId &&
-    getBiomarkerByKey(selectedBiomarkerId) ? (
+    onOpenReference && selectedBiomarkerData?.isLoincTest ? (
       <Button
         variant="light"
         size="xs"
         leftSection={<IconBook size={14} aria-hidden />}
-        onClick={() => onOpenReference(selectedBiomarkerId)}
+        onClick={() => onOpenReference(selectedBiomarkerData.trendCode)}
         aria-label={`View reference for ${selectedBiomarkerData.name}`}
       >
         View reference
@@ -347,12 +271,12 @@ export function TrendsView({
 
   const handlePreferredUnitChange = useCallback(
     (unit: string) => {
-      if (!selectedBiomarkerId) return;
-      setPreferredUnit(selectedBiomarkerId, unit).catch((err: unknown) =>
+      if (!selectedTest) return;
+      setPreferredUnit(selectedTest, unit).catch((err: unknown) =>
         notifySaveFailed('Preferred unit not saved', err)
       );
     },
-    [selectedBiomarkerId, setPreferredUnit]
+    [selectedTest, setPreferredUnit]
   );
 
   // Handle compare mode
@@ -367,7 +291,7 @@ export function TrendsView({
   const compareMarkerData = useMemo((): MarkerData[] => {
     return compareMarkers
       .map((id, index) => {
-        const biomarkerData = biomarkerDataMap.get(id);
+        const biomarkerData = trendLines.get(id);
         if (!biomarkerData) return null;
 
         let points = [...biomarkerData.dataPoints];
@@ -381,7 +305,7 @@ export function TrendsView({
         };
       })
       .filter((m): m is MarkerData => m !== null);
-  }, [compareMarkers, biomarkerDataMap, startDate, endDate]);
+  }, [compareMarkers, trendLines, startDate, endDate]);
 
   // Loading state
   if (isLoading) {
@@ -500,9 +424,9 @@ export function TrendsView({
         </Alert>
       ) : (
         <>
-          {selectedBiomarkerData && selectedBiomarkerData.excluded.count > 0 && (
+          {selectedBiomarkerData && selectedBiomarkerData.elsewhere.count > 0 && (
             <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-              {excludedValuesMessage(selectedBiomarkerData.excluded, selectedBiomarkerData.unit)}
+              {elsewhereMessage(selectedBiomarkerData.elsewhere, selectedBiomarkerData.unit)}
             </Alert>
           )}
           <Paper p="md" withBorder>
@@ -515,7 +439,7 @@ export function TrendsView({
               height={350}
               // The highlight marks the opened alert's value, so only on its biomarker
               highlightDate={
-                selectedBiomarkerId === initialBiomarkerKey ? highlightDate : undefined
+                selectedBiomarkerId === initialLine ? highlightDate : undefined
               }
               notePreviews={notePreviews}
               onPointSelect={setSelectedPoint}

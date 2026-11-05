@@ -3,7 +3,8 @@
  *
  * Acknowledgements persist in the user preferences; dismissals
  * last for the page load. One provider keeps the nav badge, the Alerts view
- * and Trends consistent.
+ * and Trends consistent. Both are kept per test, by its trend code (see
+ * trendCode in src/data/loinc/display.ts), as the alert cards are.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';

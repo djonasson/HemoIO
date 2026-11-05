@@ -11,3 +11,4 @@ export {
   type BiomarkerResultSummary,
   type SummarizableResult,
 } from './biomarkerSummary';
+export { buildTrendLines, type TrendLine, type TrendableResult } from './trendLines';

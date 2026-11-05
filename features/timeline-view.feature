@@ -87,6 +87,15 @@ Feature: Timeline View
     And I expand the lab result card
     Then that test's name should be shown as plain text, not a link
 
+  Scenario: Test names come from LOINC
+    Given I have a lab result with a glucose value, a value of a LOINC test HemoIO has no name for, and a value saved as "Not a LOINC test"
+    When I navigate to the Timeline view
+    And I expand the lab result card
+    Then glucose should be named "Glucose"
+    And the other LOINC test should be named by its LOINC short name
+    And the value that is not a LOINC test should be named as the report prints it
+    And hovering a LOINC test's name should show its LOINC code and long name
+
   # Filtering
   Scenario: Choosing Timeline in the menu shows the timeline fresh
     Given I have expanded a lab result card

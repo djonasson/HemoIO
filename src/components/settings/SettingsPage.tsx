@@ -32,7 +32,9 @@ import {
   useAISettings,
   usePreferences,
 } from '@hooks';
-import { BIOMARKER_DEFINITIONS } from '@data/biomarkers';
+import { useCatalog } from '@contexts/useCatalog';
+import { TEST_ADDONS } from '@data/loinc/addons';
+import { trendCode } from '@data/loinc/display';
 import { modelForProvider, testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from './BackupRestore';
@@ -124,14 +126,19 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const storedScheme = useRef(colorScheme);
 
   // Personal Targets state
+  const catalog = useCatalog();
   const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
-  const personalTargets = useMemo<PersonalTarget[]>(
-    () =>
-      BIOMARKER_DEFINITIONS.map((biomarker) =>
-        toPersonalTarget(biomarker, targetMap[biomarker.key])
-      ),
-    [targetMap]
-  );
+  // The tests HemoIO describes, and any other test the user set a target for
+  const personalTargets = useMemo<PersonalTarget[]>(() => {
+    const codes = new Set(
+      [...Object.keys(TEST_ADDONS), ...Object.keys(targetMap)]
+        .filter((code) => catalog.test(code))
+        .map((code) => trendCode(catalog, code))
+    );
+    return [...codes]
+      .map((code) => toPersonalTarget(catalog, code, targetMap[code]))
+      .sort((a, b) => a.biomarkerName.localeCompare(b.biomarkerName));
+  }, [catalog, targetMap]);
   const [isSavingTargets, setIsSavingTargets] = useState(false);
 
   // Load display settings from IndexedDB (with localStorage migration)

@@ -5,7 +5,7 @@
 
 import { isPerHundredCounted } from '@/utils/unitSpelling';
 import { getAddon } from '@data/loinc/addons';
-import { nameKey } from '@data/biomarkers/dictionary';
+import { nameKey } from '@data/loinc/keys';
 import { toUcum, ucumProperties } from '@services/units/ucum';
 import { clusterMeasurements, comparable, groupBySameTest, groupUnit, preferredValue } from './sameMeasurement';
 import type { Catalog } from '@data/loinc/catalog';

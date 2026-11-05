@@ -1,8 +1,11 @@
 /**
- * Summary of one biomarker's recorded values: how many there are, and the
- * newest one (in the display unit when it converts).
+ * Summary of one test's recorded values: how many there are, and the
+ * newest one (in the display unit when it converts). A test is a trend
+ * group: its values may be recorded under any of the group's codes.
  */
-import { componentForBiomarker, convertForDisplay } from '@services/units';
+import { trendCode } from '@data/loinc/display';
+import { convertForDisplay } from '@services/units';
+import type { Catalog } from '@data/loinc/catalog';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -19,7 +22,7 @@ export interface SummarizableResult {
 }
 
 export interface BiomarkerResultSummary {
-  /** Number of recorded values for the biomarker */
+  /** Number of recorded values of the test */
   count: number;
   latest: {
     value: number | string | boolean;
@@ -30,10 +33,11 @@ export interface BiomarkerResultSummary {
   };
 }
 
-/** null when the biomarker has no recorded values */
+/** null when the test (a trend code) has no recorded values */
 export function summarizeBiomarkerResults(
+  catalog: Catalog,
   results: ReadonlyArray<SummarizableResult>,
-  biomarker: { key: string; name: string },
+  code: string,
   displayUnit?: string
 ): BiomarkerResultSummary | null {
   let count = 0;
@@ -41,10 +45,10 @@ export function summarizeBiomarkerResults(
 
   for (const result of results) {
     for (const testValue of result.testValues) {
-      if (testValue.biomarkerKey !== biomarker.key) continue;
+      if (trendCode(catalog, testValue.biomarkerKey) !== code) continue;
       count += 1;
       if (latest && latest.date.getTime() >= result.date.getTime()) continue;
-      const shown = convertForDisplay(componentForBiomarker(biomarker.name), testValue, displayUnit);
+      const shown = convertForDisplay(catalog.test(testValue.biomarkerKey) ?? '', testValue, displayUnit);
       latest = {
         value: shown.value,
         unit: shown.unit,

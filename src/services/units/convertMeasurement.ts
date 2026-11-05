@@ -7,6 +7,7 @@
  */
 
 import { canConvert, convertValue, ConversionError } from './conversion';
+import type { SubstanceRef } from './definitions';
 
 export interface Measurement {
   value: number;
@@ -21,9 +22,9 @@ export interface ConvertedMeasurement {
   referenceRange: { low?: number; high?: number };
 }
 
-/** @param component - LOINC component of the test, e.g. "Glucose" */
+/** @param substance - The test's LOINC component ("Glucose"), or the test itself */
 export function convertMeasurement(
-  component: string,
+  substance: SubstanceRef,
   measurement: Measurement,
   targetUnit: string
 ): ConvertedMeasurement {
@@ -35,8 +36,8 @@ export function convertMeasurement(
 
   if (
     measurement.unit === targetUnit ||
-    !component ||
-    !canConvert(component, measurement.unit, targetUnit)
+    !substance ||
+    !canConvert(substance, measurement.unit, targetUnit)
   ) {
     return original;
   }
@@ -44,7 +45,7 @@ export function convertMeasurement(
   const convert = (value: number | undefined): number | undefined =>
     value === undefined
       ? undefined
-      : convertValue(component, value, measurement.unit, targetUnit).convertedValue;
+      : convertValue(substance, value, measurement.unit, targetUnit).convertedValue;
 
   try {
     return {

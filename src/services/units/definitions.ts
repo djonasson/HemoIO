@@ -26,6 +26,28 @@ export interface UnitConversion {
   factor: number;
   /** Added after multiplying, for conversions that are not plain ratios */
   offset?: number;
+  /**
+   * Only for values in these LOINC systems (samples): an approximation that
+   * holds for one sample type alone
+   */
+  systems?: readonly string[];
+}
+
+/**
+ * What a value measures, as far as converting it goes: its LOINC component,
+ * with the property and system (sample) where a conversion depends on them.
+ * A catalog test is one. A plain string is a component alone.
+ */
+export interface Substance {
+  component: string;
+  property?: string;
+  system?: string;
+}
+
+export type SubstanceRef = string | Substance;
+
+function asSubstance(ref: SubstanceRef): Substance {
+  return typeof ref === 'string' ? { component: ref } : ref;
 }
 
 /**
@@ -34,6 +56,11 @@ export interface UnitConversion {
 export interface SubstanceConversions {
   /** LOINC component, e.g. "Glucose" or "Cholesterol" */
   component: string;
+  /**
+   * Only for tests of this LOINC property: for a component as generic as
+   * "Observation" (MCV) or "Erythrocyte" (ESR, but also RDW)
+   */
+  property?: string;
   /** Available unit conversions */
   conversions: UnitConversion[];
 }
@@ -334,9 +361,9 @@ const albuminConversions: SubstanceConversions = {
     { from: 'g/L', to: 'g/dL', factor: 0.1 },
     // Urine albumin (microalbumin)
     // mg/L ↔ µg/min (assuming 1440 min/day and ~1.5L urine/day average)
-    // This is an approximation: mg/L × 1.04 ≈ µg/min
-    { from: 'mg/L', to: 'µg/min', factor: 1.04 },
-    { from: 'µg/min', to: 'mg/L', factor: 0.96 },
+    // This is an approximation that holds for urine alone
+    { from: 'mg/L', to: 'µg/min', factor: 1.04, systems: ['Urine'] },
+    { from: 'µg/min', to: 'mg/L', factor: 0.96, systems: ['Urine'] },
   ],
 };
 
@@ -651,6 +678,7 @@ const crpConversions: SubstanceConversions = {
  */
 const esrConversions: SubstanceConversions = {
   component: 'Erythrocyte',
+  property: 'Sedimentation Rate',
   conversions: [
     { from: 'mm/hr', to: 'mm/h', factor: 1 },
     { from: 'mm/h', to: 'mm/hr', factor: 1 },
@@ -679,6 +707,7 @@ const hematocritConversions: SubstanceConversions = {
  */
 const mcvConversions: SubstanceConversions = {
   component: 'Observation',
+  property: 'EntMeanVol',
   conversions: [
     { from: 'fL', to: 'µm³', factor: 1 },
     { from: 'µm³', to: 'fL', factor: 1 },
@@ -948,21 +977,42 @@ export const UNIT_CONVERSIONS: SubstanceConversions[] = [
   spermConcentrationConversions,
 ];
 
-const BY_COMPONENT = new Map(
-  UNIT_CONVERSIONS.map((definition) => [definition.component.toLowerCase(), definition])
-);
+const BY_COMPONENT = new Map<string, SubstanceConversions[]>();
+for (const definition of UNIT_CONVERSIONS) {
+  const key = definition.component.toLowerCase();
+  BY_COMPONENT.set(key, [...(BY_COMPONENT.get(key) ?? []), definition]);
+}
+
+/** The definition for a component that applies to the substance's property */
+function definitionOf(component: string, property: string | undefined): SubstanceConversions | undefined {
+  return BY_COMPONENT.get(component)?.find(
+    (definition) => definition.property === undefined || definition.property === property
+  );
+}
 
 /**
- * The conversions for a LOINC component. A component with a subpart uses its
+ * The conversions for a substance. A component with a subpart uses its
  * substance's conversions when it has none of its own: "Cholesterol.in LDL"
  * and "Glucose^2H post 75 g glucose PO" convert as cholesterol and glucose.
- * A ratio of two substances ("Albumin/Creatinine") has only its own.
+ * A ratio of two substances ("Albumin/Creatinine") has only its own. A
+ * definition for one property only ("Observation", MCV) never applies to a
+ * substance of another, or of none given.
  */
-export function findConversionDefinition(component: string): SubstanceConversions | undefined {
+export function findConversionDefinition(substance: SubstanceRef): SubstanceConversions | undefined {
+  const { component, property } = asSubstance(substance);
   const key = component.trim().toLowerCase();
-  const own = BY_COMPONENT.get(key);
+  const own = definitionOf(key, property);
   if (own || key.includes('/')) return own;
-  return BY_COMPONENT.get(key.split(/[.^]/)[0]);
+  return definitionOf(key.split(/[.^]/)[0], property);
+}
+
+/** The conversions of a substance that apply to its sample */
+export function conversionsOf(substance: SubstanceRef): UnitConversion[] {
+  const { system } = asSubstance(substance);
+  return (findConversionDefinition(substance)?.conversions ?? []).filter(
+    (conversion) =>
+      conversion.systems === undefined || (system !== undefined && conversion.systems.includes(system))
+  );
 }
 
 /** A conversion between two units: converted = value × factor + offset */
@@ -972,28 +1022,27 @@ export interface LinearConversion {
 }
 
 /**
- * The conversion between two units for a substance (LOINC component)
+ * The conversion between two units for a substance
  */
 export function getConversion(
-  component: string,
+  substance: SubstanceRef,
   fromUnit: string,
   toUnit: string
 ): LinearConversion | undefined {
   // Same unit, however spelled: no conversion needed, even for a test with none
   if (unitsMatch(fromUnit, toUnit)) return { factor: 1, offset: 0 };
-  const definition = findConversionDefinition(component);
-  if (!definition) return undefined;
+  const conversions = conversionsOf(substance);
 
-  const direct = definition.conversions.find(
+  const direct = conversions.find(
     (c) => unitsMatch(c.from, fromUnit) && unitsMatch(c.to, toUnit)
   );
   if (direct) return { factor: direct.factor, offset: direct.offset ?? 0 };
 
   // No direct pair (e.g. hemoglobin mmol/L → g/L): chain two known conversions
   // through a shared unit (mmol/L → g/dL → g/L)
-  for (const first of definition.conversions) {
+  for (const first of conversions) {
     if (!unitsMatch(first.from, fromUnit)) continue;
-    const second = definition.conversions.find(
+    const second = conversions.find(
       (c) => unitsMatch(c.from, first.to) && unitsMatch(c.to, toUnit)
     );
     if (second) {
@@ -1011,10 +1060,10 @@ export function getConversion(
  * ratios; undefined when there is no conversion or it has an offset
  */
 export function getConversionFactor(
-  component: string,
+  substance: SubstanceRef,
   fromUnit: string,
   toUnit: string
 ): number | undefined {
-  const conversion = getConversion(component, fromUnit, toUnit);
+  const conversion = getConversion(substance, fromUnit, toUnit);
   return conversion && conversion.offset === 0 ? conversion.factor : undefined;
 }

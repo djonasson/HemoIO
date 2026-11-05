@@ -15,9 +15,12 @@ export {
   UNIT_CONVERSIONS,
   findConversionDefinition,
   getConversionFactor,
+  normalizeUnitForLookup,
   unitsMatch,
   type UnitConversion,
   type SubstanceConversions,
+  type Substance,
+  type SubstanceRef,
 } from './definitions';
 
 export {
@@ -33,5 +36,3 @@ export {
   type UnitSource,
   type DisplayableValue,
 } from './displayUnit';
-
-export { componentForBiomarker } from './legacyComponents';

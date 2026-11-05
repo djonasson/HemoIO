@@ -21,8 +21,6 @@ export type TestValueStatus = 'normal' | 'low' | 'high' | 'unknown';
 export interface EnrichedTestValue extends TestValue {
   /** Status relative to reference range */
   status: TestValueStatus;
-  /** Biomarker name (from dictionary lookup) */
-  biomarkerName?: string;
 }
 
 /**

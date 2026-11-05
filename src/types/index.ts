@@ -42,7 +42,7 @@ export interface LabResult {
 export interface TestValue {
   id?: number;
   labResultId: number;
-  /** Permanent dictionary key, or an "unknown:" key for unmatched names */
+  /** The test's LOINC code, or an "unknown:" key for a value saved as not a LOINC test */
   biomarkerKey: string;
   value: number | string | boolean;
   unit: string;
@@ -67,50 +67,12 @@ export interface TestValue {
   updatedAt: Date;
 }
 
-// Reference data about a type of test
-export interface Biomarker {
-  id?: number;
-  name: string;
-  category: BiomarkerCategory;
-  canonicalUnit: string;
-  alternativeUnits: string[];
-  description?: string;
-}
-
-export type BiomarkerCategory =
-  | 'cbc'
-  | 'metabolic'
-  | 'lipid'
-  | 'thyroid'
-  | 'iron'
-  | 'vitamin'
-  | 'urinalysis'
-  | 'fertility'
-  | 'other';
-
-/**
- * Specimen/matrix type for biomarker measurements
- * Indicates the biological sample type used for the test
- */
-export type SpecimenType =
-  | 'serum'       // S- prefix (blood serum after clotting)
-  | 'plasma'      // P- prefix (blood plasma with anticoagulant)
-  | 'urine'       // U- prefix (spot urine sample)
-  | 'urine-24h'   // 24-hour urine collection
-  | 'whole-blood' // Sg- prefix (whole blood, e.g., HbA1c)
-  | 'capillary'   // Finger-prick blood
-  | 'saliva'
-  | 'csf'         // Cerebrospinal fluid
-  | 'stool'
-  | 'semen'       // Semen analysis
-  | 'other';
-
 // User's display preferences
 export interface UserPreferences {
   id?: number;
-  unitPreferences: Record<string, string>; // biomarkerKey -> preferred unit
-  personalTargets: Record<string, { low?: number; high?: number }>; // biomarkerKey -> target range
-  /** Per biomarker: alerts dated on or before this ISO date are acknowledged */
+  unitPreferences: Record<string, string>; // trend code -> preferred unit
+  personalTargets: Record<string, { low?: number; high?: number }>; // trend code -> target range
+  /** Per trend code: alerts dated on or before this ISO date are acknowledged */
   acknowledgedAlerts?: Record<string, string>;
   /** The tests the user taught: a lab's wording and unit (learned key) -> LOINC code or unknown key */
   learnedTests?: Record<string, string>;

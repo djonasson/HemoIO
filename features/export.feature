@@ -33,6 +33,13 @@ Feature: Export Lab Results
     And the file should only contain Glucose and Hemoglobin values
 
   # JSON Export
+  Scenario: CSV export gives each value's LOINC code
+    Given I have values identified by LOINC codes and a value saved as "Not a LOINC test"
+    When I export my results to CSV
+    Then each row should name its test as the app does
+    And a LOINC column should give the code of each identified value
+    And it should be empty for the value that is not a LOINC test
+
   Scenario: Export all data to JSON
     When I click the "Export" button
     And I select "JSON" format

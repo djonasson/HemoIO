@@ -93,7 +93,7 @@ export function* parseCsv(text) {
 
 /**
  * A name as every lookup reads it: case, spacing and accent encoding aside.
- * Duplicates nameKey in src/data/biomarkers/dictionary.ts because this script
+ * Duplicates nameKey in src/data/loinc/keys.ts because this script
  * is plain Node and cannot import the app's TypeScript.
  * @param {string} name
  * @returns {string}

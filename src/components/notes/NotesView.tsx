@@ -23,7 +23,8 @@ import { IconNotes, IconSearch } from '@tabler/icons-react';
 import { useNotes } from '@hooks/useNotes';
 import { useLabResults } from '@hooks/useLabResults';
 import { RelativeTime } from '@components/common/RelativeTime';
-import { getBiomarkerByKey, getBiomarkerDisplayName } from '@data/biomarkers/dictionary';
+import { testDisplayName, trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import {
   describeNoteAttachment,
   filterNotes,
@@ -38,7 +39,16 @@ export interface NotesViewProps {
 }
 
 export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): React.ReactNode {
-  const { notes, isLoading, allTags } = useNotes();
+  const catalog = useCatalog();
+  const { notes: stored, isLoading, allTags } = useNotes();
+  // Notes are the test's whatever code of its trend group they were kept under
+  const notes = useMemo(
+    () =>
+      stored.map((note) =>
+        note.biomarkerKey ? { ...note, biomarkerKey: trendCode(catalog, note.biomarkerKey) } : note
+      ),
+    [catalog, stored]
+  );
   const { results, isLoading: isLoadingResults } = useLabResults();
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -52,7 +62,8 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
       number,
       { value: number | string; unit: string; labResultId: number }
     >();
-    const names = new Map<string, string>();
+    // The printed names of values that are not a LOINC test
+    const printed = new Map<string, string | undefined>();
     for (const result of results) {
       if (result.id !== undefined) {
         labResults.set(result.id, { labName: result.labName, date: result.date });
@@ -65,16 +76,16 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
             labResultId: tv.labResultId,
           });
         }
-        names.set(tv.biomarkerKey, getBiomarkerDisplayName(tv));
+        printed.set(tv.biomarkerKey, tv.rawText);
       }
     }
     return {
       labResults,
       testValues,
-      // A note can name a biomarker no result has a value for
-      biomarkerName: (key) => names.get(key) ?? getBiomarkerByKey(key)?.name ?? 'Unknown biomarker',
+      // A note can name a test no result has a value for
+      biomarkerName: (key) => testDisplayName(catalog, { biomarkerKey: key, rawText: printed.get(key) }),
     };
-  }, [results]);
+  }, [catalog, results]);
 
   const biomarkerOptions = useMemo(() => {
     const keys = [...new Set(notes.flatMap((n) => (n.biomarkerKey ? [n.biomarkerKey] : [])))];

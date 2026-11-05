@@ -12,6 +12,13 @@ import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
 
 // Mock useEncryptedDb
+// The fixture LOINC catalog: 2345-7 glucose (mg/dL), 14749-6 glucose (mmol/L)
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
+});
+
 vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: vi.fn(),
 }));
@@ -419,6 +426,19 @@ describe('useNotes', () => {
 
       const filtered = result.current.getNotesForBiomarker('marker-50');
       expect(filtered).toHaveLength(1);
+    });
+
+    it("gets a test's notes under every code of its trend group", async () => {
+      mockDb.getAllNotes.mockResolvedValue([
+        createMockNote(1, { biomarkerKey: '2345-7' }),
+        createMockNote(2, { biomarkerKey: '14749-6' }),
+        createMockNote(3, { biomarkerKey: '718-7' }),
+      ]);
+
+      const { result } = renderHook(() => useNotes());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.getNotesForBiomarker('2345-7').map((n) => n.id)).toEqual([1, 2]);
     });
 
     it('should get notes for test value', async () => {

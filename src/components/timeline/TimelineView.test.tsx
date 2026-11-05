@@ -51,13 +51,12 @@ vi.mock('@hooks/useNotes', () => ({
   })),
 }));
 
-// Mock the biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => ({
-  findBiomarker: vi.fn(() => null),
-  getBiomarkerByKey: () => undefined,
-  getBiomarkerForTestValue: () => undefined,
-  getBiomarkerDisplayName: (tv: { rawText?: string }) => tv.rawText || 'Unknown biomarker',
-}));
+// Names and samples come from the LOINC catalog
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
+});
 
 import { useLabResults } from '@hooks/useLabResults';
 
@@ -133,7 +132,7 @@ describe('TimelineView', () => {
         {
           id: 1,
           labResultId: 1,
-          biomarkerKey: 'glucose',
+          biomarkerKey: '2345-7',
           rawText: 'Glucose',
           value: 125,
           unit: 'mg/dL',
@@ -158,7 +157,7 @@ describe('TimelineView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
 
-    expect(onOpenTrend).toHaveBeenCalledWith('glucose', new Date('2024-01-15T12:00:00Z'));
+    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'));
   });
 
   it('should call refresh when try again is clicked', () => {

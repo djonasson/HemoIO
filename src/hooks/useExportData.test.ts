@@ -15,6 +15,12 @@ const mockDb = {
   getSettings: vi.fn(),
 };
 
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
+});
+
 vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: () => ({
     db: mockDb,
@@ -163,7 +169,28 @@ describe('useExportData', () => {
     );
   });
 
-  it('names a value saved as not in the dictionary by its printed name, never a test it resembles', async () => {
+  it('offers glucose in mg/dL and in mmol/L as one test, with the keys of both', async () => {
+    mockDb.getAllLabResults.mockResolvedValue([
+      { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllTestValues.mockResolvedValue([
+      { id: 1, labResultId: 1, biomarkerKey: '2345-7', value: 95, unit: 'mg/dL', createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, labResultId: 1, biomarkerKey: '14749-6', value: 5, unit: 'mmol/L', rawText: 'Glicemia', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.biomarkerOptions).toEqual([
+      { value: '2345-7', label: 'Glucose', keys: ['2345-7', '14749-6'] },
+    ]);
+  });
+
+  it('names a value saved as not a LOINC test by its printed name, never a test it resembles', async () => {
     mockDb.getAllLabResults.mockResolvedValue([
       { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
     ]);
@@ -171,7 +198,7 @@ describe('useExportData', () => {
       {
         id: 1,
         labResultId: 1,
-        // Saved as not in the dictionary
+        // Saved as not a LOINC test
         biomarkerKey: 'unknown:bloodsugar',
         value: 95,
         unit: 'mg/dL',
@@ -186,7 +213,7 @@ describe('useExportData', () => {
         biomarkerKey: 'marker-10008',
         value: 3,
         unit: 'U/L',
-        // Not in the dictionary: keep the name from the report
+        // Not in the catalog: keep the name from the report
         rawText: 'Exotic Marker',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -202,8 +229,8 @@ describe('useExportData', () => {
 
     expect(result.current.biomarkerOptions).toEqual(
       expect.arrayContaining([
-        { value: 'unknown:bloodsugar', label: 'Blood Sugar' },
-        { value: 'marker-10008', label: 'Exotic Marker' },
+        { value: 'unknown:bloodsugar', label: 'Blood Sugar', keys: ['unknown:bloodsugar'] },
+        { value: 'marker-10008', label: 'Exotic Marker', keys: ['marker-10008'] },
       ])
     );
     const names = result.current.labResultsData[0].biomarkerNames;

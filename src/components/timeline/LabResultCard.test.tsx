@@ -9,7 +9,6 @@ import { MantineProvider } from '@mantine/core';
 import { LabResultCard } from './LabResultCard';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
 
-// Mock the biomarker dictionary
 vi.mock('@hooks/usePreferences', () => ({
   usePreferences: () => ({
     unitPreferences: {},
@@ -21,17 +20,11 @@ vi.mock('@hooks/usePreferences', () => ({
   }),
 }));
 
-vi.mock('@data/biomarkers/dictionary', () => {
-  const mock = {
-  findBiomarker: vi.fn(() => null),
-  };
-  return {
-    ...mock,
-    // Test data uses arbitrary IDs, so biomarkers are identified by rawText
-    getBiomarkerByKey: () => undefined,
-    getBiomarkerForTestValue: () => mock.findBiomarker(),
-    getBiomarkerDisplayName: (tv: { rawText?: string }) => tv.rawText || 'Unknown biomarker',
-  };
+// Names and samples come from the LOINC catalog; these values' keys are not in it
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
 });
 
 // Clean up after each test to ensure modals are properly unmounted

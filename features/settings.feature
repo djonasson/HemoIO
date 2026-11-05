@@ -91,6 +91,16 @@ Feature: Application Settings
     Then my personal target should be removed
     And the standard reference range should be used again
 
+  Scenario: A personal target applies to every LOINC code of the test
+    Given I have set a personal target for "Glucose"
+    And I have glucose values recorded in mg/dL and in mmol/L
+    When I open the biomarker page for "Glucose"
+    Then my personal target should be shown once, for glucose
+
+  Scenario: Personal targets name tests as the rest of the app does
+    When I view the personal targets section
+    Then each test should be named as HemoIO names it, else by its LOINC short name
+
   Scenario: Personal targets show in timeline
     Given I have set personal targets for some biomarkers
     When I view my lab results in the timeline

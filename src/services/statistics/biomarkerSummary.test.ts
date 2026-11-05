@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { fixtureCatalog } from '@/test/loincFixture';
 import { summarizeBiomarkerResults, type SummarizableResult } from './biomarkerSummary';
 
-const GLUCOSE = { key: 'glucose', name: 'Glucose' };
+const catalog = fixtureCatalog();
+const GLUCOSE = '2345-7';
 
 function result(day: string, values: SummarizableResult['testValues']): SummarizableResult {
   return { date: new Date(`${day}T12:00:00Z`), labName: `Lab ${day}`, testValues: values };
@@ -11,7 +13,7 @@ const glucose = (
   value: number | string | boolean,
   status: 'normal' | 'high' | 'low' | 'unknown' = 'normal'
 ) => ({
-  biomarkerKey: 'glucose',
+  biomarkerKey: GLUCOSE,
   value,
   unit: 'mg/dL',
   status,
@@ -19,14 +21,15 @@ const glucose = (
 
 describe('summarizeBiomarkerResults', () => {
   it('returns null without recorded values', () => {
-    expect(summarizeBiomarkerResults([result('2024-01-15', [])], GLUCOSE)).toBeNull();
+    expect(summarizeBiomarkerResults(catalog, [result('2024-01-15', [])], GLUCOSE)).toBeNull();
   });
 
   it('counts the values and reports the newest, whatever the order of results', () => {
     const summary = summarizeBiomarkerResults(
+      catalog,
       [
         result('2024-02-20', [glucose(120, 'high')]),
-        result('2024-01-15', [glucose(95), { ...glucose(14), biomarkerKey: 'hemoglobin' }]),
+        result('2024-01-15', [glucose(95), { ...glucose(14), biomarkerKey: '718-7' }]),
         result('2024-01-30', [glucose(99)]),
       ],
       GLUCOSE
@@ -45,6 +48,7 @@ describe('summarizeBiomarkerResults', () => {
 
   it('reports the latest value in the display unit', () => {
     const summary = summarizeBiomarkerResults(
+      catalog,
       [result('2024-02-20', [glucose(100)])],
       GLUCOSE,
       'mmol/L'
@@ -54,6 +58,7 @@ describe('summarizeBiomarkerResults', () => {
 
   it('reports a latest value that is not a number as recorded', () => {
     const summary = summarizeBiomarkerResults(
+      catalog,
       [result('2024-02-20', [glucose(true, 'unknown')])],
       GLUCOSE,
       'mmol/L'
@@ -61,5 +66,17 @@ describe('summarizeBiomarkerResults', () => {
     expect(summary?.latest).toEqual(
       expect.objectContaining({ value: true, unit: 'mg/dL', status: 'unknown' })
     );
+  });
+
+  it("counts the values of every code of the test's trend group", () => {
+    const molar = { biomarkerKey: '14749-6', value: 7, unit: 'mmol/L', status: 'high' as const };
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [result('2024-01-15', [glucose(95)]), result('2024-02-20', [molar])],
+      GLUCOSE,
+      'mg/dL'
+    );
+    expect(summary?.count).toBe(2);
+    expect(summary?.latest).toEqual(expect.objectContaining({ value: 126, unit: 'mg/dL' }));
   });
 });

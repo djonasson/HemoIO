@@ -1,10 +1,13 @@
 /**
- * A biomarker's standard range beside the user's personal target, as the
- * targets list and the target editor show it
+ * A test's standard range beside the user's personal target, as the
+ * targets list and the target editor show it. A target is the test's, so it
+ * applies to every code of its trend group; it is kept under the trend code.
  */
-import type { BiomarkerDefinition } from '@data/biomarkers';
+import { standardRange, testDisplayName, testUnits } from '@data/loinc/display';
+import type { Catalog } from '@data/loinc/catalog';
 
 export interface PersonalTarget {
+  /** The test's trend code */
   biomarkerKey: string;
   biomarkerName: string;
   unit: string;
@@ -24,16 +27,19 @@ export function hasTargetRange(range: TargetRange | undefined): range is TargetR
   return range !== undefined && (range.low !== undefined || range.high !== undefined);
 }
 
+/** A test's target, given in its standard unit, or in its range's unit when it has no standard unit */
 export function toPersonalTarget(
-  biomarker: BiomarkerDefinition,
+  catalog: Catalog,
+  code: string,
   target: TargetRange | undefined
 ): PersonalTarget {
+  const standard = standardRange(catalog, code);
   return {
-    biomarkerKey: biomarker.key,
-    biomarkerName: biomarker.name,
-    unit: biomarker.canonicalUnit,
-    standardLow: biomarker.defaultReferenceRange?.low,
-    standardHigh: biomarker.defaultReferenceRange?.high,
+    biomarkerKey: code,
+    biomarkerName: testDisplayName(catalog, { biomarkerKey: code }),
+    unit: testUnits(catalog, code)?.canonicalUnit ?? standard?.unit ?? '',
+    standardLow: standard?.low,
+    standardHigh: standard?.high,
     personalLow: target?.low,
     personalHigh: target?.high,
   };

@@ -65,6 +65,11 @@ Feature: Unit Conversion
     Then I should see "Unit not supported for Glucose"
     And glucose values should still display in mg/dL
 
+  Scenario: A preferred unit applies to every LOINC code of the test
+    Given I have glucose values recorded under the mg/dL and the mmol/L LOINC codes
+    When I set my preferred unit for "Glucose" to mmol/L
+    Then every glucose value should be shown in mmol/L, in Trends and in the Timeline
+
   Scenario: Unsupported unit conversion returns error
     Given a glucose value of 100 mg/dL
     When I attempt to convert it to an unsupported unit "stones"

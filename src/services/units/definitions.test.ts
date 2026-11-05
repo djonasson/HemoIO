@@ -74,6 +74,27 @@ describe('Unit Conversion Definitions', () => {
     it('returns undefined for an unknown component', () => {
       expect(findConversionDefinition('Unknown Biomarker XYZ')).toBeUndefined();
     });
+
+    it('keys a generic component by its property too', () => {
+      // MCV is "Observation", which also names appearance, colour and specific gravity
+      const mcv = { component: 'Observation', property: 'EntMeanVol', system: 'RBC' };
+      expect(findConversionDefinition(mcv)?.component).toBe('Observation');
+      expect(findConversionDefinition({ ...mcv, property: 'SpGrav' })).toBeUndefined();
+      expect(findConversionDefinition('Observation')).toBeUndefined();
+      // ESR is "Erythrocyte", as is red cell distribution width
+      const esr = { component: 'Erythrocyte', property: 'Sedimentation Rate', system: 'Bld' };
+      expect(getConversionFactor(esr, 'mm/hr', 'mm/h')).toBe(1);
+      expect(getConversionFactor({ ...esr, property: 'DistWidth' }, 'mm/hr', 'mm/h')).toBeUndefined();
+    });
+
+    it('converts albumin mg/L to µg/min only for urine', () => {
+      const urine = { component: 'Albumin', property: 'MCnc', system: 'Urine' };
+      expect(getConversionFactor(urine, 'mg/L', 'µg/min')).toBeCloseTo(1.04);
+      expect(getConversionFactor({ ...urine, system: 'Ser/Plas' }, 'mg/L', 'µg/min')).toBeUndefined();
+      expect(getConversionFactor('Albumin', 'mg/L', 'µg/min')).toBeUndefined();
+      // The rest of albumin's conversions hold for every sample
+      expect(getConversionFactor({ ...urine, system: 'Ser/Plas' }, 'g/dL', 'g/L')).toBe(10);
+    });
   });
 
   describe('getConversionFactor', () => {

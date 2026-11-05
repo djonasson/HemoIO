@@ -4,7 +4,7 @@
  * fit; what is left is the user's to choose in review.
  */
 import { isNotALoincTest, type SavedValue } from '@data/loinc/learnedTests';
-import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { unknownBiomarkerKey } from '@data/loinc/keys';
 import { normalizeUnit } from '../units';
 import { learnedKey, matchLocally, type Candidate, type PrintedValue } from './loincMatch';
 import type { Catalog } from '@data/loinc/catalog';

@@ -83,7 +83,7 @@ describe('ExportDialog', () => {
     onClose: vi.fn(),
     labResultsData: [createMockLabResultForExport()],
     fullDataSources: createMockDataSources(),
-    biomarkerOptions: [{ value: '1', label: 'Glucose' }],
+    biomarkerOptions: [{ value: 'marker-1', label: 'Glucose', keys: ['marker-1'] }],
   };
 
   beforeEach(() => {

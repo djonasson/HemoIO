@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { fixtureCatalog } from '@/test/loincFixture';
 import type { Embedder } from './similarNames';
 
 const loadTransformersEmbedder = vi.fn<() => Promise<Embedder>>();
@@ -17,5 +18,14 @@ describe('getSimilarNameMatcher', () => {
 
     expect(loadTransformersEmbedder).toHaveBeenCalledTimes(2);
     expect(onLoading).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('namedTests', () => {
+  it("names each test HemoIO describes by its LOINC code, with HemoIO's name and LOINC's", async () => {
+    const { namedTests } = await import('./index');
+    const glucose = namedTests(fixtureCatalog()).find((test) => test.key === '2345-7');
+    expect(glucose?.names[0]).toBe('Glucose');
+    expect(glucose?.names.length).toBeGreaterThan(1);
   });
 });

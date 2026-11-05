@@ -19,14 +19,18 @@ export interface HotModule {
   importedModules: Iterable<HotModule>;
 }
 
+/** Folders of src/data holding reference data, not user data */
+const REFERENCE_DATA = ['biomarkers', 'loinc'];
+
 /**
- * Database, storage, encryption and migrations. The biomarker dictionary is
- * static reference data with no connection or state, and most screens import
- * it: counting it would reload (and lock) the app on most UI edits.
+ * Database, storage, encryption and migrations. The LOINC catalog, its
+ * add-ons and names are reference data with no connection or user state, and
+ * most screens import them: counting them would reload (and lock) the app on
+ * most UI edits.
  */
 export function isDataLayerFile(file: string | null, root: string): boolean {
   if (!file?.startsWith(`${root}/src/data/`)) return false;
-  return !file.startsWith(`${root}/src/data/biomarkers/`);
+  return !REFERENCE_DATA.some((folder) => file.startsWith(`${root}/src/data/${folder}/`));
 }
 
 function touchesDataLayer(module: HotModule, root: string): boolean {

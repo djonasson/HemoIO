@@ -10,10 +10,6 @@ import { groupAlerts } from '@services/alerts';
 import { AlertGroupCard } from './AlertGroupCard';
 import type { BiomarkerAlert, GroupedAlert } from '@hooks/useAlerts';
 
-vi.mock('@data/biomarkers/dictionary', () => ({
-  CATEGORY_NAMES: { metabolic: 'Metabolic Panel' },
-}));
-
 function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
   return {
     id: '1',
@@ -21,7 +17,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     severity: 'warning',
     biomarkerKey: 'glucose',
     biomarkerName: 'Glucose',
-    category: 'metabolic',
+    category: 'Chemistry',
     value: 150,
     unit: 'mg/dL',
     referenceRange: { low: 70, high: 100 },

@@ -1,6 +1,6 @@
 import { beforeAll, describe, it, expect, vi } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
-import { BIOMARKER_DEFINITIONS, getBiomarkerByKey } from './dictionary';
+import { TEST_ADDONS } from '@data/loinc/addons';
 import { LOINC_NOTICE, loincLabel, loincName } from './loinc';
 
 /** LOINC's check digit: the Mod 10 (Luhn) digit of the code's number */
@@ -22,16 +22,16 @@ beforeAll(async () => {
   await loadCatalog();
 });
 
-const CODED = BIOMARKER_DEFINITIONS.filter((definition) => definition.loincCode);
+const CODES = Object.keys(TEST_ADDONS);
 
 /**
  * What LOINC's name says about the kind of quantity (its PROPERTY) for each
- * unit the dictionary stores a value in; a code whose property disagrees with
+ * standard unit HemoIO shows a test in; a code whose property disagrees with
  * the unit names a different measurement of the same analyte.
  */
 const UNIT_KINDS: { units: string[]; name: RegExp }[] = [
-  { units: ['10^9/L', '10^12/L', 'mil/mL'], name: /\[#\/volume\]/ },
-  { units: ['million'], name: /\[#\]/ },
+  { units: ['10^9/L', '10^12/L', 'mil/mL', '10^6/mL'], name: /\[#\/volume\]/ },
+  { units: ['million', '10^6'], name: /\[#\]/ },
   { units: ['RBC/HPF', 'WBC/HPF', '/HPF'], name: /\[#\/area\] .*high power field/ },
   // Also MCHC's [Entitic Mass/volume]
   { units: ['g/dL', 'g/L', 'mg/dL', 'mg/L', 'µg/dL', 'ng/mL', 'ng/dL', 'pg/mL'], name: /Mass\/volume\]/ },
@@ -50,131 +50,121 @@ const UNIT_KINDS: { units: string[]; name: RegExp }[] = [
   { units: ['mL/min/1.73m²'], name: /\[Volume Rate\/Area\]/ },
   { units: ['min'], name: /\[Time\]/ },
   // Unitless: pH, specific gravity, and dipstick tests read as present or absent
-  { units: [''], name: /^pH of |^Specific gravity of |\[Presence\]/ },
+  { units: ['', '[pH]', '1'], name: /^pH of |^Specific gravity of |\[Presence\]/ },
 ];
 
-/** How LOINC's name gives the specimen (its SYSTEM) for each specimen type */
-const SPECIMEN_NAMES: Record<string, RegExp> = {
-  serum: /in Serum(,| or) Plasma/,
-  // LOINC's MCH term names no system
-  'whole-blood': /(in|of) Blood|in Red Blood Cells|^MCH /,
-  urine: /(in|of) Urine/,
-  'urine-24h': /24 hour Urine/,
-  semen: /(in|of) Semen/,
-};
-
-/** Each coded test with the long common name of its LOINC term */
+/** Each code HemoIO describes, with the long common name of its LOINC term */
 const TERMS: [string, string][] = [
-  ['white-blood-cell-count', 'Leukocytes [#/volume] in Blood by Automated count'],
-  ['red-blood-cell-count', 'Erythrocytes [#/volume] in Blood by Automated count'],
-  ['hemoglobin', 'Hemoglobin [Mass/volume] in Blood'],
-  ['hematocrit', 'Hematocrit [Volume Fraction] of Blood by Automated count'],
-  ['platelet-count', 'Platelets [#/volume] in Blood by Automated count'],
-  ['mean-corpuscular-volume', 'MCV [Entitic mean volume] in Red Blood Cells by Automated count'],
-  ['mean-corpuscular-hemoglobin', 'MCH [Entitic mass] by Automated count'],
-  ['mean-corpuscular-hemoglobin-concentration', 'MCHC [Entitic Mass/volume] in Red Blood Cells by Automated count'],
-  ['red-cell-distribution-width', 'Erythrocyte [DistWidth] in Blood by Automated count'],
-  ['neutrophils', 'Neutrophils [#/volume] in Blood by Automated count'],
-  ['neutrophils-percentage', 'Neutrophils/Leukocytes in Blood by Automated count'],
-  ['lymphocytes', 'Lymphocytes [#/volume] in Blood by Automated count'],
-  ['lymphocytes-percentage', 'Lymphocytes/Leukocytes in Blood by Automated count'],
-  ['monocytes', 'Monocytes [#/volume] in Blood by Automated count'],
-  ['monocytes-percentage', 'Monocytes/Leukocytes in Blood by Automated count'],
-  ['eosinophils', 'Eosinophils [#/volume] in Blood by Automated count'],
-  ['eosinophils-percentage', 'Eosinophils/Leukocytes in Blood by Automated count'],
-  ['basophils', 'Basophils [#/volume] in Blood by Automated count'],
-  ['basophils-percentage', 'Basophils/Leukocytes in Blood by Automated count'],
-  ['nucleated-red-blood-cells', 'Nucleated erythrocytes [#/volume] in Blood'],
-  ['nucleated-red-blood-cells-percentage', 'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count'],
-  ['reticulocytes', 'Reticulocytes [#/volume] in Blood by Automated count'],
-  ['reticulocytes-percentage', 'Reticulocytes/Erythrocytes in Blood by Automated count'],
-  ['erythrocyte-sedimentation-rate', 'Erythrocyte [Sedimentation Rate] in Blood'],
-  ['c-reactive-protein', 'C reactive protein [Mass/volume] in Serum or Plasma'],
-  ['glucose', 'Glucose [Mass/volume] in Serum or Plasma'],
-  ['creatinine', 'Creatinine [Mass/volume] in Serum or Plasma'],
-  ['blood-urea-nitrogen', 'Urea nitrogen [Mass/volume] in Serum or Plasma'],
-  ['urea', 'Urea [Mass/volume] in Serum or Plasma'],
-  ['uric-acid', 'Urate [Mass/volume] in Serum or Plasma'],
-  ['sodium', 'Sodium [Moles/volume] in Serum or Plasma'],
-  ['potassium', 'Potassium [Moles/volume] in Serum or Plasma'],
-  ['chloride', 'Chloride [Moles/volume] in Serum or Plasma'],
-  ['carbon-dioxide', 'Carbon dioxide, total [Moles/volume] in Serum or Plasma'],
-  ['calcium', 'Calcium [Mass/volume] in Serum or Plasma'],
-  ['magnesium', 'Magnesium [Mass/volume] in Serum or Plasma'],
-  ['egfr', 'Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI 2021)/1.73 sq M'],
-  ['total-cholesterol', 'Cholesterol [Mass/volume] in Serum or Plasma'],
-  ['ldl-cholesterol', 'Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation'],
-  ['hdl-cholesterol', 'Cholesterol in HDL [Mass/volume] in Serum or Plasma'],
-  ['triglycerides', 'Triglyceride [Mass/volume] in Serum or Plasma'],
-  ['vldl-cholesterol', 'Cholesterol in VLDL [Mass/volume] in Serum or Plasma by calculation'],
-  ['non-hdl-cholesterol', 'Cholesterol non HDL [Mass/volume] in Serum or Plasma'],
-  ['thyroid-stimulating-hormone', 'Thyrotropin [Units/volume] in Serum or Plasma'],
-  ['free-t4', 'Thyroxine (T4) free [Mass/volume] in Serum or Plasma'],
-  ['total-t4', 'Thyroxine (T4) [Mass/volume] in Serum or Plasma'],
-  ['free-t3', 'Triiodothyronine (T3) Free [Mass/volume] in Serum or Plasma'],
-  ['total-t3', 'Triiodothyronine (T3) [Mass/volume] in Serum or Plasma'],
-  ['tpo-antibodies', 'Thyroperoxidase Ab [Units/volume] in Serum or Plasma'],
-  ['serum-iron', 'Iron [Mass/volume] in Serum or Plasma'],
-  ['ferritin', 'Ferritin [Mass/volume] in Serum or Plasma'],
-  ['total-iron-binding-capacity', 'Iron binding capacity [Mass/volume] in Serum or Plasma'],
-  ['transferrin-saturation', 'Iron saturation [Mass Fraction] in Serum or Plasma'],
-  ['transferrin', 'Transferrin [Mass/volume] in Serum or Plasma'],
-  ['vitamin-b12', 'Cobalamin (Vitamin B12) [Mass/volume] in Serum or Plasma'],
-  ['vitamin-d', '25-Hydroxyvitamin D3+25-Hydroxyvitamin D2 [Mass/volume] in Serum or Plasma'],
-  ['folate', 'Folate [Mass/volume] in Serum or Plasma'],
-  ['vitamin-a', 'Retinol [Mass/volume] in Serum or Plasma'],
-  ['hemoglobin-a1c', 'Hemoglobin A1c/Hemoglobin.total in Blood'],
-  ['fructosamine', 'Fructosamine [Moles/volume] in Serum or Plasma'],
-  ['urine-ph', 'pH of Urine'],
-  ['urine-specific-gravity', 'Specific gravity of Urine'],
-  ['urine-protein', 'Protein [Mass/volume] in Urine'],
-  ['urine-glucose', 'Glucose [Mass/volume] in Urine'],
-  ['urine-ketones', 'Ketones [Mass/volume] in Urine by Test strip'],
-  ['urine-blood', 'Hemoglobin [Mass/volume] in Urine by Test strip'],
-  ['urine-red-blood-cells', 'Erythrocytes [#/area] in Urine sediment by Microscopy high power field'],
-  ['urine-wbc', 'Leukocytes [#/area] in Urine sediment by Microscopy high power field'],
-  ['urine-leukocyte-esterase', 'Leukocyte esterase [Presence] in Urine by Test strip'],
-  ['urine-nitrites', 'Nitrite [Presence] in Urine by Test strip'],
-  ['microalbumin', 'Microalbumin [Mass/volume] in Urine'],
-  ['urine-epithelial-cells', 'Epithelial cells [#/area] in Urine sediment by Microscopy high power field'],
-  ['urine-creatinine', 'Creatinine [Mass/volume] in Urine'],
-  ['urine-urea', 'Urea [Mass/volume] in Urine'],
-  ['urine-bilirubin', 'Bilirubin.total [Mass/volume] in Urine by Test strip'],
-  ['urine-urobilinogen', 'Urobilinogen [Mass/volume] in Urine by Test strip'],
-  ['albumin-creatinine-ratio', 'Albumin/Creatinine [Mass Ratio] in Urine'],
-  ['protein-creatinine-ratio', 'Protein/Creatinine [Mass Ratio] in Urine'],
-  ['urine-volume', 'Volume of 24 hour Urine'],
-  ['24-hour-urine-albumin', 'Albumin [Mass/time] in 24 hour Urine'],
-  ['24-hour-urine-creatinine', 'Creatinine [Mass/time] in 24 hour Urine'],
-  ['24-hour-urine-urea', 'Urea [Mass/time] in 24 hour Urine'],
-  ['alanine-aminotransferase', 'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma'],
-  ['aspartate-aminotransferase', 'Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma'],
-  ['alkaline-phosphatase', 'Alkaline phosphatase [Enzymatic activity/volume] in Serum or Plasma'],
-  ['bilirubin-total', 'Bilirubin.total [Mass/volume] in Serum or Plasma'],
-  ['bilirubin-direct', 'Bilirubin.direct [Mass/volume] in Serum or Plasma'],
-  ['gamma-glutamyl-transferase', 'Gamma glutamyl transferase [Enzymatic activity/volume] in Serum or Plasma'],
-  ['albumin', 'Albumin [Mass/volume] in Serum or Plasma'],
-  ['total-protein', 'Protein [Mass/volume] in Serum or Plasma'],
-  ['amylase', 'Amylase [Enzymatic activity/volume] in Serum or Plasma'],
-  ['alpha-fetoprotein', 'Alpha-1-Fetoprotein [Mass/volume] in Serum or Plasma'],
-  ['semen-volume', 'Volume of Semen'],
-  ['liquefaction-time', 'Liquefaction [Time] in Semen'],
-  ['sperm-concentration', 'Spermatozoa [#/volume] in Semen'],
-  ['total-sperm-count', 'Spermatozoa [#] in Semen'],
-  ['normal-sperm-morphology', 'Spermatozoa Normal/Spermatozoa in Semen'],
-  ['sperm-vitality', 'Spermatozoa Viable/Spermatozoa in Semen'],
-  ['total-progressive-motility', 'Spermatozoa Progressive/Spermatozoa in Semen'],
-  ['total-motility', 'Spermatozoa Motile/Spermatozoa in Semen'],
-  ['semen-ph', 'pH of Semen'],
-  ['serum-albumin-electrophoresis', 'Albumin/Protein.total in Serum or Plasma by Electrophoresis'],
-  ['alpha-1-globulin', 'Alpha 1 globulin/Protein.total in Serum or Plasma by Electrophoresis'],
-  ['alpha-2-globulin', 'Alpha 2 globulin/Protein.total in Serum or Plasma by Electrophoresis'],
-  ['beta-globulin', 'Beta globulin/Protein.total in Serum or Plasma by Electrophoresis'],
-  ['gamma-globulin', 'Gamma globulin/Protein.total in Serum or Plasma by Electrophoresis'],
+  ['6690-2', 'Leukocytes [#/volume] in Blood by Automated count'],
+  ['789-8', 'Erythrocytes [#/volume] in Blood by Automated count'],
+  ['718-7', 'Hemoglobin [Mass/volume] in Blood'],
+  ['4544-3', 'Hematocrit [Volume Fraction] of Blood by Automated count'],
+  ['777-3', 'Platelets [#/volume] in Blood by Automated count'],
+  ['787-2', 'MCV [Entitic mean volume] in Red Blood Cells by Automated count'],
+  ['785-6', 'MCH [Entitic mass] by Automated count'],
+  ['786-4', 'MCHC [Entitic Mass/volume] in Red Blood Cells by Automated count'],
+  ['788-0', 'Erythrocyte [DistWidth] in Blood by Automated count'],
+  ['751-8', 'Neutrophils [#/volume] in Blood by Automated count'],
+  ['770-8', 'Neutrophils/Leukocytes in Blood by Automated count'],
+  ['731-0', 'Lymphocytes [#/volume] in Blood by Automated count'],
+  ['736-9', 'Lymphocytes/Leukocytes in Blood by Automated count'],
+  ['742-7', 'Monocytes [#/volume] in Blood by Automated count'],
+  ['5905-5', 'Monocytes/Leukocytes in Blood by Automated count'],
+  ['711-2', 'Eosinophils [#/volume] in Blood by Automated count'],
+  ['713-8', 'Eosinophils/Leukocytes in Blood by Automated count'],
+  ['704-7', 'Basophils [#/volume] in Blood by Automated count'],
+  ['706-2', 'Basophils/Leukocytes in Blood by Automated count'],
+  ['30392-5', 'Nucleated erythrocytes [#/volume] in Blood'],
+  ['58413-6', 'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count'],
+  ['60474-4', 'Reticulocytes [#/volume] in Blood by Automated count'],
+  ['17849-1', 'Reticulocytes/Erythrocytes in Blood by Automated count'],
+  ['30341-2', 'Erythrocyte [Sedimentation Rate] in Blood'],
+  ['1988-5', 'C reactive protein [Mass/volume] in Serum or Plasma'],
+  ['2345-7', 'Glucose [Mass/volume] in Serum or Plasma'],
+  ['2160-0', 'Creatinine [Mass/volume] in Serum or Plasma'],
+  ['3094-0', 'Urea nitrogen [Mass/volume] in Serum or Plasma'],
+  ['3091-6', 'Urea [Mass/volume] in Serum or Plasma'],
+  ['3084-1', 'Urate [Mass/volume] in Serum or Plasma'],
+  ['2951-2', 'Sodium [Moles/volume] in Serum or Plasma'],
+  ['2823-3', 'Potassium [Moles/volume] in Serum or Plasma'],
+  ['2075-0', 'Chloride [Moles/volume] in Serum or Plasma'],
+  ['2028-9', 'Carbon dioxide, total [Moles/volume] in Serum or Plasma'],
+  ['17861-6', 'Calcium [Mass/volume] in Serum or Plasma'],
+  ['19123-9', 'Magnesium [Mass/volume] in Serum or Plasma'],
+  ['98979-8', 'Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by Creatinine-based formula (CKD-EPI 2021)/1.73 sq M'],
+  ['2093-3', 'Cholesterol [Mass/volume] in Serum or Plasma'],
+  ['13457-7', 'Cholesterol in LDL [Mass/volume] in Serum or Plasma by calculation'],
+  ['2085-9', 'Cholesterol in HDL [Mass/volume] in Serum or Plasma'],
+  ['2571-8', 'Triglyceride [Mass/volume] in Serum or Plasma'],
+  ['13458-5', 'Cholesterol in VLDL [Mass/volume] in Serum or Plasma by calculation'],
+  ['43396-1', 'Cholesterol non HDL [Mass/volume] in Serum or Plasma'],
+  ['3016-3', 'Thyrotropin [Units/volume] in Serum or Plasma'],
+  ['3024-7', 'Thyroxine (T4) free [Mass/volume] in Serum or Plasma'],
+  ['3026-2', 'Thyroxine (T4) [Mass/volume] in Serum or Plasma'],
+  ['3051-0', 'Triiodothyronine (T3) Free [Mass/volume] in Serum or Plasma'],
+  ['3053-6', 'Triiodothyronine (T3) [Mass/volume] in Serum or Plasma'],
+  ['8099-4', 'Thyroperoxidase Ab [Units/volume] in Serum or Plasma'],
+  ['2498-4', 'Iron [Mass/volume] in Serum or Plasma'],
+  ['2276-4', 'Ferritin [Mass/volume] in Serum or Plasma'],
+  ['2500-7', 'Iron binding capacity [Mass/volume] in Serum or Plasma'],
+  ['2502-3', 'Iron saturation [Mass Fraction] in Serum or Plasma'],
+  ['3034-6', 'Transferrin [Mass/volume] in Serum or Plasma'],
+  ['2132-9', 'Cobalamin (Vitamin B12) [Mass/volume] in Serum or Plasma'],
+  ['62292-8', '25-Hydroxyvitamin D3+25-Hydroxyvitamin D2 [Mass/volume] in Serum or Plasma'],
+  ['2284-8', 'Folate [Mass/volume] in Serum or Plasma'],
+  ['2923-1', 'Retinol [Mass/volume] in Serum or Plasma'],
+  ['4548-4', 'Hemoglobin A1c/Hemoglobin.total in Blood'],
+  ['15069-8', 'Fructosamine [Moles/volume] in Serum or Plasma'],
+  ['2756-5', 'pH of Urine'],
+  ['2965-2', 'Specific gravity of Urine'],
+  ['2888-6', 'Protein [Mass/volume] in Urine'],
+  ['2350-7', 'Glucose [Mass/volume] in Urine'],
+  ['5797-6', 'Ketones [Mass/volume] in Urine by Test strip'],
+  ['49137-3', 'Hemoglobin [Mass/volume] in Urine by Test strip'],
+  ['13945-1', 'Erythrocytes [#/area] in Urine sediment by Microscopy high power field'],
+  ['5821-4', 'Leukocytes [#/area] in Urine sediment by Microscopy high power field'],
+  ['5799-2', 'Leukocyte esterase [Presence] in Urine by Test strip'],
+  ['5802-4', 'Nitrite [Presence] in Urine by Test strip'],
+  ['14957-5', 'Microalbumin [Mass/volume] in Urine'],
+  ['5787-7', 'Epithelial cells [#/area] in Urine sediment by Microscopy high power field'],
+  ['2161-8', 'Creatinine [Mass/volume] in Urine'],
+  ['3092-4', 'Urea [Mass/volume] in Urine'],
+  ['20505-4', 'Bilirubin.total [Mass/volume] in Urine by Test strip'],
+  ['20405-7', 'Urobilinogen [Mass/volume] in Urine by Test strip'],
+  ['9318-7', 'Albumin/Creatinine [Mass Ratio] in Urine'],
+  ['2890-2', 'Protein/Creatinine [Mass Ratio] in Urine'],
+  ['3167-4', 'Volume of 24 hour Urine'],
+  ['1755-8', 'Albumin [Mass/time] in 24 hour Urine'],
+  ['2162-6', 'Creatinine [Mass/time] in 24 hour Urine'],
+  ['48999-7', 'Urea [Mass/time] in 24 hour Urine'],
+  ['1742-6', 'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['1920-8', 'Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['6768-6', 'Alkaline phosphatase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['1975-2', 'Bilirubin.total [Mass/volume] in Serum or Plasma'],
+  ['1968-7', 'Bilirubin.direct [Mass/volume] in Serum or Plasma'],
+  ['2324-2', 'Gamma glutamyl transferase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['1751-7', 'Albumin [Mass/volume] in Serum or Plasma'],
+  ['2885-2', 'Protein [Mass/volume] in Serum or Plasma'],
+  ['1798-8', 'Amylase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['1834-1', 'Alpha-1-Fetoprotein [Mass/volume] in Serum or Plasma'],
+  ['3160-9', 'Volume of Semen'],
+  ['10580-9', 'Liquefaction [Time] in Semen'],
+  ['9780-8', 'Spermatozoa [#/volume] in Semen'],
+  ['107184-4', 'Spermatozoa [#] in Semen'],
+  ['10622-9', 'Spermatozoa Normal/Spermatozoa in Semen'],
+  ['10613-8', 'Spermatozoa Viable/Spermatozoa in Semen'],
+  ['14194-5', 'Spermatozoa Progressive/Spermatozoa in Semen'],
+  ['6800-7', 'Spermatozoa Motile/Spermatozoa in Semen'],
+  ['2752-4', 'pH of Semen'],
+  ['13980-8', 'Albumin/Protein.total in Serum or Plasma by Electrophoresis'],
+  ['13978-2', 'Alpha 1 globulin/Protein.total in Serum or Plasma by Electrophoresis'],
+  ['13981-6', 'Alpha 2 globulin/Protein.total in Serum or Plasma by Electrophoresis'],
+  ['13982-4', 'Beta globulin/Protein.total in Serum or Plasma by Electrophoresis'],
+  ['13983-2', 'Gamma globulin/Protein.total in Serum or Plasma by Electrophoresis'],
 ];
 
-describe('LOINC codes of the biomarker dictionary', () => {
-  it.each(CODED.map((definition) => [definition.name, definition.loincCode!]))(
+describe('LOINC codes HemoIO describes', () => {
+  it.each(CODES.map((code) => [TEST_ADDONS[code].shortName, code]))(
     '%s has a well-formed code (%s) with LOINC’s name for it',
     (_name, code) => {
       const [number, digit] = code.split('-');
@@ -183,47 +173,33 @@ describe('LOINC codes of the biomarker dictionary', () => {
     }
   );
 
-  it('gives each test its own code', () => {
-    const codes = CODED.map((definition) => definition.loincCode);
-    expect(new Set(codes).size).toBe(codes.length);
+  it.each(
+    CODES.filter((code) => TEST_ADDONS[code].canonicalUnit !== undefined).map((code) => [
+      TEST_ADDONS[code].shortName,
+      TEST_ADDONS[code].canonicalUnit!,
+      code,
+    ])
+  )('%s, shown in “%s”, has a code (%s) for that kind of quantity', (_name, unit, code) => {
+    const kind = UNIT_KINDS.find((candidate) => candidate.units.includes(unit));
+    expect(kind, `no kind of quantity for the unit “${unit}”`).toBeDefined();
+    expect(loincName(code)).toMatch(kind!.name);
   });
 
-  it.each(CODED.map((definition) => [definition.name, definition.canonicalUnit, definition.loincCode!]))(
-    '%s, stored in “%s”, has a code (%s) for that kind of quantity',
-    (_name, unit, code) => {
-      const kind = UNIT_KINDS.find((candidate) => candidate.units.includes(unit));
-      expect(kind, `no kind of quantity for the unit “${unit}”`).toBeDefined();
-      expect(loincName(code)).toMatch(kind!.name);
-    }
-  );
-
   it.each(
-    CODED.filter((definition) => definition.canonicalUnit).map((definition) => [
-      definition.name,
-      definition.loincCode!,
-    ])
+    CODES.filter((code) => TEST_ADDONS[code].canonicalUnit).map((code) => [TEST_ADDONS[code].shortName, code])
   )('%s is a measured value, so its code (%s) is not a presence test', (_name, code) => {
     expect(loincName(code)).not.toMatch(/\[Presence\]|\[Threshold\]/);
   });
 
-  it.each(CODED.map((definition) => [definition.name, definition.specimenType!, definition.loincCode!]))(
-    '%s, taken from %s, has a code (%s) for that specimen',
-    (_name, specimen, code) => {
-      const name = loincName(code)!;
-      expect(name).toMatch(SPECIMEN_NAMES[specimen]);
-      if (specimen !== 'urine-24h') expect(name).not.toMatch(/24 hour/);
-    }
-  );
-
   // A wrong analyte, method or formula can share the right kind of quantity
   // (urea nitrogen for urea, D3 alone for D2+D3, MDRD for CKD-EPI), so each
-  // test is also pinned to the LOINC term it is: change a code here on purpose.
-  it.each(TERMS)('names %s by the test it is', (key, name) => {
-    expect(loincName(getBiomarkerByKey(key)!.loincCode!)).toBe(name);
+  // code is also pinned to the LOINC term it is: change a code here on purpose.
+  it.each(TERMS)('names %s by the test it is', (code, name) => {
+    expect(loincName(code)).toBe(name);
   });
 
-  it('pins every coded test to its LOINC term', () => {
-    expect(TERMS.map(([key]) => key).sort()).toEqual(CODED.map((definition) => definition.key).sort());
+  it('pins every code HemoIO describes to its LOINC term', () => {
+    expect(TERMS.map(([code]) => code).sort()).toEqual([...CODES].sort());
   });
 });
 

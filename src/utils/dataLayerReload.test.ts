@@ -35,7 +35,9 @@ describe('isDataLayerFile', () => {
   });
 
   it.each([
-    'src/data/biomarkers/dictionary.ts',
+    'src/data/biomarkers/loinc.ts',
+    'src/data/loinc/addons.ts',
+    'src/data/loinc/catalog.ts',
     'src/contexts/AuthContext.tsx',
     'src/utils/unitSpelling.ts',
     'src/database/other.ts',
@@ -114,24 +116,24 @@ describe('needsFullReload', () => {
     expect(needsFullReload([helper], ROOT)).toBe(false);
   });
 
-  it('updates the dictionary in place when no data code would re-run', () => {
-    const dictionary = mod('src/data/biomarkers/dictionary.ts');
+  it('updates the test add-ons in place when no data code would re-run', () => {
+    const dictionary = mod('src/data/loinc/addons.ts');
     const view = mod('src/components/dictionary/DictionaryView.tsx', true);
     link(view, dictionary);
 
     expect(needsFullReload([dictionary], ROOT)).toBe(false);
   });
 
-  it('updates in place a screen that reads the dictionary', () => {
+  it('updates in place a screen that reads the test add-ons', () => {
     const view = mod('src/components/dictionary/BiomarkerDictionary.tsx', true);
-    const dictionary = mod('src/data/biomarkers/index.ts');
+    const dictionary = mod('src/data/loinc/display.ts');
     link(view, dictionary);
 
     expect(needsFullReload([view], ROOT)).toBe(false);
   });
 
-  it('reloads for a dictionary change that reaches the data layer', () => {
-    const dictionary = mod('src/data/biomarkers/dictionary.ts');
+  it('reloads for an add-on change that reaches the data layer', () => {
+    const dictionary = mod('src/data/loinc/addons.ts');
     const migration = mod('src/data/db/encryptedDb.ts');
     link(migration, dictionary);
 

@@ -11,7 +11,11 @@ import { TrendsView } from './TrendsView';
 import { SaveError } from '@data/db/saveError';
 import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
+import { CatalogContext } from '@contexts/useCatalog';
+import { fixtureCatalog } from '@/test/loincFixture';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
+
+const catalog = fixtureCatalog();
 
 // Mock hooks
 vi.mock('@hooks/useLabResults', () => ({
@@ -58,44 +62,6 @@ vi.mock('@mantine/notifications', () => ({
   notifications: { show: (...args: unknown[]) => mockShowNotification(...args) },
 }));
 
-// Mock biomarker dictionary
-vi.mock('@data/biomarkers/dictionary', () => {
-  const mock = {
-  findBiomarker: vi.fn((name: string) => {
-    if (name.toLowerCase() === 'glucose') {
-      return {
-        name: 'Glucose',
-        category: 'metabolic',
-        canonicalUnit: 'mg/dL',
-        alternativeUnits: ['mmol/L'],
-      };
-    }
-    if (name.toLowerCase() === 'hemoglobin') {
-      return { name: 'Hemoglobin', category: 'cbc', canonicalUnit: 'g/dL' };
-    }
-    return null;
-  }),
-  CATEGORY_NAMES: {
-    cbc: 'Complete Blood Count',
-    metabolic: 'Metabolic Panel',
-    lipid: 'Lipid Panel',
-    thyroid: 'Thyroid Function',
-    iron: 'Iron Studies',
-    vitamin: 'Vitamins',
-    urinalysis: 'Urinalysis',
-    other: 'Other',
-  },
-  };
-  return {
-    ...mock,
-    // By the stored key, as the app does; this mock's names stand for its keys
-    getBiomarkerByKey: (key: string) => mock.findBiomarker(key) ?? undefined,
-    getBiomarkerForTestValue: (tv: { biomarkerKey: string }) => mock.findBiomarker(tv.biomarkerKey) ?? undefined,
-    getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
-      mock.findBiomarker(tv.biomarkerKey)?.name || tv.rawText || 'Unknown biomarker',
-  };
-});
-
 // Mock ResizeObserver for Recharts
 class ResizeObserverMock {
   observe = vi.fn();
@@ -125,7 +91,9 @@ function mockAlerts(unacknowledgedCount = 0): void {
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">
-      <DatesProvider settings={{ locale: 'en' }}>{ui}</DatesProvider>
+      <DatesProvider settings={{ locale: 'en' }}>
+        <CatalogContext.Provider value={catalog}>{ui}</CatalogContext.Provider>
+      </DatesProvider>
     </MantineProvider>
   );
 }
@@ -234,7 +202,7 @@ describe('TrendsView', () => {
   it('should render biomarker selection when data available', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
       ]),
     ];
 
@@ -257,7 +225,7 @@ describe('TrendsView', () => {
   it('should show empty prompt when no biomarker selected', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
       ]),
     ];
 
@@ -279,10 +247,10 @@ describe('TrendsView', () => {
   it('should show trend chart when biomarker is selected', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
       ]),
       createMockResult(2, '2024-02-15', [
-        createMockTestValue(2, 2, 'marker-1', 'Glucose', 100),
+        createMockTestValue(2, 2, '2345-7', 'Glucose', 100),
       ]),
     ];
 
@@ -320,8 +288,8 @@ describe('TrendsView', () => {
   it('should show compare button when multiple biomarkers available', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
-        createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
+        createMockTestValue(2, 1, '718-7', 'Hemoglobin', 14),
       ]),
     ];
 
@@ -343,7 +311,7 @@ describe('TrendsView', () => {
   it('should have date filter inputs', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
       ]),
     ];
 
@@ -366,7 +334,7 @@ describe('TrendsView', () => {
   it('should have reset button', () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
       ]),
     ];
 
@@ -388,7 +356,7 @@ describe('TrendsView', () => {
   it('links its alert count to the Alerts view', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 150, 'high'),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 150, 'high'),
       ]),
     ];
 
@@ -415,12 +383,12 @@ describe('TrendsView', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [
         createMockResult(1, '2024-01-15', [
-          createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
-          createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
+          createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
+          createMockTestValue(2, 1, '718-7', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
         ]),
         createMockResult(2, '2024-02-15', [
-          createMockTestValue(3, 2, 'marker-1', 'Glucose', 100),
-          createMockTestValue(4, 2, 'marker-2', 'Hemoglobin', 13, 'normal', 'g/dL', 12, 16),
+          createMockTestValue(3, 2, '2345-7', 'Glucose', 100),
+          createMockTestValue(4, 2, '718-7', 'Hemoglobin', 13, 'normal', 'g/dL', 12, 16),
         ]),
       ],
       isLoading: false,
@@ -431,7 +399,7 @@ describe('TrendsView', () => {
       deleteResult: vi.fn(),
     });
 
-    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+    renderWithProviders(<TrendsView initialBiomarkerKey="2345-7" />);
 
     expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
     // Opened from elsewhere: keyboard focus starts at the top of the view
@@ -442,8 +410,8 @@ describe('TrendsView', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [
         createMockResult(1, '2024-01-15', [
-          createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
-          createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
+          createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
+          createMockTestValue(2, 1, '718-7', 'Hemoglobin', 14, 'normal', 'g/dL', 12, 16),
         ]),
       ],
       isLoading: false,
@@ -453,7 +421,7 @@ describe('TrendsView', () => {
       refresh: vi.fn(),
       deleteResult: vi.fn(),
     });
-    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+    renderWithProviders(<TrendsView initialBiomarkerKey="2345-7" />);
     const notes = screen.getByRole('button', { name: /Notes for Glucose section/ }).closest('.mantine-Paper-root') as HTMLElement;
     fireEvent.click(within(notes).getByRole('button', { name: /add note/i }));
     fireEvent.change(within(notes).getByRole('textbox', { name: /note content/i }), {
@@ -472,8 +440,8 @@ describe('TrendsView', () => {
   it('should open compare modal when compare button is clicked', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 95),
-        createMockTestValue(2, 1, 'marker-2', 'Hemoglobin', 14),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
+        createMockTestValue(2, 1, '718-7', 'Hemoglobin', 14),
       ]),
     ];
 
@@ -517,16 +485,16 @@ describe('TrendsView', () => {
     });
   });
 
-  it('leaves out values in a unit the chart unit cannot convert, and says so', async () => {
+  it('puts values in a unit the chart unit cannot convert on a line of their own, and says so', async () => {
     const results = [
       createMockResult(1, '2024-01-15', [
-        createMockTestValue(1, 1, 'marker-1', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
       ]),
       createMockResult(2, '2024-02-15', [
-        createMockTestValue(2, 2, 'marker-1', 'Glucose', 110, 'high', 'mg/dL', 70, 100),
+        createMockTestValue(2, 2, '2345-7', 'Glucose', 110, 'high', 'mg/dL', 70, 100),
       ]),
       createMockResult(3, '2024-03-15', [
-        createMockTestValue(3, 3, 'marker-1', 'Glucose', 150, 'high', 'xyz/dL', 70, 100),
+        createMockTestValue(3, 3, '2345-7', 'Glucose', 150, 'high', 'xyz/dL', 70, 100),
       ]),
     ];
     vi.mocked(useLabResults).mockReturnValue({
@@ -539,7 +507,7 @@ describe('TrendsView', () => {
       deleteResult: vi.fn(),
     });
 
-    renderWithProviders(<TrendsView initialBiomarkerKey="marker-1" />);
+    renderWithProviders(<TrendsView initialBiomarkerKey="2345-7" />);
 
     // Plotted on the mg/dL scale, 150 xyz/dL would read as 150 mg/dL
     const latestCard = (await screen.findByText('Latest Value')).closest(
@@ -547,21 +515,26 @@ describe('TrendsView', () => {
     ) as HTMLElement;
     expect(within(latestCard).getByText('110.0')).toBeInTheDocument();
     expect(
-      screen.getByText('1 value recorded in xyz/dL is not shown: it cannot be converted to mg/dL.')
+      screen.getByText(
+        '1 value recorded in xyz/dL is shown on a line of its own: it cannot be converted to mg/dL.'
+      )
     ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByPlaceholderText(/choose a biomarker/i));
+    expect(await screen.findByRole('option', { name: 'Glucose in xyz/dL (1 value)' })).toBeInTheDocument();
   });
 
-  it('should convert values to canonical unit when biomarker has mixed units', async () => {
-    // Glucose with values in different units (mg/dL and mmol/L)
-    // 100 mg/dL and 5.55 mmol/L should both be displayed as ~100 mg/dL after conversion
+  it('one line for glucose in mg/dL and mmol/L, in the preferred unit', async () => {
+    // Glucose under its mass code in mg/dL and its molar code in mmol/L: one
+    // test, so 100 mg/dL and 5.55 mmol/L are both shown as ~100 mg/dL
     const results = [
       createMockResult(1, '2024-01-15', [
         // First value in mg/dL (canonical unit)
-        createMockTestValue(1, 1, 'glucose', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+        createMockTestValue(1, 1, '2345-7', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
       ]),
       createMockResult(2, '2024-02-15', [
         // Second value in mmol/L (should be converted to mg/dL)
-        createMockTestValue(2, 2, 'glucose', 'Glucose', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
+        createMockTestValue(2, 2, '14749-6', 'Glicemia', 5.55, 'normal', 'mmol/L', 3.9, 5.6),
       ]),
     ];
 
@@ -625,10 +598,10 @@ function renderWithTwoValues(
 }
 
 describe('TrendsView preferred unit', () => {
-  const renderWithGlucose = () => renderWithTwoValues('glucose', 'Glucose');
+  const renderWithGlucose = () => renderWithTwoValues('2345-7', 'Glucose');
 
   it('shows glucose in the stored preferred unit', () => {
-    mockUnitPreferences = { glucose: 'mmol/L' };
+    mockUnitPreferences = { '2345-7': 'mmol/L' };
     renderWithGlucose();
 
     expect(screen.getByRole('textbox', { name: 'Preferred unit' })).toHaveValue('mmol/L');
@@ -640,7 +613,7 @@ describe('TrendsView preferred unit', () => {
     await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
     await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
 
-    expect(mockSetPreferredUnit).toHaveBeenCalledWith('glucose', 'mmol/L');
+    expect(mockSetPreferredUnit).toHaveBeenCalledWith('2345-7', 'mmol/L');
   });
 
   it('tells the user when the unit could not be saved', async () => {
@@ -660,8 +633,8 @@ describe('TrendsView preferred unit', () => {
     );
   });
 
-  it('offers no unit choice for a biomarker outside the dictionary', () => {
-    renderWithTwoValues('mystery', 'Mystery Marker');
+  it('offers no unit choice for a value that is not a LOINC test', () => {
+    renderWithTwoValues('unknown:mysterymarker', 'Mystery Marker');
     expect(screen.getByText('Mystery Marker (mg/dL)')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
   });
@@ -670,40 +643,42 @@ describe('TrendsView preferred unit', () => {
 describe('TrendsView reference link', () => {
   it("opens the chart's biomarker reference page", async () => {
     const onOpenReference = vi.fn();
-    renderWithTwoValues('glucose', 'Glucose', { onOpenReference });
+    renderWithTwoValues('2345-7', 'Glucose', { onOpenReference });
 
     await userEvent.click(screen.getByRole('button', { name: 'View reference for Glucose' }));
 
-    expect(onOpenReference).toHaveBeenCalledWith('glucose');
+    expect(onOpenReference).toHaveBeenCalledWith('2345-7');
   });
 
   it('shows the link with a short visible label', () => {
-    renderWithTwoValues('glucose', 'Glucose', { onOpenReference: vi.fn() });
+    renderWithTwoValues('2345-7', 'Glucose', { onOpenReference: vi.fn() });
 
     expect(screen.getByRole('button', { name: 'View reference for Glucose' })).toHaveTextContent(
       /^View reference$/
     );
   });
 
-  it('offers no link for a biomarker outside the dictionary', () => {
-    renderWithTwoValues('mystery', 'Mystery Marker', { onOpenReference: vi.fn() });
+  it('offers no link for a value that is not a LOINC test', () => {
+    renderWithTwoValues('unknown:mysterymarker', 'Mystery Marker', { onOpenReference: vi.fn() });
 
     expect(screen.getByText('Mystery Marker (mg/dL)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();
   });
 
   it('offers the link for a biomarker with a single unit, which has no unit choice', async () => {
-    // This file's dictionary mock gives Hemoglobin a single unit
+    // Neutrophils as a share of white cells has a single unit
     const onOpenReference = vi.fn();
-    renderWithTwoValues('hemoglobin', 'Hemoglobin', { onOpenReference });
+    renderWithTwoValues('770-8', 'Neutrofili %', { onOpenReference });
 
     expect(screen.queryByRole('textbox', { name: 'Preferred unit' })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'View reference for Hemoglobin' }));
-    expect(onOpenReference).toHaveBeenCalledWith('hemoglobin');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'View reference for Neutrophils Percentage' })
+    );
+    expect(onOpenReference).toHaveBeenCalledWith('770-8');
   });
 
   it('offers no link when nowhere to open it', () => {
-    renderWithTwoValues('glucose', 'Glucose');
+    renderWithTwoValues('2345-7', 'Glucose');
 
     expect(screen.getByText('Glucose (mg/dL)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^View reference/ })).not.toBeInTheDocument();

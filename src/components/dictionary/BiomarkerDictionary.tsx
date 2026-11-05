@@ -1,10 +1,11 @@
 /**
  * BiomarkerDictionary Component
  *
- * Browse and search the biomarker reference dictionary.
+ * Browse the tests HemoIO describes and the tests the user has values for,
+ * by LOINC class, and search the whole LOINC catalog.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import {
   Stack,
   TextInput,
@@ -17,48 +18,29 @@ import {
   Box,
 } from '@mantine/core';
 import { IconSearch, IconChevronRight } from '@tabler/icons-react';
+import { useCatalog } from '@contexts/useCatalog';
 import {
-  BIOMARKER_DEFINITIONS,
-  CATEGORY_NAMES,
-  searchBiomarkers,
-  type BiomarkerDefinition,
-} from '@data/biomarkers';
-import type { BiomarkerCategory } from '@/types';
+  dictionaryEntries,
+  groupByClass,
+  searchDictionary,
+  type DictionaryEntry,
+} from './dictionaryEntries';
 
 /**
  * Props for BiomarkerDictionary component
  */
 export interface BiomarkerDictionaryProps {
-  /** Called when a biomarker is selected */
-  onSelectBiomarker?: (biomarker: BiomarkerDefinition) => void;
-  /** Currently selected biomarker name */
+  /** Called with the trend code of the test chosen */
+  onSelectBiomarker?: (code: string) => void;
+  /** Trend code of the test shown */
   selectedBiomarker?: string;
+  /** Keys of the user's values, whose tests the list shows too */
+  valueKeys?: ReadonlyArray<string>;
   /** The search field, for the caller to focus */
   searchRef?: React.Ref<HTMLInputElement>;
 }
 
-/**
- * Get biomarkers grouped by category
- */
-function getBiomarkersByCategory(): Record<BiomarkerCategory, BiomarkerDefinition[]> {
-  const grouped: Record<BiomarkerCategory, BiomarkerDefinition[]> = {
-    cbc: [],
-    metabolic: [],
-    lipid: [],
-    thyroid: [],
-    iron: [],
-    vitamin: [],
-    urinalysis: [],
-    fertility: [],
-    other: [],
-  };
-
-  for (const biomarker of BIOMARKER_DEFINITIONS) {
-    grouped[biomarker.category].push(biomarker);
-  }
-
-  return grouped;
-}
+const NO_KEYS: ReadonlyArray<string> = [];
 
 /**
  * BiomarkerDictionary component for browsing biomarker reference information
@@ -66,35 +48,22 @@ function getBiomarkersByCategory(): Record<BiomarkerCategory, BiomarkerDefinitio
 export function BiomarkerDictionary({
   onSelectBiomarker,
   selectedBiomarker,
+  valueKeys = NO_KEYS,
   searchRef,
 }: BiomarkerDictionaryProps): React.ReactNode {
+  const catalog = useCatalog();
   const [searchTerm, setSearchTerm] = useState('');
+  // The catalog is large: typing stays responsive while results catch up
+  const query = useDeferredValue(searchTerm);
 
-  // Group biomarkers by category
-  const biomarkersByCategory = useMemo(() => getBiomarkersByCategory(), []);
+  const entries = useMemo(() => dictionaryEntries(catalog, valueKeys), [catalog, valueKeys]);
+  const groups = useMemo(() => groupByClass(entries), [entries]);
 
-  // Filter biomarkers by search term
-  const filteredBiomarkers = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return null; // Show category view
-    }
-    return searchBiomarkers(searchTerm);
-  }, [searchTerm]);
-
-  // Handle biomarker click
-  const handleBiomarkerClick = useCallback(
-    (biomarker: BiomarkerDefinition) => {
-      onSelectBiomarker?.(biomarker);
-    },
-    [onSelectBiomarker]
+  // null: no search, so the class view
+  const filteredBiomarkers = useMemo(
+    () => (query.trim() ? searchDictionary(catalog, entries, query) : null),
+    [catalog, entries, query]
   );
-
-  // Get categories with biomarkers
-  const categoriesWithBiomarkers = useMemo(() => {
-    return (Object.keys(CATEGORY_NAMES) as BiomarkerCategory[]).filter(
-      (category) => biomarkersByCategory[category].length > 0
-    );
-  }, [biomarkersByCategory]);
 
   return (
     <Stack gap="md">
@@ -134,10 +103,10 @@ export function BiomarkerDictionary({
             <Stack gap="xs">
               {filteredBiomarkers.map((biomarker) => (
                 <BiomarkerListItem
-                  key={biomarker.name}
+                  key={biomarker.code}
                   biomarker={biomarker}
-                  isSelected={selectedBiomarker === biomarker.name}
-                  onClick={() => handleBiomarkerClick(biomarker)}
+                  isSelected={selectedBiomarker === biomarker.code}
+                  onClick={() => onSelectBiomarker?.(biomarker.code)}
                 />
               ))}
             </Stack>
@@ -146,24 +115,24 @@ export function BiomarkerDictionary({
       ) : (
         /* Category View */
         <Accordion variant="contained" chevronPosition="right">
-          {categoriesWithBiomarkers.map((category) => (
-            <Accordion.Item key={category} value={category}>
+          {groups.map((group) => (
+            <Accordion.Item key={group.classLabel} value={group.classLabel}>
               <Accordion.Control>
                 <Group justify="space-between">
-                  <Text fw={500}>{CATEGORY_NAMES[category]}</Text>
+                  <Text fw={500}>{group.classLabel}</Text>
                   <Badge variant="light" color="gray">
-                    {biomarkersByCategory[category].length}
+                    {group.entries.length}
                   </Badge>
                 </Group>
               </Accordion.Control>
               <Accordion.Panel>
                 <Stack gap="xs">
-                  {biomarkersByCategory[category].map((biomarker) => (
+                  {group.entries.map((biomarker) => (
                     <BiomarkerListItem
-                      key={biomarker.name}
+                      key={biomarker.code}
                       biomarker={biomarker}
-                      isSelected={selectedBiomarker === biomarker.name}
-                      onClick={() => handleBiomarkerClick(biomarker)}
+                      isSelected={selectedBiomarker === biomarker.code}
+                      onClick={() => onSelectBiomarker?.(biomarker.code)}
                     />
                   ))}
                 </Stack>
@@ -180,7 +149,7 @@ export function BiomarkerDictionary({
  * Props for BiomarkerListItem
  */
 interface BiomarkerListItemProps {
-  biomarker: BiomarkerDefinition;
+  biomarker: DictionaryEntry;
   isSelected: boolean;
   onClick: () => void;
 }
@@ -206,7 +175,7 @@ function BiomarkerListItem({
       onClick={onClick}
       role="button"
       tabIndex={0}
-      data-biomarker-key={biomarker.key}
+      data-biomarker-key={biomarker.code}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -218,18 +187,11 @@ function BiomarkerListItem({
     >
       <Group justify="space-between" wrap="nowrap">
         <Box style={{ flex: 1, minWidth: 0 }}>
-          <Group gap="xs" wrap="nowrap">
-            <Text fw={500} truncate>
-              {biomarker.name}
-            </Text>
-            {biomarker.aliases.length > 0 && (
-              <Text size="xs" c="dimmed" truncate>
-                ({biomarker.aliases[0]})
-              </Text>
-            )}
-          </Group>
+          <Text fw={500} truncate>
+            {biomarker.name}
+          </Text>
           <Text size="xs" c="dimmed" lineClamp={1}>
-            {biomarker.description}
+            {biomarker.summary}
           </Text>
         </Box>
         <IconChevronRight size={16} color="var(--mantine-color-dimmed)" />

@@ -5,9 +5,9 @@
 import { createContext, useContext } from 'react';
 
 export interface AlertState {
-  /** Per biomarker: alerts dated on or before this are acknowledged */
+  /** Per test (trend code): alerts dated on or before this are acknowledged */
   acknowledgedThrough: Record<string, Date>;
-  /** Per biomarker: alerts dated on or before this are hidden until the next page load */
+  /** Per test (trend code): alerts dated on or before this are hidden until the next page load */
   dismissedThrough: Record<string, Date>;
   acknowledge(biomarkerKey: string, through: Date): Promise<void>;
   dismiss(biomarkerKey: string, through: Date): void;

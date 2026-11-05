@@ -20,14 +20,6 @@ vi.mock('@hooks/useAlerts', () => ({
   useAlerts: vi.fn(),
 }));
 
-vi.mock('@data/biomarkers/dictionary', () => ({
-  CATEGORY_NAMES: {
-    cbc: 'Complete Blood Count',
-    metabolic: 'Metabolic Panel',
-    lipid: 'Lipid Panel',
-  },
-}));
-
 function renderWithProviders(ui: React.ReactElement) {
   return render(<MantineProvider env="test">{ui}</MantineProvider>);
 }
@@ -39,7 +31,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     severity: 'warning',
     biomarkerKey: 'glucose',
     biomarkerName: 'Glucose',
-    category: 'metabolic',
+    category: 'Chemistry',
     value: 150,
     unit: 'mg/dL',
     referenceRange: { low: 70, high: 100 },
@@ -214,12 +206,12 @@ describe('OutOfRangeAlerts', () => {
   it('filters cards by category', async () => {
     mockAlerts([
       alert({ id: 'm' }),
-      alert({ id: 'c', category: 'cbc', biomarkerName: 'Hemoglobin', biomarkerKey: 'hb' }),
+      alert({ id: 'c', category: 'Hematology', biomarkerName: 'Hemoglobin', biomarkerKey: 'hb' }),
     ]);
     renderAlerts();
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Filter alerts by category' }));
-    await userEvent.click(await screen.findByRole('option', { name: /^Metabolic/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /^Chemistry/ }));
 
     expect(screen.getAllByRole('article')).toHaveLength(1);
     expect(screen.getByRole('article', { name: /^Alert for Glucose:/ })).toBeInTheDocument();
@@ -227,14 +219,14 @@ describe('OutOfRangeAlerts', () => {
 
   it('drops a category filter once that category has no cards left', async () => {
     const metabolic = alert({ id: 'm' });
-    const cbc = alert({ id: 'c', category: 'cbc', biomarkerName: 'Hemoglobin', biomarkerKey: 'hb' });
+    const cbc = alert({ id: 'c', category: 'Hematology', biomarkerName: 'Hemoglobin', biomarkerKey: 'hb' });
 
     mockAlerts([metabolic, cbc]);
     const { rerender } = renderAlerts();
     await userEvent.click(screen.getByRole('textbox', { name: 'Filter alerts by category' }));
-    await userEvent.click(await screen.findByRole('option', { name: /^Metabolic/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /^Chemistry/ }));
 
-    // Glucose is acknowledged: no metabolic card remains
+    // Glucose is acknowledged: no chemistry card remains
     mockAlerts([cbc]);
     rerender(
       <MantineProvider env="test">

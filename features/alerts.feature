@@ -127,11 +127,22 @@ Feature: Alerts
     Then I should see "No new alerts"
     And I should not be told that all values are within normal range
 
-  Scenario: Filter alerts by category
-    Given I have alerts from different biomarker categories
-    When I filter alerts by "Metabolic"
-    Then I should only see alerts for metabolic biomarkers
-    And other category alerts should be hidden
+  Scenario: Filter alerts by LOINC class
+    Given I have alerts for tests of different LOINC classes
+    When I filter alerts by "Chemistry"
+    Then I should only see alerts for chemistry tests
+    And alerts of other classes should be hidden
+
+  Scenario: Glucose in mg/dL and in mmol/L is one alert card
+    Given I have an out-of-range glucose value in mg/dL and a later one in mmol/L
+    When I navigate to the Alerts view
+    Then I should see one card for "Glucose"
+    And it should count both results
+
+  Scenario: Alerts name a test as LOINC does where HemoIO has no name for it
+    Given I have an out-of-range value of a LOINC test HemoIO has no name for
+    When I navigate to the Alerts view
+    Then its card should name the test by its LOINC short name
 
   Scenario: Alert accessibility
     Given I have abnormal value alerts

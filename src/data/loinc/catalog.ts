@@ -88,6 +88,7 @@ const CLASS_LABELS: Readonly<Record<string, string>> = {
   'DRUG/TOX': 'Drugs and toxicology',
   MICRO: 'Microbiology',
   FERT: 'Fertility',
+  SPEC: 'Specimen characteristics',
 };
 
 /**
@@ -128,7 +129,7 @@ const MIN_STEM = 4;
 /** Most letters a close form may add to its stem (Italian endings) */
 const MAX_ENDING = 2;
 
-/** A name as the generator normalised it (same rule as nameKey in the dictionary) */
+/** A name as the generator normalised it (same rule as nameKey in keys.ts) */
 function normalise(name: string): string {
   return name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
 }

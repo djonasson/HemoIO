@@ -4,7 +4,7 @@
  * value once the user gives it the test of another
  */
 import { getAddon } from '@data/loinc/addons';
-import { nameKey } from '@data/biomarkers/dictionary';
+import { nameKey } from '@data/loinc/keys';
 import { canConvert, convertValue, normalizeUnit, unitsMatch } from '../units';
 import type { Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';

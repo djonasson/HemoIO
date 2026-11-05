@@ -4,10 +4,10 @@ import { MantineProvider } from '@mantine/core';
 import { TrendChartControls, type BiomarkerOption } from './TrendChartControls';
 
 const mockBiomarkerOptions: BiomarkerOption[] = [
-  { value: '1', label: 'Glucose', category: 'metabolic', dataPointCount: 10 },
-  { value: '2', label: 'Hemoglobin', category: 'cbc', dataPointCount: 5 },
-  { value: '3', label: 'Cholesterol', category: 'lipid', dataPointCount: 3 },
-  { value: '4', label: 'Creatinine', category: 'metabolic', dataPointCount: 0 },
+  { value: '1', label: 'Glucose', category: 'Chemistry', dataPointCount: 10 },
+  { value: '2', label: 'Hemoglobin', category: 'Hematology', dataPointCount: 5 },
+  { value: '3', label: 'Cholesterol', category: 'Chemistry', dataPointCount: 3 },
+  { value: '4', label: 'Creatinine', category: 'Chemistry', dataPointCount: 0 },
 ];
 
 interface TrendChartControlsTestProps {
@@ -112,7 +112,7 @@ describe('TrendChartControls', () => {
 
     it('shows singular form for 1 value', () => {
       const singleValueOption: BiomarkerOption[] = [
-        { value: '1', label: 'Test', category: 'metabolic', dataPointCount: 1 },
+        { value: '1', label: 'Test', category: 'Chemistry', dataPointCount: 1 },
       ];
       renderTrendChartControls({ biomarkerOptions: singleValueOption });
 
@@ -146,7 +146,7 @@ describe('TrendChartControls', () => {
 
     it('shows singular form for 1 data point', () => {
       const options: BiomarkerOption[] = [
-        { value: '1', label: 'Test', category: 'metabolic', dataPointCount: 1 },
+        { value: '1', label: 'Test', category: 'Chemistry', dataPointCount: 1 },
       ];
       renderTrendChartControls({ biomarkerOptions: options, selectedBiomarkerId: '1' });
 

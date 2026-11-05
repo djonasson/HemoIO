@@ -160,3 +160,9 @@ Feature: User Notes
     When I lock and unlock the application
     Then all my notes should still be available
     And note content should be intact
+
+  Scenario: Notes name their test as the rest of the app does
+    Given I have a note on a glucose value recorded in mmol/L
+    When I open the Notes view
+    Then the note should be attached to "Glucose"
+    And filtering by "Glucose" should show it with my other glucose notes

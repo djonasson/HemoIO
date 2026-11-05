@@ -4,16 +4,16 @@
  *   npx vitest run --config vitest.calibration.config.ts
  */
 import { it, expect } from 'vitest';
-import { BIOMARKER_DEFINITIONS } from '@data/biomarkers/dictionary';
+import { loadCatalog } from '@data/loinc/catalog';
 import { loadTransformersEmbedder } from './transformersEmbedder';
-import { MATCHING_MODEL, MATCHING_MODEL_REVISION, SIMILARITY_THRESHOLD } from './index';
+import { MATCHING_MODEL, MATCHING_MODEL_REVISION, SIMILARITY_THRESHOLD, namedTests } from './index';
 import { createSimilarNameMatcher } from './similarNames';
 import { LABELLED_NAMES } from './labelledNames';
 
 it('never files a labelled name under the wrong test, and matches as many as calibrated', async () => {
   const matcher = createSimilarNameMatcher(
     await loadTransformersEmbedder(MATCHING_MODEL, MATCHING_MODEL_REVISION),
-    BIOMARKER_DEFINITIONS,
+    namedTests(await loadCatalog()),
     SIMILARITY_THRESHOLD
   );
   let matched = 0;

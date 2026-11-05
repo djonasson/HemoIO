@@ -20,6 +20,19 @@ Feature: Authentication
     Then I should see an error message "Incorrect password"
     And I should remain on the login screen
 
+  Scenario: The test catalog cannot be loaded after unlocking
+    Given I am on the login screen
+    And the LOINC test catalog cannot be loaded, for example offline before it was ever downloaded
+    When I unlock the application
+    Then I should be told "Test catalog could not be loaded"
+    And I should be offered "Try again"
+
+  Scenario: Trying again loads the test catalog
+    Given I unlocked the application and was told the test catalog could not be loaded
+    When the catalog can be loaded again
+    And I click "Try again"
+    Then I should be redirected to the dashboard
+
   Scenario: User locks the application
     Given I am logged in
     When I click the lock button

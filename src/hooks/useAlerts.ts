@@ -24,9 +24,9 @@ import {
   type ReferenceRange,
   type TrendDirection,
 } from '@services/alerts';
-import { getBiomarkerDisplayName, getBiomarkerForTestValue } from '@data/biomarkers/dictionary';
+import { testDisplayName, testUnits, trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import {
-  componentForBiomarker,
   convertForDisplay,
   convertMeasurement,
   preferredUnitFor,
@@ -46,11 +46,14 @@ export interface BiomarkerAlert {
   type: AlertType;
   /** Severity level */
   severity: AlertSeverity;
-  /** Biomarker ID */
+  /**
+   * The test: its trend code, so codes that trend together (glucose in mg/dL
+   * and in mmol/L) share one card
+   */
   biomarkerKey: string;
   /** Biomarker name */
   biomarkerName: string;
-  /** Biomarker category */
+  /** The test's LOINC class ("Chemistry"); none for a value that is not a LOINC test */
   category?: string;
   /** Current value */
   value: number;
@@ -137,6 +140,7 @@ function generateAlertId(biomarkerKey: string, valueId: number, type: AlertType)
  * ```
  */
 export function useAlerts(): UseAlertsResult {
+  const catalog = useCatalog();
   const { results, isLoading, error, refresh } = useLabResults();
   const { acknowledgedThrough, dismissedThrough, acknowledge, dismiss } = useAlertState();
   const { unitPreferences } = usePreferences();
@@ -160,7 +164,7 @@ export function useAlerts(): UseAlertsResult {
   const allAlerts = useMemo(() => {
     const alertList: BiomarkerAlert[] = [];
 
-    // Each biomarker's numeric values across results, with their result's date and lab
+    // Each test's numeric values across results, with their result's date and lab
     const biomarkerValues = new Map<
       string,
       { values: EnrichedTestValue[]; labInfo: Map<number, { date: Date; labName: string }> }
@@ -171,10 +175,11 @@ export function useAlerts(): UseAlertsResult {
         // Only values Trends charts: an alert opens its trend
         if (!isTrendable(testValue)) continue;
 
-        let entry = biomarkerValues.get(testValue.biomarkerKey);
+        const test = trendCode(catalog, testValue.biomarkerKey);
+        let entry = biomarkerValues.get(test);
         if (!entry) {
           entry = { values: [], labInfo: new Map() };
-          biomarkerValues.set(testValue.biomarkerKey, entry);
+          biomarkerValues.set(test, entry);
         }
         entry.values.push(testValue);
         entry.labInfo.set(testValue.labResultId, { date: result.date, labName: result.labName });
@@ -182,8 +187,9 @@ export function useAlerts(): UseAlertsResult {
     }
 
     for (const [biomarkerKey, { values, labInfo }] of biomarkerValues.entries()) {
-      const biomarkerDef = getBiomarkerForTestValue(values[0]);
-      const biomarkerName = getBiomarkerDisplayName(values[0]);
+      const units = testUnits(catalog, biomarkerKey);
+      const loincTest = catalog.test(biomarkerKey);
+      const biomarkerName = testDisplayName(catalog, { biomarkerKey, rawText: values[0].rawText });
       const dateOf = (tv: EnrichedTestValue) => labInfo.get(tv.labResultId)!.date;
 
       // Most recent first; on one day an out-of-range value comes first, so a
@@ -194,9 +200,10 @@ export function useAlerts(): UseAlertsResult {
           dateOf(b).getTime() - dateOf(a).getTime() || Number(outOfRange(b)) - Number(outOfRange(a))
       );
 
-      const component = componentForBiomarker(biomarkerName);
+      // Each value converts as the code it was recorded under
+      const substanceOf = (tv: EnrichedTestValue) => catalog.test(tv.biomarkerKey) ?? '';
       // Alerts state values in the preferred unit when one is set
-      const preferredUnit = preferredUnitFor(biomarkerDef, unitPreferences[biomarkerKey]);
+      const preferredUnit = preferredUnitFor(units, unitPreferences[biomarkerKey]);
 
       const latestStatus = sortedValues[0].status;
 
@@ -206,14 +213,14 @@ export function useAlerts(): UseAlertsResult {
         type: AlertType,
         status: BiomarkerAlert['status']
       ): Omit<BiomarkerAlert, 'severity' | 'message'> => {
-        const display = convertForDisplay(component, tv, preferredUnit);
+        const display = convertForDisplay(substanceOf(tv), tv, preferredUnit);
         const info = labInfo.get(tv.labResultId)!;
         return {
           id: generateAlertId(biomarkerKey, tv.id ?? tv.labResultId, type),
           type,
           biomarkerKey,
           biomarkerName,
-          category: biomarkerDef?.category,
+          category: loincTest && catalog.classLabel(loincTest.classCode),
           value: display.value as number,
           unit: display.unit,
           referenceRange: { low: display.referenceRangeLow, high: display.referenceRangeHigh },
@@ -252,11 +259,11 @@ export function useAlerts(): UseAlertsResult {
       const latestOutOfRange =
         latestStatus === 'high' || latestStatus === 'low' ? latestStatus : null;
       const trendUnit =
-        resolveDisplayUnit(biomarkerDef, unitPreferences[biomarkerKey]) ?? latestValue.unit;
+        resolveDisplayUnit(units, unitPreferences[biomarkerKey]) ?? latestValue.unit;
       const converted = sortedValues.map((tv) => ({
         date: dateOf(tv),
         ...convertMeasurement(
-          component,
+          substanceOf(tv),
           { value: tv.value as number, unit: tv.unit },
           trendUnit
         ),
@@ -297,7 +304,7 @@ export function useAlerts(): UseAlertsResult {
     }
 
     return alertList;
-  }, [results, unitPreferences]);
+  }, [catalog, results, unitPreferences]);
 
   /**
    * The cards: a cheap step, so acknowledging or dismissing does not rebuild

@@ -8,7 +8,7 @@ import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb, LabResultWithValues } from '@data/db/encryptedDb';
 import type { LabResult, TestValue } from '@/types';
-import { unknownBiomarkerKey } from '@data/biomarkers/dictionary';
+import { unknownBiomarkerKey } from '@data/loinc/keys';
 import { normalizeLabDate } from '@/utils/labDate';
 
 /**

@@ -4,7 +4,7 @@
  * code is taken without asking only when one test clearly fits; otherwise
  * the candidates go on to the AI and the user.
  */
-import { nameKey } from '@data/biomarkers/dictionary';
+import { nameKey } from '@data/loinc/keys';
 import { toUcum, ucumProperties } from '@services/units/ucum';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSimilarNameMatcher, type Embedder } from './similarNames';
-import { getBiomarkerByKey } from '@data/biomarkers/dictionary';
+import { createSimilarNameMatcher, type Embedder, type NamedTest } from './similarNames';
 
 /**
  * Embeds by a fixed table: a text in the table is a unit vector on its axis,
@@ -24,8 +23,8 @@ function tableEmbedder(axes: Record<string, number>): Embedder & { calls: string
   };
 }
 
-const urea = getBiomarkerByKey('urine-urea')!;
-const creatinine = getBiomarkerByKey('urine-creatinine')!;
+const urea: NamedTest = { key: '3092-4', names: ['Urine Urea', 'Urea, urine'] };
+const creatinine: NamedTest = { key: '2161-8', names: ['Urine Creatinine'] };
 
 describe('createSimilarNameMatcher', () => {
   it('returns the tests whose names mean the same, above the threshold', async () => {
@@ -39,7 +38,7 @@ describe('createSimilarNameMatcher', () => {
     expect(await matcher.similar('Zorblatin')).toEqual([]);
   });
 
-  it("embeds the dictionary's names and aliases once", async () => {
+  it("embeds the tests' names once", async () => {
     const embedder = tableEmbedder({});
     const matcher = createSimilarNameMatcher(embedder, [urea], 0.8);
     await matcher.similar('a');
@@ -54,12 +53,12 @@ describe('createSimilarNameMatcher', () => {
     const results = await Promise.all([matcher.similar('Urea urinaria'), matcher.similar('Zorb')]);
 
     expect(results).toEqual([[urea], []]);
-    // The dictionary once, then both names together
+    // The tests' names once, then both names together
     expect(embedder.calls).toHaveLength(2);
     expect(embedder.calls[1]).toEqual(['Urea urinaria', 'Zorb']);
   });
 
-  it("embeds the dictionary again after a failed try, rather than failing every later name", async () => {
+  it("embeds the tests' names again after a failed try, rather than failing every later name", async () => {
     const embedder = tableEmbedder({ 'urine urea': 0, 'urea urinaria': 0 });
     const embed = embedder.embed.bind(embedder);
     let fail = true;

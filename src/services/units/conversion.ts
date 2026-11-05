@@ -5,7 +5,13 @@
  * conversion is for a substance, named by its LOINC component ("Glucose").
  */
 
-import { findConversionDefinition, getConversion, normalizeUnitForLookup } from './definitions';
+import {
+  conversionsOf,
+  findConversionDefinition,
+  getConversion,
+  normalizeUnitForLookup,
+  type SubstanceRef,
+} from './definitions';
 
 /**
  * Result of a unit conversion
@@ -98,7 +104,7 @@ function roundToPrecision(value: number, precision: number): number {
 /**
  * Convert a value of a substance from one unit to another
  *
- * @param component - LOINC component of the test, e.g. "Glucose"
+ * @param substance - The test's LOINC component ("Glucose"), or the test itself
  * @param value - The value to convert
  * @param fromUnit - The source unit
  * @param toUnit - The target unit
@@ -107,7 +113,7 @@ function roundToPrecision(value: number, precision: number): number {
  * @throws ConversionError if conversion is not supported
  */
 export function convertValue(
-  component: string,
+  substance: SubstanceRef,
   value: number,
   fromUnit: string,
   toUnit: string,
@@ -128,11 +134,11 @@ export function convertValue(
     };
   }
 
-  const conversion = getConversion(component, normalizedFrom, normalizedTo);
+  const conversion = getConversion(substance, normalizedFrom, normalizedTo);
 
   if (conversion === undefined) {
-    const definition = findConversionDefinition(component);
-    if (!definition) {
+    const component = typeof substance === 'string' ? substance : substance.component;
+    if (!findConversionDefinition(substance)) {
       throw new ConversionError(`No conversion definitions found for "${component}"`);
     }
     throw new ConversionError(
@@ -156,7 +162,7 @@ export function convertValue(
 /**
  * Convert a reference range to a different unit
  *
- * @param component - LOINC component of the test
+ * @param substance - The test's LOINC component, or the test itself
  * @param range - The reference range to convert
  * @param toUnit - The target unit
  * @param precision - Optional decimal places
@@ -164,7 +170,7 @@ export function convertValue(
  * @throws ConversionError if conversion is not supported
  */
 export function convertReferenceRange(
-  component: string,
+  substance: SubstanceRef,
   range: ReferenceRange,
   toUnit: string,
   precision?: number
@@ -178,7 +184,7 @@ export function convertReferenceRange(
 
   if (range.low !== undefined) {
     const lowResult = convertValue(
-      component,
+      substance,
       range.low,
       range.unit,
       toUnit,
@@ -189,7 +195,7 @@ export function convertReferenceRange(
 
   if (range.high !== undefined) {
     const highResult = convertValue(
-      component,
+      substance,
       range.high,
       range.unit,
       toUnit,
@@ -204,34 +210,31 @@ export function convertReferenceRange(
 /**
  * Check if a conversion is supported for a substance
  *
- * @param component - LOINC component of the test
+ * @param substance - The test's LOINC component, or the test itself
  * @param fromUnit - The source unit
  * @param toUnit - The target unit
  * @returns true if conversion is supported
  */
 export function canConvert(
-  component: string,
+  substance: SubstanceRef,
   fromUnit: string,
   toUnit: string
 ): boolean {
   if (fromUnit.toLowerCase().trim() === toUnit.toLowerCase().trim()) {
     return true;
   }
-  return getConversion(component, fromUnit, toUnit) !== undefined;
+  return getConversion(substance, fromUnit, toUnit) !== undefined;
 }
 
 /**
  * Get all supported units for a substance
  *
- * @param component - LOINC component of the test
+ * @param substance - The test's LOINC component, or the test itself
  * @returns Array of supported unit strings, or empty array if it has no conversions
  */
-export function getSupportedUnits(component: string): string[] {
-  const definition = findConversionDefinition(component);
-  if (!definition) return [];
-
+export function getSupportedUnits(substance: SubstanceRef): string[] {
   const units = new Set<string>();
-  for (const conversion of definition.conversions) {
+  for (const conversion of conversionsOf(substance)) {
     units.add(conversion.from);
     units.add(conversion.to);
   }

@@ -10,11 +10,12 @@ import type { UserNote } from '@/types';
 
 vi.mock('@hooks/useNotes', () => ({ useNotes: vi.fn() }));
 vi.mock('@hooks/useLabResults', () => ({ useLabResults: vi.fn() }));
-vi.mock('@data/biomarkers/dictionary', () => ({
-  getBiomarkerByKey: (key: string) => (key === 'glucose' ? { name: 'Glucose' } : undefined),
-  getBiomarkerDisplayName: (tv: { biomarkerKey: string; rawText?: string }) =>
-    tv.biomarkerKey === 'glucose' ? 'Glucose' : tv.rawText || 'Unknown biomarker',
-}));
+// The fixture LOINC catalog: 2345-7 glucose (mg/dL), 14749-6 glucose (mmol/L)
+vi.mock('@contexts/useCatalog', async () => {
+  const { fixtureCatalog } = await import('@/test/loincFixture');
+  const catalog = fixtureCatalog();
+  return { useCatalog: () => catalog };
+});
 
 const NOTES: UserNote[] = [
   {
@@ -27,7 +28,7 @@ const NOTES: UserNote[] = [
   },
   {
     id: 2,
-    biomarkerKey: 'glucose',
+    biomarkerKey: '2345-7',
     testValueId: 2,
     labResultId: 1,
     content: 'Big dinner',
@@ -60,7 +61,7 @@ beforeEach(() => {
           {
             id: 2,
             labResultId: 1,
-            biomarkerKey: 'glucose',
+            biomarkerKey: '2345-7',
             value: 125,
             unit: 'mg/dL',
             status: 'high',
@@ -109,7 +110,7 @@ describe('NotesView', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Glucose · 125 mg/dL · Jan 15, 2024' })
     );
-    expect(onOpenTrend).toHaveBeenCalledWith('glucose', new Date('2024-01-15T12:00:00Z'));
+    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'));
   });
 
   it('searches and marks matches', async () => {
@@ -143,5 +144,30 @@ describe('NotesView', () => {
     expect(screen.queryByText('Deleted lab result')).not.toBeInTheDocument();
     expect(screen.queryAllByRole('article')).toHaveLength(0);
     expect(screen.getByLabelText('Loading notes')).toBeInTheDocument();
+  });
+
+  it("files a note under its test, whatever code of the test's trend group it was kept under", async () => {
+    mockNotes(
+      [
+        ...NOTES,
+        {
+          id: 3,
+          biomarkerKey: '14749-6',
+          content: 'Fasting',
+          tags: [],
+          createdAt: new Date('2024-08-01T12:00:00Z'),
+          updatedAt: new Date('2024-08-01T12:00:00Z'),
+        },
+      ],
+      ['diet', 'symptoms']
+    );
+    renderView();
+
+    expect(screen.getByRole('article', { name: 'Note attached to Glucose' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('textbox', { name: 'Filter notes by biomarker' }));
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['Glucose']);
+    await userEvent.click(options[0]);
+    expect(screen.getAllByRole('article')).toHaveLength(2);
   });
 });

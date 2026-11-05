@@ -20,11 +20,9 @@ import {
 import { IconAlertCircle, IconCheck, IconEye, IconEyeOff, IconFilter } from '@tabler/icons-react';
 import { useState, useMemo } from 'react';
 import { useAlerts, type BiomarkerAlert, type GroupedAlert } from '@hooks/useAlerts';
-import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
 import { AlertGroupCard } from './AlertGroupCard';
 import { saveErrorMessage } from '@data/db/saveError';
 import { useSaveState } from '@hooks/useSaveState';
-import type { BiomarkerCategory } from '@/types';
 
 /**
  * Props for OutOfRangeAlerts component
@@ -73,10 +71,9 @@ export function OutOfRangeAlerts({
         cats.add(group.headline.category);
       }
     }
-    return Array.from(cats).map((cat) => ({
-      value: cat,
-      label: CATEGORY_NAMES[cat as BiomarkerCategory] || cat,
-    }));
+    return Array.from(cats)
+      .sort((a, b) => a.localeCompare(b))
+      .map((cat) => ({ value: cat, label: cat }));
   }, [groups]);
 
   // A category whose cards are all gone (acknowledged, dismissed) is no

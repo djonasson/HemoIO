@@ -9,8 +9,6 @@ import { Select, Group, Stack, Button, Text } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { toLocalDay } from '@/utils/localDate';
 import { IconRefresh, IconChartLine } from '@tabler/icons-react';
-import type { BiomarkerCategory } from '@/types';
-import { CATEGORY_NAMES } from '@data/biomarkers/dictionary';
 
 /**
  * Available biomarker option for selection
@@ -20,8 +18,8 @@ export interface BiomarkerOption {
   value: string;
   /** Display label */
   label: string;
-  /** Biomarker category */
-  category: BiomarkerCategory;
+  /** The test's LOINC class, as the catalog names it ("Chemistry") */
+  category: string;
   /** Number of data points available */
   dataPointCount: number;
 }
@@ -55,13 +53,13 @@ export interface TrendChartControlsProps {
 }
 
 /**
- * Group biomarker options by category
+ * Group biomarker options by LOINC class
  */
 function groupByCategory(options: BiomarkerOption[]): {
   group: string;
   items: Array<{ value: string; label: string; disabled?: boolean }>;
 }[] {
-  const groups = new Map<BiomarkerCategory, BiomarkerOption[]>();
+  const groups = new Map<string, BiomarkerOption[]>();
 
   for (const option of options) {
     if (!groups.has(option.category)) {
@@ -85,7 +83,7 @@ function groupByCategory(options: BiomarkerOption[]): {
     });
 
     result.push({
-      group: CATEGORY_NAMES[category] || category,
+      group: category,
       items: sortedOptions.map((opt) => ({
         value: opt.value,
         label: `${opt.label} (${opt.dataPointCount} ${opt.dataPointCount === 1 ? 'value' : 'values'})`,

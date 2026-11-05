@@ -1,18 +1,16 @@
 /**
- * Which unit a biomarker is shown in, and converting a value for display.
+ * Which unit a test is shown in, and converting a value for display.
  *
- * A preference only counts when the biomarker offers that unit, so a stale
- * or edited preference (from an old backup) can never mislabel a value.
+ * A preference only counts when the test offers that unit, so a stale or
+ * edited preference can never mislabel a value.
  */
 import { canConvert } from './conversion';
 import { convertMeasurement } from './convertMeasurement';
-import { unitsMatch } from './definitions';
-import { componentForBiomarker } from './legacyComponents';
+import { unitsMatch, type SubstanceRef } from './definitions';
 
-/** What a biomarker definition needs to offer units */
+/** What a test needs to offer units: its substance and the units HemoIO shows it in */
 export interface UnitSource {
-  /** Dictionary name, read as a LOINC component through componentForBiomarker until Task 8 */
-  name: string;
+  substance: SubstanceRef;
   canonicalUnit: string;
   alternativeUnits?: string[];
 }
@@ -23,11 +21,11 @@ export function preferredUnitOptions(definition: UnitSource): string[] {
   return [...units].filter(
     (unit) =>
       unit === definition.canonicalUnit ||
-      canConvert(componentForBiomarker(definition.name), definition.canonicalUnit, unit)
+      canConvert(definition.substance, definition.canonicalUnit, unit)
   );
 }
 
-/** The stored preference if the biomarker offers it, else undefined */
+/** The stored preference if the test offers it, else undefined */
 export function preferredUnitFor(
   definition: UnitSource | undefined,
   preferred: string | undefined
@@ -38,8 +36,8 @@ export function preferredUnitFor(
 }
 
 /**
- * Unit a biomarker is shown in: the offered preference, else the standard
- * unit; undefined when the biomarker is not in the dictionary
+ * Unit a test is shown in: the offered preference, else the standard unit;
+ * undefined when HemoIO has no standard unit for it
  */
 export function resolveDisplayUnit(
   definition: UnitSource | undefined,
@@ -57,13 +55,12 @@ export interface DisplayableValue {
 }
 
 /**
- * The value and its range in `targetUnit`, converted as the substance
- * `component` (a LOINC component). Unchanged when there is no
- * target, the value is not a plain number (Positive/Negative, text, an
- * interval), or it cannot be converted.
+ * The value and its range in `targetUnit`, converted as `substance`.
+ * Unchanged when there is no target, the value is not a plain number
+ * (Positive/Negative, text, an interval), or it cannot be converted.
  */
 export function convertForDisplay<T extends DisplayableValue>(
-  component: string,
+  substance: SubstanceRef,
   item: T,
   targetUnit: string | undefined
 ): T {
@@ -71,7 +68,7 @@ export function convertForDisplay<T extends DisplayableValue>(
     return item;
   }
   const converted = convertMeasurement(
-    component,
+    substance,
     {
       value: item.value,
       unit: item.unit,

@@ -7,12 +7,15 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { TestValuesList } from './TestValuesList';
-import { loadCatalog } from '@data/loinc/catalog';
+import { loadCatalog, type Catalog } from '@data/loinc/catalog';
+import { CatalogContext } from '@contexts/useCatalog';
+import { unknownBiomarkerKey } from '@data/loinc/keys';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
 
-// The LOINC names in tooltips come from the catalog, loaded as in the unlocked app
+// Names, samples and LOINC names come from the catalog, as in the unlocked app
+let catalog: Catalog;
 beforeAll(async () => {
-  await loadCatalog();
+  catalog = await loadCatalog();
 });
 
 let mockUnitPreferences: Record<string, string> = {};
@@ -28,7 +31,11 @@ vi.mock('@hooks/usePreferences', () => ({
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider env="test">{ui}</MantineProvider>);
+  return render(
+    <MantineProvider env="test">
+      <CatalogContext.Provider value={catalog}>{ui}</CatalogContext.Provider>
+    </MantineProvider>
+  );
 }
 
 function createTestValue(
@@ -38,7 +45,7 @@ function createTestValue(
   return {
     id,
     labResultId: 1,
-    // Not a dictionary key, so the name comes from rawText
+    // Not a LOINC test, so the name comes from rawText
     biomarkerKey: 'unknown:test',
     value: 14.5,
     unit: 'g/dL',
@@ -56,10 +63,10 @@ describe('TestValuesList', () => {
 
   describe('Preferred unit', () => {
     const glucose = (options: Partial<EnrichedTestValue>) =>
-      createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose', ...options });
+      createTestValue(1, { biomarkerKey: '2345-7', rawText: 'Glucose', ...options });
 
     it('shows a value in the preferred unit, with its range', () => {
-      mockUnitPreferences = { glucose: 'mmol/L' };
+      mockUnitPreferences = { '2345-7': 'mmol/L' };
       renderWithProviders(
         <TestValuesList
           testValues={[
@@ -95,14 +102,14 @@ describe('TestValuesList', () => {
 
   it('should name a value by its stored biomarker ID, not its extracted text', () => {
     // "Hemo-globin" was matched to Hemoglobin when the result was imported
-    const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemo-globin' })];
+    const testValues = [createTestValue(1, { biomarkerKey: '718-7', rawText: 'Hemo-globin' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
     expect(screen.getByText('Hemoglobin')).toBeInTheDocument();
     expect(screen.queryByText('Hemo-globin')).not.toBeInTheDocument();
   });
 
-  it("never describes a value saved as not in the dictionary as the test its name is", () => {
+  it("never describes a value saved as not a LOINC test as the test its name is", () => {
     const testValues = [createTestValue(1, { biomarkerKey: 'unknown:hemoglobin', rawText: 'Hemoglobin' })];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
@@ -286,17 +293,27 @@ describe('TestValuesList', () => {
 
   describe('Specimen type display', () => {
     it('should display specimen type for known biomarkers', () => {
-      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
+      const testValues = [createTestValue(1, { biomarkerKey: '718-7', rawText: 'Hemoglobin' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
       expect(screen.getByText('Whole Blood')).toBeInTheDocument();
     });
 
-    it('should display serum for glucose', () => {
-      const testValues = [createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose' })];
+    it("names glucose's sample as LOINC does: serum or plasma", () => {
+      const testValues = [createTestValue(1, { biomarkerKey: '2345-7', rawText: 'Glucose' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
-      expect(screen.getByText('Serum')).toBeInTheDocument();
+      expect(screen.getByText('Serum/Plasma')).toBeInTheDocument();
+    });
+
+    it('takes the sample of a value that is not a LOINC test from its printed name', () => {
+      const testValues = [
+        createTestValue(1, { biomarkerKey: unknownBiomarkerKey('Zorblatina (urine)'), rawText: 'Zorblatina (urine)' }),
+      ];
+      renderWithProviders(<TestValuesList testValues={testValues} />);
+
+      expect(screen.getByText('Zorblatina')).toBeInTheDocument();
+      expect(screen.getByText('Urine')).toBeInTheDocument();
     });
 
     it('should display dash for unknown biomarkers', () => {
@@ -310,8 +327,21 @@ describe('TestValuesList', () => {
   });
 
   describe('LOINC tooltip display', () => {
+    it("names a test HemoIO has no name for by LOINC's short name, with its long name on hover", () => {
+      // 2339-0, glucose in blood, has no add-on
+      const test = catalog.test('2339-0')!;
+      const testValues = [createTestValue(1, { biomarkerKey: '2339-0', rawText: 'Glicemia', value: 90, unit: 'mg/dL' })];
+      renderWithProviders(<TestValuesList testValues={testValues} onOpenTrend={vi.fn()} />);
+
+      const name = test.shortName || test.name;
+      expect(screen.getByRole('button', { name: `${name}, open trend` })).toHaveAccessibleDescription(
+        `LOINC 2339-0: ${test.name}`
+      );
+      expect(screen.queryByText('Glicemia')).not.toBeInTheDocument();
+    });
+
     it('should show biomarker name with tooltip styling when LOINC code exists', () => {
-      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
+      const testValues = [createTestValue(1, { biomarkerKey: '718-7', rawText: 'Hemoglobin' })];
       renderWithProviders(<TestValuesList testValues={testValues} />);
 
       const hemoglobinText = screen.getByText('Hemoglobin');
@@ -319,7 +349,7 @@ describe('TestValuesList', () => {
     });
 
     it("gives the LOINC code with LOINC's own name", () => {
-      const testValues = [createTestValue(1, { biomarkerKey: 'hemoglobin', rawText: 'Hemoglobin' })];
+      const testValues = [createTestValue(1, { biomarkerKey: '718-7', rawText: 'Hemoglobin' })];
       renderWithProviders(<TestValuesList testValues={testValues} onOpenTrend={vi.fn()} />);
 
       expect(screen.getByRole('button', { name: 'Hemoglobin, open trend' })).toHaveAccessibleDescription(
@@ -337,7 +367,7 @@ describe('TestValuesList', () => {
   });
   describe('Opening a trend', () => {
     const glucose = (options: Partial<EnrichedTestValue> = {}) =>
-      createTestValue(1, { biomarkerKey: 'glucose', rawText: 'Glucose', value: 125, unit: 'mg/dL', ...options });
+      createTestValue(1, { biomarkerKey: '2345-7', rawText: 'Glucose', value: 125, unit: 'mg/dL', ...options });
 
     it("announces the test's description with its link", () => {
       renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={vi.fn()} />);
@@ -353,7 +383,7 @@ describe('TestValuesList', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
 
-      expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+      expect(onOpenTrend).toHaveBeenCalledWith('2345-7');
     });
 
     it('opens the trend with the keyboard', async () => {
@@ -364,7 +394,7 @@ describe('TestValuesList', () => {
       expect(screen.getByRole('button', { name: 'Glucose, open trend' })).toHaveFocus();
       await userEvent.keyboard('{Enter}');
 
-      expect(onOpenTrend).toHaveBeenCalledWith('glucose');
+      expect(onOpenTrend).toHaveBeenCalledWith('2345-7');
     });
 
     it('keeps the description, on hover and on keyboard focus', async () => {

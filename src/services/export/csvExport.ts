@@ -4,6 +4,7 @@
  * Exports lab results to CSV format.
  */
 
+import { isUnknownKey } from '@data/loinc/keys';
 import type { LabResult, TestValue } from '@/types';
 import { isWithinDays } from '@/utils/localDate';
 
@@ -71,7 +72,7 @@ function escapeCSV(value: string | number | boolean | undefined | null): string 
  * Build CSV header row based on options
  */
 function buildHeader(options: CsvExportOptions): string[] {
-  const headers = ['Date', 'Lab Name', 'Biomarker', 'Value', 'Unit'];
+  const headers = ['Date', 'Lab Name', 'Biomarker', 'LOINC', 'Value', 'Unit'];
 
   if (options.includeReferenceRanges !== false) {
     headers.push('Reference Low', 'Reference High');
@@ -97,6 +98,8 @@ function buildRow(
     formatDate(labResult.date, options.dateFormat),
     labResult.labName,
     biomarkerName,
+    // The value's LOINC code; none for a value saved as not a LOINC test
+    isUnknownKey(testValue.biomarkerKey) ? '' : testValue.biomarkerKey,
     String(testValue.value),
     testValue.unit,
   ];

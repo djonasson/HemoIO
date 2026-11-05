@@ -10,7 +10,9 @@ import { testProviderConnection } from '@/services/ai';
 import { SettingsPage } from './SettingsPage';
 import { SaveError } from '@data/db/saveError';
 import { CatalogContext } from '@contexts/useCatalog';
-import type { Catalog } from '@data/loinc/catalog';
+import { fixtureCatalog } from '@/test/loincFixture';
+
+const catalog = fixtureCatalog();
 
 // The db mock must be stable across renders, as the real hook memoizes it;
 // a new object per render would re-run SettingsPage's loading effects forever.
@@ -23,7 +25,7 @@ const mockDb = vi.hoisted(() => ({
 // Personal targets come from the shared preferences
 const mockPreferences = vi.hoisted(() => ({
   unitPreferences: {},
-  personalTargets: { glucose: { low: 70, high: 90 } } as Record<
+  personalTargets: { '2345-7': { low: 70, high: 90 } } as Record<
     string,
     { low?: number; high?: number }
   >,
@@ -104,26 +106,10 @@ vi.mock('@contexts', async (importOriginal) => ({
   useAuth: () => ({ changePassword: vi.fn() }),
 }));
 
-// Mock BIOMARKER_DEFINITIONS
-vi.mock('@data/biomarkers', () => ({
-  BIOMARKER_DEFINITIONS: [
-    {
-      key: 'glucose',
-      name: 'Glucose',
-      aliases: ['Blood Sugar'],
-      category: 'metabolic',
-      canonicalUnit: 'mg/dL',
-      alternativeUnits: ['mmol/L'],
-      defaultReferenceRange: { low: 70, high: 100, unit: 'mg/dL' },
-      description: 'Blood glucose level',
-    },
-  ],
-}));
-
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">
-      <CatalogContext.Provider value={{ version: '2.83' } as Catalog}>{ui}</CatalogContext.Provider>
+      <CatalogContext.Provider value={catalog}>{ui}</CatalogContext.Provider>
     </MantineProvider>
   );
 }
@@ -339,7 +325,7 @@ describe('SettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Save Target' }));
 
       await waitFor(() =>
-        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('glucose', {
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('2345-7', {
           low: 70,
           high: 95,
         })
@@ -387,7 +373,7 @@ describe('SettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Clear personal target for Glucose' }));
 
       await waitFor(() =>
-        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('glucose', null)
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('2345-7', null)
       );
     });
 

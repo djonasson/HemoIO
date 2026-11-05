@@ -2,14 +2,26 @@
  * Tests for BiomarkerDictionary component
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { loadCatalog, type Catalog } from '@data/loinc/catalog';
+import { CatalogContext } from '@contexts/useCatalog';
 import { BiomarkerDictionary } from './BiomarkerDictionary';
 
+// The list and its search come from the catalog, loaded as in the unlocked app
+let catalog: Catalog;
+beforeAll(async () => {
+  catalog = await loadCatalog();
+});
+
 function renderWithProviders(ui: React.ReactElement) {
-  return render(<MantineProvider env="test">{ui}</MantineProvider>);
+  return render(
+    <MantineProvider env="test">
+      <CatalogContext.Provider value={catalog}>{ui}</CatalogContext.Provider>
+    </MantineProvider>
+  );
 }
 
 describe('BiomarkerDictionary', () => {
@@ -34,13 +46,13 @@ describe('BiomarkerDictionary', () => {
       expect(screen.getByPlaceholderText(/search biomarkers/i)).toBeInTheDocument();
     });
 
-    it('should render category accordion', () => {
+    it('groups the tests by LOINC class', () => {
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
 
-      // Should show category names
-      expect(screen.getByText('Complete Blood Count')).toBeInTheDocument();
-      expect(screen.getByText('Metabolic Panel')).toBeInTheDocument();
-      expect(screen.getByText('Lipid Panel')).toBeInTheDocument();
+      expect(screen.getByText('Chemistry')).toBeInTheDocument();
+      expect(screen.getByText('Hematology')).toBeInTheDocument();
+      expect(screen.getByText('Urinalysis')).toBeInTheDocument();
+      expect(screen.getByText('Fertility')).toBeInTheDocument();
     });
 
     it('should show biomarker count badges', () => {
@@ -58,7 +70,7 @@ describe('BiomarkerDictionary', () => {
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
 
       // Click on CBC category
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       // Should show biomarkers in the category
       await waitFor(() => {
@@ -66,23 +78,26 @@ describe('BiomarkerDictionary', () => {
       });
     });
 
-    it('should show biomarker abbreviations', async () => {
+    it('lists a test the user has values for, under its LOINC class', async () => {
       const user = userEvent.setup();
-      renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
+      // Glucose in blood: HemoIO has no description of it
+      const test = catalog.test('2339-0')!;
+      renderWithProviders(<BiomarkerDictionary {...defaultProps} valueKeys={['2339-0']} />);
 
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText(catalog.classLabel(test.classCode)));
 
-      await waitFor(() => {
-        // WBC is an alias for White Blood Cell Count, shown in parentheses
-        expect(screen.getByText('(WBC)')).toBeInTheDocument();
+      const item = await screen.findByRole('button', {
+        name: `View details for ${test.shortName || test.name}`,
       });
+      // In place of a description, LOINC's name
+      expect(item).toHaveTextContent(test.name);
     });
 
     it('should show biomarker descriptions', async () => {
       const user = userEvent.setup();
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
 
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       await waitFor(() => {
         // Should show description text (multiple descriptions may contain "white blood cells")
@@ -137,6 +152,18 @@ describe('BiomarkerDictionary', () => {
       });
     });
 
+    it('finds a test of the whole LOINC catalog, named by LOINC', async () => {
+      const user = userEvent.setup();
+      const test = catalog.test('2339-0')!;
+      renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
+
+      await user.type(screen.getByPlaceholderText(/search biomarkers/i), 'glucose blood');
+
+      expect(
+        await screen.findByRole('button', { name: `View details for ${test.shortName || test.name}` })
+      ).toBeInTheDocument();
+    });
+
     it('should return to category view when search is cleared', async () => {
       const user = userEvent.setup();
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
@@ -148,7 +175,7 @@ describe('BiomarkerDictionary', () => {
 
       await waitFor(() => {
         // Should show categories again
-        expect(screen.getByText('Complete Blood Count')).toBeInTheDocument();
+        expect(screen.getByText('Hematology')).toBeInTheDocument();
         expect(screen.queryByText(/results? found/)).not.toBeInTheDocument();
       });
     });
@@ -163,15 +190,14 @@ describe('BiomarkerDictionary', () => {
       );
 
       // Expand category first
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       await waitFor(async () => {
         const wbcItem = screen.getByLabelText(/view details for white blood cell count/i);
         await user.click(wbcItem);
       });
 
-      expect(onSelectBiomarker).toHaveBeenCalled();
-      expect(onSelectBiomarker.mock.calls[0][0].name).toBe('White Blood Cell Count');
+      expect(onSelectBiomarker).toHaveBeenCalledWith('6690-2');
     });
 
     it('should highlight selected biomarker', async () => {
@@ -179,11 +205,11 @@ describe('BiomarkerDictionary', () => {
       renderWithProviders(
         <BiomarkerDictionary
           {...defaultProps}
-          selectedBiomarker="White Blood Cell Count"
+          selectedBiomarker="6690-2"
         />
       );
 
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       await waitFor(() => {
         const selectedItem = screen.getByLabelText(/view details for white blood cell count/i);
@@ -203,7 +229,7 @@ describe('BiomarkerDictionary', () => {
       const user = userEvent.setup();
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
 
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       await waitFor(() => {
         const items = screen.getAllByRole('button', { name: /view details for/i });
@@ -219,7 +245,7 @@ describe('BiomarkerDictionary', () => {
       );
 
       // Expand category
-      await user.click(screen.getByText('Complete Blood Count'));
+      await user.click(screen.getByText('Hematology'));
 
       await waitFor(async () => {
         const wbcItem = screen.getByLabelText(/view details for white blood cell count/i);

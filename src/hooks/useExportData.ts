@@ -5,10 +5,20 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { getBiomarkerDisplayName } from '@data/biomarkers';
+import { testDisplayName, trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
+
+/** A test to filter the export by, with every stored key its values have */
+export interface ExportBiomarkerOption {
+  /** The test's trend code */
+  value: string;
+  label: string;
+  /** The keys of the test's values: the codes of its trend group they were saved under */
+  keys: string[];
+}
 
 /**
  * Result of useExportData hook
@@ -18,8 +28,8 @@ export interface UseExportDataResult {
   dataSources: ExportDataSources;
   /** Lab results with test values and biomarker names for CSV export */
   labResultsData: LabResultForExport[];
-  /** Available biomarker options for filtering */
-  biomarkerOptions: { value: string; label: string }[];
+  /** Available biomarker options for filtering, one per test */
+  biomarkerOptions: ExportBiomarkerOption[];
   /** Whether data is loading */
   isLoading: boolean;
   /** Error if loading failed */
@@ -57,6 +67,7 @@ export interface UseExportDataOptions {
 }
 
 export function useExportData({ enabled = true }: UseExportDataOptions = {}): UseExportDataResult {
+  const catalog = useCatalog();
   const { db, isReady } = useEncryptedDb();
   const [dataSources, setDataSources] = useState<ExportDataSources>({
     labResults: [],
@@ -66,7 +77,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     settings: null,
   });
   const [labResultsData, setLabResultsData] = useState<LabResultForExport[]>([]);
-  const [biomarkerOptions, setBiomarkerOptions] = useState<{ value: string; label: string }[]>([]);
+  const [biomarkerOptions, setBiomarkerOptions] = useState<ExportBiomarkerOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,13 +124,18 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         testValuesByLabResult.set(tv.labResultId, existing);
       }
 
-      // Name each biomarker the way the trends view does: its dictionary entry,
-      // else the name extracted from the report
+      // Name each test as every view does, and offer each test once,
+      // whatever codes of its trend group its values were saved under
       const biomarkerNames = new Map<string, string>();
+      const tests = new Map<string, ExportBiomarkerOption>();
       for (const tv of testValues) {
-        if (!biomarkerNames.has(tv.biomarkerKey)) {
-          biomarkerNames.set(tv.biomarkerKey, getBiomarkerDisplayName(tv));
-        }
+        if (biomarkerNames.has(tv.biomarkerKey)) continue;
+        const name = testDisplayName(catalog, tv);
+        biomarkerNames.set(tv.biomarkerKey, name);
+        const test = trendCode(catalog, tv.biomarkerKey);
+        const option = tests.get(test) ?? { value: test, label: name, keys: [] };
+        option.keys.push(tv.biomarkerKey);
+        tests.set(test, option);
       }
 
       // Build lab results data
@@ -131,13 +147,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
 
       setLabResultsData(resultsData);
 
-      // Build biomarker options for filtering
-      const options = Array.from(biomarkerNames, ([key, name]) => ({
-        value: key,
-        label: name,
-      }));
-
-      setBiomarkerOptions(options);
+      setBiomarkerOptions([...tests.values()].sort((a, b) => a.label.localeCompare(b.label)));
       return sources;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load export data';
@@ -147,7 +157,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     } finally {
       setIsLoading(false);
     }
-  }, [db, isReady]);
+  }, [catalog, db, isReady]);
 
   useEffect(() => {
     if (enabled) void fetchData();

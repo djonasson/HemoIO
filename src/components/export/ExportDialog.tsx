@@ -54,8 +54,8 @@ export interface ExportDialogProps {
   labResultsData: LabResultForExport[];
   /** Full data sources for JSON backup */
   fullDataSources: ExportDataSources;
-  /** Available biomarkers for filtering */
-  biomarkerOptions: { value: string; label: string }[];
+  /** Available tests for filtering, each with the stored keys of its values */
+  biomarkerOptions: { value: string; label: string; keys: string[] }[];
   /** While the data as it is now loads, the previous data must not be exported */
   isLoading?: boolean;
 }
@@ -112,6 +112,15 @@ export function ExportDialog({
     return { start: getPresetStartDate(dateRangePreset), end: null };
   }, [dateRangePreset, customStartDate, customEndDate]);
 
+  // The stored keys of the chosen tests' values
+  const selectedKeys = useMemo(
+    () =>
+      biomarkerOptions
+        .filter((option) => selectedBiomarkers.includes(option.value))
+        .flatMap((option) => option.keys),
+    [biomarkerOptions, selectedBiomarkers]
+  );
+
   // Check if there's data to export
   const hasData = labResultsData.length > 0;
 
@@ -136,9 +145,7 @@ export function ExportDialog({
     for (const result of filteredResults) {
       let values = result.testValues;
       if (selectedBiomarkers.length > 0) {
-        values = values.filter((tv) =>
-          selectedBiomarkers.includes(tv.biomarkerKey)
-        );
+        values = values.filter((tv) => selectedKeys.includes(tv.biomarkerKey));
       }
       testValueCount += values.length;
     }
@@ -147,7 +154,7 @@ export function ExportDialog({
       labResults: filteredResults.length,
       testValues: testValueCount,
     };
-  }, [labResultsData, effectiveDateRange, selectedBiomarkers]);
+  }, [labResultsData, effectiveDateRange, selectedBiomarkers, selectedKeys]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -158,7 +165,7 @@ export function ExportDialog({
         const csv = exportToCsv(labResultsData, {
           startDate: effectiveDateRange.start ?? undefined,
           endDate: effectiveDateRange.end ?? undefined,
-          biomarkerKeys: selectedBiomarkers.length > 0 ? selectedBiomarkers : undefined,
+          biomarkerKeys: selectedBiomarkers.length > 0 ? selectedKeys : undefined,
           includeReferenceRanges,
         });
         const filename = generateCsvFilename({
@@ -184,6 +191,7 @@ export function ExportDialog({
     fullDataSources,
     effectiveDateRange,
     selectedBiomarkers,
+    selectedKeys,
     includeReferenceRanges,
     onClose,
   ]);
@@ -275,7 +283,7 @@ export function ExportDialog({
             <MultiSelect
               label="Biomarkers"
               placeholder="All biomarkers"
-              data={biomarkerOptions}
+              data={biomarkerOptions.map(({ value, label }) => ({ value, label }))}
               value={selectedBiomarkers}
               onChange={setSelectedBiomarkers}
               clearable

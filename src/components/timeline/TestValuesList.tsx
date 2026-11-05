@@ -13,18 +13,17 @@ import {
   IconMinus,
   IconTestPipe,
 } from '@tabler/icons-react';
-import type { SpecimenType } from '@/types';
 import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import {
-  getBiomarkerDisplayName,
-  getBiomarkerForTestValue,
-  type BiomarkerDefinition,
-} from '@data/biomarkers/dictionary';
+  loincTestLabel,
+  sampleLabel,
+  splitPrintedSample,
+  testDescription, testDisplayName, testUnits, trendCode } from '@data/loinc/display';
+import { useCatalog } from '@contexts/useCatalog';
 import { usePreferences } from '@hooks/usePreferences';
-import { componentForBiomarker, convertForDisplay, preferredUnitFor } from '@services/units';
+import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
-import { loincLabel } from '@data/biomarkers/loinc';
 import { ScrollBox } from '@components/common/ScrollBox';
 import { formatReferenceRange } from '@services/alerts/alertRules';
 import { BiomarkerName } from './BiomarkerName';
@@ -73,109 +72,6 @@ function getStatusIndicator(status: TestValueStatus): {
 }
 
 /**
- * Get biomarker display name from ID or raw text
- */
-function getBiomarkerName(testValue: EnrichedTestValue): string {
-  // First check if biomarkerName is already set
-  if (testValue.biomarkerName) {
-    return testValue.biomarkerName;
-  }
-
-  return getBiomarkerDisplayName(testValue);
-}
-
-/**
- * Human-readable labels for specimen types
- */
-const SPECIMEN_LABELS: Record<SpecimenType, string> = {
-  'serum': 'Serum',
-  'plasma': 'Plasma',
-  'urine': 'Urine',
-  'urine-24h': '24h Urine',
-  'whole-blood': 'Whole Blood',
-  'capillary': 'Capillary',
-  'saliva': 'Saliva',
-  'csf': 'CSF',
-  'stool': 'Stool',
-  'semen': 'Semen',
-  'other': 'Other',
-};
-
-/**
- * Get human-readable specimen label
- */
-function getSpecimenLabel(specimenType: SpecimenType | undefined): string {
-  if (!specimenType) return '—';
-  return SPECIMEN_LABELS[specimenType] || specimenType;
-}
-
-/**
- * Specimen type patterns that can be extracted from biomarker names
- */
-const SPECIMEN_PATTERNS: { pattern: RegExp; type: SpecimenType }[] = [
-  { pattern: /\s*\(urine,?\s*24h?\)\s*$/i, type: 'urine-24h' },
-  { pattern: /\s*\(24h?\s*urine\)\s*$/i, type: 'urine-24h' },
-  { pattern: /\s*\(urine[^)]*\)\s*$/i, type: 'urine' },
-  { pattern: /\s*\(plasma[^)]*\)\s*$/i, type: 'plasma' },
-  { pattern: /\s*\(serum[^)]*\)\s*$/i, type: 'serum' },
-  { pattern: /\s*\(siero[^)]*\)\s*$/i, type: 'serum' }, // Italian for serum
-  { pattern: /\s*\(sangue[^)]*\)\s*$/i, type: 'whole-blood' }, // Italian for blood
-  { pattern: /\s*\(whole[- ]?blood[^)]*\)\s*$/i, type: 'whole-blood' },
-  { pattern: /\s*\(semen[^)]*\)\s*$/i, type: 'semen' },
-  { pattern: /\s*\(liquido seminale[^)]*\)\s*$/i, type: 'semen' }, // Italian
-  { pattern: /\s*\(csf[^)]*\)\s*$/i, type: 'csf' },
-  { pattern: /\s*\(liquor[^)]*\)\s*$/i, type: 'csf' }, // Alternative name
-  { pattern: /\s*\(saliva[^)]*\)\s*$/i, type: 'saliva' },
-  { pattern: /\s*\(stool[^)]*\)\s*$/i, type: 'stool' },
-  { pattern: /\s*\(feci[^)]*\)\s*$/i, type: 'stool' }, // Italian for stool
-];
-
-/**
- * Extract specimen type from biomarker name and return clean name
- */
-function extractSpecimenFromName(name: string): { cleanName: string; extractedSpecimen?: SpecimenType } {
-  for (const { pattern, type } of SPECIMEN_PATTERNS) {
-    if (pattern.test(name)) {
-      return {
-        cleanName: name.replace(pattern, '').trim(),
-        extractedSpecimen: type,
-      };
-    }
-  }
-  return { cleanName: name };
-}
-
-/**
- * Get biomarker metadata (specimen type and LOINC code) from dictionary
- */
-function getBiomarkerMetadata(
-  testValue: EnrichedTestValue,
-  found: BiomarkerDefinition | undefined
-): {
-  specimenType?: SpecimenType;
-  loincCode?: string;
-  description?: string;
-  cleanName: string;
-} {
-  if (found) {
-    return {
-      specimenType: found.specimenType,
-      loincCode: found.loincCode,
-      description: found.description,
-      cleanName: found.name,
-    };
-  }
-
-  // If not found in dictionary, still return extracted specimen from name
-  const searchTerm = testValue.biomarkerName || testValue.rawText;
-  const { cleanName, extractedSpecimen } = extractSpecimenFromName(searchTerm || '');
-  return {
-    specimenType: extractedSpecimen,
-    cleanName,
-  };
-}
-
-/**
  * Format a numeric value for display
  */
 function formatNumericValue(value: number): string {
@@ -209,6 +105,7 @@ export function TestValuesList({
   testValues,
   onOpenTrend,
 }: TestValuesListProps): React.ReactNode {
+  const catalog = useCatalog();
   const { unitPreferences } = usePreferences();
   const idPrefix = useId();
   const descriptions: Array<{ id: string; text: string }> = [];
@@ -236,28 +133,26 @@ export function TestValuesList({
         </Table.Thead>
         <Table.Tbody>
           {testValues.map((recorded) => {
+            // By the stored key only: a value saved as not a LOINC test is
+            // not the test its name is
+            const test = catalog.test(recorded.biomarkerKey);
+            const code = trendCode(catalog, recorded.biomarkerKey);
             // Shown in the preferred unit when one is set and the value converts
-            const definition = getBiomarkerForTestValue(recorded);
             const testValue = convertForDisplay(
-              definition ? componentForBiomarker(definition.name) : '',
+              test ?? '',
               recorded,
-              preferredUnitFor(definition, unitPreferences[recorded.biomarkerKey])
+              preferredUnitFor(testUnits(catalog, code), unitPreferences[code])
             );
             const indicator = getStatusIndicator(testValue.status);
-            const biomarkerName = getBiomarkerName(testValue);
-            // By the stored key only: a value saved as not in the dictionary is
-            // not the test its name is
-            const metadata = getBiomarkerMetadata(testValue, definition);
+            const printed = test ? undefined : splitPrintedSample(testDisplayName(catalog, recorded));
+            const biomarkerName = printed?.name || testDisplayName(catalog, recorded);
+            const sample = test ? sampleLabel(test) : printed?.sample;
 
-            // Build tooltip content for LOINC code and description
-            const tooltipParts: string[] = [];
-            if (metadata.loincCode) {
-              tooltipParts.push(loincLabel(metadata.loincCode));
-            }
-            if (metadata.description) {
-              tooltipParts.push(metadata.description);
-            }
-            const tooltipContent = tooltipParts.length > 0 ? tooltipParts.join('\n') : null;
+            // The code with LOINC's name for it, and HemoIO's description
+            const description = test ? testDescription(catalog, test.code) : undefined;
+            const tooltipContent = test
+              ? [loincTestLabel(test), description].filter(Boolean).join('\n')
+              : null;
             const descriptionId = `${idPrefix}-description-${testValue.id}`;
             if (tooltipContent) descriptions.push({ id: descriptionId, text: tooltipContent });
 
@@ -282,7 +177,7 @@ export function TestValuesList({
                 </Table.Td>
                 <Table.Td>
                   <BiomarkerName
-                    name={metadata.cleanName || biomarkerName}
+                    name={biomarkerName}
                     description={tooltipContent}
                     descriptionId={descriptionId}
                     onOpen={
@@ -296,7 +191,7 @@ export function TestValuesList({
                   <Group gap={4}>
                     <IconTestPipe size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
                     <Text size="sm" c="dimmed">
-                      {getSpecimenLabel(metadata.specimenType)}
+                      {sample ?? '—'}
                     </Text>
                   </Group>
                 </Table.Td>

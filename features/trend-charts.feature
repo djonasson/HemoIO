@@ -69,11 +69,21 @@ Feature: Trend Charts
     Then I should see the single data point displayed
     And a message should indicate "More data needed for trend analysis"
 
-  Scenario: Values in a unit the chart cannot convert are not plotted
+  Scenario: Glucose in mg/dL and in mmol/L is one line
+    Given I have glucose values in mg/dL and others in mmol/L
+    When I navigate to the Trends view
+    Then "Glucose" should be offered once in the biomarker dropdown
+    When I select "Glucose" from the biomarker dropdown
+    Then every glucose value should be plotted on one line in mg/dL, the standard unit
+    When I choose mmol/L as my preferred unit
+    Then every glucose value should be plotted in mmol/L
+
+  Scenario: Values in a unit the chart cannot convert get a line of their own
     Given I have hemoglobin values in g/dL and one in a unit that cannot be converted to g/dL
     When I view the hemoglobin trend chart
     Then only the values in g/dL should be plotted
-    And I should be told that one value in the other unit is not shown
+    And I should be told that one value in the other unit is shown on a line of its own
+    And that value should be offered as its own line, named with its unit
 
   Scenario: Handle missing data gracefully
     Given I have lab results with gaps in dates
@@ -137,10 +147,15 @@ Feature: Trend Charts
     Then I should not be offered a choice of unit
     But I should be offered its reference page
 
-  Scenario: No reference link for a test that is not in the biomarker dictionary
-    Given I have values for a test that is not in the biomarker dictionary
-    When I view the trend chart for that test
+  Scenario: No reference link for a value saved as not a LOINC test
+    Given I have values saved as "Not a LOINC test"
+    When I view the trend chart for that test, named as the report prints it
     Then I should not be offered a reference page
+
+  Scenario: Values of a test that is not a LOINC test trend by name and unit
+    Given I have values saved as "Not a LOINC test" under one printed name in two units
+    When I navigate to the Trends view
+    Then each unit should be offered as a line of its own
 
   Scenario: Choosing Trends in the menu starts the page over
     Given I am viewing the trend chart for "Glucose"

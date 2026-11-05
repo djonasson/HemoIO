@@ -47,7 +47,7 @@ import {
   chooseTest,
   unitOptionsFor,
 } from '@/utils/biomarkerSuggestions';
-import { getAddon } from '@data/loinc/addons';
+import { loincTestLabel, sampleLabel, splitPrintedSample, testDescription } from '@data/loinc/display';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
 import { missingFields, needsTest, planSave } from '@services/analysis/reviewedSave';
@@ -56,104 +56,29 @@ import { ContinueProblems } from './ContinueProblems';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
-import type { SpecimenType } from '../../types';
-
-/**
- * Human-readable labels for specimen types
- */
-const SPECIMEN_LABELS: Record<SpecimenType, string> = {
-  'serum': 'Serum',
-  'plasma': 'Plasma',
-  'urine': 'Urine',
-  'urine-24h': '24h Urine',
-  'whole-blood': 'Whole Blood',
-  'capillary': 'Capillary',
-  'saliva': 'Saliva',
-  'csf': 'CSF',
-  'stool': 'Stool',
-  'semen': 'Semen',
-  'other': 'Other',
-};
-
-/** Readable names of the LOINC systems (samples) review shows */
-const SYSTEM_LABELS: Readonly<Record<string, string>> = {
-  'Ser/Plas': 'Serum/Plasma',
-  Ser: 'Serum',
-  Plas: 'Plasma',
-  Bld: 'Whole Blood',
-  BldC: 'Capillary',
-  Urine: 'Urine',
-  Semen: 'Semen',
-  CSF: 'CSF',
-  Saliva: 'Saliva',
-  Stool: 'Stool',
-};
 
 /**
  * The LOINC code with LOINC's name for it, as the license asks, and
  * HemoIO's description of the test when it has one
  */
 function getBiomarkerTooltipContent(biomarker: MatchedBiomarker, catalog: Catalog): string | null {
-  const code = biomarker.loincCode;
-  if (!code) return null;
-  const name = catalog.test(code)?.name;
-  const description = getAddon(catalog, code)?.description;
-  return [name ? `LOINC ${code}: ${name}` : `LOINC ${code}`, description].filter(Boolean).join('\n');
-}
-
-/**
- * Specimen type patterns that can be extracted from biomarker names
- */
-const SPECIMEN_PATTERNS: { pattern: RegExp; type: SpecimenType }[] = [
-  { pattern: /\s*\(urine,?\s*24h?\)\s*$/i, type: 'urine-24h' },
-  { pattern: /\s*\(24h?\s*urine\)\s*$/i, type: 'urine-24h' },
-  { pattern: /\s*\(urine[^)]*\)\s*$/i, type: 'urine' },
-  { pattern: /\s*\(plasma[^)]*\)\s*$/i, type: 'plasma' },
-  { pattern: /\s*\(serum[^)]*\)\s*$/i, type: 'serum' },
-  { pattern: /\s*\(siero[^)]*\)\s*$/i, type: 'serum' }, // Italian for serum
-  { pattern: /\s*\(sangue[^)]*\)\s*$/i, type: 'whole-blood' }, // Italian for blood
-  { pattern: /\s*\(whole[- ]?blood[^)]*\)\s*$/i, type: 'whole-blood' },
-  { pattern: /\s*\(semen[^)]*\)\s*$/i, type: 'semen' },
-  { pattern: /\s*\(liquido seminale[^)]*\)\s*$/i, type: 'semen' }, // Italian
-  { pattern: /\s*\(csf[^)]*\)\s*$/i, type: 'csf' },
-  { pattern: /\s*\(liquor[^)]*\)\s*$/i, type: 'csf' }, // Alternative name
-  { pattern: /\s*\(saliva[^)]*\)\s*$/i, type: 'saliva' },
-  { pattern: /\s*\(stool[^)]*\)\s*$/i, type: 'stool' },
-  { pattern: /\s*\(feci[^)]*\)\s*$/i, type: 'stool' }, // Italian for stool
-];
-
-/**
- * Extract specimen type from biomarker name and return clean name
- */
-function extractSpecimenFromName(name: string): { cleanName: string; extractedSpecimen?: SpecimenType } {
-  for (const { pattern, type } of SPECIMEN_PATTERNS) {
-    if (pattern.test(name)) {
-      return {
-        cleanName: name.replace(pattern, '').trim(),
-        extractedSpecimen: type,
-      };
-    }
-  }
-  return { cleanName: name };
+  const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
+  if (!test) return biomarker.loincCode ? `LOINC ${biomarker.loincCode}` : null;
+  return [loincTestLabel(test), testDescription(catalog, test.code)].filter(Boolean).join('\n');
 }
 
 /** The sample of a value: its LOINC test's, else the one its name gives; '—' for none */
 function specimenLabel(biomarker: MatchedBiomarker, catalog: Catalog): string {
   const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
-  if (test) {
-    if (test.system === 'Urine' && /\b24 ?(?:hour|hr|h) urine\b/i.test(test.name)) return SPECIMEN_LABELS['urine-24h'];
-    return SYSTEM_LABELS[test.system] ?? test.system;
-  }
-  const { extractedSpecimen } = extractSpecimenFromName(biomarker.name);
-  return extractedSpecimen ? SPECIMEN_LABELS[extractedSpecimen] : '—';
+  if (test) return sampleLabel(test);
+  return splitPrintedSample(biomarker.name).sample ?? '—';
 }
 
 /**
  * Get display name - strip specimen suffix if present since it's shown in column
  */
 function getDisplayName(biomarker: MatchedBiomarker): string {
-  const { cleanName } = extractSpecimenFromName(biomarker.name);
-  return cleanName;
+  return splitPrintedSample(biomarker.name).name;
 }
 
 /**

@@ -6,7 +6,7 @@ import {
   resolveDisplayUnit,
 } from './displayUnit';
 
-const GLUCOSE = { name: 'Glucose', canonicalUnit: 'mg/dL', alternativeUnits: ['mmol/L'] };
+const GLUCOSE = { substance: 'Glucose', canonicalUnit: 'mg/dL', alternativeUnits: ['mmol/L'] };
 
 describe('preferredUnitOptions', () => {
   it('lists the standard unit first, then the units it converts to', () => {
@@ -21,7 +21,7 @@ describe('preferredUnitOptions', () => {
   });
 
   it('offers only the standard unit when there are no alternatives', () => {
-    expect(preferredUnitOptions({ name: 'Glucose', canonicalUnit: 'mg/dL' })).toEqual(['mg/dL']);
+    expect(preferredUnitOptions({ substance: 'Glucose', canonicalUnit: 'mg/dL' })).toEqual(['mg/dL']);
   });
 });
 
@@ -32,11 +32,11 @@ describe('preferredUnitFor and resolveDisplayUnit', () => {
   });
 
   it('uses a stored preference spelled another way, as the offered unit', () => {
-    const creatinine = { name: 'Creatinine', canonicalUnit: 'mg/dL', alternativeUnits: ['µmol/L'] };
+    const creatinine = { substance: 'Creatinine', canonicalUnit: 'mg/dL', alternativeUnits: ['µmol/L'] };
     expect(preferredUnitFor(creatinine, 'umol/L')).toBe('µmol/L');
   });
 
-  it('ignores a stored preference the biomarker does not offer', () => {
+  it('ignores a stored preference the test does not offer', () => {
     expect(preferredUnitFor(GLUCOSE, 'stones')).toBeUndefined();
     expect(resolveDisplayUnit(GLUCOSE, 'stones')).toBe('mg/dL');
   });
@@ -46,7 +46,7 @@ describe('preferredUnitFor and resolveDisplayUnit', () => {
     expect(resolveDisplayUnit(GLUCOSE, undefined)).toBe('mg/dL');
   });
 
-  it('has no display unit for a biomarker outside the dictionary', () => {
+  it('has no display unit for a test HemoIO has no standard unit for', () => {
     expect(resolveDisplayUnit(undefined, 'mmol/L')).toBeUndefined();
   });
 });

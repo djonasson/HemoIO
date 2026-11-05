@@ -7,41 +7,37 @@ Feature: Biomarker Dictionary
     Given I am logged into the application
     And I navigate to the Biomarkers page
 
-  # Browsing by Category
-  Scenario: View biomarker categories
-    Then I should see a list of biomarker categories
-    And categories should include "Complete Blood Count"
-    And categories should include "Metabolic Panel"
-    And categories should include "Lipid Panel"
-    And categories should include "Thyroid Function"
-    And categories should include "Iron Studies"
-    And categories should include "Vitamins"
+  # Browsing by LOINC class
+  Scenario: View biomarker groups by LOINC class
+    Then I should see the biomarkers grouped by their LOINC class
+    And the groups should include "Chemistry"
+    And the groups should include "Hematology"
+    And the groups should include "Urinalysis"
+    And the groups should include "Fertility"
 
-  Scenario: Browse biomarkers in a category
-    When I click on the "Complete Blood Count" category
-    Then I should see biomarkers in that category
-    And I should see "White Blood Cell Count (WBC)"
-    And I should see "Red Blood Cell Count (RBC)"
+  Scenario: Browse the biomarkers of a class
+    When I open the "Hematology" group
+    Then I should see biomarkers of that class
+    And I should see "White Blood Cell Count"
+    And I should see "Red Blood Cell Count"
     And I should see "Hemoglobin"
     And I should see "Hematocrit"
-    And I should see "Platelet Count (PLT)"
+    And I should see "Platelet Count"
+    And I should not see a chemistry test such as "Glucose"
 
-  Scenario: Browse metabolic panel biomarkers
-    When I click on the "Metabolic Panel" category
-    Then I should see biomarkers in that category
-    And I should see "Glucose"
+  Scenario: Browse chemistry biomarkers
+    When I open the "Chemistry" group
+    Then I should see "Glucose"
     And I should see "Creatinine"
-    And I should see "BUN"
+    And I should see "Blood Urea Nitrogen"
     And I should see "Sodium"
-    And I should see "Potassium"
-
-  Scenario: Browse lipid panel biomarkers
-    When I click on the "Lipid Panel" category
-    Then I should see biomarkers in that category
     And I should see "Total Cholesterol"
-    And I should see "LDL Cholesterol"
-    And I should see "HDL Cholesterol"
-    And I should see "Triglycerides"
+
+  Scenario: The list shows the tests HemoIO describes and the tests I have values for
+    Given I have values for a LOINC test HemoIO has no description of
+    When I navigate to the Biomarkers page
+    Then the list should include the tests HemoIO describes
+    And it should include the test I have values for, under its LOINC class
 
   # Searching
   Scenario: Search for a biomarker by name
@@ -51,15 +47,15 @@ Feature: Biomarker Dictionary
 
   Scenario: Search for a biomarker by abbreviation
     When I type "WBC" in the search field
-    Then I should see "White Blood Cell Count (WBC)" in the results
-
-  Scenario: Search for a biomarker by its abbreviation in the plural
-    When I type "WBCs" in the search field
-    Then I should see "White Blood Cell Count (WBC)" in the results
+    Then I should see "White Blood Cell Count" in the results
 
   Scenario: Extra spaces in a search do not change the results
     When I type "  white   blood cell " in the search field
-    Then I should see "White Blood Cell Count (WBC)" in the results
+    Then I should see "White Blood Cell Count" in the results
+
+  Scenario: Search finds tests across the whole LOINC catalog
+    When I type the name of a LOINC test that HemoIO has no description of and I have no values for
+    Then I should see that test in the results, named by LOINC
 
   Scenario: Search with no results
     When I type "xyz123" in the search field
@@ -68,7 +64,7 @@ Feature: Biomarker Dictionary
   Scenario: Clear search
     Given I have searched for "glucose"
     When I clear the search field
-    Then I should see all categories again
+    Then I should see all groups again
 
   # Viewing Biomarker Details
   Scenario: View biomarker detail
@@ -79,23 +75,23 @@ Feature: Biomarker Dictionary
     And I should see the unit of measurement
     And I should see a description of what the biomarker measures
 
-  Scenario: User sees specimen type in biomarker details
+  Scenario: User sees the sample in biomarker details
     Given I am viewing the biomarker dictionary
-    When I select a biomarker with specimen type metadata
-    Then I should see the specimen type displayed
-    And the specimen type should use a descriptive label
+    When I select a biomarker
+    Then I should see its sample, from its LOINC test, with a descriptive label
 
   Scenario: User sees LOINC code in biomarker details
     Given I am viewing the biomarker dictionary
-    When I select a biomarker with a LOINC code
+    When I select a biomarker
     Then I should see the LOINC code displayed
     And LOINC's own name for the code beside it
     And the LOINC code should link to the LOINC website
 
-  Scenario: Every biomarker's LOINC code is a LOINC code for that test
-    Given the biomarker dictionary
-    Then every LOINC code it gives should exist in LOINC
-    And LOINC's name for it should describe that test, measured in that specimen
+  Scenario: A test HemoIO has no description of
+    When I open a LOINC test HemoIO has no description of
+    Then I should see LOINC's name for it
+    And I should be told that there is no description yet
+    And no standard reference range should be shown
 
   Scenario: View what high values mean
     Given I am viewing the detail for "Glucose"
@@ -107,10 +103,10 @@ Feature: Biomarker Dictionary
     Then I should see information about what low values may indicate
     And common causes should be listed
 
-  Scenario: View related biomarkers
+  Scenario: View the other LOINC codes of the test
     Given I am viewing the detail for "Glucose"
-    Then I should see related biomarkers
-    And I should be able to click to view their details
+    Then I should see the other LOINC codes my glucose values may be recorded under, such as glucose in mmol/L
+    And each should show its LOINC name and code
 
   Scenario: View personal target if set
     Given I have set a personal target for "Glucose"
@@ -130,7 +126,7 @@ Feature: Biomarker Dictionary
   Scenario: Return to category list from detail
     Given I am viewing the detail for a biomarker
     When I click the back button
-    Then I should return to the category or search results
+    Then I should return to the group or search results
     And my search and scroll position should be kept
 
   Scenario: A biomarker page opened from another page starts at the top
@@ -149,10 +145,6 @@ Feature: Biomarker Dictionary
     When I choose Biomarkers in the menu
     Then I should see the biomarker list
 
-  Scenario: Navigate between biomarker details
-    Given I am viewing the detail for "Glucose"
-    When I click on a related biomarker "HbA1c"
-    Then I should see the detail view for "HbA1c"
 
   # Integration with Lab Results
   Scenario: View my results for a biomarker
@@ -177,6 +169,6 @@ Feature: Biomarker Dictionary
 
   Scenario: Screen reader compatibility
     Then all biomarker information should have appropriate ARIA labels
-    And categories should be properly announced
+    And groups should be properly announced
     And search results should be announced when updated
 

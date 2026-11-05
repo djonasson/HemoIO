@@ -1,8 +1,9 @@
 /**
  * BiomarkerDetail Component
  *
- * Displays detailed information about a selected biomarker: reference
- * information, your results, your personal target and related biomarkers.
+ * Displays detailed information about a test: its LOINC code and names,
+ * HemoIO's reference information when it has some, your results, your
+ * personal target and the other LOINC codes the test's values may have.
  */
 
 import { useEffect, useRef } from 'react';
@@ -30,39 +31,20 @@ import {
   IconChartLine,
   IconTarget,
 } from '@tabler/icons-react';
-import { CATEGORY_NAMES, getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
-import { loincName } from '@data/biomarkers/loinc';
+import { useCatalog } from '@contexts/useCatalog';
+import { getAddon } from '@data/loinc/addons';
+import {
+  sampleLabel,
+  standardRange,
+  testDisplayName,
+  testUnits,
+} from '@data/loinc/display';
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
 import { formatShortDate } from '@/utils/formatShortDate';
 import { hasTargetRange } from '@components/settings/personalTarget';
-import type { SpecimenType } from '@/types';
 import type { BiomarkerResultSummary } from '@services/statistics';
 import type { PersonalTargetRange } from '@hooks/usePreferences';
-
-/**
- * Human-readable labels for specimen types
- */
-const SPECIMEN_LABELS: Record<SpecimenType, string> = {
-  'serum': 'Serum',
-  'plasma': 'Plasma',
-  'urine': 'Urine',
-  'urine-24h': '24h Urine',
-  'whole-blood': 'Whole Blood',
-  'capillary': 'Capillary',
-  'saliva': 'Saliva',
-  'csf': 'CSF',
-  'stool': 'Stool',
-  'semen': 'Semen',
-  'other': 'Other',
-};
-
-/**
- * Get human-readable specimen label
- */
-function getSpecimenLabel(specimenType: SpecimenType): string {
-  return SPECIMEN_LABELS[specimenType] || specimenType;
-}
 
 /** Status words, so status never relies on colour alone */
 const STATUS_LABELS: Record<BiomarkerResultSummary['latest']['status'], string> = {
@@ -77,53 +59,55 @@ function formatSummaryValue(value: number | string | boolean): string {
   return String(value);
 }
 
-/** The name as the list shows it, with its best-known alias */
-function listLabel(biomarker: BiomarkerDefinition): string {
-  return biomarker.aliases.length > 0
-    ? `${biomarker.name} (${biomarker.aliases[0]})`
-    : biomarker.name;
-}
-
 /**
  * Props for BiomarkerDetail component
  */
 export interface BiomarkerDetailProps {
-  /** The biomarker to display */
-  biomarker: BiomarkerDefinition;
+  /** The test's trend code */
+  code: string;
   /** null: no recorded values */
   summary: BiomarkerResultSummary | null;
-  /** The user's target, in the biomarker's standard unit */
+  /** The user's target, in the test's standard unit */
   personalTarget?: PersonalTargetRange;
   /** Return to the biomarker list */
   onBack: () => void;
   onViewTrend: (biomarkerKey: string) => void;
   onEditTarget: () => void;
-  onSelectRelated: (biomarker: BiomarkerDefinition) => void;
 }
 
 /**
  * BiomarkerDetail component for displaying biomarker reference information
  */
 export function BiomarkerDetail({
-  biomarker,
+  code,
   summary,
   personalTarget,
   onBack,
   onViewTrend,
   onEditTarget,
-  onSelectRelated,
 }: BiomarkerDetailProps): React.ReactNode {
+  const catalog = useCatalog();
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Opening a detail (or a related one) moves focus to its name, so screen
-  // readers announce the new page
+  // Opening a detail moves focus to its name, so screen readers announce the new page
   useEffect(() => {
     headingRef.current?.focus();
-  }, [biomarker.key]);
+  }, [code]);
 
+  const test = catalog.test(code);
+  if (!test) return null;
+  const name = testDisplayName(catalog, { biomarkerKey: code });
+  const addon = getAddon(catalog, code);
+  const range = standardRange(catalog, code);
+  const units = testUnits(catalog, code);
+  const shownUnits = units ? [units.canonicalUnit, ...units.alternativeUnits] : test.units;
+  const targetUnit = units?.canonicalUnit ?? range?.unit ?? '';
   const hasTarget = hasTargetRange(personalTarget);
-  const related = biomarker.related
-    .map((key) => getBiomarkerByKey(key))
-    .filter((entry): entry is BiomarkerDefinition => entry !== undefined);
+  // The codes the test's values may also be saved under: glucose in mmol/L for glucose in mg/dL
+  const otherCodes = catalog
+    .groupCodes(catalog.trendGroup(code))
+    .filter((member) => member !== code)
+    .map((member) => catalog.test(member))
+    .filter((member) => member !== undefined);
 
   return (
     <Paper p="md" withBorder>
@@ -136,54 +120,42 @@ export function BiomarkerDetail({
         </Group>
         <Box>
           <Title order={3} ref={headingRef} tabIndex={-1}>
-            {biomarker.name}
+            {name}
           </Title>
-          {biomarker.aliases.length > 0 && (
-            <Text size="sm" c="dimmed">
-              Also known as: {biomarker.aliases.join(', ')}
-            </Text>
-          )}
         </Box>
 
-        {/* Category Badge */}
+        {/* LOINC class */}
         <Group gap="xs">
           <Badge variant="light" color="blue">
-            {CATEGORY_NAMES[biomarker.category]}
+            {catalog.classLabel(test.classCode)}
           </Badge>
         </Group>
 
-        {/* Specimen Type */}
-        {biomarker.specimenType && (
-          <Group gap="xs">
-            <IconTestPipe size={16} style={{ color: 'var(--mantine-color-dimmed)' }} />
-            <Text size="sm" c="dimmed">
-              Specimen: {getSpecimenLabel(biomarker.specimenType)}
-            </Text>
-          </Group>
-        )}
+        <Group gap="xs">
+          <IconTestPipe size={16} style={{ color: 'var(--mantine-color-dimmed)' }} />
+          <Text size="sm" c="dimmed">
+            Sample: {sampleLabel(test)}
+          </Text>
+        </Group>
 
         {/* LOINC Code, with LOINC's name for it as its license asks */}
-        {biomarker.loincCode && (
-          <Stack gap={2}>
-            <Text size="sm" c="dimmed">
-              LOINC:{' '}
-              <Anchor
-                href={`https://loinc.org/${biomarker.loincCode}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                size="sm"
-              >
-                {biomarker.loincCode}
-                <IconExternalLink size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
-              </Anchor>
-            </Text>
-            {loincName(biomarker.loincCode) && (
-              <Text size="sm" c="dimmed">
-                {loincName(biomarker.loincCode)}
-              </Text>
-            )}
-          </Stack>
-        )}
+        <Stack gap={2}>
+          <Text size="sm" c="dimmed">
+            LOINC:{' '}
+            <Anchor
+              href={`https://loinc.org/${test.code}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+            >
+              {test.code}
+              <IconExternalLink size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} />
+            </Anchor>
+          </Text>
+          <Text size="sm" c="dimmed">
+            {test.name}
+          </Text>
+        </Stack>
 
         <Divider />
 
@@ -192,11 +164,13 @@ export function BiomarkerDetail({
           <Text size="sm" fw={500} mb="xs">
             Description
           </Text>
-          <Text size="sm">{biomarker.description}</Text>
+          <Text size="sm" c={addon?.description ? undefined : 'dimmed'}>
+            {addon?.description ?? 'No description yet'}
+          </Text>
         </Box>
 
         {/* Reference Range */}
-        {biomarker.defaultReferenceRange && (
+        {range && (
           <Box>
             <Text size="sm" fw={500} mb="xs">
               Reference Range
@@ -205,8 +179,7 @@ export function BiomarkerDetail({
               <Group gap="xs" align="center">
                 <IconFlask size={16} />
                 <Text size="sm" fw={500}>
-                  {biomarker.defaultReferenceRange.low} - {biomarker.defaultReferenceRange.high}{' '}
-                  {biomarker.defaultReferenceRange.unit}
+                  {formatRange(range.low, range.high)} {range.unit}
                 </Text>
               </Group>
               <Text size="xs" c="dimmed" mt="xs">
@@ -216,8 +189,8 @@ export function BiomarkerDetail({
           </Box>
         )}
 
-        <Box component="section" aria-labelledby={`${biomarker.key}-results`}>
-          <Title order={4} size="sm" id={`${biomarker.key}-results`} mb="xs">
+        <Box component="section" aria-labelledby={`${code}-results`}>
+          <Title order={4} size="sm" id={`${code}-results`} mb="xs">
             Your results
           </Title>
           {summary ? (
@@ -241,7 +214,7 @@ export function BiomarkerDetail({
                   variant="light"
                   size="xs"
                   leftSection={<IconChartLine size={14} />}
-                  onClick={() => onViewTrend(biomarker.key)}
+                  onClick={() => onViewTrend(code)}
                 >
                   View trend
                 </Button>
@@ -249,13 +222,13 @@ export function BiomarkerDetail({
             </Stack>
           ) : (
             <Text size="sm" c="dimmed">
-              You have no recorded values for {biomarker.name}
+              You have no recorded values for {name}
             </Text>
           )}
         </Box>
 
-        <Box component="section" aria-labelledby={`${biomarker.key}-target`}>
-          <Title order={4} size="sm" id={`${biomarker.key}-target`} mb="xs">
+        <Box component="section" aria-labelledby={`${code}-target`}>
+          <Title order={4} size="sm" id={`${code}-target`} mb="xs">
             Personal target
           </Title>
           <Group justify="space-between" align="center">
@@ -265,7 +238,7 @@ export function BiomarkerDetail({
                   <IconTarget size={16} aria-hidden />
                   <Badge color="blue">Your target</Badge>
                   <Text size="sm" fw={500}>
-                    {formatRange(personalTarget.low, personalTarget.high)} {biomarker.canonicalUnit}
+                    {formatRange(personalTarget.low, personalTarget.high)} {targetUnit}
                   </Text>
                 </Group>
               </Paper>
@@ -280,25 +253,24 @@ export function BiomarkerDetail({
           </Group>
         </Box>
 
-        {/* Units */}
-        <Box>
-          <Text size="sm" fw={500} mb="xs">
-            Units
-          </Text>
-          <Group gap="xs">
-            <Badge variant="outline" color="gray">
-              {biomarker.canonicalUnit}
-            </Badge>
-            {biomarker.alternativeUnits.map((unit) => (
-              <Badge key={unit} variant="light" color="gray">
-                {unit}
-              </Badge>
-            ))}
-          </Group>
-        </Box>
+        {/* Units: the standard one outlined */}
+        {shownUnits.length > 0 && (
+          <Box>
+            <Text size="sm" fw={500} mb="xs">
+              Units
+            </Text>
+            <Group gap="xs">
+              {shownUnits.map((unit, index) => (
+                <Badge key={unit} variant={units && index === 0 ? 'outline' : 'light'} color="gray">
+                  {unit}
+                </Badge>
+              ))}
+            </Group>
+          </Box>
+        )}
 
         {/* Indications */}
-        {(biomarker.highIndication || biomarker.lowIndication) && (
+        {(addon?.highIndication || addon?.lowIndication) && (
           <>
             <Divider />
             <Box>
@@ -306,24 +278,24 @@ export function BiomarkerDetail({
                 What Abnormal Values May Indicate
               </Text>
               <Stack gap="sm">
-                {biomarker.highIndication && (
+                {addon?.highIndication && (
                   <Alert
                     variant="light"
                     color="red"
                     icon={<IconArrowUp size={16} />}
                     title="High Values"
                   >
-                    <Text size="sm">{biomarker.highIndication}</Text>
+                    <Text size="sm">{addon?.highIndication}</Text>
                   </Alert>
                 )}
-                {biomarker.lowIndication && (
+                {addon?.lowIndication && (
                   <Alert
                     variant="light"
                     color="blue"
                     icon={<IconArrowDown size={16} />}
                     title="Low Values"
                   >
-                    <Text size="sm">{biomarker.lowIndication}</Text>
+                    <Text size="sm">{addon?.lowIndication}</Text>
                   </Alert>
                 )}
               </Stack>
@@ -331,23 +303,21 @@ export function BiomarkerDetail({
           </>
         )}
 
-        {related.length > 0 && (
-          <Box component="section" aria-labelledby={`${biomarker.key}-related`}>
-            <Title order={4} size="sm" id={`${biomarker.key}-related`} mb="xs">
-              Related biomarkers
+        {otherCodes.length > 0 && (
+          <Box component="section" aria-labelledby={`${code}-codes`}>
+            <Title order={4} size="sm" id={`${code}-codes`} mb="xs">
+              Other LOINC codes
             </Title>
-            <Group gap="xs">
-              {related.map((entry) => (
-                <Button
-                  key={entry.key}
-                  variant="light"
-                  size="xs"
-                  onClick={() => onSelectRelated(entry)}
-                >
-                  {listLabel(entry)}
-                </Button>
+            <Text size="xs" c="dimmed" mb="xs">
+              Your values for {name} may also be recorded under these codes.
+            </Text>
+            <Stack gap={4} component="ul" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {otherCodes.map((member) => (
+                <Text key={member.code} component="li" size="sm">
+                  {member.name} · {member.code}
+                </Text>
               ))}
-            </Group>
+            </Stack>
           </Box>
         )}
 

@@ -15,10 +15,6 @@ vi.mock('@hooks/useAlerts', () => ({
   useAlerts: vi.fn(),
 }));
 
-vi.mock('@data/biomarkers/dictionary', () => ({
-  CATEGORY_NAMES: { metabolic: 'Metabolic Panel' },
-}));
-
 function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
   return {
     id: '1',
@@ -26,7 +22,7 @@ function alert(options: Partial<BiomarkerAlert> = {}): BiomarkerAlert {
     severity: 'warning',
     biomarkerKey: 'marker-1',
     biomarkerName: 'Glucose',
-    category: 'metabolic',
+    category: 'Chemistry',
     value: 150,
     unit: 'mg/dL',
     referenceRange: { low: 70, high: 100 },

@@ -7,248 +7,108 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { BiomarkerDetail, type BiomarkerDetailProps } from './BiomarkerDetail';
-import { getBiomarkerByKey, type BiomarkerDefinition } from '@data/biomarkers';
-import { loadCatalog } from '@data/loinc/catalog';
+import { loadCatalog, type Catalog } from '@data/loinc/catalog';
+import { CatalogContext } from '@contexts/useCatalog';
 
-// LOINC names come from the catalog, loaded as in the unlocked app
+// Names, ranges and the other codes come from the catalog, loaded as in the unlocked app
+let catalog: Catalog;
 beforeAll(async () => {
-  await loadCatalog();
+  catalog = await loadCatalog();
 });
 
-/** Renders the detail of `biomarker` with no results, no target and spy callbacks */
+const WBC = '6690-2';
+const GLUCOSE = '2345-7';
+/** Glucose in blood: a test HemoIO has no description of */
+const UNDESCRIBED = '2339-0';
+
+/** Renders the detail of `code` with no results, no target and spy callbacks */
 function renderDetailOf(
-  biomarker: BiomarkerDefinition,
+  code: string,
   overrides: Partial<BiomarkerDetailProps> = {}
 ): { props: BiomarkerDetailProps } {
   const props: BiomarkerDetailProps = {
-    biomarker,
+    code,
     summary: null,
     onBack: vi.fn(),
     onViewTrend: vi.fn(),
     onEditTarget: vi.fn(),
-    onSelectRelated: vi.fn(),
     ...overrides,
   };
   render(
     <MantineProvider env="test">
-      <BiomarkerDetail {...props} />
+      <CatalogContext.Provider value={catalog}>
+        <BiomarkerDetail {...props} />
+      </CatalogContext.Provider>
     </MantineProvider>
   );
   return { props };
 }
 
-function createMockBiomarker(): BiomarkerDefinition {
-  return {
-    key: 'white-blood-cell-count',
-    name: 'White Blood Cell Count',
-    aliases: ['WBC', 'Leukocytes'],
-    category: 'cbc',
-    canonicalUnit: '10^9/L',
-    alternativeUnits: ['K/uL', 'cells/µL'],
-    defaultReferenceRange: { low: 4.5, high: 11.0, unit: '10^9/L' },
-    description: 'Measures the total number of white blood cells, which fight infection.',
-    highIndication: 'May indicate infection, inflammation, or immune disorders',
-    lowIndication: 'May indicate bone marrow problems or autoimmune conditions',
-    specimenType: 'whole-blood',
-    loincCode: '6690-2',
-    related: [],
-  };
-}
-
 describe('BiomarkerDetail', () => {
   describe('rendering', () => {
-    it('should render the biomarker name', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText('White Blood Cell Count')).toBeInTheDocument();
+    it("names the test by HemoIO's short name", () => {
+      renderDetailOf(WBC);
+      expect(screen.getByRole('heading', { level: 3, name: 'White Blood Cell Count' })).toBeInTheDocument();
     });
 
-    it('should render aliases', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText(/Also known as.*WBC.*Leukocytes/)).toBeInTheDocument();
+    it('shows its LOINC class', () => {
+      renderDetailOf(WBC);
+      expect(screen.getByText('Hematology')).toBeInTheDocument();
     });
 
-    it('should render category badge', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText('Complete Blood Count')).toBeInTheDocument();
+    it('shows its sample, from its LOINC test', () => {
+      renderDetailOf(WBC);
+      expect(screen.getByText('Sample: Whole Blood')).toBeInTheDocument();
     });
 
-    it('should render description', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(
-        screen.getByText(/Measures the total number of white blood cells/)
-      ).toBeInTheDocument();
-    });
-
-    it('should render reference range', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText(/4\.5 - 11/)).toBeInTheDocument();
-    });
-
-    it('should render canonical unit', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
+    it('shows the description, standard range and units', () => {
+      renderDetailOf(WBC);
+      expect(screen.getByText(/Measures the total number of white blood cells/)).toBeInTheDocument();
+      expect(screen.getByText('4.5 - 11 10^9/L')).toBeInTheDocument();
       expect(screen.getByText('10^9/L')).toBeInTheDocument();
     });
 
-    it('should render alternative units', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText('K/uL')).toBeInTheDocument();
-      expect(screen.getByText('cells/µL')).toBeInTheDocument();
-    });
-
-    it('should render high indication', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
+    it('shows what high and low values may indicate', () => {
+      renderDetailOf(WBC);
       expect(screen.getByText('High Values')).toBeInTheDocument();
-      expect(
-        screen.getByText(/May indicate infection, inflammation/)
-      ).toBeInTheDocument();
-    });
-
-    it('should render low indication', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
       expect(screen.getByText('Low Values')).toBeInTheDocument();
-      expect(screen.getByText(/May indicate bone marrow problems/)).toBeInTheDocument();
     });
 
     it('should render educational disclaimer', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(
-        screen.getByText(/for educational purposes only/)
-      ).toBeInTheDocument();
-    });
-  });
-
-  describe('optional fields', () => {
-    it('should not render reference range when not provided', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        defaultReferenceRange: undefined,
-      };
-      renderDetailOf(biomarker);
-
-      expect(screen.queryByText('Reference Range')).not.toBeInTheDocument();
-    });
-
-    it('should not render high indication when not provided', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        highIndication: undefined,
-      };
-      renderDetailOf(biomarker);
-
-      expect(screen.queryByText('High Values')).not.toBeInTheDocument();
-    });
-
-    it('should not render low indication when not provided', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        lowIndication: undefined,
-      };
-      renderDetailOf(biomarker);
-
-      expect(screen.queryByText('Low Values')).not.toBeInTheDocument();
-    });
-
-    it('should not render aliases section when empty', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        aliases: [],
-      };
-      renderDetailOf(biomarker);
-
-      expect(screen.queryByText(/Also known as/)).not.toBeInTheDocument();
-    });
-  });
-
-  describe('specimen type display', () => {
-    it('should display specimen type when available', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
-      expect(screen.getByText(/Specimen: Whole Blood/)).toBeInTheDocument();
-    });
-
-    it('should not display specimen type when not available', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        specimenType: undefined,
-      };
-      renderDetailOf(biomarker);
-
-      expect(screen.queryByText(/Specimen:/)).not.toBeInTheDocument();
+      renderDetailOf(WBC);
+      expect(screen.getByText(/for educational purposes only/)).toBeInTheDocument();
     });
   });
 
   describe('LOINC code display', () => {
-    it('should display LOINC code when available', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
+    it("shows the code with LOINC's own name for it", () => {
+      renderDetailOf(WBC);
       expect(screen.getByText('6690-2')).toBeInTheDocument();
+      expect(screen.getByText(catalog.test(WBC)!.name)).toBeInTheDocument();
     });
 
-    it("shows LOINC's own name for the code", () => {
-      renderDetailOf(createMockBiomarker());
-
-      expect(
-        screen.getByText('Leukocytes [#/volume] in Blood by Automated count')
-      ).toBeInTheDocument();
-    });
-
-    it('should link LOINC code to correct URL', () => {
-      const biomarker = createMockBiomarker();
-      renderDetailOf(biomarker);
-
+    it('links the code to the LOINC website', () => {
+      renderDetailOf(WBC);
       const link = screen.getByRole('link', { name: /6690-2/i });
       expect(link).toHaveAttribute('href', 'https://loinc.org/6690-2');
       expect(link).toHaveAttribute('target', '_blank');
     });
+  });
 
-    it('should not display LOINC code when not available', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        loincCode: undefined,
-      };
-      renderDetailOf(biomarker);
+  describe('a test HemoIO has no description of', () => {
+    it("shows LOINC's names, says there is no description yet and shows no standard range", () => {
+      const test = catalog.test(UNDESCRIBED)!;
+      renderDetailOf(UNDESCRIBED);
 
-      expect(screen.queryByText('LOINC:')).not.toBeInTheDocument();
-    });
-
-    it('should handle missing LOINC and specimen gracefully', () => {
-      const biomarker: BiomarkerDefinition = {
-        ...createMockBiomarker(),
-        loincCode: undefined,
-        specimenType: undefined,
-      };
-      renderDetailOf(biomarker);
-
-      // Should still render the component without errors
-      expect(screen.getByText('White Blood Cell Count')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 3, name: test.shortName || test.name })).toBeInTheDocument();
+      expect(screen.getByText(test.name)).toBeInTheDocument();
+      expect(screen.getByText('No description yet')).toBeInTheDocument();
+      expect(screen.queryByText('Reference Range')).not.toBeInTheDocument();
+      expect(screen.queryByText('High Values')).not.toBeInTheDocument();
     });
   });
 
   describe('sections', () => {
-    // The real Glucose entry, so its related biomarkers resolve
-    const GLUCOSE = getBiomarkerByKey('glucose')!;
     const renderDetail = (overrides: Partial<BiomarkerDetailProps> = {}) =>
       renderDetailOf(GLUCOSE, overrides);
     const summary = {
@@ -282,7 +142,7 @@ describe('BiomarkerDetail', () => {
       expect(within(yours).getByText('2 results')).toBeInTheDocument();
 
       await userEvent.click(within(yours).getByRole('button', { name: 'View trend' }));
-      expect(props.onViewTrend).toHaveBeenCalledWith('glucose');
+      expect(props.onViewTrend).toHaveBeenCalledWith(GLUCOSE);
     });
 
     it('says one result in the singular', () => {
@@ -322,20 +182,14 @@ describe('BiomarkerDetail', () => {
       expect(props.onEditTarget).toHaveBeenCalled();
     });
 
-    it('links related biomarkers to their details', async () => {
-      const { props } = renderDetail();
-      const related = screen.getByRole('region', { name: 'Related biomarkers' });
-      await userEvent.click(
-        within(related).getByRole('button', { name: 'Hemoglobin A1c (HbA1c)' })
-      );
-      expect(props.onSelectRelated).toHaveBeenCalledWith(
-        expect.objectContaining({ key: 'hemoglobin-a1c' })
-      );
-    });
-
-    it('has no related section for a biomarker outside the groups', () => {
-      renderDetailOf(createMockBiomarker());
-      expect(screen.queryByRole('region', { name: 'Related biomarkers' })).not.toBeInTheDocument();
+    it('lists the other LOINC codes of the test, each with its LOINC name', () => {
+      renderDetail();
+      const codes = screen.getByRole('region', { name: 'Other LOINC codes' });
+      // Glucose in mmol/L trends with glucose in mg/dL
+      expect(
+        within(codes).getByText(`${catalog.test('14749-6')!.name} · 14749-6`)
+      ).toBeInTheDocument();
+      expect(within(codes).queryByText(new RegExp(`· ${GLUCOSE}$`))).not.toBeInTheDocument();
     });
   });
 });
