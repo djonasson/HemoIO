@@ -19,10 +19,8 @@ import {
 import {
   LAB_REPORT_SYSTEM_PROMPT,
   createAnalysisPrompt,
-  createTestChoicePrompt,
-  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { choiceAnswerLimit, parseTestChoices } from './testChoice';
+import { chooseTestsWith } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -175,29 +173,14 @@ export class OpenAIProvider implements AIProvider {
     requests: TestChoiceRequest[],
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
   ): Promise<TestChoice[]> {
-    if (requests.length === 0) return [];
-
-    const messages: OpenAIMessage[] = [
-      { role: 'system', content: TEST_CHOICE_SYSTEM_PROMPT },
-      { role: 'user', content: createTestChoicePrompt(requests) },
-    ];
-
-    try {
-      const response = await this.makeRequest(messages, {
-        ...options,
-        maxTokens: choiceAnswerLimit(this.config.maxTokens, requests.length),
-      });
-      // A cut-off answer keeps the choices it completed
-      return parseTestChoices(response.choices[0]?.message?.content, requests);
-    } catch (error) {
-      if (error instanceof AIAnalysisError) {
-        throw error;
-      }
-      throw new AIAnalysisError(
-        `OpenAI test choice failed: ${error instanceof Error ? error.message : String(error)}`,
-        'openai'
-      );
-    }
+    return chooseTestsWith('openai', this.config.maxTokens, requests, async (system, user, maxTokens) => {
+      const messages: OpenAIMessage[] = [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ];
+      const response = await this.makeRequest(messages, { ...options, maxTokens });
+      return response.choices[0]?.message?.content;
+    });
   }
 
   /**

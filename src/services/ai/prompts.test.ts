@@ -41,7 +41,7 @@ describe('the test choice prompt', () => {
         candidates: [{ code: '2162-6', name: 'Creatinine [Mass/volume] in Urine', score: 0.9 } as never],
       },
     ]);
-    expect(prompt).toContain('"id": "1"');
+    expect(prompt).toContain('"id":"1"');
     expect(prompt).toContain('Creatinina');
     expect(prompt).toContain('24h urine');
     expect(prompt).toContain('2162-6');

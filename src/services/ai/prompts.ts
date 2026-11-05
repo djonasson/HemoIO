@@ -215,5 +215,5 @@ export function createTestChoicePrompt(requests: TestChoiceRequest[]): string {
     ...(request.specimenHint ? { specimen: request.specimenHint } : {}),
     candidates: request.candidates.map(({ code, name }) => ({ code, name })),
   }));
-  return `Choose the LOINC test for each value below.\n\nVALUES:\n${JSON.stringify(values, null, 2)}`;
+  return `Choose the LOINC test for each value below.\n\nVALUES:\n${JSON.stringify(values)}`;
 }

@@ -18,10 +18,8 @@ import { AIAnalysisError, AIConfigurationError } from './types';
 import {
   LAB_REPORT_SYSTEM_PROMPT,
   createAnalysisPrompt,
-  createTestChoicePrompt,
-  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { choiceAnswerLimit, parseTestChoices } from './testChoice';
+import { chooseTestsWith } from './testChoice';
 import { parseIntervalValue } from './parseIntervalValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
@@ -180,33 +178,12 @@ export class AnthropicProvider implements AIProvider {
     requests: TestChoiceRequest[],
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
   ): Promise<TestChoice[]> {
-    if (requests.length === 0) return [];
-
-    const messages: AnthropicMessage[] = [
-      { role: 'user', content: createTestChoicePrompt(requests) },
-    ];
-
-    try {
-      const response = await this.makeRequest(
-        messages,
-        TEST_CHOICE_SYSTEM_PROMPT,
-        options.rateLimit,
-        options.signal,
-        choiceAnswerLimit(this.config.maxTokens, requests.length)
-      );
-      // Thinking blocks may come first; a refusal has no readable choices,
-      // which is no choice for any value; a cut-off keeps those it completed
-      const content = response.content.find((block) => block.type === 'text')?.text;
-      return parseTestChoices(content, requests);
-    } catch (error) {
-      if (error instanceof AIAnalysisError) {
-        throw error;
-      }
-      throw new AIAnalysisError(
-        `Anthropic test choice failed: ${error instanceof Error ? error.message : String(error)}`,
-        'anthropic'
-      );
-    }
+    return chooseTestsWith('anthropic', this.config.maxTokens, requests, async (system, user, answerLimit) => {
+      const messages: AnthropicMessage[] = [{ role: 'user', content: user }];
+      const response = await this.makeRequest(messages, system, options.rateLimit, options.signal, answerLimit);
+      // Thinking blocks may come first; a refusal has no readable choices, which is no choice for any value
+      return response.content.find((block) => block.type === 'text')?.text;
+    });
   }
 
   /**

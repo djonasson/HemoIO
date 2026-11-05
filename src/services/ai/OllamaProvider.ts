@@ -19,10 +19,8 @@ import {
 import {
   LAB_REPORT_SYSTEM_PROMPT,
   createAnalysisPrompt,
-  createTestChoicePrompt,
-  TEST_CHOICE_SYSTEM_PROMPT,
 } from './prompts';
-import { choiceAnswerLimit, parseTestChoices } from './testChoice';
+import { chooseTestsWith } from './testChoice';
 import {
   OLLAMA_DEFAULTS,
   isOllamaRunning,
@@ -152,34 +150,18 @@ export class OllamaProvider implements AIProvider {
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'> = {}
   ): Promise<TestChoice[]> {
     if (requests.length === 0) return [];
-
     const modelToUse = await this.ensureModel();
-    const messages: ChatMessage[] = [
-      { role: 'system', content: TEST_CHOICE_SYSTEM_PROMPT },
-      { role: 'user', content: createTestChoicePrompt(requests) },
-    ];
-    const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
-    // About 40 tokens of answer per value, never below the configured limit
-    const { size, answerRoom } = ollamaContext(
-      characters,
-      choiceAnswerLimit(this.maxTokens, requests.length),
-      0,
-      CONTEXT_SLACK
-    );
-
-    try {
+    return chooseTestsWith('ollama', this.maxTokens, requests, async (system, user, answerLimit) => {
+      const messages: ChatMessage[] = [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ];
+      const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
+      const { size, answerRoom } = ollamaContext(characters, answerLimit, 0, CONTEXT_SLACK);
       const response = await this.sendAtKeptSize(messages, modelToUse, options, size, answerRoom);
-      // An empty answer has no choices; a cut-off one keeps those it completed
-      return parseTestChoices(response.message?.content, requests);
-    } catch (error) {
-      if (error instanceof AIAnalysisError) {
-        throw error;
-      }
-      throw new AIAnalysisError(
-        `Ollama test choice failed: ${error instanceof Error ? error.message : String(error)}`,
-        'ollama'
-      );
-    }
+      // An empty answer has no choices
+      return response.message?.content;
+    });
   }
 
   /**

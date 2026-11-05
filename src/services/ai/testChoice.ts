@@ -3,7 +3,9 @@
  * providers: whatever the model answers, a code outside the candidates is
  * never accepted.
  */
-import type { TestChoice, TestChoiceRequest } from './types';
+import { createTestChoicePrompt, TEST_CHOICE_SYSTEM_PROMPT } from './prompts';
+import { AI_PROVIDER_NAMES, AIAnalysisError } from './types';
+import type { AIProviderType, TestChoice, TestChoiceRequest } from './types';
 
 /** About how many tokens one value's choice takes in the answer */
 const TOKENS_PER_CHOICE = 40;
@@ -11,6 +13,38 @@ const TOKENS_PER_CHOICE = 40;
 /** The answer limit for choosing the tests of `count` values: room for each, never below the configured limit */
 export function choiceAnswerLimit(configured: number, count: number): number {
   return Math.max(configured, count * TOKENS_PER_CHOICE);
+}
+
+/** Sends a test-choice prompt to a provider and gives back its answer: parsed JSON or the model's text */
+export type SendChoicePrompt = (system: string, user: string, answerLimit: number) => Promise<unknown>;
+
+/**
+ * Choose the test of each printed value among its candidates, in one call
+ * through `send`. A provider's own errors pass through; any other failure
+ * becomes one of the provider's.
+ */
+export async function chooseTestsWith(
+  provider: AIProviderType,
+  configuredLimit: number,
+  requests: TestChoiceRequest[],
+  send: SendChoicePrompt
+): Promise<TestChoice[]> {
+  if (requests.length === 0) return [];
+  try {
+    const answer = await send(
+      TEST_CHOICE_SYSTEM_PROMPT,
+      createTestChoicePrompt(requests),
+      choiceAnswerLimit(configuredLimit, requests.length)
+    );
+    // A cut-off answer keeps the choices it completed
+    return parseTestChoices(answer, requests);
+  } catch (error) {
+    if (error instanceof AIAnalysisError) throw error;
+    throw new AIAnalysisError(
+      `${AI_PROVIDER_NAMES[provider]} test choice failed: ${error instanceof Error ? error.message : String(error)}`,
+      provider
+    );
+  }
 }
 
 /** No choice: the value stays undecided and goes to the user */
