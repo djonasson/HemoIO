@@ -836,6 +836,8 @@ describe('matchLocally in the generated catalog', () => {
     ['LH urinario', 'mUI/mL', undefined],
     // C3 activator is not complement C3 because "complemento" in brackets names it
     ['C3 attivatore (complemento)', 'mg/L', undefined],
+    // Beside "A 2" of an electrophoresis, "A 1" may be hemoglobin A: not taken as glycated HbA1
+    ['Emoglobina A 1', '%', undefined],
   ])('leaves %s in %s ambiguous', async (name, unit, first) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).toBe('ambiguous');

@@ -629,8 +629,9 @@ export function matchLocally(
   const catalog = withSearchesKept(fullCatalog);
   const ucum = toUcum(value.unit);
   const properties = ucum ? ucumProperties(ucum) : [];
-  // A letter and its number written apart are one name: "Vitamina B 12" is "Vitamina B12"
-  const whole = spellGreek(value.name.trim()).replace(/(?<=^|\s)(\p{L}) (\d{1,2})(?=\s|$)/gu, '$1$2');
+  // A letter and its two-digit number written apart are one name: "Vitamina B 12" is "Vitamina B12".
+  // A spaced single digit often numbers a series ("Emoglobina A 1", "A 2"), so it stays apart.
+  const whole = spellGreek(value.name.trim()).replace(/(?<=^|\s)(\p{L}) (\d{2})(?=\s|$)/gu, '$1$2');
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
   const isLoincName = catalog.named(whole).length > 0;
