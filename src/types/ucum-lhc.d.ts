@@ -17,9 +17,16 @@ declare module '@lhncbc/ucum-lhc' {
     toVal: number | null;
   }
 
+  export interface UcumConversionOptions {
+    /** g/mol: needed to convert a mass to moles */
+    molecularWeight?: number | null;
+    /** The ion's charge: needed to convert moles or a mass to equivalents */
+    charge?: number | null;
+  }
+
   export class UcumLhcUtils {
     static getInstance(): UcumLhcUtils;
     getSpecifiedUnit(unit: string, valConv: string): UcumSpecifiedUnit;
-    convertUnitTo(from: string, value: number, to: string): UcumConversion;
+    convertUnitTo(from: string, value: number, to: string, options?: UcumConversionOptions): UcumConversion;
   }
 }
