@@ -5,9 +5,21 @@
 
 const UNKNOWN_PREFIX = 'unknown:';
 
-/** A name as every lookup reads it: case, spacing and accent encoding aside */
+/**
+ * A name as every lookup reads it: case, spacing, accent encoding and the
+ * accents of Latin letters aside ("velocità", "velocita" and "velocita'" are
+ * one word; an apostrophe ending a word is a typed accent, one inside a
+ * word an elision)
+ */
 export function nameKey(name: string): string {
-  return name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return name
+    .normalize('NFD')
+    .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .replace(/(\p{L})'(?=\s|$)/gu, '$1')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**

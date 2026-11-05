@@ -112,14 +112,22 @@ export function* parseCsv(text) {
 }
 
 /**
- * A name as every lookup reads it: case, spacing and accent encoding aside.
+ * A name as every lookup reads it: case, spacing, accent encoding and the
+ * accents of Latin letters aside.
  * Duplicates nameKey in src/data/loinc/keys.ts because this script
  * is plain Node and cannot import the app's TypeScript.
  * @param {string} name
  * @returns {string}
  */
 export function nameKey(name) {
-  return name.normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return name
+    .normalize('NFD')
+    .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
+    .replace(/(\p{L})'(?=\s|$)/gu, '$1')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** @param {string} file */

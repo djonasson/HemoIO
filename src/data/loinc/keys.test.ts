@@ -43,6 +43,23 @@ describe('isUnknownKey', () => {
 describe('nameKey', () => {
   it('reads a name with case, spacing and accent encoding aside', () => {
     expect(nameKey('  Glicemia   À ')).toBe(nameKey('glicemia à'.normalize('NFD').normalize('NFC')));
-    expect(nameKey('À')).toBe('à');
+    expect(nameKey('À')).toBe('a');
+  });
+});
+
+describe('nameKey and accents', () => {
+  it('reads a Latin letter with or without its accent as one letter', () => {
+    expect(nameKey('Velocità di eritrosedimentazione')).toBe(nameKey('velocita di eritrosedimentazione'));
+    expect(nameKey('Capacità ferrolegante')).toBe('capacita ferrolegante');
+  });
+
+  it("reads an apostrophe written for a final accent as that accent: \"capacita'\"", () => {
+    expect(nameKey("capacita' ferrolegante")).toBe(nameKey('capacità ferrolegante'));
+    // An elision is part of the word that follows
+    expect(nameKey("dell'urina")).toBe("dell'urina");
+  });
+
+  it('keeps the marks other scripts need', () => {
+    expect(nameKey('रक्त')).not.toBe(nameKey('रकत'));
   });
 });
