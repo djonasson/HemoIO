@@ -68,9 +68,12 @@ export interface Catalog {
   search(query: string, filter?: CatalogSearchFilter): CatalogTest[];
   /** The same search, with each test's score */
   scoredSearch(query: string, filter?: CatalogSearchFilter): ScoredTest[];
+  /** The most common tests of these properties and systems, most common first */
+  common(filter: CatalogSearchFilter, limit: number): CatalogTest[];
   /**
-   * What a code trends with: the group joining its mass and molar codes,
-   * else the group joining its blood, serum and plasma codes, else the code
+   * What a code trends with: the group joining its mass and molar codes
+   * (for a rate, its mass and molar rate groups), else the group joining
+   * its blood, serum and plasma codes, else the code
    */
   trendGroup(code: string): string;
   /** A readable name for a LOINC class */
@@ -116,6 +119,8 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   'acido', 'di', 'del', 'della', 'nel', 'nelle', 'nei', 'su', 'e', 'o',
 ]);
 
+const CONJUNCTIONS: ReadonlySet<string> = new Set(['and', 'or', 'e', 'o']);
+
 /** Score of a test whose words cover the whole query without a name equal to it */
 const OVERLAP_CEILING = 0.9;
 
@@ -124,6 +129,16 @@ const OVERLAP_CEILING = 0.9;
  * "uric") counts for this much of that word
  */
 const CLOSE_FORM_FACTOR = 0.8;
+/**
+ * A word's form without one final vowel: "proteine", "proteina" and
+ * "protein" are one word. A short word is only itself here: "ferr", an
+ * abbreviation of ferritin, is not "ferro" (iron).
+ */
+function inflectionStem(word: string): string {
+  if (word.length <= MIN_STEM) return `=${word}`;
+  return /[aeio]$/.test(word) ? word.slice(0, -1) : word;
+}
+
 /** Shortest stem a close form is read from */
 const MIN_STEM = 4;
 /** Most letters a close form may add to its stem (Italian endings) */
@@ -161,9 +176,24 @@ function joinsMassAndMolar(parentName: string): boolean {
   );
 }
 
+/**
+ * A rate group's name with its property left out: "Creatinine|MRat|Urine"
+ * and "Creatinine|SRat|Urine" (a day's mass and moles) are one rate. LOINC
+ * has no group joining them, as it has for concentrations.
+ */
+function rateKey(group: CatalogGroup): string | undefined {
+  const [component, property, ...rest] = group.name.split('|');
+  return property === 'MRat' || property === 'SRat' ? [component, ...rest].join('|') : undefined;
+}
+
 /** Whether a group joins a test's blood, serum and plasma codes */
 function joinsSampleTypes(group: CatalogGroup): boolean {
   return group.name.includes('ANYBldSerPl');
+}
+
+/** Whether a test is a panel of tests, never one value */
+export function isPanel(test: CatalogTest): boolean {
+  return test.classCode.startsWith('PANEL.');
 }
 
 /** Lower rank first; an unranked test (0) last */
@@ -189,8 +219,9 @@ export function createCatalog(file: CatalogFile): Catalog {
     }
   });
   const genericCount = Math.max(MIN_GENERIC_COUNT, file.tests.length * GENERIC_SHARE);
+  // A number is in many names but tells "Alpha 1" from "Alpha 2" globulin
   const tellsTest = (word: string): boolean =>
-    !STOP_WORDS.has(word) && (testsByWord.get(word)?.length ?? 0) <= genericCount;
+    !STOP_WORDS.has(word) && (/^\d+$/.test(word) || (testsByWord.get(word)?.length ?? 0) <= genericCount);
   // Rarer words tell more about the test: inverse document frequency
   const weightOf = (word: string): number =>
     Math.log(1 + file.tests.length / (testsByWord.get(word)?.length ?? 1));
@@ -203,12 +234,50 @@ export function createCatalog(file: CatalogFile): Catalog {
     wordsByStem.set(stem, [...(wordsByStem.get(stem) ?? []), word]);
   }
 
+  // Name words by their form without a final vowel
+  const wordsByInflection = new Map<string, string[]>();
+  for (const word of testsByWord.keys()) {
+    const stem = inflectionStem(word);
+    const forms = wordsByInflection.get(stem);
+    if (forms) forms.push(word);
+    else wordsByInflection.set(stem, [word]);
+  }
+
+  /**
+   * A name's words, each without a final vowel, and without sample or
+   * other stop words: a query with the same words is the name, whatever its
+   * punctuation ("colesterolo.in hdl" for "Colesterolo HDL"). "And" and
+   * "or" stay: "bilirubina diretta e totale" is not "Bilirubina diretta".
+   */
+  const wordsKey = (name: string): string =>
+    wordsOf(name)
+      .filter((word) => !STOP_WORDS.has(word) || CONJUNCTIONS.has(word))
+      .map(inflectionStem)
+      .join(' ');
+  // Built for a test the first time a search finds it
+  const nameKeys: Set<string>[] = [];
+  const nameKeysOf = (index: number): Set<string> =>
+    (nameKeys[index] ??= new Set([...exactNames[index]].map(wordsKey)));
+
   /** The name words a query word stands for, with how much each counts */
   function matchesOf(word: string): { word: string; factor: number }[] {
-    if (testsByWord.has(word)) return [{ word, factor: 1 }];
+    const forms = new Set(wordsByInflection.get(inflectionStem(word)));
+    // A short word with an ending, when no name has the word itself: "urico" for "uric"
+    const short = word.slice(0, -1);
+    if (!testsByWord.has(word) && /[aeio]$/.test(word) && short.length <= MIN_STEM && testsByWord.has(short)) {
+      forms.add(short);
+    }
+    if (forms.size) return [...forms].map((form) => ({ word: form, factor: 1 }));
     return (wordsByStem.get(word.slice(0, MIN_STEM)) ?? [])
       .filter((candidate) => isCloseForm(word, candidate))
       .map((candidate) => ({ word: candidate, factor: CLOSE_FORM_FACTOR }));
+  }
+
+  // A rate's mass and molar groups trend as the first of them
+  const rateGroups = new Map<string, string>();
+  for (const group of [...file.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    const key = rateKey(group);
+    if (key && !rateGroups.has(key)) rateGroups.set(key, group.id);
   }
 
   const trendGroups = new Map<string, string>();
@@ -218,10 +287,10 @@ export function createCatalog(file: CatalogFile): Catalog {
       .map((id) => groups.get(id))
       .filter((group): group is CatalogGroup => group !== undefined)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    const group =
-      memberships.find((candidate) => joinsMassAndMolar(candidate.parentName)) ??
-      memberships.find(joinsSampleTypes);
-    const trend = group?.id ?? test.code;
+    const massAndMolar = memberships.find((candidate) => joinsMassAndMolar(candidate.parentName));
+    const rate = memberships.map(rateKey).find((key) => key !== undefined);
+    const sampleTypes = memberships.find(joinsSampleTypes);
+    const trend = massAndMolar?.id ?? (rate && rateGroups.get(rate)) ?? sampleTypes?.id ?? test.code;
     trendGroups.set(test.code, trend);
     const codes = codesByTrendGroup.get(trend);
     if (codes) codes.push(test.code);
@@ -236,28 +305,40 @@ export function createCatalog(file: CatalogFile): Catalog {
       matches: matchesOf(word),
     }));
     if (words.length === 0) return [];
+    const queryKey = wordsKey(phrase);
     // A word matching nothing still counts against the fit, as a rare word would
-    const fullWeight = (matches: { word: string }[]): number =>
-      matches.length ? Math.max(...matches.map((match) => weightOf(match.word))) : weightOf('');
-    const totalWeight = words.reduce((sum, { matches }) => sum + fullWeight(matches), 0);
+    // A word counts as much as it tells, in whichever form a name has it
+    const fullWeight = (word: string, matches: { word: string }[]): number =>
+      testsByWord.has(word) || !matches.length
+        ? weightOf(word)
+        : Math.max(...matches.map((match) => weightOf(match.word)));
+    const weights = words.map(({ word, matches }) => fullWeight(word, matches));
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
 
     const candidates = new Set(
       words.flatMap(({ matches }) => matches.flatMap((match) => testsByWord.get(match.word) ?? []))
     );
     const scored: ScoredTest[] = [];
+    // A name the query spells out comes before one with only the same words
+    const spelled = new Set<CatalogTest>();
     for (const index of candidates) {
       const test = file.tests[index];
       if (filter.properties && !filter.properties.includes(test.property)) continue;
       if (filter.systems && !filter.systems.includes(test.system)) continue;
       let covered = 0;
-      for (const { matches } of words) {
+      words.forEach(({ matches }, i) => {
         const present = matches.filter((match) => wordSets[index].has(match.word));
-        if (present.length) covered += Math.max(...present.map((m) => m.factor * weightOf(m.word)));
-      }
-      const score = exactNames[index].has(phrase) ? 1 : (OVERLAP_CEILING * covered) / totalWeight;
+        if (present.length) covered += Math.max(...present.map((match) => match.factor)) * weights[i];
+      });
+      const isSpelled = exactNames[index].has(phrase);
+      if (isSpelled) spelled.add(test);
+      const isName = isSpelled || nameKeysOf(index).has(queryKey);
+      const score = isName ? 1 : (OVERLAP_CEILING * covered) / totalWeight;
       scored.push({ test, score });
     }
-    scored.sort((a, b) => b.score - a.score || byRank(a.test, b.test));
+    const spelledFirst = (a: ScoredTest, b: ScoredTest): number =>
+      Number(spelled.has(b.test)) - Number(spelled.has(a.test));
+    scored.sort((a, b) => b.score - a.score || spelledFirst(a, b) || byRank(a.test, b.test));
     return scored;
   }
 
@@ -266,6 +347,16 @@ export function createCatalog(file: CatalogFile): Catalog {
     test: (code) => tests.get(code),
     search: (query, filter) => scoredSearch(query, filter).map(({ test }) => test),
     scoredSearch,
+    common: ({ properties, systems }, limit) =>
+      file.tests
+        .filter(
+          (test) =>
+            !isPanel(test) &&
+            (!properties || properties.includes(test.property)) &&
+            (!systems || systems.includes(test.system))
+        )
+        .sort(byRank)
+        .slice(0, limit),
     trendGroup: (code) => trendGroups.get(code) ?? code,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
     groupCodes: (trendGroup) =>

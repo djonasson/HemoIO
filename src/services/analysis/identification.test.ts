@@ -21,17 +21,19 @@ describe('identifyLocally', () => {
   });
 
   it('leaves a value several tests fit undecided, with the tests to choose from', () => {
-    const identification = identifyLocally(catalog, { name: 'Glucosio', unit: 'mmol/L' });
+    // "Blood" is said loosely of serum tests too
+    const identification = identifyLocally(catalog, { name: 'Glucosio', unit: 'mmol/L', specimenHint: 'blood' });
     expect(identification.loincCode).toBeUndefined();
     expect(identification.identificationFlags).toEqual(['ambiguous']);
-    expect(identification.candidates.map((c) => c.code)).toEqual(['14749-6', '15074-8']);
+    expect(identification.candidates.map((c) => c.code)).toEqual(['15074-8', '14749-6']);
     expect(needsChoice(identification)).toBe(true);
   });
 
-  it('says when no test fits', () => {
+  it("says when no name fits, with the unit's common tests to choose from", () => {
     const identification = identifyLocally(catalog, { name: 'Zorblatina', unit: 'mg/dL' });
-    expect(identification).toMatchObject({ candidates: [], identificationFlags: ['not-identified'] });
-    expect(needsChoice(identification)).toBe(false);
+    expect(identification.identificationFlags).toEqual(['not-identified']);
+    expect(identification.candidates.map((c) => c.code)).toContain('2345-7');
+    expect(needsChoice(identification)).toBe(true);
   });
 
   it('uses the test learned for the wording and unit', () => {
@@ -95,7 +97,7 @@ describe('identifyValues', () => {
     );
     const { values, choiceFailed } = await identifyValues(
       catalog,
-      [extracted('P-Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L', 'blood'), extracted('Zorb', 1, 'mg/dL')],
+      [extracted('P-Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L', 'blood'), extracted('Zorb', 1, '')],
       { choose }
     );
 
@@ -125,12 +127,12 @@ describe('identifyValues', () => {
 
   it('does not ask the AI when every value is matched or has no candidate', async () => {
     const choose = vi.fn();
-    await identifyValues(catalog, [extracted('P-Glucosio', 90, 'mg/dL'), extracted('Zorb', 1, 'mg/dL')], { choose });
+    await identifyValues(catalog, [extracted('P-Glucosio', 90, 'mg/dL'), extracted('Zorb', 1, '')], { choose });
     expect(choose).not.toHaveBeenCalled();
   });
 
   it('leaves a choice the AI is unsure of to the user, its pick first among the candidates', async () => {
-    const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L')], {
+    const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
       choose: async ([request]) => [{ id: request.id, code: '15074-8', confident: false }],
     });
     expect(values[0].loincCode).toBeUndefined();
@@ -139,14 +141,14 @@ describe('identifyValues', () => {
   });
 
   it('leaves the candidates for the user with no AI to ask', async () => {
-    const { values, choiceFailed } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L')], {});
+    const { values, choiceFailed } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {});
     expect(choiceFailed).toBe(false);
     expect(values[0]).toMatchObject({ identificationFlags: ['ambiguous'] });
     expect(values[0].candidates).toHaveLength(2);
   });
 
   it('leaves the candidates for the user when the AI cannot be asked', async () => {
-    const { values, choiceFailed } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L')], {
+    const { values, choiceFailed } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
       choose: () => Promise.reject(new Error('unreachable')),
     });
     expect(choiceFailed).toBe(true);
@@ -155,15 +157,15 @@ describe('identifyValues', () => {
 });
 
 describe('toLearn', () => {
-  async function analyzed(name: string, unit: string, aiCode?: string): Promise<MatchedBiomarker> {
-    const { values } = await identifyValues(catalog, [extracted(name, 5, unit)], {
+  async function analyzed(name: string, unit: string, aiCode?: string, hint?: string): Promise<MatchedBiomarker> {
+    const { values } = await identifyValues(catalog, [extracted(name, 5, unit, hint)], {
       choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: true })),
     });
     return values[0];
   }
 
   it("confirms the AI's choice once it is saved, under the printed wording and unit", async () => {
-    expect(toLearn(await analyzed('Glucosio', 'mmol/L', '15074-8'))).toEqual({
+    expect(toLearn(await analyzed('Glucosio', 'mmol/L', '15074-8', 'blood'))).toEqual({
       key: 'glucosio|mmol/L',
       code: '15074-8',
       confirmed: true,

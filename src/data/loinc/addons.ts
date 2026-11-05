@@ -232,6 +232,16 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     highIndication: 'May indicate blood loss, hemolysis or recovery from anemia',
     lowIndication: 'May indicate reduced red cell production by the bone marrow',
   },
+  // The same share with no method named: LOINC trends it apart from 17849-1
+  '4679-7': {
+    shortName: 'Reticulocytes Percentage',
+    description: 'Young red blood cells as a share of all red blood cells.',
+    referenceRange: { low: 0.5, high: 2.5, unit: '%' },
+    canonicalUnit: '%',
+    alternativeUnits: ['‰'],
+    highIndication: 'May indicate blood loss, hemolysis or recovery from anemia',
+    lowIndication: 'May indicate reduced red cell production by the bone marrow',
+  },
   '30341-2': {
     shortName: 'Erythrocyte Sedimentation Rate',
     description: 'Rate at which red blood cells settle, indicates inflammation.',

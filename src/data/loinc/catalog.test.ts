@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { createCatalog, loadCatalog } from './catalog';
+import { createCatalog, isPanel, loadCatalog } from './catalog';
 import type { CatalogTest } from './catalog';
 
 const catalog = fixtureCatalog();
@@ -96,6 +96,59 @@ describe('search', () => {
     expect(createCatalog(file).search('ur').map((test) => test.code)).toEqual([]);
   });
 
+  it('reads Italian and English endings of one word as that word', () => {
+    const file = { version: 't', groups: [], tests: [madeUpTest('1-1', ['proteina']), madeUpTest('2-2', ['protein'])] };
+    const scored = createCatalog(file).scoredSearch('proteine');
+    expect(scored.map(({ test, score }) => [test.code, score])).toEqual([
+      ['1-1', 1],
+      ['2-2', 1],
+    ]);
+  });
+
+  it("scores a name with the query's words as equal to it, whatever its punctuation", () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [
+        madeUpTest('1-1', ['colesterolo.in hdl']),
+        madeUpTest('2-2', ['colesterolo.non hdl']),
+        madeUpTest('3-3', ['bilirubina diretta e totale']),
+        madeUpTest('4-4', ['proteina c']),
+      ],
+    };
+    const scores = (query: string): Record<string, number> =>
+      Object.fromEntries(createCatalog(file).scoredSearch(query).map(({ test, score }) => [test.code, score]));
+    expect(scores('Colesterolo HDL')).toEqual({ '1-1': 1, '2-2': 0.9 });
+    // "And" and a single letter change what a name means
+    expect(scores('Bilirubina diretta')['3-3']).toBeLessThan(1);
+    expect(scores('Proteine')['4-4']).toBeLessThan(1);
+  });
+
+  it('lists a name the query spells out before a more common one with only its words', () => {
+    // "Mass", "volume" and "blood" say nothing of the test, so both names fit
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [madeUpTest('1-1', ['hemoglobin'], 1), madeUpTest('2-2', ['hemoglobin [mass/volume] in blood'], 5)],
+    };
+    const scored = createCatalog(file).scoredSearch('Hemoglobin [Mass/volume] in Blood');
+    expect(scored.map(({ test, score }) => [test.code, score])).toEqual([
+      ['2-2', 1],
+      ['1-1', 1],
+    ]);
+  });
+
+  it('lets a number tell tests apart although many names have it', () => {
+    const tests = [
+      madeUpTest('1-1', ['alfa 1 globulina']),
+      madeUpTest('2-2', ['alfa 2 globulina']),
+      ...Array.from({ length: 100 }, (_, index) => madeUpTest(`${index + 10}-0`, [`analyte${index} 1`])),
+    ];
+    const scored = createCatalog({ version: 't', groups: [], tests }).scoredSearch('alfa-1');
+    expect(scored[0].test.code).toBe('1-1');
+    expect(scored[0].score).toBeGreaterThan(scored.find(({ test }) => test.code === '2-2')!.score);
+  });
+
   it('finds a test by the words of its long common name', () => {
     const file = {
       version: 't',
@@ -137,6 +190,66 @@ describe('trendGroup', () => {
 
   it('is the code itself for a code not in the catalog', () => {
     expect(catalog.trendGroup('99999-9')).toBe('99999-9');
+  });
+});
+
+describe('trendGroup of rates', () => {
+  it("joins a day's mass and moles of a substance, which LOINC groups apart", () => {
+    const file = {
+      version: 't',
+      groups: [
+        { id: 'LG2-2', parentId: 'LG0-0', parentName: 'Urine<SAME:Comp|Prop|Sys>', name: 'Creatinine|SRat|Urine' },
+        { id: 'LG1-1', parentId: 'LG0-0', parentName: 'Urine<SAME:Comp|Prop|Sys>', name: 'Creatinine|MRat|Urine' },
+        { id: 'LG3-3', parentId: 'LG0-0', parentName: 'Urine<SAME:Comp|Prop|Sys>', name: 'Protein|MRat|Urine' },
+      ],
+      tests: [
+        { ...madeUpTest('1-1', ['creatinina']), property: 'MRat', groups: ['LG1-1'] },
+        { ...madeUpTest('2-2', ['creatinina']), property: 'SRat', groups: ['LG2-2'] },
+        { ...madeUpTest('3-3', ['proteina']), property: 'MRat', groups: ['LG3-3'] },
+      ],
+    };
+    const rates = createCatalog(file);
+    expect(rates.trendGroup('1-1')).toBe('LG1-1');
+    expect(rates.trendGroup('2-2')).toBe('LG1-1');
+    expect(rates.trendGroup('3-3')).toBe('LG3-3');
+    expect(rates.groupCodes('LG1-1').sort()).toEqual(['1-1', '2-2']);
+  });
+
+  it('joins 24-hour urine creatinine in mg and in mmol in the generated catalog', async () => {
+    const generated = await loadCatalog();
+    // 2162-6 Creatinine [Mass/time] and 14684-5 [Moles/time] in 24 hour Urine
+    expect(generated.trendGroup('2162-6')).toBe(generated.trendGroup('14684-5'));
+  });
+
+  it('joins molar and mass urea in serum in the generated catalog', async () => {
+    const generated = await loadCatalog();
+    // 22664-7 is kept although unranked, for urea printed in mmol/L
+    expect(generated.trendGroup('22664-7')).toBe(generated.trendGroup('3091-6'));
+  });
+});
+
+describe('common', () => {
+  it('lists the most common tests of these properties and systems, never a panel', () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [
+        madeUpTest('1-1', ['a'], 30),
+        madeUpTest('2-2', ['b'], 0),
+        madeUpTest('3-3', ['c'], 10),
+        { ...madeUpTest('4-4', ['d'], 1), classCode: 'PANEL.CHEM' },
+        { ...madeUpTest('5-5', ['e'], 2), system: 'Bld' },
+      ],
+    };
+    const common = createCatalog(file).common({ properties: ['MCnc'], systems: ['Ser/Plas'] }, 2);
+    expect(common.map((test) => test.code)).toEqual(['3-3', '1-1']);
+  });
+});
+
+describe('isPanel', () => {
+  it('tells a panel of tests from a test', () => {
+    expect(isPanel({ ...madeUpTest('1-1', []), classCode: 'PANEL.CHEM' })).toBe(true);
+    expect(isPanel(madeUpTest('1-1', []))).toBe(false);
   });
 });
 

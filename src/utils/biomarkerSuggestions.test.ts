@@ -13,8 +13,9 @@ import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 const catalog = fixtureCatalog();
 
 /** A value as the analyzer gives it, the AI choosing `aiCode` when asked */
-async function analyzed(name: string, unit: string, aiCode?: string): Promise<MatchedBiomarker> {
-  const { values } = await identifyValues(catalog, [{ name, value: 5, unit, confidence: 0.9 }], {
+async function analyzed(name: string, unit: string, aiCode?: string, specimenHint?: string): Promise<MatchedBiomarker> {
+  const value = { name, value: 5, unit, confidence: 0.9, ...(specimenHint && { specimenHint }) };
+  const { values } = await identifyValues(catalog, [value], {
     choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: true })),
   });
   return values[0];
@@ -55,7 +56,8 @@ describe('applyBiomarkerName', () => {
   });
 
   it("has the AI's test again when the printed name is typed back", async () => {
-    const value = await analyzed('Glucosio', 'mmol/L', '15074-8');
+    // "Blood" leaves the sample open: the AI chooses
+    const value = await analyzed('Glucosio', 'mmol/L', '15074-8', 'blood');
     const typo = applyBiomarkerName(value, 'Glucosi', catalog);
     expect(typo.loincCode).toBeUndefined();
     expect(applyBiomarkerName(typo, 'glucosio ', catalog)).toMatchObject({ loincCode: '15074-8', identifiedBy: 'ai' });

@@ -10,6 +10,7 @@ describe('toUcum', () => {
     ['µg/L', 'ug/L'],
     ['mcg/L', 'ug/L'],
     ['mg/gcr', 'mg/g'],
+    ['per campo', '/[HPF]'],
     ['/100WBC', '/100{WBCs}'],
     ['U/L', 'U/L'],
     ['%', '%'],
@@ -50,7 +51,9 @@ describe('ucumProperties', () => {
     ['meq/L', ['SCnc']],
     ['10*9/L', ['NCnc']],
     ['10*3/uL', ['NCnc']],
-    ['U/L', ['CCnc']],
+    ['U/L', ['CCnc', 'ACnc']],
+    ['kU/L', ['CCnc', 'ACnc']],
+    ['mmol/min/L', ['CCnc']],
     ['g/(24.h)', ['MRat']],
     ['mmol/(24.h)', ['SRat']],
     ['[IU]/L', ['ACnc', 'Ratio', 'Titr']],
@@ -58,15 +61,21 @@ describe('ucumProperties', () => {
     ['1', ['SpGrav', 'Ratio', 'pH']],
     ['/[HPF]', ['Naric', 'NCnc']],
     ['{cells}/[HPF]', ['Naric', 'NCnc']],
-    ['mg/g', []],
-    ['mL/min/(1.73.m2)', []],
+    ['mg/g', ['MRto', 'Ratio']],
+    ['mg/mmol', ['Ratio']],
+    ['mL', ['Vol', 'EntMeanVol', 'EntVol']],
+    ['fL', ['Vol', 'EntMeanVol', 'EntVol']],
+    ['pg', ['Mass', 'EntMass']],
+    ['mmol/mol', ['SFr', 'SRto', 'Ratio']],
+    ['mL/min/(1.73.m2)', ['ArVRat']],
+    ['mm/h', ['Vel', 'Sedimentation Rate']],
     ['nonsense', []],
   ])('reads %s as %j', (ucum, properties) => {
     expect(ucumProperties(ucum)).toEqual(properties);
   });
 
   it('reads a percentage and a count per 100 as a fraction or a ratio', () => {
-    expect(ucumProperties('%')).toEqual(['NFr', 'MFr', 'VFr', 'SFr', 'Ratio']);
+    expect(ucumProperties('%')).toEqual(['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth']);
     expect(ucumProperties('/100{WBCs}')).toContain('NFr');
   });
 });

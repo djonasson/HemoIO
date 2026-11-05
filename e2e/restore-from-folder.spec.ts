@@ -4,7 +4,7 @@
  * See features/restore-from-folder.feature
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
@@ -139,7 +139,7 @@ test.describe('Restore from the folder copy', () => {
   });
 
   test('replacing the folder copy asks first, then saves to the folder again', async ({ page }) => {
-    await folderWithCopy(page);
+    const original = await folderWithCopy(page);
     await loseBrowserData(page);
     await unlockApp(page);
 
@@ -151,6 +151,8 @@ test.describe('Restore from the folder copy', () => {
 
     // From now on saves reach the folder: a one-result backup replaces the copy
     await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });
+    // The save reaches the folder after the restore: data lost before it is lost from both
+    await expect.poll(() => folderCopyHash(page)).not.toBe(original);
     await loseBrowserData(page);
     await unlockApp(page);
     await expect(dialog.offer()).toContainText('1 lab result');

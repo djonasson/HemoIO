@@ -121,8 +121,8 @@ it is committed, so building the app never needs the release:
    `src/data/loinc/catalog.generated.json`: the active laboratory codes with a
    common-test rank, with their names (English and Italian), example UCUM
    units and groups. Codes the add-on table (`src/data/loinc/addons.ts`)
-   describes but LOINC does not rank are kept too: list them in
-   `EXTRA_CODES` in the script (they get rank 0). Use `--from <files dir>`
+   describes, or that reports need, but LOINC does not rank are kept too:
+   list them in `EXTRA_CODES` in the script (they get rank 0). Use `--from <files dir>`
    and `--out <path>` to override.
 3. Commit the regenerated file.
 

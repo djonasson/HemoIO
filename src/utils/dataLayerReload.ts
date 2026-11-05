@@ -20,7 +20,7 @@ export interface HotModule {
 }
 
 /** Folders of src/data holding reference data, not user data */
-const REFERENCE_DATA = ['biomarkers', 'loinc'];
+const REFERENCE_DATA = ['loinc'];
 
 /**
  * Database, storage, encryption and migrations. The LOINC catalog, its

@@ -378,14 +378,13 @@ Multiple AI providers can be supported (OpenAI, Anthropic, etc.) behind this int
 
 ### Biomarker Identification
 
-Each extracted value is filed under a dictionary test (`src/data/biomarkers/dictionary.ts`), or under the unknown key of its printed name.
+Each extracted value is filed under a LOINC code from the shipped catalog (`src/data/loinc/`), or saved as "not a LOINC test" under its printed name.
 
-- **By the AI.** The extraction prompt carries the dictionary's tests, one line each (`key: Name [specimen; units]`, `src/services/ai/testList.ts`). The AI returns a `biomarkerKey` per value, judged from the report's headings, specimen and units. One parser reads it for every provider; the analyzer trusts it only when the dictionary has the key and the value's unit fits that test (listed, or convertible to its standard unit). With an unfitting unit the test is only proposed; a value the report gives no unit (a dipstick screening, "< 15") is never filed under a test that has one, but saved under its own name.
-- **Fallback, when the AI gives no usable key**, first that matches with a fitting unit:
-  1. the printed name: exact names and aliases, then spacing and punctuation variations, a urine qualifier, a count's percentage or a 24-hour collection's concentration told apart by the unit;
-  2. the user's learned aliases: printed names they saved under a test, kept in the sealed preferences record (encrypted at rest), listed and removable in Settings → Biomarkers;
-  3. a small in-browser model (`src/services/matching/`): a multilingual sentence-embedding model run by transformers.js on the app's own copy of the ONNX runtime, downloaded from Hugging Face the first time a name needs it and cached for offline use. Only the model is downloaded; no report data leaves the device. A name matches only above a calibrated similarity (`similarNames.calibration.ts`), so a wrong match stays rarer than no match.
-- **Review** shows, per value, the test it will be saved as, with a Change list, and text labels for what needs checking: "Unit doesn't fit", "Name suggests …", "Matched by name only", "Matched by similar name", "Not identified". A value is saved under a test only in a unit of that test.
+- **Learned.** A code the user saved for the same printed name and unit is taken first.
+- **Locally** (`src/services/analysis/loincMatch.ts`). The printed name is searched in the catalog's English and Italian names, read with its sample (a prefix such as "S-" or "U-", urine words, or the AI's specimen hint) and with the LOINC properties its UCUM unit implies. A bracket counts as another name or a qualifier ("Tirotropina (TSH)"); Italian and English word endings count as one word ("proteine", "protein"). A test is taken without asking when its name fits best by a margin, or when the tests that fit as well differ in what the name does not say: variants by method or collection time are one fit, and among different tests the one HemoIO describes, or one far more common by LOINC's rank, is the usual meaning. Other values keep up to eight candidates; a name that fits nothing gets the most common tests of its sample and unit. A value without a readable unit is never matched.
+- **By the AI.** The undecided values go to the configured AI in one request with their candidates; it picks one, or none. It never invents a code.
+- **Review** shows each value's code with its LOINC name, the candidates, and labels for what needs checking. The user's choice is learned when the import is saved.
+- The tuning runner `scripts/match-reports.ts` (run with `vitest.match-reports.config.ts`) prints, for local reports, each printed name, unit, local status and top candidates, never a value.
 - **Ollama** is called through its native `/api/chat` with a context size fitted to the prompt (its OpenAI-compatible endpoint cannot set one).
 
 ### Offline Capability
@@ -394,7 +393,7 @@ With local text extraction:
 
 - **Fully offline**: Viewing data, manual entry, trends, export
 - **Partially offline**: Text extraction from documents (PDF.js, Tesseract.js)
-- **Requires internet**: AI-powered intelligent parsing of extracted text, and the first download of the OCR files and the matching model
+- **Requires internet**: AI-powered intelligent parsing of extracted text, and the first download of the OCR files
 
 Users could potentially extract text offline and queue documents for AI processing when connectivity is restored (future enhancement).
 

@@ -11,7 +11,6 @@ import {
   ocrRuntimeCaching,
 } from './src/services/ocr/ocrAssets';
 import { OCR_CACHE_NAME } from './ocrCache.config';
-import { ONNX_ASSET_DIR, ONNX_RUNTIME_FILES } from './src/services/matching/onnxAssets';
 import { dataLayerReload } from './src/utils/dataLayerReload';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
@@ -20,9 +19,6 @@ const missingOcrFiles = ocrTargets.filter((target) => !existsSync(target.src));
 if (missingOcrFiles.length > 0) {
   throw new Error(`Missing OCR files: ${missingOcrFiles.map((t) => t.src).join(', ')}`);
 }
-
-/** Above this a JS chunk gets Vite's size warning (see build.chunkSizeWarningLimit) */
-const CHUNK_SIZE_WARNING_KB = 600;
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
@@ -39,15 +35,7 @@ export default defineConfig(({ command }) => {
       react(),
       viteStaticCopy({
         // Flat into tesseract/…, without the node_modules path
-        targets: [
-          ...ocrTargets.map((target) => ({ ...target, rename: { stripBase: true as const } })),
-          // The ONNX runtime the matching model runs on, served by the app itself
-          ...ONNX_RUNTIME_FILES.map((file) => ({
-            src: `node_modules/onnxruntime-web/dist/${file}`,
-            dest: ONNX_ASSET_DIR,
-            rename: { stripBase: true as const },
-          })),
-        ],
+        targets: ocrTargets.map((target) => ({ ...target, rename: { stripBase: true as const } })),
       }),
       VitePWA({
         registerType: 'prompt',
@@ -116,35 +104,21 @@ export default defineConfig(({ command }) => {
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          {
-            // Downloaded the first time the matching model is needed, then offline
-            urlPattern: new RegExp(`/${ONNX_ASSET_DIR}/`),
-            handler: 'CacheFirst',
-            options: { cacheName: 'onnx-runtime', cacheableResponse: { statuses: [0, 200] } },
-          },
         ],
         // Skip waiting and claim clients immediately for better UX
         skipWaiting: true,
         clientsClaim: true,
         // Pre-cache app shell; OCR files and the LOINC catalog are cached on first use
         globPatterns: [...OCR_PRECACHE_GLOBS],
-        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`, 'assets/catalog.generated-*.json'],
+        globIgnores: [...OCR_PRECACHE_IGNORES, 'assets/catalog.generated-*.json'],
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues
       },
     }),
   ],
-  optimizeDeps: {
-    // Loaded only when the matching model is first needed: pre-bundled at
-    // start, so the dev server does not reload the page when it is
-    include: ['@huggingface/transformers'],
-  },
   build: {
-    // transformers.js (~580 kB) is one library, loaded only when the matching
-    // model is first needed; every chunk the app starts with stays under 500 kB.
-    // The LOINC catalog is a JSON file of its own, not a chunk.
-    chunkSizeWarningLimit: CHUNK_SIZE_WARNING_KB,
+    // The LOINC catalog is a JSON file of its own, not a chunk
     rollupOptions: {
       output: {
         // Libraries change less often than the app, so each group stays cached across releases

@@ -12,7 +12,7 @@
  * - the user can choose a preferred display unit per biomarker
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
@@ -592,17 +592,17 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
         'Ferro|µg/dL': '2498-4',
         'Vitamina D (25-OH)|nmol/L': '68438-1',
         'Vitamina D (25-OH)|ng/mL': '62292-8',
-        Reticolociti: '4679-7',
+        Reticolociti: '17849-1',
         'Urea/L (urine)|mmol/L': '22700-9',
         'Urea/L (urine)|g/L': '3092-4',
         'Er-EMOGLOBINA GLICATA': '4548-4',
       }),
     });
 
-    // One value of each, in the standard unit; reticulocytes have none yet, so the first is kept
+    // One value of each, in the standard unit
     const rows = reviewRows(page);
     await expect(rows).toHaveCount(6);
-    for (const value of ['4.15', '214', '32.6', '16.7', '7', '6']) {
+    for (const value of ['4.15', '214', '32.6', '1.67', '7', '6']) {
       await expect(rows.getByRole('cell', { name: value, exact: true })).toBeVisible();
     }
     await expect(duplicateWarning(page)).toHaveCount(0);
@@ -610,10 +610,11 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
 
   test('should merge a value once I choose the test of the other value of its name', async ({ page }) => {
     // Scenario: Merge a value once I choose its test
+    // Under a blood heading, blood and serum creatinine both fit: neither is matched locally
     await openApp(page);
     await analyzeReport(page, [
-      { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95 },
-      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
     ], 1, { testChoice: aiChooses({ 'Creatinine|mg/dL': '2160-0' }) });
 
     // The AI is not sure of the molar value: it stays apart, its test to choose

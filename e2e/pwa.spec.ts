@@ -6,7 +6,7 @@
  * so we test by injecting mock events.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 
 test.describe('PWA Install Prompt', () => {
   test('install prompt appears when beforeinstallprompt event fires', async ({ page }) => {

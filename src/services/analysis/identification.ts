@@ -56,7 +56,8 @@ export function identifyLocally(
       isExactMatch: true,
     };
   }
-  const flags: IdentificationFlag[] = [match.candidates.length > 0 ? 'ambiguous' : 'not-identified'];
+  // A name that fits no test still has the common tests of its unit to choose from
+  const flags: IdentificationFlag[] = [match.status === 'none' ? 'not-identified' : 'ambiguous'];
   if (value.unit.trim() === '') flags.push('no-unit');
   return { candidates: match.candidates, identificationFlags: flags, isExactMatch: false };
 }

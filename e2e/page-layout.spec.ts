@@ -5,7 +5,7 @@
  * screen: wide tables scroll within their own box.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';

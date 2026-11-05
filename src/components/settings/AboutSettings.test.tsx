@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { CatalogContext } from '@contexts/useCatalog';
-import { LOINC_NOTICE } from '@data/biomarkers/loinc';
+import { LOINC_NOTICE } from '@data/loinc/notice';
 import type { Catalog } from '@data/loinc/catalog';
 import { AboutSettings } from './AboutSettings';
 

@@ -4,7 +4,7 @@
  */
 import { Anchor, Stack, Text, Title } from '@mantine/core';
 import { useCatalog } from '@contexts/useCatalog';
-import { LOINC_NOTICE } from '@data/biomarkers/loinc';
+import { LOINC_NOTICE } from '@data/loinc/notice';
 
 /**
  * The notice the UCUM library's license asks to be reproduced in the

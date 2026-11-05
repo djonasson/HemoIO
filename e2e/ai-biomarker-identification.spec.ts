@@ -4,7 +4,7 @@
  * The app matches against the real LOINC catalog; only the AI is mocked.
  * Report text is made up.
  */
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { analyzeReport } from './steps/unitConversion.steps';
@@ -33,7 +33,14 @@ const SERUM_GLUCOSE = 'Glucose [Mass/volume] in Serum or Plasma';
 const BLOOD_GLUCOSE = 'Glucose [Mass/volume] in Blood';
 const HEMOGLOBIN = 'Hemoglobin [Mass/volume] in Blood';
 
-const GLUCOSIO: ExtractedBiomarkerFixture = { name: 'Glucosio', value: 95, unit: 'mg/dL', confidence: 0.95 };
+/** Printed under a blood heading: glucose in blood and in serum or plasma both fit */
+const GLUCOSIO: ExtractedBiomarkerFixture = {
+  name: 'Glucosio',
+  value: 95,
+  unit: 'mg/dL',
+  confidence: 0.95,
+  specimenHint: 'blood',
+};
 const S_ALT: ExtractedBiomarkerFixture = { name: 'S-ALT', value: 30, unit: 'U/L', confidence: 0.95 };
 
 const CHOOSE_TEST_PROBLEM = /Glucosio in "lab-report\.pdf" needs a test: choose one or "Not a LOINC test"/;

@@ -35,7 +35,6 @@ describe('isDataLayerFile', () => {
   });
 
   it.each([
-    'src/data/biomarkers/loinc.ts',
     'src/data/loinc/addons.ts',
     'src/data/loinc/catalog.ts',
     'src/contexts/AuthContext.tsx',

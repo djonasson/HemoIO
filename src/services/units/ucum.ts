@@ -25,6 +25,8 @@ const UCUM_REWRITES: ReadonlyArray<[RegExp, string | ((...groups: string[]) => s
   // The Italian spelling: "mUI/mL"
   [/(^|\/)([mµ]?)UI\b/, (_all, start, prefix) => `${start}${prefix}[IU]`],
   [/\/hpf$/i, '/[HPF]'],
+  // The Italian "per field", of a microscope's high-power field
+  [/^per campo$/i, '/[HPF]'],
   [/\/24 ?h$/i, '/(24.h)'],
   [/\/1\.73 ?m[²2]$/, '/(1.73.m2)'],
   [/µ/g, 'u'],
@@ -70,6 +72,9 @@ function isShare(ucum: string): boolean {
   return ucum === '%' || ucum.startsWith('/100');
 }
 
+/** UCUM's enzyme unit, with or without a prefix: "U/L", "mU/mL", "kU/L" */
+const CATALYTIC_U = /(?<![A-Za-z[])[a-zµ]?U(?![A-Za-z\]])/;
+
 /** Whether a unit counts an amount of substance (moles or equivalents) */
 function isAmount(unit: UcumUnit): boolean {
   return unit.moleExp_ !== 0 || unit.equivalentExp_ !== 0;
@@ -87,7 +92,7 @@ export function ucumProperties(ucum: string): string[] {
   const amount = isAmount(unit);
 
   if (ucum.includes('[HPF]')) return ['Naric', 'NCnc'];
-  if (isShare(ucum)) return ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio'];
+  if (isShare(ucum)) return ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth'];
   if (unit.isArbitrary_ || /^\{[^}]*\}$/.test(ucum)) return ['ACnc', 'Ratio', 'Titr'];
   if (ucum === '1') return ['SpGrav', 'Ratio', 'pH'];
 
@@ -96,10 +101,27 @@ export function ucumProperties(ucum: string): string[] {
     if (mass === 0 && amount) return ['SCnc'];
     if (mass === 0) return ['NCnc'];
   }
-  if (length === -3 && time === -1 && mass === 0 && amount) return ['CCnc'];
+  // Labs print arbitrary units as "U/mL" too (antibodies), UCUM's U is catalytic
+  if (length === -3 && time === -1 && mass === 0 && amount) return CATALYTIC_U.test(ucum) ? ['CCnc', 'ACnc'] : ['CCnc'];
   if (length === 0 && time === -1) {
     if (mass === 1 && !amount) return ['MRat'];
     if (mass === 0 && amount) return ['SRat'];
+  }
+  // A volume, or that of one cell (MCV in fL)
+  if (length === 3 && time === 0 && mass === 0 && !amount) return ['Vol', 'EntMeanVol', 'EntVol'];
+  if (length === 1 && time === -1 && mass === 0 && !amount) {
+    // Volume per time per body surface (a filtration rate), else a speed (sedimentation)
+    return /m2\b/.test(ucum) ? ['ArVRat'] : ['Vel', 'Sedimentation Rate'];
+  }
+  if (length === 0 && time === 0) {
+    // A mass, or that of one cell (MCH in pg)
+    if (mass === 1 && !amount) return ['Mass', 'EntMass'];
+    // A mass per mass of something (mg/g creatinine)
+    if (mass === 0 && !amount && /g/.test(ucum)) return ['MRto', 'Ratio'];
+    // An amount per amount (HbA1c in mmol/mol)
+    if (mass === 0 && /mol.*\/.*mol/.test(ucum)) return ['SFr', 'SRto', 'Ratio'];
+    // A mass per amount of something (mg/mmol creatinine)
+    if (mass === 1 && amount) return ['Ratio'];
   }
   return [];
 }

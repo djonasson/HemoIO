@@ -10,7 +10,7 @@
  * - Notes in trends view
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Locator } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import {

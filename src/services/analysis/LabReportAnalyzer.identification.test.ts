@@ -82,7 +82,7 @@ describe('analyzeLabReport: identifying each value', () => {
 
   it('asks the AI once, with only the values several tests fit, and takes its confident choice', async () => {
     const { result, choose } = await analyze(
-      [extracted('Hb', 14, 'g/dL'), extracted('Glucosio', 5, 'mmol/L'), extracted('Zorb', 1, 'mg/dL')],
+      [extracted('Hb', 14, 'g/dL'), extracted('Glucosio', 5, 'mmol/L', 'blood'), extracted('Zorb', 1, '')],
       async (requests) => requests.map(({ id }) => ({ id, code: '14749-6', confident: true }))
     );
     expect(choose).toHaveBeenCalledTimes(1);
@@ -96,13 +96,13 @@ describe('analyzeLabReport: identifying each value', () => {
   });
 
   it('leaves the candidates to the user when the AI cannot be asked', async () => {
-    const { result } = await analyze([extracted('Glucosio', 5, 'mmol/L')], () =>
+    const { result } = await analyze([extracted('Glucosio', 5, 'mmol/L', 'blood')], () =>
       Promise.reject(new Error('unreachable'))
     );
     const [glucose] = result.matchedBiomarkers;
     expect(glucose.loincCode).toBeUndefined();
     expect(glucose.identificationFlags).toEqual(['ambiguous']);
-    expect(glucose.candidates.map((c) => c.code)).toEqual(['14749-6', '15074-8']);
+    expect(glucose.candidates.map((c) => c.code)).toEqual(['15074-8', '14749-6']);
     expect(result.warnings).toEqual([CHOICE_FAILED_NOTE, unidentifiedNote(1)]);
   });
 
@@ -168,7 +168,7 @@ describe('analyzeLabReport: identifying each value', () => {
 
     it('keeps a value apart from one of its name with a code', async () => {
       const { result } = await analyze(
-        [extracted('Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L')],
+        [extracted('Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L', 'blood')],
         choosing({ 'Glucosio|mg/dL': '2345-7' })
       );
       expect(saved(result)).toEqual(['2345-7: 90 mg/dL', 'Glucosio: 5 mmol/L']);

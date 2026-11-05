@@ -13,7 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';

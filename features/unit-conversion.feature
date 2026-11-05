@@ -130,7 +130,7 @@ Feature: Unit Conversion
     And no duplicate conflict warning should be shown
 
   Scenario: Merge a value once I choose its test
-    Given a lab report gives creatinine as 67 µmol/L and 0.76 mg/dL
+    Given a lab report gives creatinine under a blood heading as 67 µmol/L and 0.76 mg/dL, so blood and serum creatinine both fit
     And the AI knows the test of the mg/dL value but is not sure of the µmol/L one
     When the values are analyzed
     Then both values should be kept, with no duplicate conflict warning

@@ -7,7 +7,7 @@
  * filtering, the navigation badge, timestamps and accessibility.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {

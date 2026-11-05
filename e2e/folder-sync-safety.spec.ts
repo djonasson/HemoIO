@@ -6,7 +6,7 @@
  * user when it holds back.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { lockApp } from './steps/changePassword.steps';

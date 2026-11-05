@@ -8,7 +8,7 @@
  * - Keyboard navigation
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { waitForAnimations } from './steps/timeline.steps';

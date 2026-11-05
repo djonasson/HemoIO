@@ -22,5 +22,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "ocrCache.config.ts", "src/services/matching/onnxAssets.ts", "src/utils/dataLayerReload.ts"]
+  "include": ["vite.config.ts", "ocrCache.config.ts", "src/utils/dataLayerReload.ts"]
 }

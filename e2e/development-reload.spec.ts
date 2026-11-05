@@ -5,7 +5,7 @@
  * steps/devServer.steps.ts for why.
  */
 
-import { test } from './fixtures';
+import { test } from '@playwright/test';
 import { DevServerCopy, ReloadWatcherPage } from './steps/devServer.steps';
 
 // The reload is decided by the dev server, not the browser: one browser is enough

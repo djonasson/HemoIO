@@ -2,7 +2,7 @@
  * E2E tests for features/change-password.feature
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import { TEST_PASSWORD, openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { goToNotes, noteCards, noteSeed, seedNotesData } from './steps/userNotes.steps';

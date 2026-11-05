@@ -24,11 +24,12 @@ const DEFAULT_OUT = path.join(
 );
 
 /**
- * Codes kept although LOINC gives them no common-test rank, because the app's
- * add-on table (src/data/loinc/addons.ts) describes them: eGFR by CKD-EPI
- * 2021 and the total sperm count.
+ * Codes kept although LOINC gives them no common-test rank: two the app's
+ * add-on table (src/data/loinc/addons.ts) describes, eGFR by CKD-EPI 2021
+ * and the total sperm count, and molar urea in serum, which Italian labs
+ * report in mmol/L and which trends with urea in mg/dL.
  */
-const EXTRA_CODES = new Set(['98979-8', '107184-4']);
+const EXTRA_CODES = new Set(['98979-8', '107184-4', '22664-7']);
 
 /**
  * Parse CSV text into rows, one object per record keyed by the header.

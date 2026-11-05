@@ -8,6 +8,9 @@ Feature: Identifying the test of each value
   fits the printed name, its sample and its unit; the AI's confident choice
   among the tests that fit; else I choose in the review step.
 
+  "Glucosio" below is printed under a blood heading, so glucose in blood and
+  glucose in serum or plasma both fit it.
+
   Background:
     Given I am logged in
     And an AI provider is configured

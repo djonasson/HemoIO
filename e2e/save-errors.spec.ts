@@ -6,7 +6,7 @@
  * stored, which a lock and unlock (a fresh read) confirms.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openSettingsTab, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';

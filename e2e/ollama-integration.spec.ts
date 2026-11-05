@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
 import { openSettingsTab } from './steps/app.steps';
 
