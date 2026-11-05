@@ -26,7 +26,7 @@
  * Output goes only to the terminal: never paste it into the repository.
  */
 import { request } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, writeSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { it } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
@@ -78,16 +78,35 @@ async function printedValues(pdf: string, cacheDir: string | undefined): Promise
   }));
   if (cacheFile) {
     mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(cacheFile, JSON.stringify(values, null, 2));
+    writeOutside(cacheFile, JSON.stringify(values, null, 2));
   }
   return values;
 }
 
-/** A path with its symbolic links resolved, as far as it exists yet */
-function realPath(path: string): string {
+/** A path with its symbolic links resolved, as far as it exists yet: a link to nothing yet, to where it points */
+function realPath(path: string, links = 0): string {
   if (existsSync(path)) return realpathSync(path);
+  const link = lstatSync(path, { throwIfNoEntry: false });
+  if (link?.isSymbolicLink()) {
+    if (links > 40) throw new Error(`Too many symbolic links at ${path}`);
+    return realPath(resolve(dirname(path), readlinkSync(path)), links + 1);
+  }
   const parent = dirname(path);
   return parent === path ? path : join(realPath(parent), basename(path));
+}
+
+/**
+ * Writes a file, which must lie outside the repository: checked for the
+ * file itself, and opened without following a link put there since
+ */
+function writeOutside(path: string, text: string): void {
+  if (isInside(realPath(path), realpathSync(REPOSITORY))) throw new Error(`${basename(path)} must be written outside the repository`);
+  const file = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
+  try {
+    writeSync(file, text);
+  } finally {
+    closeSync(file);
+  }
 }
 
 /** Whether a path is the folder or within it */
@@ -174,5 +193,5 @@ it('matches the printed values of real reports locally', async () => {
   }
   lines.push(`match ${total.match}, ambiguous ${total.ambiguous}, none ${total.none}`);
   process.stdout.write(`${lines.join('\n')}\n`);
-  if (resultsFile) writeFileSync(resultsFile, JSON.stringify(results, null, 1));
+  if (resultsFile) writeOutside(resultsFile, JSON.stringify(results, null, 1));
 });
