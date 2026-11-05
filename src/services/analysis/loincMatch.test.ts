@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
 import { learnedKey, matchLocally, splitSamplePrefix } from './loincMatch';
@@ -495,6 +495,11 @@ describe('learnedKey', () => {
 });
 
 describe('matchLocally in the generated catalog', () => {
+  // Reading the 13 MB catalog and building its search index take seconds on a busy machine
+  beforeAll(async () => {
+    (await loadCatalog()).scoredSearch('glucosio');
+  }, 60_000);
+
   it.each([
     ['Hb', 'g/dL', '718-7'],
     ['Piastrine', '10^9/L', '777-3'],

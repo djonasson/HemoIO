@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, isPanel, loadCatalog } from './catalog';
 import type { CatalogTest } from './catalog';
 
 const catalog = fixtureCatalog();
+
+// Reading the 13 MB generated catalog and building its search index take seconds on a busy machine
+beforeAll(async () => {
+  (await loadCatalog()).scoredSearch('glucosio');
+}, 60_000);
 
 /** A made-up test, for cases the fixture release does not have */
 function madeUpTest(code: string, names: string[], rank = 1): CatalogTest {
