@@ -1,12 +1,11 @@
 /**
  * Choosing and editing a value's LOINC test in review
  */
-import { getAddon } from '@data/loinc/addons';
-import { identifyLocally, type Identification, type LearnedTests } from '@services/analysis/identification';
-import { learnedKey } from '@services/analysis/loincMatch';
-import { normalizeUnit } from '@services/units';
+import { unitOptions } from '@data/loinc/display';
+import { identifyLocally, type Identification, type LearnedTests } from './identification';
+import { learnedKey } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
-import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
+import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /** Most tests a search lists */
 const MAX_SEARCH_RESULTS = 30;
@@ -22,12 +21,7 @@ export function searchTests(catalog: Catalog, search: string): CatalogTest[] {
 
 /** Units offered for a value of a test: HemoIO's own for it, else LOINC's examples */
 export function unitOptionsFor(catalog: Catalog, code: string | undefined): string[] {
-  if (!code) return [];
-  const addon = getAddon(catalog, code);
-  const units = addon?.canonicalUnit
-    ? [addon.canonicalUnit, ...(addon.alternativeUnits ?? [])]
-    : (catalog.test(code)?.units ?? []);
-  return [...new Set(units.filter(Boolean))];
+  return code ? unitOptions(catalog, code) : [];
 }
 
 /** The value with every identification field set from `identification`, none left from before */
@@ -39,12 +33,11 @@ function identified(biomarker: MatchedBiomarker, identification: Identification)
     identifiedBy: identification.identifiedBy,
     identificationFlags: identification.identificationFlags,
     savedAsUnknown: identification.savedAsUnknown,
-    isExactMatch: identification.isExactMatch,
   };
 }
 
 /** Nothing known yet: a row added in review before it has a unit */
-const UNREAD: Identification = { candidates: [], identificationFlags: [], isExactMatch: false };
+const UNREAD: Identification = { candidates: [], identificationFlags: [] };
 
 /**
  * A value edited in review, its test read again: a test the user chose
@@ -59,17 +52,16 @@ function reidentify(
   catalog: Catalog,
   learned: LearnedTests | undefined
 ): MatchedBiomarker {
-  const withUnit = { ...changed, normalizedUnit: normalizeUnit(changed.unit) };
-  if (original.identifiedBy === 'user') return withUnit;
+  if (original.identifiedBy === 'user') return changed;
   const { analyzed } = original;
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
-  if (!analyzed && unit.trim() === '') return identified(withUnit, UNREAD);
+  if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
   const reading = { name: changed.name, unit, specimenHint: changed.specimenHint };
   const identification =
     analyzed && learnedKey(reading) === learnedKey(analyzed)
       ? analyzed.identification
       : identifyLocally(catalog, reading, learned);
-  return identified(withUnit, identification);
+  return identified(changed, identification);
 }
 
 /** Rename a value; its test is read again from the new name (see reidentify) */

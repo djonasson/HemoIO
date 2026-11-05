@@ -19,7 +19,7 @@ import {
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
-import { identifyValues, type Identification, type LearnedTests } from './identification';
+import { asAnalyzed, identifyValues, isFoundWithoutAsking, type Identification, type LearnedTests } from './identification';
 import type {
   AIProviderConfig,
   AIProviderType,
@@ -28,7 +28,6 @@ import type {
 } from '../ai';
 import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
-import { normalizeUnit } from '../units';
 import {
   clusterMeasurements,
   comparable,
@@ -65,10 +64,6 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   loincCode?: string;
   /** The tests it may be, best first: the local match's, the AI's pick first */
   candidates: Candidate[];
-  /** Matched without asking: learned, or the one test that fits */
-  isExactMatch: boolean;
-  /** Normalized unit */
-  normalizedUnit: string;
   /** Flag indicating this biomarker has a duplicate conflict that needs user review */
   hasDuplicateConflict?: boolean;
   /** Details about the duplicate conflict if present */
@@ -127,7 +122,7 @@ export interface AnalysisResult {
   extractedText: string;
   /** AI analysis result */
   aiAnalysis: LabReportAnalysisResult;
-  /** Biomarkers with dictionary matching */
+  /** The extracted values with their LOINC tests */
   matchedBiomarkers: MatchedBiomarker[];
   /** Detected lab date */
   labDate?: string;
@@ -448,19 +443,9 @@ export async function analyzeLabReport(
   } catch (error) {
     failStage(matchingStage, error);
     // Non-fatal - continue with values whose tests the user chooses
-    matchedBiomarkers = aiAnalysis.biomarkers.map((b) => {
-      const identification: Identification = {
-        candidates: [],
-        identificationFlags: ['not-identified'],
-        isExactMatch: false,
-      };
-      return {
-        ...b,
-        ...identification,
-        normalizedUnit: normalizeUnit(b.unit),
-        analyzed: { name: b.name, unit: b.unit, identification },
-      };
-    });
+    matchedBiomarkers = aiAnalysis.biomarkers.map((b) =>
+      asAnalyzed(b, { candidates: [], identificationFlags: ['not-identified'] })
+    );
     warnings.push('Test identification encountered errors');
   }
 
@@ -577,13 +562,11 @@ function calculateOverallConfidence(
   const avgBiomarkerConfidence =
     biomarkers.reduce((sum, b) => sum + b.confidence, 0) / biomarkers.length;
 
+  // Tests found without asking (learned, or the one test that fits) add to the confidence
   const exactMatchRatio =
-    biomarkers.filter((b) => b.isExactMatch).length / biomarkers.length;
+    biomarkers.filter(isFoundWithoutAsking).length / biomarkers.length;
 
-  // If we have dictionary matches, weight them in the calculation
-  // If no dictionary matches, rely more heavily on AI and biomarker confidence
   if (exactMatchRatio > 0) {
-    // With dictionary matches: weight all three factors
     const aiConfidenceWeight = 0.3;
     const matchConfidenceWeight = 0.4;
     const exactMatchWeight = 0.3;
@@ -594,7 +577,7 @@ function calculateOverallConfidence(
       exactMatchRatio * exactMatchWeight
     );
   } else {
-    // Without dictionary matches: rely on AI and biomarker confidence
+    // None found without asking: rely on AI and biomarker confidence
     // Don't penalize for unmatched biomarkers (could be foreign language or specialized tests)
     const aiConfidenceWeight = 0.4;
     const matchConfidenceWeight = 0.6;

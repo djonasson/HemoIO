@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { identifyValues } from '@services/analysis/identification';
+import { identifyValues } from './identification';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
   chooseTest,
   searchTests,
   unitOptionsFor,
-} from './biomarkerSuggestions';
-import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
+} from './reviewEdits';
+import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 const catalog = fixtureCatalog();
 
@@ -27,8 +27,6 @@ const ADDED: MatchedBiomarker = {
   value: NaN,
   unit: '',
   confidence: 1,
-  isExactMatch: false,
-  normalizedUnit: '',
   candidates: [],
 };
 

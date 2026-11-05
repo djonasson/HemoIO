@@ -46,7 +46,7 @@ import {
   applyBiomarkerUnit,
   chooseTest,
   unitOptionsFor,
-} from '@/utils/biomarkerSuggestions';
+} from '@services/analysis/reviewEdits';
 import { loincTestLabel, sampleLabel, splitPrintedSample, testDescription } from '@data/loinc/display';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
@@ -216,8 +216,6 @@ export function ReviewStep({
         value: NaN,
         unit: '',
         confidence: 1.0,
-        isExactMatch: false,
-        normalizedUnit: '',
         candidates: [],
       };
       newResults[resultIndex] = {

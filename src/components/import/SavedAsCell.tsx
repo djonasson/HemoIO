@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Button, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { useCatalog } from '@contexts/useCatalog';
-import { searchTests } from '@/utils/biomarkerSuggestions';
+import { searchTests } from '@services/analysis/reviewEdits';
 import { IdentificationLabels } from './IdentificationLabels';
 import { TestOption } from './TestOption';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';

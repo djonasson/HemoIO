@@ -30,8 +30,6 @@ function createMockBiomarker(
     value,
     unit,
     confidence: 0.95,
-    isExactMatch: true,
-    normalizedUnit: unit,
     candidates: [],
     ...options,
   };

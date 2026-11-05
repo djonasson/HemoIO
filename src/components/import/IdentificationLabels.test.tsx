@@ -18,8 +18,6 @@ function renderLabels(identificationFlags: IdentificationFlag[], test: { loincCo
             value: 15,
             unit: '',
             confidence: 1,
-            isExactMatch: false,
-            normalizedUnit: '',
             candidates: [],
             identificationFlags,
             ...test,

@@ -31,8 +31,6 @@ const REVIEWED = [
         value: 125,
         unit: 'mg/dL',
         confidence: 0.9,
-        isExactMatch: false,
-        normalizedUnit: 'mg/dL',
         loincCode: '2345-7',
         candidates: [],
         identifiedBy: 'ai',

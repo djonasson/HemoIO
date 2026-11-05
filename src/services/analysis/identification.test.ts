@@ -16,7 +16,6 @@ describe('identifyLocally', () => {
       loincCode: '2345-7',
       identifiedBy: 'local',
       identificationFlags: [],
-      isExactMatch: true,
     });
   });
 

@@ -187,7 +187,7 @@ describe('AnalysisStep', () => {
     function successfulAnalysis(): ServiceAnalysisResult {
       return {
         matchedBiomarkers: [
-          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9, isExactMatch: true, normalizedUnit: 'mg/dL' },
+          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9},
         ],
         labDate: '2024-01-15',
         labName: 'Lab',

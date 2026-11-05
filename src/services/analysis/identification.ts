@@ -3,9 +3,8 @@
  * wording, the local match, then one AI call for the values several tests
  * fit; what is left is the user's to choose in review.
  */
-import { isNotALoincTest, type SavedValue } from '@data/loinc/learnedTests';
-import { unknownBiomarkerKey } from '@data/loinc/keys';
-import { normalizeUnit } from '../units';
+import type { SavedValue } from '@data/loinc/learnedTests';
+import { isUnknownKey, unknownBiomarkerKey } from '@data/loinc/keys';
 import { learnedKey, matchLocally, type Candidate, type PrintedValue } from './loincMatch';
 import type { Catalog } from '@data/loinc/catalog';
 import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
@@ -21,8 +20,6 @@ export interface Identification {
   identifiedBy?: IdentifiedBy;
   identificationFlags: IdentificationFlag[];
   savedAsUnknown?: boolean;
-  /** Matched without asking: learned, or the one test that fits */
-  isExactMatch: boolean;
 }
 
 /** Asks the AI which candidate each value is */
@@ -42,8 +39,8 @@ export function identifyLocally(
   learned: LearnedTests = {}
 ): Identification {
   const taught = learned[learnedKey(value)];
-  if (taught && isNotALoincTest(taught)) {
-    return { candidates: [], identifiedBy: 'learned', identificationFlags: [], savedAsUnknown: true, isExactMatch: true };
+  if (taught && isUnknownKey(taught)) {
+    return { candidates: [], identifiedBy: 'learned', identificationFlags: [], savedAsUnknown: true };
   }
 
   const match = matchLocally(catalog, value, (key) => learned[key]);
@@ -53,13 +50,12 @@ export function identifyLocally(
       candidates: match.candidates,
       identifiedBy: match.code === taught ? 'learned' : 'local',
       identificationFlags: [],
-      isExactMatch: true,
     };
   }
   // A name that fits no test still has the common tests of its unit to choose from
   const flags: IdentificationFlag[] = [match.status === 'none' ? 'not-identified' : 'ambiguous'];
   if (value.unit.trim() === '') flags.push('no-unit');
-  return { candidates: match.candidates, identificationFlags: flags, isExactMatch: false };
+  return { candidates: match.candidates, identificationFlags: flags };
 }
 
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */
@@ -99,15 +95,9 @@ export async function identifyValues(
   extracted: readonly ExtractedBiomarker[],
   { learned, choose }: { learned?: LearnedTests; choose?: ChooseTests }
 ): Promise<IdentifiedValues> {
-  const values: MatchedBiomarker[] = extracted.map((biomarker) => {
-    const identification = identifyLocally(catalog, biomarker, learned);
-    return {
-      ...biomarker,
-      ...identification,
-      normalizedUnit: normalizeUnit(biomarker.unit),
-      analyzed: { name: biomarker.name, unit: biomarker.unit, identification },
-    };
-  });
+  const values = extracted.map((biomarker) =>
+    asAnalyzed(biomarker, identifyLocally(catalog, biomarker, learned))
+  );
 
   const requests: TestChoiceRequest[] = values.flatMap((value, index) =>
     needsChoice(value)
@@ -143,6 +133,16 @@ export async function identifyValues(
   };
 }
 
+/** An extracted value with the identification the analyzer gave it, kept to restore it after edits */
+export function asAnalyzed(biomarker: ExtractedBiomarker, identification: Identification): MatchedBiomarker {
+  return { ...biomarker, ...identification, analyzed: { name: biomarker.name, unit: biomarker.unit, identification } };
+}
+
+/** Whether a value's test was found without asking: learned, or the one test that fits */
+export function isFoundWithoutAsking(value: Pick<MatchedBiomarker, 'identifiedBy'>): boolean {
+  return value.identifiedBy === 'learned' || value.identifiedBy === 'local';
+}
+
 /** A value's identification fields */
 export function identificationOf(value: MatchedBiomarker): Identification {
   return {
@@ -151,7 +151,6 @@ export function identificationOf(value: MatchedBiomarker): Identification {
     identifiedBy: value.identifiedBy,
     identificationFlags: value.identificationFlags ?? [],
     savedAsUnknown: value.savedAsUnknown,
-    isExactMatch: value.isExactMatch,
   };
 }
 

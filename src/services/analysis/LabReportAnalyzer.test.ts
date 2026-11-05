@@ -144,7 +144,7 @@ describe('LabReportAnalyzer', () => {
       const result = await analyzeLabReport(file, defaultOptions);
 
       const hemoglobin = result.matchedBiomarkers.find((b) => b.name === 'Hemoglobin');
-      expect(hemoglobin).toMatchObject({ loincCode: '718-7', identifiedBy: 'local', isExactMatch: true });
+      expect(hemoglobin).toMatchObject({ loincCode: '718-7', identifiedBy: 'local' });
     });
 
     it('generates unique analysis ID', async () => {

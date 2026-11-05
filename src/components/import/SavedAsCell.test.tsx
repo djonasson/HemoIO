@@ -17,8 +17,6 @@ const value: MatchedBiomarker = {
   value: 95,
   unit: 'mg/dL',
   confidence: 1,
-  isExactMatch: false,
-  normalizedUnit: 'mg/dL',
   identificationFlags: ['ambiguous'],
   candidates: [
     { code: '2345-7', name: SERUM, score: 1 },
