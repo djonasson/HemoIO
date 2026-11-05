@@ -12,9 +12,11 @@ import { BiomarkerDictionary } from './BiomarkerDictionary';
 
 // The list and its search come from the catalog, loaded as in the unlocked app
 let catalog: Catalog;
+// Reading the 13 MB catalog and building its search index take seconds on a busy machine
 beforeAll(async () => {
   catalog = await loadCatalog();
-});
+  catalog.scoredSearch('glucose');
+}, 60_000);
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -86,9 +88,8 @@ describe('BiomarkerDictionary', () => {
 
       await user.click(screen.getByText(catalog.classLabel(test.classCode)));
 
-      const item = await screen.findByRole('button', {
-        name: `View details for ${test.shortName || test.name}`,
-      });
+      // LOINC's short name, less its mass property: the test has a molar code too
+      const item = await screen.findByRole('button', { name: 'View details for Glucose Bld' });
       // In place of a description, LOINC's name
       expect(item).toHaveTextContent(test.name);
     });
@@ -154,14 +155,12 @@ describe('BiomarkerDictionary', () => {
 
     it('finds a test of the whole LOINC catalog, named by LOINC', async () => {
       const user = userEvent.setup();
-      const test = catalog.test('2339-0')!;
       renderWithProviders(<BiomarkerDictionary {...defaultProps} />);
 
       await user.type(screen.getByPlaceholderText(/search biomarkers/i), 'glucose blood');
 
-      expect(
-        await screen.findByRole('button', { name: `View details for ${test.shortName || test.name}` })
-      ).toBeInTheDocument();
+      // 2339-0, LOINC's short name less its mass property: the test has a molar code too
+      expect(await screen.findByRole('button', { name: 'View details for Glucose Bld' })).toBeInTheDocument();
     });
 
     it('should return to category view when search is cleared', async () => {

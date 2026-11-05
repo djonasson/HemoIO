@@ -1,17 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { createCatalog, type CatalogTest } from './catalog';
 import {
   loincTestLabel,
   sampleLabel,
   standardRange,
+  testAddon,
   testDescription,
   testDisplayName,
+  testKey,
+  testName,
   testUnits,
   trendCode,
+  unitOptions,
 } from './display';
 import { unknownBiomarkerKey } from './keys';
 
 const catalog = fixtureCatalog();
+
+/** A catalog of these tests, all in one LOINC group joining their samples */
+function oneGroup(tests: Array<Pick<CatalogTest, 'code' | 'name' | 'system' | 'rank'> & Partial<CatalogTest>>) {
+  const group = { id: 'LG-T1', parentId: 'LG-P', parentName: 'Sample types', name: 'Made up|Pt|ANYBldSerPl' };
+  return createCatalog({
+    version: 'test',
+    groups: [group],
+    tests: tests.map((test) => ({
+      shortName: '',
+      component: 'Made up',
+      property: 'SCnc',
+      scale: 'Qn',
+      method: '',
+      classCode: 'CHEM',
+      names: [],
+      units: [],
+      groups: [group.id],
+      ...test,
+    })),
+  });
+}
 
 describe('testDisplayName', () => {
   it('prefers the add-on short name, then the LOINC short name', () => {
@@ -60,6 +86,79 @@ describe('trendCode', () => {
   it('keeps a code alone in its group, and a key outside the catalog, as they are', () => {
     expect(trendCode(catalog, '2339-0')).toBe('2339-0');
     expect(trendCode(catalog, 'unknown:zorblatina')).toBe('unknown:zorblatina');
+  });
+});
+
+describe('testAddon', () => {
+  // 2162-6 is HemoIO's 24-hour urine creatinine; the others are made up
+  const urine = oneGroup([
+    { code: '2162-6', name: 'Creatinine [Mass/time] in 24 hour Urine', system: 'Urine', rank: 50, property: 'MRat' },
+    { code: '90002-1', name: 'Creatinine [Mass/time] in 12 hour Urine', system: 'Urine', rank: 900, property: 'MRat' },
+    { code: '90003-9', name: 'Creatinine [Mass/time] in Urine collected for unspecified duration', system: 'Urine', rank: 950, property: 'MRat' },
+    { code: '90004-7', name: 'Creatinine [Moles/time] in 24 hour Urine', system: 'Urine', rank: 990, property: 'SRat' },
+  ]);
+
+  it('lends a 24-hour test its add-on only to codes collected over the same time', () => {
+    expect(testAddon(urine, '90004-7')).toBe(testAddon(urine, '2162-6'));
+    expect(testAddon(urine, '90002-1')).toBeUndefined();
+    expect(testAddon(urine, '90003-9')).toBeUndefined();
+  });
+
+  it("so a 12-hour or unspecified collection keeps LOINC's name and units", () => {
+    expect(testDisplayName(urine, { biomarkerKey: '90002-1' })).toBe(
+      'Creatinine [Mass/time] in 12 hour Urine'
+    );
+    expect(testDescription(urine, '90003-9')).toBeUndefined();
+    expect(unitOptions(urine, '90002-1')).toEqual([]);
+    expect(testDisplayName(urine, { biomarkerKey: '90004-7' })).toBe('24-Hour Urine Creatinine');
+  });
+});
+
+describe('trendCode and testKey', () => {
+  it('names a line of arterial and venous codes after blood in general, when the group has it', () => {
+    const blood = oneGroup([
+      { code: '90010-4', name: 'Potassium in Venous blood', system: 'BldV', rank: 250 },
+      { code: '90011-2', name: 'Potassium in Arterial blood', system: 'BldA', rank: 300 },
+      { code: '90012-0', name: 'Potassium in Blood', system: 'Bld', rank: 2000 },
+    ]);
+    expect(trendCode(blood, '90011-2')).toBe('90012-0');
+    expect(trendCode(blood, '90010-4')).toBe('90012-0');
+  });
+
+  it('takes the most common code when every code is of one site of blood', () => {
+    const sites = oneGroup([
+      { code: '90010-4', name: 'Potassium in Venous blood', system: 'BldV', rank: 250 },
+      { code: '90011-2', name: 'Potassium in Arterial blood', system: 'BldA', rank: 300 },
+    ]);
+    expect(trendCode(sites, '90011-2')).toBe('90010-4');
+  });
+
+  it("keeps a test's own under its LOINC group, whichever code it is shown under", () => {
+    const group = catalog.trendGroup('2345-7');
+    expect(testKey(catalog, '2345-7')).toBe(group);
+    expect(testKey(catalog, '14749-6')).toBe(group);
+    // A test key leads back to the code the test is shown under
+    expect(trendCode(catalog, group)).toBe('2345-7');
+    expect(testKey(catalog, 'unknown:zorblatina')).toBe('unknown:zorblatina');
+  });
+});
+
+describe('testName', () => {
+  it("drops the mass or molar property from LOINC's short name of a test of both", () => {
+    const lactate = oneGroup([
+      { code: '90020-3', name: 'Lactate [Moles/volume] in Blood', shortName: 'Lactate Bld-sCnc', system: 'Bld', rank: 300 },
+      { code: '90021-1', name: 'Lactate [Mass/volume] in Blood', shortName: 'Lactate Bld-mCnc', system: 'Bld', rank: 700, property: 'MCnc' },
+    ]);
+    expect(testName(lactate, '90021-1')).toBe('Lactate Bld');
+    // A value keeps its own code's name
+    expect(testDisplayName(lactate, { biomarkerKey: '90021-1' })).toBe('Lactate Bld-mCnc');
+  });
+
+  it("keeps HemoIO's name, a test of one property's name, and a printed name", () => {
+    expect(testName(catalog, '14749-6')).toBe('Glucose');
+    const one = oneGroup([{ code: '90020-3', name: 'Lactate [Moles/volume] in Blood', shortName: 'Lactate Bld-sCnc', system: 'Bld', rank: 300 }]);
+    expect(testName(one, '90020-3')).toBe('Lactate Bld-sCnc');
+    expect(testName(catalog, 'unknown:zorblatina', 'Zorblatina')).toBe('Zorblatina');
   });
 });
 

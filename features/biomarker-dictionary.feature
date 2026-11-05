@@ -57,6 +57,10 @@ Feature: Biomarker Dictionary
     When I type the name of a LOINC test that HemoIO has no description of and I have no values for
     Then I should see that test in the results, named by LOINC
 
+  Scenario: Search for a test by its LOINC code
+    When I type the LOINC code "14749-6" in the search field
+    Then I should see "Glucose" first in the results, the test that code is part of
+
   Scenario: Search with no results
     When I type "xyz123" in the search field
     Then I should see a message indicating no results found

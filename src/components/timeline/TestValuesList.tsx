@@ -17,12 +17,13 @@ import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
 import {
   loincTestLabel,
   sampleLabel,
-  splitPrintedSample,
   testDescription,
   testDisplayName,
+  testKey,
   testUnits,
   trendCode,
 } from '@data/loinc/display';
+import { splitPrintedSample } from '@components/common/printedSample';
 import { useCatalog } from '@contexts/useCatalog';
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
@@ -35,8 +36,8 @@ import { BiomarkerName } from './BiomarkerName';
 export interface TestValuesListProps {
   /** Test values to display */
   testValues: EnrichedTestValue[];
-  /** Open a test's trend; numeric values' names become links when given */
-  onOpenTrend?: (biomarkerKey: string) => void;
+  /** Open a test's trend on a value; numeric values' names become links when given */
+  onOpenTrend?: (biomarkerKey: string, testValueId?: number) => void;
 }
 
 /**
@@ -145,7 +146,10 @@ export function TestValuesList({
             const testValue = convertForDisplay(
               test ?? '',
               recorded,
-              preferredUnitFor(testUnits(catalog, code), unitPreferences[code])
+              preferredUnitFor(
+                testUnits(catalog, code),
+                unitPreferences[testKey(catalog, recorded.biomarkerKey)]
+              )
             );
             const indicator = getStatusIndicator(testValue.status);
             const printed = test ? undefined : splitPrintedSample(testDisplayName(catalog, recorded));
@@ -186,7 +190,7 @@ export function TestValuesList({
                     descriptionId={descriptionId}
                     onOpen={
                       onOpenTrend && isTrendable(recorded)
-                        ? () => onOpenTrend(recorded.biomarkerKey)
+                        ? () => onOpenTrend(recorded.biomarkerKey, recorded.id)
                         : undefined
                     }
                   />

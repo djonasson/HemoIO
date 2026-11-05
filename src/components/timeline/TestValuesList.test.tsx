@@ -10,13 +10,16 @@ import { TestValuesList } from './TestValuesList';
 import { loadCatalog, type Catalog } from '@data/loinc/catalog';
 import { CatalogContext } from '@contexts/useCatalog';
 import { unknownBiomarkerKey } from '@data/loinc/keys';
+import { testKey } from '@data/loinc/display';
 import type { EnrichedTestValue } from '@hooks/useLabResults';
 
 // Names, samples and LOINC names come from the catalog, as in the unlocked app
 let catalog: Catalog;
+// Reading the 13 MB catalog and building its search index take seconds on a busy machine
 beforeAll(async () => {
   catalog = await loadCatalog();
-});
+  catalog.scoredSearch('glucose');
+}, 60_000);
 
 let mockUnitPreferences: Record<string, string> = {};
 vi.mock('@hooks/usePreferences', () => ({
@@ -66,7 +69,8 @@ describe('TestValuesList', () => {
       createTestValue(1, { biomarkerKey: '2345-7', rawText: 'Glucose', ...options });
 
     it('shows a value in the preferred unit, with its range', () => {
-      mockUnitPreferences = { '2345-7': 'mmol/L' };
+      // Kept under the test's LOINC group
+      mockUnitPreferences = { [testKey(catalog, '2345-7')]: 'mmol/L' };
       renderWithProviders(
         <TestValuesList
           testValues={[
@@ -383,7 +387,8 @@ describe('TestValuesList', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
 
-      expect(onOpenTrend).toHaveBeenCalledWith('2345-7');
+      // On the value itself, so Trends opens the line it is on
+      expect(onOpenTrend).toHaveBeenCalledWith('2345-7', 1);
     });
 
     it('opens the trend with the keyboard', async () => {
@@ -394,7 +399,8 @@ describe('TestValuesList', () => {
       expect(screen.getByRole('button', { name: 'Glucose, open trend' })).toHaveFocus();
       await userEvent.keyboard('{Enter}');
 
-      expect(onOpenTrend).toHaveBeenCalledWith('2345-7');
+      // On the value itself, so Trends opens the line it is on
+      expect(onOpenTrend).toHaveBeenCalledWith('2345-7', 1);
     });
 
     it('keeps the description, on hover and on keyboard focus', async () => {

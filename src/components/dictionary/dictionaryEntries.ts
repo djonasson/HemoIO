@@ -6,7 +6,7 @@
  */
 import { TEST_ADDONS } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
-import { testDescription, testDisplayName, trendCode } from '@data/loinc/display';
+import { testDescription, testName, trendCode } from '@data/loinc/display';
 import type { Catalog } from '@data/loinc/catalog';
 
 export interface DictionaryEntry {
@@ -32,7 +32,7 @@ export function dictionaryEntry(catalog: Catalog, code: string): DictionaryEntry
   if (!test) return undefined;
   return {
     code: test.code,
-    name: testDisplayName(catalog, { biomarkerKey: test.code }),
+    name: testName(catalog, test.code),
     summary: testDescription(catalog, test.code) ?? test.name,
     classLabel: catalog.classLabel(test.classCode),
   };
@@ -63,9 +63,13 @@ export function groupByClass(entries: ReadonlyArray<DictionaryEntry>): Dictionar
     .sort((a, b) => a.classLabel.localeCompare(b.classLabel));
 }
 
+/** A LOINC code as a search may give it: "2345-7", "LOINC 2345-7" */
+const LOINC_CODE = /^(?:loinc:?\s*)?(\d{1,7}-\d)$/i;
+
 /**
- * The listed entries whose name holds the query, then the catalog's tests
- * that fit it, best first; each test once
+ * The test whose LOINC code the query is, then the listed entries whose name
+ * holds the query, then the catalog's tests that fit it, best first; each
+ * test once
  */
 export function searchDictionary(
   catalog: Catalog,
@@ -75,6 +79,9 @@ export function searchDictionary(
   const wanted = nameKey(query);
   if (!wanted) return [];
   const found = new Map<string, DictionaryEntry>();
+  const code = LOINC_CODE.exec(query.trim())?.[1];
+  const byCode = code ? dictionaryEntry(catalog, code) : undefined;
+  if (byCode) found.set(byCode.code, byCode);
   for (const entry of listed) {
     if (nameKey(entry.name).includes(wanted)) found.set(entry.code, entry);
   }

@@ -32,12 +32,12 @@ import {
   IconTarget,
 } from '@tabler/icons-react';
 import { useCatalog } from '@contexts/useCatalog';
-import { getAddon } from '@data/loinc/addons';
 import {
   sampleLabel,
   standardRange,
   targetUnit,
-  testDisplayName,
+  testAddon,
+  testName,
   testUnits,
   unitOptions,
 } from '@data/loinc/display';
@@ -97,8 +97,8 @@ export function BiomarkerDetail({
 
   const test = catalog.test(code);
   if (!test) return null;
-  const name = testDisplayName(catalog, { biomarkerKey: code });
-  const addon = getAddon(catalog, code);
+  const name = testName(catalog, code);
+  const addon = testAddon(catalog, code);
   const range = standardRange(catalog, code);
   const shownUnits = unitOptions(catalog, code);
   // Only HemoIO's own units have a standard one, outlined first

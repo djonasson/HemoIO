@@ -12,9 +12,11 @@ import { CatalogContext } from '@contexts/useCatalog';
 
 // Names, ranges and the other codes come from the catalog, loaded as in the unlocked app
 let catalog: Catalog;
+// Reading the 13 MB catalog and building its search index take seconds on a busy machine
 beforeAll(async () => {
   catalog = await loadCatalog();
-});
+  catalog.scoredSearch('glucose');
+}, 60_000);
 
 const WBC = '6690-2';
 const GLUCOSE = '2345-7';
@@ -102,7 +104,8 @@ describe('BiomarkerDetail', () => {
       const test = catalog.test(UNDESCRIBED)!;
       renderDetailOf(UNDESCRIBED);
 
-      expect(screen.getByRole('heading', { level: 3, name: test.shortName || test.name })).toBeInTheDocument();
+      // LOINC's short name less its mass property: the test has a molar code too
+      expect(screen.getByRole('heading', { level: 3, name: 'Glucose Bld' })).toBeInTheDocument();
       expect(screen.getByText(test.name)).toBeInTheDocument();
       expect(screen.getByText('No description yet')).toBeInTheDocument();
       expect(screen.queryByText('Reference Range')).not.toBeInTheDocument();

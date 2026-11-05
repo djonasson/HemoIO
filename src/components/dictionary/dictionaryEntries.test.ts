@@ -48,6 +48,12 @@ describe('dictionaryEntries', () => {
     );
   });
 
+  it('finds a test by its LOINC code, as the test it trends as', () => {
+    const entries = dictionaryEntries(catalog, []);
+    expect(searchDictionary(catalog, entries, '2339-0')[0].code).toBe('2339-0');
+    expect(searchDictionary(catalog, entries, ' LOINC 14749-6 ')[0]).toMatchObject({ code: '2345-7', name: 'Glucose' });
+  });
+
   it('ignores case and extra spaces in a search, and finds nothing for an empty one', () => {
     const entries = dictionaryEntries(catalog, []);
     expect(searchDictionary(catalog, entries, '  GLUCOSE  ')[0].code).toBe('2345-7');

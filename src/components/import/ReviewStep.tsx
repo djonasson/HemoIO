@@ -47,7 +47,8 @@ import {
   chooseTest,
   unitOptionsFor,
 } from '@services/analysis/reviewEdits';
-import { loincTestLabel, sampleLabel, splitPrintedSample, testDescription } from '@data/loinc/display';
+import { loincTestLabel, sampleLabel, testDescription } from '@data/loinc/display';
+import { splitPrintedSample } from '@components/common/printedSample';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
 import { missingFields, needsTest, planSave } from '@services/analysis/reviewedSave';
