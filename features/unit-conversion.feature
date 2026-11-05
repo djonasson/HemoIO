@@ -98,6 +98,12 @@ Feature: Unit Conversion
     When I convert it to mg/g
     Then the result should be approximately 133 mg/g
 
+  Scenario: A ratio in mg/mmol trends with the same ratio in mg/g
+    Given a protein/creatinine ratio saved as "Protein/Creatinine [Ratio] in Urine", LOINC's own test for mg/mmol, at 15 mg/mmol
+    And one saved as "Protein/Creatinine [Mass Ratio] in Urine" at 120 mg/g
+    When I view the protein/creatinine ratio trend
+    Then both values should be plotted on one line in mg/g
+
   # Duplicate Value Detection (Same Measurement in Different Units)
   Scenario: Detect equivalent values in different units
     Given a lab report contains creatinine as both 67 µmol/L and 0.76 mg/dL
@@ -114,13 +120,12 @@ Feature: Unit Conversion
     Then they should be recognized as equivalent after unit conversion
     And the values should be merged without conflict
 
-  Scenario: Merge a protein/creatinine ratio in mg/mmol once I choose the mass ratio test
+  Scenario: Merge a protein/creatinine ratio given in mg/mmol and in mg/g
     Given a lab report contains protein/creatinine ratio as both 15 mg/mmolcreat. and 132 mg/gcreat.
     When the values are analyzed
-    Then the mg/mmol value should be saved as "Protein/Creatinine [Ratio] in Urine", LOINC's own test for that unit
-    And both values should be kept, with no duplicate conflict warning
-    When I choose "Protein/Creatinine [Mass Ratio] in Urine" for the mg/mmol value
-    Then it should be marked "Not saved", as the same measurement as 132 mg/gcreat.
+    Then they should be recognized as one measurement, although LOINC has a test of its own for the ratio in mg/mmol
+    And only the value in mg/g should be kept
+    And no duplicate conflict warning should be shown
 
   Scenario: Merge the values an Italian report gives in two units
     Given a lab report gives uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L, and HbA1c as 42 mmol/mol Hb and 6.0 %

@@ -24,8 +24,11 @@ const RELATIVE_TOLERANCE = 0.02;
 /** Decimal places used when converting values only to compare them */
 const COMPARISON_PRECISION = 10;
 
-/** LOINC properties that come as a mass and a molar pair: MCnc and SCnc, MRat and SRat… */
-const MASS_OR_MOLAR = /^[MS](?:Cnc|Rat|Cnt|Rto)$/;
+/**
+ * LOINC properties that come as a mass and a molar pair: MCnc and SCnc,
+ * MRat and SRat… A ratio to creatinine in mg/g is MRto, in mg/mmol Ratio.
+ */
+const MASS_OR_MOLAR = /^(?:[MS](?:Cnc|Rat|Cnt|Rto)|Ratio)$/;
 
 /**
  * Half the last reported digit: how far rounding can have moved a value. A
@@ -41,7 +44,7 @@ function roundingAllowance(value: number): number {
 /**
  * The test a value is, for telling duplicates: its code, with a code's mass
  * and molar forms one test (glucose mg/dL and mmol/L in serum, a 24-hour
- * amount in g and in µmol). A value with no code is only the same test as
+ * amount in g and in µmol, a protein/creatinine ratio in mg/g and mg/mmol). A value with no code is only the same test as
  * one of the same printed name in the same unit: nothing else says it is.
  * Serum and blood, or a 24-hour amount and a concentration, are not one
  * test, though they may trend together.
@@ -56,7 +59,8 @@ export function sameTestKey(biomarker: MatchedBiomarker, catalog: Catalog): stri
   if (!MASS_OR_MOLAR.test(test.property)) return `code:${test.code}`;
   // "Creatinine [Mass/time] in 24 hour Urine" and "[Moles/time]": one name without the property
   const name = nameKey(test.name.replace(/\s*\[[^\]]*\]/, ''));
-  return `test:${test.component}|${test.property.slice(1)}|${test.system}|${test.method}|${name}`;
+  const quantity = test.property === 'Ratio' ? 'Rto' : test.property.slice(1);
+  return `test:${test.component}|${quantity}|${test.system}|${test.method}|${name}`;
 }
 
 /** A value of a group, in the group's unit when it could be converted */

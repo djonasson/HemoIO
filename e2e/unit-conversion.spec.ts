@@ -387,6 +387,22 @@ test.describe('Unit Conversion - International Aliases', () => {
     ]);
   });
 
+  test('should trend a ratio in mg/mmol with the same ratio in mg/g', async ({ page }) => {
+    // Scenario: A ratio in mg/mmol trends with the same ratio in mg/g
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: { ...PROTEIN_CREATININE_RATIO, key: '34366-5' }, value: 15, unit: 'mg/mmol' },
+      { day: DAY_2, biomarker: PROTEIN_CREATININE_RATIO, value: 120, unit: 'mg/g' },
+    ]);
+
+    await openTrend(page, 'Protein Creatinine Ratio');
+    await expect(trendTitle(page, 'Protein Creatinine Ratio', 'mg/g')).toBeVisible();
+    await expectTrendValues(page, [
+      { value: '132.6', unit: 'mg/g' },
+      { value: '120', unit: 'mg/g' },
+    ]);
+  });
+
   test('should read the units Italian reports write for creatinine ratios and nucleated red cells', async ({
     page,
   }) => {
@@ -555,24 +571,20 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
-  test('should merge a protein/creatinine ratio in mg/mmol once I choose the mass ratio test', async ({ page }) => {
-    // Scenario: Merge a protein/creatinine ratio in mg/mmol once I choose the mass ratio test
-    // (15 mg/mmolcreat. and 132 mg/gcreat.)
+  test('should merge a protein/creatinine ratio given in mg/mmol and in mg/g', async ({ page }) => {
+    // Scenario: Merge a protein/creatinine ratio given in mg/mmol and in mg/g
+    // (15 mg/mmolcreat. is 132.6 mg/gcreat.)
     await openApp(page);
     await analyzeReport(page, [
       { name: 'U-Proteine/Creatinina', value: 15, unit: 'mg/mmolcreat.', confidence: 0.95 },
       { name: 'U-Proteine/Creatinina', value: 132, unit: 'mg/gcreat.', confidence: 0.95 },
     ]);
 
-    // LOINC has its own test for the ratio in mg/mmol: each value is kept under its test
+    // LOINC's [Ratio] test for mg/mmol and [Mass Ratio] test for mg/g are one ratio
     const rows = reviewRows(page);
-    await expect(rows).toHaveCount(2);
-    const molar = rows.filter({ hasText: 'mg/mmolcreat.' });
-    await expect(molar).toContainText('Protein/Creatinine [Ratio] in Urine');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('mg/gcreat.');
     await expect(duplicateWarning(page)).toHaveCount(0);
-
-    await changeTest(page, molar, 'Protein/Creatinine [Mass Ratio] in Urine');
-    await expect(main(page).getByText(/the same measurement as 132 mg\/gcreat\., which is saved\./)).toBeVisible();
   });
 
   test('should merge the values an Italian report gives in two units', async ({ page }) => {

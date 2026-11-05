@@ -179,13 +179,19 @@ function joinsMassAndMolar(parentName: string): boolean {
 }
 
 /**
- * A rate group's name with its property left out: "Creatinine|MRat|Urine"
- * and "Creatinine|SRat|Urine" (a day's mass and moles) are one rate. LOINC
- * has no group joining them, as it has for concentrations.
+ * A group's name with its property left out, for the groups LOINC keeps
+ * apart although they hold one quantity, as it does not for concentrations:
+ * a rate's mass and moles ("Creatinine|MRat|Urine" and "Creatinine|SRat|
+ * Urine", a day's amount), and a ratio's mass per mass and per amount
+ * ("Protein/Creatinine|MRto|Urine" and "Protein/Creatinine|Ratio|Urine",
+ * mg/g and mg/mmol of creatinine). A ratio joins only through the groups
+ * of a component, property and sample, which roll up time and method.
  */
-function rateKey(group: CatalogGroup): string | undefined {
+function jointKey(group: CatalogGroup): string | undefined {
   const [component, property, ...rest] = group.name.split('|');
-  return property === 'MRat' || property === 'SRat' ? [component, ...rest].join('|') : undefined;
+  if (property === 'MRat' || property === 'SRat') return ['rate', component, ...rest].join('|');
+  if ((property === 'MRto' || property === 'Ratio') && rest.length === 1) return ['ratio', component, ...rest].join('|');
+  return undefined;
 }
 
 /** Whether a group joins a test's blood, serum and plasma codes */
@@ -275,11 +281,11 @@ export function createCatalog(file: CatalogFile): Catalog {
       .map((candidate) => ({ word: candidate, factor: CLOSE_FORM_FACTOR }));
   }
 
-  // A rate's mass and molar groups trend as the first of them
-  const rateGroups = new Map<string, string>();
+  // A rate's, or a ratio's, mass and molar groups trend as the first of them
+  const jointGroups = new Map<string, string>();
   for (const group of [...file.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    const key = rateKey(group);
-    if (key && !rateGroups.has(key)) rateGroups.set(key, group.id);
+    const key = jointKey(group);
+    if (key && !jointGroups.has(key)) jointGroups.set(key, group.id);
   }
 
   const trendGroups = new Map<string, string>();
@@ -290,9 +296,9 @@ export function createCatalog(file: CatalogFile): Catalog {
       .filter((group): group is CatalogGroup => group !== undefined)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const massAndMolar = memberships.find((candidate) => joinsMassAndMolar(candidate.parentName));
-    const rate = memberships.map(rateKey).find((key) => key !== undefined);
+    const joint = memberships.map(jointKey).find((key) => key !== undefined);
     const sampleTypes = memberships.find(joinsSampleTypes);
-    const trend = massAndMolar?.id ?? (rate && rateGroups.get(rate)) ?? sampleTypes?.id ?? test.code;
+    const trend = massAndMolar?.id ?? (joint && jointGroups.get(joint)) ?? sampleTypes?.id ?? test.code;
     trendGroups.set(test.code, trend);
     const codes = codesByTrendGroup.get(trend);
     if (codes) codes.push(test.code);

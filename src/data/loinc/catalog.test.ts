@@ -215,6 +215,39 @@ describe('trendGroup of rates', () => {
     expect(rates.groupCodes('LG1-1').sort()).toEqual(['1-1', '2-2']);
   });
 
+  it('joins a ratio to creatinine in mass per mass and per amount, only through a group of its sample', () => {
+    const file = {
+      version: 't',
+      groups: [
+        { id: 'LG1-1', parentId: 'LG0-0', parentName: 'Urine<SAME:Comp|Prop|Sys><ROLLUP:Tm|Meth>', name: 'Protein/Creatinine|MRto|Urine' },
+        { id: 'LG2-2', parentId: 'LG0-0', parentName: 'Urine<SAME:Comp|Prop|Sys><ROLLUP:Tm|Meth>', name: 'Protein/Creatinine|Ratio|Urine' },
+        { id: 'LG3-3', parentId: 'LG9-9', parentName: 'Chem<SAME:Comp|Prop|Tm|Syst>', name: 'Protein/Creatinine|Ratio|Pt|ANYUrine' },
+        { id: 'LG4-4', parentId: 'LG9-9', parentName: 'Chem<SAME:Comp|Prop|Tm|Syst>', name: 'Protein/Creatinine|MRto|Pt|ANYUrine' },
+      ],
+      tests: [
+        { ...madeUpTest('1-1', ['proteine/creatinina']), property: 'MRto', groups: ['LG1-1'] },
+        { ...madeUpTest('2-2', ['proteine/creatinina']), property: 'Ratio', groups: ['LG2-2', 'LG3-3'] },
+        { ...madeUpTest('3-3', ['proteine/creatinina']), property: 'Ratio', groups: ['LG3-3'] },
+        { ...madeUpTest('4-4', ['proteine/creatinina']), property: 'MRto', groups: ['LG4-4'] },
+      ],
+    };
+    const ratios = createCatalog(file);
+    expect(ratios.trendGroup('2-2')).toBe('LG1-1');
+    expect(ratios.groupCodes('LG1-1').sort()).toEqual(['1-1', '2-2']);
+    // A group of one time aspect joins nothing
+    expect(ratios.trendGroup('3-3')).toBe('3-3');
+    expect(ratios.trendGroup('4-4')).toBe('4-4');
+  });
+
+  it('joins urine protein/creatinine in mg/g and in mg/mmol in the generated catalog', async () => {
+    const generated = await loadCatalog();
+    // 2890-2 Protein/Creatinine [Mass Ratio] and 34366-5 [Ratio] in Urine
+    expect(generated.trendGroup('34366-5')).toBe(generated.trendGroup('2890-2'));
+    // Albumin/creatinine: 9318-7 and 13705-9 [Mass Ratio], 32294-1 [Ratio]
+    expect(generated.trendGroup('32294-1')).toBe(generated.trendGroup('13705-9'));
+    expect(generated.trendGroup('9318-7')).toBe(generated.trendGroup('13705-9'));
+  });
+
   it('joins 24-hour urine creatinine in mg and in mmol in the generated catalog', async () => {
     const generated = await loadCatalog();
     // 2162-6 Creatinine [Mass/time] and 14684-5 [Moles/time] in 24 hour Urine

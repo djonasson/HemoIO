@@ -99,6 +99,16 @@ describe('analyzeLabReport: values reported in two units', () => {
     ).toEqual(['2161-8: 0.51 g/L', '2162-6: 1.55 g/24h']);
   });
 
+  it('keeps one value of a ratio to creatinine given in mg/mmol and in mg/g, in the standard unit', async () => {
+    // 34366-5 [Ratio] for mg/mmol and 2890-2 [Mass Ratio] for mg/g are one ratio
+    expect(
+      await kept([
+        extracted('U-Proteine/Creatinina', 15, 'mg/mmol'),
+        extracted('U-Proteine/Creatinina', 132, 'mg/g'),
+      ])
+    ).toEqual(['2890-2: 132 mg/g']);
+  });
+
   it('keeps a second sample of the same test, reported under its own name', async () => {
     expect(
       await kept([
