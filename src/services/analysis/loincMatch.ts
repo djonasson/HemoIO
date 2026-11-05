@@ -386,11 +386,7 @@ export function matchLocally(
   }
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
-  const key = nameKey(whole);
-  const isLoincName = (): boolean =>
-    catalog
-      .scoredSearch(whole)
-      .some(({ test, score }) => score === 1 && (test.names.includes(key) || nameKey(test.name) === key));
+  const isLoincName = (): boolean => catalog.named(whole).length > 0;
   const split = stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
   const worded = split.systems || split.name.search(SAMPLE_WORDS) === -1 || isLoincName() ? undefined : sampleInName(split.name);
   const name = worded?.name ?? split.name;

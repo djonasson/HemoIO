@@ -85,6 +85,47 @@ describe('search', () => {
     expect(generic.search('serum analyte7').map((test) => test.code)).toEqual(['7-0']);
   });
 
+  it('finds a test by a name of words most tests share', () => {
+    const tests = [
+      ...Array.from({ length: 100 }, (_, index) =>
+        madeUpTest(`${index}-0`, index < 60 ? ['quant', `igg ab${index}`] : ['quant', `analyte${index}`])
+      ),
+      madeUpTest('100-0', ['igg', 'immunoglobulin g', 'quant'], 2),
+      madeUpTest('101-0', ['ige', 'quant'], 3),
+    ];
+    const generic = createCatalog({ version: 't', groups: [], tests });
+    // "igg" is in more than 50 tests: alone it says nothing, but it is a name of 100-0
+    expect(generic.search('IgG ab7').map((test) => test.code)).toEqual(['7-0']);
+    expect(generic.search('IgG').map((test) => test.code)).toEqual(['100-0']);
+    expect(generic.search('Immunoglobulin G').map((test) => test.code)).toEqual(['100-0']);
+    expect(generic.search('IgE totali').map((test) => test.code)).toEqual(['101-0']);
+  });
+
+  it('never reads a word as an abbreviation of the short names with an ending', () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [
+        { ...madeUpTest('1-1', ['calc', 'creatinine']), name: 'Creatinine [Mass/time] by Calculated', shortName: 'Creat calc' },
+        madeUpTest('2-2', ['calcio']),
+      ],
+    };
+    // "calci" (of "Calciuria") is a close form of "calcio", not "calc" with an ending
+    expect(createCatalog(file).search('calci').map((test) => test.code)).toEqual(['2-2']);
+  });
+
+  it('scores the words of a query found each in another name of a test below a name holding them all', () => {
+    const file = {
+      version: 't',
+      groups: [],
+      tests: [madeUpTest('1-1', ['beta carotene', 'vitamin d 2'], 1), madeUpTest('2-2', ['beta 2 globulin'], 900)],
+    };
+    const [first, second] = createCatalog(file).scoredSearch('Beta 2');
+    expect(first).toMatchObject({ test: { code: '2-2' }, score: 0.9 });
+    expect(second.test.code).toBe('1-1');
+    expect(second.score).toBeLessThan(0.9);
+  });
+
   it('reads a word no name has as a close form of one with a short ending', () => {
     const file = {
       version: 't',
@@ -192,9 +233,29 @@ describe('trendGroup', () => {
     expect(catalog.trendGroup('2345-7')).toBe(catalog.trendGroup('14749-6'));
   });
 
-  it('falls back to the group joining blood, serum and plasma', () => {
-    // 2339-0 is Glucose [Mass/volume] in Blood, in no mass and molar group
-    expect(catalog.trendGroup('2339-0')).toBe('LG7967-5');
+  it('falls back to the group joining blood, serum and plasma for a code alone in its mass and molar group', () => {
+    const massMolar = 'MassMolConc<SAME:Comp|Tm|Sys|Meth><Prop:MCncORSCncORMSCnc>';
+    const file = {
+      version: 't',
+      groups: [
+        { id: 'LG1-1', parentId: 'LG55-6', parentName: massMolar, name: 'Potassium|Pt|Ser/Plas|39.098 g/mole' },
+        { id: 'LG2-2', parentId: 'LG55-6', parentName: massMolar, name: 'Potassium|Pt|Bld|39.098 g/mole' },
+        { id: 'LG3-3', parentId: 'LG100-4', parentName: 'Chem', name: 'Potassium|SCnc|Pt|ANYBldSerPl' },
+      ],
+      tests: [
+        { ...madeUpTest('1-1', ['potassio']), property: 'SCnc', groups: ['LG1-1', 'LG3-3'] },
+        { ...madeUpTest('2-2', ['potassio']), property: 'SCnc', system: 'Bld', groups: ['LG2-2', 'LG3-3'] },
+      ],
+    };
+    const potassium = createCatalog(file);
+    expect(potassium.trendGroup('1-1')).toBe('LG3-3');
+    expect(potassium.trendGroup('2-2')).toBe('LG3-3');
+    expect(potassium.groupCodes('LG3-3')).toEqual(['1-1', '2-2']);
+  });
+
+  it('joins serum potassium, alone in its mass and molar group, with venous potassium in the generated catalog', async () => {
+    const generated = await loadCatalog();
+    expect(generated.trendGroup('2823-3')).toBe(generated.trendGroup('39789-3'));
   });
 
   it('is the code itself for a code in no such group', () => {
@@ -266,6 +327,11 @@ describe('trendGroup of rates', () => {
     const generated = await loadCatalog();
     // 2162-6 Creatinine [Mass/time] and 14684-5 [Moles/time] in 24 hour Urine
     expect(generated.trendGroup('2162-6')).toBe(generated.trendGroup('14684-5'));
+  });
+
+  it('joins 24-hour urine phosphate in mg and in mmol in the generated catalog, whatever groups name the time', async () => {
+    const generated = await loadCatalog();
+    expect(generated.trendGroup('2779-7')).toBe(generated.trendGroup('14881-7'));
   });
 
   it('joins molar and mass urea in serum in the generated catalog', async () => {
@@ -349,8 +415,34 @@ describe('search in the generated catalog', () => {
     expect((await loadCatalog()).search('Hematocrit')[0].code).toBe('4544-3');
   });
 
+  it.each([
+    ['IgG', '2465-3'],
+    ['Immunoglobulin G', '2465-3'],
+    ['IgG [Mass/volume] in Serum or Plasma', '2465-3'],
+    ['IgE', '19113-0'],
+  ])('finds %s, a name of words many tests share', async (query, code) => {
+    const found = (await loadCatalog()).search(query, { systems: ['Ser/Plas'] }).map((test) => test.code);
+    expect(found).toContain(code);
+  });
+
+  it('never reads "calci" of "Calciuria" as the abbreviation "calc"', async () => {
+    const found = (await loadCatalog()).scoredSearch('calci');
+    expect(found.length).toBeGreaterThan(0);
+    // 72821-2 is Creatinine [Mass/time] by Calculated in Urine
+    expect(found.map(({ test }) => test.code)).not.toContain('72821-2');
+    expect(found[0].test.component).toMatch(/^Calcium/);
+  });
+
   it('finds a specific gravity test', async () => {
     expect((await loadCatalog()).search('Specific gravity')[0].property).toBe('SpGrav');
+  });
+});
+
+describe('named', () => {
+  it('lists the tests one of whose names this is, whatever its case and spacing', () => {
+    expect(catalog.named(' GLUCOSIO ').map((test) => test.code)).toContain('2345-7');
+    expect(catalog.named('Glucose [Mass/volume] in Serum or Plasma').map((test) => test.code)).toEqual(['2345-7']);
+    expect(catalog.named('glucos')).toEqual([]);
   });
 });
 

@@ -458,6 +458,9 @@ describe('matchLocally in the generated catalog', () => {
     ['Glucose [Mass/volume] in Blood', 'mg/dL', undefined, '2339-0'],
     ['Calcium [Mass/volume] in Blood', 'mg/dL', undefined, '49765-1'],
     ['Glucosio siero', 'mg/dL', undefined, '2345-7'],
+    // Serum and blood sodium trend together: "sangue", said loosely, takes the more common
+    ['Sodio sangue', 'mmol/L', undefined, '2951-2'],
+    ['Sg-Sodio', 'mmol/L', undefined, '2947-0'],
     // The LOINC test of the unit's property, not one HemoIO describes in that unit
     ['Microalbumina', 'µg/min', 'urine', '49023-5'],
     ['Albumina', 'g/dL', undefined, '1751-7'],
@@ -499,7 +502,6 @@ describe('matchLocally in the generated catalog', () => {
     ['Glucosio su sangue', 'mg/dL', '2339-0'],
     ['Glucose, Blood', 'mg/dL', '2339-0'],
     ['Potassio sangue', 'mmol/L', undefined],
-    ['Sodio sangue', 'mmol/L', undefined],
     ['Calcium, Blood', 'mg/dL', '49765-1'],
     // The tests of the unit's property come first, the one HemoIO describes in it is not taken
     ['Alfa-fetoproteina', 'IU/mL', '19176-7'],

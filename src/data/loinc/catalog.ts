@@ -73,10 +73,12 @@ export interface Catalog {
   common(filter: CatalogSearchFilter, limit: number): CatalogTest[];
   /** The test whose long common name this is, whatever its case and spacing */
   byLongName(name: string): CatalogTest | undefined;
+  /** The tests one of whose names (or long common name) this is, whatever its case and spacing */
+  named(name: string): CatalogTest[];
   /**
    * What a code trends with: the group joining its mass and molar codes
-   * (for a rate, its mass and molar rate groups), else the group joining
-   * its blood, serum and plasma codes, else the code
+   * when it holds others (for a rate, its mass and molar rate groups), else
+   * the group joining its blood, serum and plasma codes, else the code
    */
   trendGroup(code: string): string;
   /** A readable name for a LOINC class */
@@ -185,7 +187,8 @@ function joinsMassAndMolar(parentName: string): boolean {
  */
 function jointKey(group: CatalogGroup): string | undefined {
   const [component, property, ...rest] = group.name.split('|');
-  if (property === 'MRat' || property === 'SRat') return ['rate', component, ...rest].join('|');
+  // Only through the groups of a component, property and sample, as for a ratio: "Phosphate|MRat|24H|ANYUrine" has no molar twin
+  if ((property === 'MRat' || property === 'SRat') && rest.length === 1) return ['rate', component, ...rest].join('|');
   if ((property === 'MRto' || property === 'Ratio') && rest.length === 1) return ['ratio', component, ...rest].join('|');
   return undefined;
 }
@@ -221,22 +224,52 @@ export function byRank(a: CatalogTest, b: CatalogTest): number {
   return rank(a) - rank(b) || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
 }
 
+/** A catalog file's name search, and its lookup of tests by one of their names */
+interface Search {
+  scoredSearch(query: string, filter?: CatalogSearchFilter): ScoredTest[];
+  named(name: string): CatalogTest[];
+}
+
+/** Absorbs float error when a test's covered weight is compared with the query's */
+const WEIGHT_EPSILON = 1e-9;
+/**
+ * How much a query's words count when no single name of a test holds them
+ * all: less than any name holding them, so a test that only pools them
+ * from several names never fits as well as one that has them together
+ */
+const SPREAD_FACTOR = 0.9;
+
 /**
  * The name search over a catalog file. Its indexes are the costliest part
  * of the catalog to build, so they are built on the first search, not with
  * the catalog: most screens only look tests up by code.
  */
-function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearchFilter) => ScoredTest[] {
-  // The long common name's words count too ("Hematocrit", "Specific gravity")
-  const exactNames = file.tests.map((test) => new Set([...test.names, nameKey(test.name)]));
+function createSearch(file: CatalogFile): Search {
+  // The long common name counts too ("Hematocrit", "Specific gravity")
+  const namesOf = (index: number): string[] => [...file.tests[index].names, nameKey(file.tests[index].name)];
+  const testsByName = new Map<string, number[]>();
   const testsByWord = new Map<string, number[]>();
-  exactNames.forEach((names, index) => {
-    for (const word of new Set([...names].flatMap(wordsOf))) {
-      const list = testsByWord.get(word);
-      if (list) list.push(index);
-      else testsByWord.set(word, [index]);
+  const add = (map: Map<string, number[]>, key: string, index: number): void => {
+    const list = map.get(key);
+    if (!list) map.set(key, [index]);
+    else if (list[list.length - 1] !== index) list.push(index);
+  };
+  /**
+   * Words of LOINC's short names that no long common name has ("calc" of
+   * "Globulin Ser calc-mCnc"): abbreviations, which a longer word is never
+   * a form of
+   */
+  const shortNameWords = new Set<string>();
+  const longNameWords = new Set<string>();
+  file.tests.forEach((test, index) => {
+    for (const name of namesOf(index)) {
+      add(testsByName, name, index);
+      for (const word of wordsOf(name)) add(testsByWord, word, index);
     }
+    for (const word of wordsOf(nameKey(test.shortName))) shortNameWords.add(word);
+    for (const word of wordsOf(nameKey(test.name))) longNameWords.add(word);
   });
+  const isAbbreviation = (word: string): boolean => shortNameWords.has(word) && !longNameWords.has(word);
   const genericCount = Math.max(MIN_GENERIC_COUNT, file.tests.length * GENERIC_SHARE);
   // A number is in many names but tells "Alpha 1" from "Alpha 2" globulin
   const tellsTest = (word: string): boolean =>
@@ -248,7 +281,7 @@ function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearch
   // Name words by their first letters, for finding close forms
   const wordsByStem = new Map<string, string[]>();
   for (const word of testsByWord.keys()) {
-    if (word.length < MIN_STEM || !tellsTest(word)) continue;
+    if (word.length < MIN_STEM || !tellsTest(word) || isAbbreviation(word)) continue;
     const stem = word.slice(0, MIN_STEM);
     wordsByStem.set(stem, [...(wordsByStem.get(stem) ?? []), word]);
   }
@@ -275,15 +308,20 @@ function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearch
       .join(' ');
   // Built for a test the first time a search finds it
   const nameKeys: Set<string>[] = [];
-  const nameKeysOf = (index: number): Set<string> =>
-    (nameKeys[index] ??= new Set([...exactNames[index]].map(wordsKey)));
+  const nameKeysOf = (index: number): Set<string> => (nameKeys[index] ??= new Set(namesOf(index).map(wordsKey)));
 
   /** The name words a query word stands for, with how much each counts */
   function matchesOf(word: string): { word: string; factor: number }[] {
     const forms = new Set(wordsByInflection.get(inflectionStem(word)));
-    // A short word with an ending, when no name has the word itself: "urico" for "uric"
+    // A short word with an ending, when no name has the word itself: "urico" for "uric", but "calci" not for "calc"
     const short = word.slice(0, -1);
-    if (!testsByWord.has(word) && /[aeio]$/.test(word) && short.length <= MIN_STEM && testsByWord.has(short)) {
+    if (
+      !testsByWord.has(word) &&
+      /[aeio]$/.test(word) &&
+      short.length <= MIN_STEM &&
+      testsByWord.has(short) &&
+      !isAbbreviation(short)
+    ) {
       forms.add(short);
     }
     if (forms.size) return [...forms].map((form) => ({ word: form, factor: 1 }));
@@ -305,15 +343,63 @@ function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearch
     return [word];
   }
 
+  const passes = (test: CatalogTest, filter: CatalogSearchFilter): boolean =>
+    (!filter.properties || filter.properties.includes(test.property)) &&
+    (!filter.systems || filter.systems.includes(test.system));
+
+  /**
+   * The tests a query of words in many tests ("IgG", "Immunoglobulin G")
+   * names: those with the name it spells, else with a name of its words
+   * ("IgE totali"), most common first. A query of such generic words names
+   * no other test.
+   */
+  function namedByGenericWords(phrase: string, queryKey: string, filter: CatalogSearchFilter): ScoredTest[] {
+    const lists = wordsOf(phrase)
+      .filter((word) => !STOP_WORDS.has(word))
+      .map((word) => testsByWord.get(word) ?? []);
+    // Sample, quantity and other stop words never name a test
+    if (lists.length === 0) return [];
+    let named = testsByName.get(phrase) ?? [];
+    if (named.length === 0) {
+      const [shortest, ...others] = [...lists].sort((a, b) => a.length - b.length);
+      const sets = others.map((list) => new Set(list));
+      named = shortest.filter((index) => sets.every((set) => set.has(index)) && nameKeysOf(index).has(queryKey));
+    }
+    return named
+      .map((index) => file.tests[index])
+      .filter((test) => passes(test, filter))
+      .sort(byRank)
+      .map((test) => ({ test, score: 1 }));
+  }
+
+  /** Whether one of a test's names holds every query word, in a form the word stands for */
+  const oneNameHoldsAll = (index: number, words: { matches: { word: string }[] }[]): boolean =>
+    namesOf(index).some((name) => {
+      const nameWords = new Set(wordsOf(name));
+      return words.every(({ matches }) => matches.some((match) => nameWords.has(match.word)));
+    });
+
+  /** The query words' weight that the test's best single name holds */
+  const bestNameWeight = (index: number, words: { matches: { word: string }[] }[], weights: number[]): number =>
+    Math.max(
+      ...namesOf(index).map((name) => {
+        const nameWords = new Set(wordsOf(name));
+        return words.reduce(
+          (sum, { matches }, i) => (matches.some((match) => nameWords.has(match.word)) ? sum + weights[i] : sum),
+          0
+        );
+      })
+    );
+
   function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
     const phrase = nameKey(query);
-    // A query of sample, quantity or other generic words alone names no test
+    const queryKey = wordsKey(phrase);
+    // A query of sample, quantity or other generic words alone names no test, unless it is a name
     const words = [...new Set(wordsOf(phrase).flatMap(partsOf))].filter(tellsTest).map((word) => ({
       word,
       matches: matchesOf(word),
     }));
-    if (words.length === 0) return [];
-    const queryKey = wordsKey(phrase);
+    if (words.length === 0) return namedByGenericWords(phrase, queryKey, filter);
     // A word matching nothing still counts against the fit, as a rare word would
     // A word counts as much as it tells, in whichever form a name has it
     const fullWeight = (word: string, matches: { word: string }[]): number =>
@@ -336,14 +422,19 @@ function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearch
     });
     const scored: ScoredTest[] = [];
     // A name the query spells out comes before one with only the same words
+    const spelledIndexes = new Set(testsByName.get(phrase));
     const spelled = new Set<CatalogTest>();
-    for (const [index, weight] of covered) {
+    for (const [index, pooled] of covered) {
       const test = file.tests[index];
-      if (filter.properties && !filter.properties.includes(test.property)) continue;
-      if (filter.systems && !filter.systems.includes(test.system)) continue;
-      const isSpelled = exactNames[index].has(phrase);
+      if (!passes(test, filter)) continue;
+      const isSpelled = spelledIndexes.has(index);
       if (isSpelled) spelled.add(test);
       const isName = isSpelled || nameKeysOf(index).has(queryKey);
+      // Words found each in another of a test's names ("beta" in one, "2" in another) are no name of it
+      const weight =
+        isName || pooled < totalWeight - WEIGHT_EPSILON || oneNameHoldsAll(index, words)
+          ? pooled
+          : Math.min(pooled, bestNameWeight(index, words, weights)) * SPREAD_FACTOR;
       const score = isName ? 1 : (OVERLAP_CEILING * weight) / totalWeight;
       scored.push({ test, score });
     }
@@ -353,7 +444,7 @@ function createSearch(file: CatalogFile): (query: string, filter?: CatalogSearch
     return scored;
   }
 
-  return scoredSearch;
+  return { scoredSearch, named: (name) => (testsByName.get(nameKey(name)) ?? []).map((index) => file.tests[index]) };
 }
 
 /** The runtime catalog over a catalog file; lookups by code and the trend groups are built here */
@@ -368,6 +459,9 @@ export function createCatalog(file: CatalogFile): Catalog {
     if (key && !jointGroups.has(key)) jointGroups.set(key, group.id);
   }
 
+  const membersOf = new Map<string, number>();
+  for (const id of file.tests.flatMap((test) => test.groups)) membersOf.set(id, (membersOf.get(id) ?? 0) + 1);
+
   const trendGroups = new Map<string, string>();
   const codesByTrendGroup = new Map<string, string[]>();
   for (const test of file.tests) {
@@ -375,7 +469,10 @@ export function createCatalog(file: CatalogFile): Catalog {
       .map((id) => groups.get(id))
       .filter((group): group is CatalogGroup => group !== undefined)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    const massAndMolar = memberships.find((candidate) => joinsMassAndMolar(candidate.parentName));
+    // A mass and molar group joins a code only to others: alone in it, the code trends with its other samples' codes
+    const massAndMolar = memberships.find(
+      (candidate) => joinsMassAndMolar(candidate.parentName) && (membersOf.get(candidate.id) ?? 0) > 1
+    );
     const joint = memberships.map(jointKey).find((key) => key !== undefined);
     const sampleTypes = memberships.find(joinsSampleTypes);
     const trend = massAndMolar?.id ?? (joint && jointGroups.get(joint)) ?? sampleTypes?.id ?? test.code;
@@ -392,9 +489,9 @@ export function createCatalog(file: CatalogFile): Catalog {
     return longNames.get(nameKey(name));
   };
 
-  let search: ReturnType<typeof createSearch> | undefined;
+  let search: Search | undefined;
   const scoredSearch = (query: string, filter?: CatalogSearchFilter): ScoredTest[] =>
-    (search ??= createSearch(file))(query, filter);
+    (search ??= createSearch(file)).scoredSearch(query, filter);
 
   // Tests that are one value, most common first: built the first time common tests are asked for
   let byCommonness: CatalogTest[] | undefined;
@@ -417,6 +514,7 @@ export function createCatalog(file: CatalogFile): Catalog {
     scoredSearch,
     common,
     byLongName,
+    named: (name) => (search ??= createSearch(file)).named(name),
     trendGroup: (code) => trendGroups.get(code) ?? code,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
     groupCodes: (trendGroup) =>
