@@ -154,8 +154,8 @@ export function ucumProperties(ucum: string): string[] {
     // units too ("ALT 30 UI/L"): so many per volume may be catalytic as well
     // as arbitrary (a hormone).
     if (length === -3 && time === 0 && mass === 0) return ucum.includes('[IU]') ? ['ACnc', 'CCnc'] : ['ACnc'];
-    // So many per time: a day's amount ("UI/24 h")
-    if (length === 0 && time === -1 && mass === 0) return ['ARat'];
+    // So many per time: a day's amount ("UI/24 h"), of an enzyme too
+    if (length === 0 && time === -1 && mass === 0) return ucum.includes('[IU]') ? ['ARat', 'CRat'] : ['ARat'];
     return ['ACnc', 'Ratio', 'Titr'];
   }
   if (ucum === '1') return ['SpGrav', 'Ratio', 'pH'];

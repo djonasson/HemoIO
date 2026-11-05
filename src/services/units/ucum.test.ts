@@ -113,7 +113,8 @@ describe('ucumProperties', () => {
     ['m[IU]/mL', ['ACnc', 'CCnc']],
     ["[arb'U]/mL", ['ACnc']],
     // So many a day, of a hormone and of an enzyme
-    ['[IU]/(24.h)', ['ARat']],
+    // A hormone's, or an enzyme's, day amount
+    ['[IU]/(24.h)', ['ARat', 'CRat']],
     ['U/(24.h)', ['CRat']],
     ['[IU]/g', ['ACnc', 'Ratio', 'Titr']],
     ['[ppth]', ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth']],

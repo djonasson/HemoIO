@@ -452,12 +452,41 @@ describe('matchLocally', () => {
     expect(matchLocally(tests, { name: 'Stimolina', unit: 'pg/mL' })).toMatchObject({ status: 'match', code: '5-5' });
   });
 
-  it('reads a name ending in "-emia" as its substance said of blood, loosely', () => {
-    const serum = madeUp(madeUpTest('1-1', ['proteine']));
-    expect(matchLocally(serum, { name: 'Proteinemia', unit: 'g/dL' })).toMatchObject({ status: 'match', code: '1-1' });
-    // Blood is said loosely of serum tests too: serum and blood codes that trend apart are asked
-    const both = madeUp(madeUpTest('1-1', ['proteine']), madeUpTest('2-2', ['proteine'], 'Bld'));
-    expect(matchLocally(both, { name: 'Proteinemia', unit: 'g/dL' }).status).toBe('ambiguous');
+  it('never reads a name ending in "-emia" as a shorter name: its stem may be another test\'s abbreviation', () => {
+    // "Ferremia" is serum iron, not ferritin, whose abbreviation "ferr" its stem is
+    const tests = madeUp(madeUpTest('1-1', ['ferritina', 'ferr']), madeUpTest('2-2', ['ferro']));
+    expect(matchLocally(tests, { name: 'Ferremia', unit: 'µg/dL' }).status).not.toBe('match');
+  });
+
+  it('reads a dashed part alone only as another name of the test the rest names too', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['enzima zeta', 'ez'], 'Ser/Plas', { property: 'CCnc' }),
+      madeUpTest('2-2', ['bilirubina zeta'], 'Ser/Plas', { component: 'Bilirubina zeta' }),
+      madeUpTest('3-3', ['diretta altro'], 'Ser/Plas', { component: 'Altro' })
+    );
+    expect(matchLocally(tests, { name: 'Enzima zeta - EZ', unit: 'U/L' })).toMatchObject({ status: 'match', code: '1-1' });
+    // What is after the dash may change the test, though no test is named by it alone
+    expect(matchLocally(tests, { name: 'Bilirubina zeta - diretta', unit: 'mg/dL' }).status).not.toBe('match');
+  });
+
+  it('never takes a bracket alone for a test when the rest of the name fits another', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['troponina zeta'], 'Ser/Plas', { component: 'Troponina zeta' }),
+      madeUpTest('2-2', ['troponina omega', 'hs'], 'Ser/Plas', { component: 'Troponina omega', rank: 5 })
+    );
+    expect(matchLocally(tests, { name: 'Troponina zeta (hs)', unit: 'ng/L' }).status).not.toBe('match');
+  });
+
+  it('reads the printed name and each rewriting of it, keeping the best fit', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['g-zt'], 'Ser/Plas', { property: 'CCnc' }),
+      madeUpTest('2-2', ['gamma zeta'], 'Ser/Plas', { property: 'CCnc', rank: 5000 }),
+      madeUpTest('3-3', ['anti-zx'], 'Ser/Plas', { property: 'ACnc' }),
+      madeUpTest('4-4', ['zx ab'], 'Ser/Plas', { property: 'ACnc', rank: 5000 })
+    );
+    // Not "gamma-zt" nor "zx ab" alone: the printed names are the tests' own
+    expect(matchLocally(tests, { name: 'g-ZT', unit: 'U/L' })).toMatchObject({ status: 'match', code: '1-1' });
+    expect(matchLocally(tests, { name: 'S-Anti-ZX', unit: 'UI/mL' })).toMatchObject({ status: 'match', code: '3-3' });
   });
 
   it('never takes a serum test for a value said of blood whose blood test LOINC has apart, in any unit', () => {
@@ -546,7 +575,7 @@ describe('matchLocally', () => {
   it.each([
     'Anticorpi anti-perossidasi zeta',
     'Ab anti perossidasi zeta',
-    'A.A. perossidasi zeta',
+    'Ac anti-perossidasi zeta',
     'Perossidasi zeta (anticorpi)',
   ])('reads %s as the antibody LOINC names "Ab"', (name) => {
     const tests = madeUp(
@@ -664,13 +693,16 @@ describe('readAntibody', () => {
     ['Anticorpi anti tireoglobulina', 'tireoglobulina ab'],
     ['Anticorpi anti-tireoglobulina', 'tireoglobulina ab'],
     ['Ab anti tireoglobulina', 'tireoglobulina ab'],
-    ['Antic. anti tireoglobulina', 'tireoglobulina ab'],
-    ['A. A. tireoglobulina', 'tireoglobulina ab'],
+    ['Ac. anti tireoglobulina', 'tireoglobulina ab'],
     ['Anti-tireoglobulina', 'tireoglobulina ab'],
     ['Tireoglobulina anticorpi', 'Tireoglobulina ab'],
     ['Tireoglobulina (anticorpi)', 'Tireoglobulina ab'],
   ])('reads %s as %s', (name, read) => {
     expect(readAntibody(name)).toBe(read);
+  });
+
+  it('leaves a lab\'s own abbreviation to be learned', () => {
+    expect(readAntibody('A. A. tireoglobulina')).toBe('A. A. tireoglobulina');
   });
 
   it('leaves a name naming no antibody as it is', () => {
@@ -786,9 +818,17 @@ describe('matchLocally in the generated catalog', () => {
     // Not a variant LOINC names with a challenge or a time
     ['Calcitonina', 'pg/mL', undefined, '1992-7'],
     ['ACTH', 'pg/mL', 'plasma', '2141-0'],
-    // A substance said of blood by "-emia", of red cells by "eritrocitario"
-    ['Uricemia', 'mg/dL', undefined, '3084-1'],
+    // A substance of red cells by "eritrocitario"
     ['Folati eritrocitari', 'ng/mL', 'blood', '2283-0'],
+    // A synonym of a test in brackets is read, as is the printed name when a rewriting of it fits less
+    ['Glucosio (glicemia)', 'mg/dL', undefined, '2345-7'],
+    ['eGFR (CKD-EPI)', 'mL/min/1.73m2', undefined, '98979-8'],
+    ['g-GT', 'U/L', undefined, '2324-2'],
+    ['emoglobina a1c', '%', undefined, '4548-4'],
+    ['vitamina b12', 'pg/mL', undefined, '2132-9'],
+    ['S-Anti-CCP', 'U/mL', undefined, '33935-8'],
+    // An enzyme in international units per day
+    ['Amilasi urinaria', 'UI/24 h', undefined, '1800-2'],
     // Antibodies as LOINC names them, Greek letters spelled out, a letter and its number apart
     ['Anticorpi anti tireoperossidasi', 'UI/mL', undefined, '8099-4'],
     ['a1-Antitripsina', 'g/L', undefined, '1825-9'],
@@ -838,6 +878,13 @@ describe('matchLocally in the generated catalog', () => {
     ['C3 attivatore (complemento)', 'mg/L', undefined],
     // Beside "A 2" of an electrophoresis, "A 1" may be hemoglobin A: not taken as glycated HbA1
     ['Emoglobina A 1', '%', undefined],
+    // A qualifier changes the test: never the plain one unasked
+    ['Bilirubina - diretta', 'mg/dL', undefined],
+    ['Bilirubina (diretta)', 'mg/dL', undefined],
+    ['Troponina I - hs', 'ng/L', undefined],
+    ['Troponina I (hs)', 'ng/L', undefined],
+    ['Cortisolo - salivare', 'µg/dL', undefined],
+    ['Fosfatasi alcalina - ossea', 'U/L', undefined],
   ])('leaves %s in %s ambiguous', async (name, unit, first) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).toBe('ambiguous');
@@ -863,6 +910,18 @@ describe('matchLocally in the generated catalog', () => {
     }
     // The calculated and the measured tests trend apart
     expect(new Set(['13457-7', '2089-1', '18262-6'].map((code) => catalog.trendGroup(code))).size).toBe(3);
+  });
+
+  it('never reads "-emia" names as another test with a stem like it', async () => {
+    const catalog = await loadCatalog();
+    for (const name of ['Ferremia', 'Ferro (ferremia)']) {
+      const result = matchLocally(catalog, { name, unit: 'µg/dL' });
+      expect(result.status === 'match' ? result.code : undefined).not.toBe('2276-4');
+    }
+  });
+
+  it('keeps a glucose taken at 30 minutes among its candidates, its "a 30" not joined', async () => {
+    expect(codesOf(matchLocally(await loadCatalog(), { name: 'Glucosio a 30 min', unit: 'mg/dL' }))).toContain('1527-1');
   });
 
   it('never takes the blood test for a fasting glucose in mmol/L, whose serum test LOINC gives no rank', async () => {

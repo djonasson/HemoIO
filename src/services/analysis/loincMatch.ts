@@ -112,11 +112,6 @@ const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
  * "Glucosio sangue", "Calcium, Blood", "Piombo ematico", "Folati eritrocitari"
  */
 const SAMPLE_WORDS = wordsOf([SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, BLOOD_WORDS].join('|'), 'gi');
-/**
- * A substance said of blood by its ending: "Uricemia", "Colesterolemia".
- * Blood is said loosely of serum tests too, as by a blood word.
- */
-const BLOOD_ENDING = /(\p{L}{4,})emia\b/giu;
 
 /**
  * What says the value's sample: nothing; a prefix or a hint, which rule
@@ -132,11 +127,12 @@ const URINE_ENDING = /(\p{L}{4,})uria\b/giu;
 const DAY_WORD = /\b24\s*-?\s*(?:h|hrs?|hours?|ore)\b/gi;
 
 /**
- * Italian wordings of an antibody: "anticorpi anti-", "Ab anti", "Ac.
- * anti", "Antic. anti", "A.A." before what it binds, "anticorpi" after it,
- * or "anti-" opening the name
+ * The Italian and English words for an antibody, and their usual
+ * abbreviations: "anticorpi anti-", "Ac anti", "Ab anti" before what it
+ * binds, "anticorpi" after it, or "anti-" opening the name. A lab's own
+ * abbreviation ("A.A.") is learned once chosen, not written here.
  */
-const ANTIBODY_BEFORE = /^(?:(?:anticorp[oi]|antic\.?|ant\.?|ac\.?|ab)\s+anti(?:[\s-]+|(?=\p{L}))|a\.\s?a\.\s*|anti[\s-]+(?=\p{L}))/iu;
+const ANTIBODY_BEFORE = /^(?:(?:anticorp[oi]|ac\.?|ab)\s+anti(?:[\s-]+|(?=\p{L}))|anti[\s-]+(?=\p{L}))/iu;
 const ANTIBODY_WORD = /\(?\banticorp[oi]\b\)?/iu;
 
 /**
@@ -170,16 +166,38 @@ const GREEK_LETTERS: Readonly<Record<string, string>> = {
   α: 'alfa', β: 'beta', γ: 'gamma', δ: 'delta', κ: 'kappa', λ: 'lambda',
   a: 'alfa', b: 'beta', g: 'gamma',
 };
+const spelledLetter = (_all: string, letter: string): string => `${GREEK_LETTERS[letter]}-`;
+
+/** A name with its Greek letters spelled out, as LOINC's names have them */
+function spellGreekLetters(name: string): string {
+  return name.replace(/(?<!\p{L})([αβγδκλ])(?!\p{L})-?/gu, spelledLetter);
+}
 
 /**
- * A name with its Greek letters spelled out, as LOINC's names have them.
- * A PDF's symbol font gives a Latin letter for the Greek one, so a
- * lowercase "a", "b" or "g" before a number or a hyphen is read so too
- * ("a1-antitripsina", "b-2 microglobulina", "17-a-idrossiprogesterone").
+ * A name with its Greek letters spelled out, and the Latin letters a PDF's
+ * symbol font gives for them: a lowercase "a", "b" or "g" before a number
+ * or a hyphen ("a1-antitripsina", "b-2 microglobulina",
+ * "17-a-idrossiprogesterone"). Only one reading of the name: "g-GT" and
+ * "vitamina b12" are read as printed too.
  */
 export function spellGreek(name: string): string {
-  const spelled = (_all: string, letter: string): string => `${GREEK_LETTERS[letter]}-`;
-  return name.replace(/(?<!\p{L})([αβγδκλ])(?!\p{L})-?/gu, spelled).replace(/(?<=^|[\s(-])([abg])(?:-|(?=\d))/gu, spelled);
+  return spellGreekLetters(name).replace(/(?<=^|[\s(-])([abg])(?:-|(?=\d))/gu, spelledLetter);
+}
+
+/** A letter and its two-digit number written apart, as one word: "Vitamina B 12" is "Vitamina B12" */
+function joinLetterNumbers(name: string): string {
+  return name.replace(/(?<=^|\s)(\p{L}) (\d{2})(?=\s|$)/gu, '$1$2');
+}
+
+/**
+ * The ways a name may be read, each searched and the best fit kept: as
+ * printed, with an antibody as LOINC names it, and with the Latin
+ * stand-ins of Greek letters and a letter apart from its number joined.
+ * Each is only another reading, so the printed one still competes ("Anti-
+ * Xa", "g-GT", "Glucosio a 30 min").
+ */
+function readingsOf(name: string): string[] {
+  return [...new Set([name, readAntibody(name)].flatMap((reading) => [reading, joinLetterNumbers(spellGreek(reading))]))];
 }
 
 /** The name without a leading sample prefix, and the systems the prefix means */
@@ -271,7 +289,7 @@ function fitsDescribedUnit(catalog: Catalog, test: CatalogTest, { properties, uc
  */
 function fitsProperty(test: CatalogTest, { properties, ucum }: Scope): boolean {
   if (!properties.includes(test.property)) return false;
-  if (test.property !== 'CCnc' || !ucum?.includes('[IU]') || test.units.length === 0) return true;
+  if ((test.property !== 'CCnc' && test.property !== 'CRat') || !ucum?.includes('[IU]') || test.units.length === 0) return true;
   return test.units.some((unit) => isCatalyticUnit(unit) || unit.includes('[IU]'));
 }
 
@@ -321,7 +339,7 @@ function withSearchesKept(catalog: Catalog): Catalog {
  * name ("(metodo enzimatico)"); so does a part set off by a spaced dash
  * ("Creatinchinasi - CK").
  */
-function nameForms(name: string): { form: string; left: string; part?: true }[] {
+function nameForms(name: string): { form: string; left: string; part?: 'bracket' | 'dashed' }[] {
   const brackets = [...name.matchAll(/\(([^()]*)\)/g)].map(([, inner]) => inner.trim());
   const outside = squeeze(name.replace(/\([^()]*\)/g, ' '));
   const dashed = outside.split(/\s+[-–]\s+/);
@@ -333,7 +351,7 @@ function nameForms(name: string): { form: string; left: string; part?: true }[] 
     ...parts.map((part, i) => ({
       form: part,
       left: [...(dashedParts.length ? [] : [outside]), ...parts.filter((_, j) => j !== i)].join(' '),
-      part: true as const,
+      part: i < brackets.length ? ('bracket' as const) : ('dashed' as const),
     })),
   ];
   const seen = new Set<string>();
@@ -350,16 +368,54 @@ function nameForms(name: string): { form: string; left: string; part?: true }[] 
  * (complemento)" is not every complement protein).
  */
 function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
+  const isFit = (score: number): boolean => score >= MATCH_SCORE - SCORE_EPSILON;
   const best = new Map<string, Found>();
-  for (const { form, left, part } of nameForms(name)) {
+  // Tests found only by a form leaving out words that name no test, and those a form reading more fits
+  const unread = new Set<string>();
+  const fitByMore = new Set<string>();
+  const keep = (found: Found, score: number, isUnread: boolean): void => {
+    const known = best.get(found.test.code);
+    if (!isUnread && isFit(score)) fitByMore.add(found.test.code);
+    if (known && known.score >= score) return;
+    best.set(found.test.code, { ...found, score });
+    if (isUnread) unread.add(found.test.code);
+    else unread.delete(found.test.code);
+  };
+  const readings = readingsOf(name);
+  // The whole name, brackets read, fits a test or a panel: then what a bracket says may matter
+  const wholeFits = readings.some((reading) =>
+    catalog
+      .scoredSearch(reading, { systems: [...new Set(scope.systems.map((system) => (system === DAY_URINE ? 'Urine' : system)))] })
+      .some(({ test, score }) => isFit(score) && (scope.properties.length === 0 || scope.properties.includes(test.property)))
+  );
+  for (const { form, left, part } of readings.flatMap(nameForms)) {
     // Searched only once a test is found that the rest may rule out
-    let carriers: Set<string> | undefined;
+    let carriers: Map<string, number> | undefined;
     for (const found of findTests(catalog, form, scope)) {
-      if (part && found.score < 1) continue;
-      if (left) carriers ??= new Set(findTests(catalog, left, scope).map(({ test }) => test.code));
-      if (carriers?.size && !carriers.has(found.test.code)) continue;
-      const known = best.get(found.test.code);
-      if (!known || found.score > known.score) best.set(found.test.code, found);
+      if (part && !isFit(found.score)) continue;
+      if (left) carriers ??= new Map(findTests(catalog, left, scope).map(({ test, score }) => [test.code, score]));
+      const byRest = carriers?.get(found.test.code);
+      const restNames = byRest !== undefined && isFit(byRest);
+      if (carriers?.size && byRest === undefined) continue;
+      // The rest of the name fits another test well: "Troponina I (hs)" is not troponin T hs
+      const restNamesOther = !restNames && [...(carriers?.values() ?? [])].some(isFit);
+      if (part === 'dashed' || (part === 'bracket' && found.score < 1 && carriers?.size)) {
+        // Another name of the test the rest names too ("Creatinchinasi - CK", "eGFR (CKD-EPI)")
+        if (!restNames) continue;
+        keep(found, Math.min(found.score, byRest), false);
+      } else if (part === 'bracket' && restNamesOther) {
+        continue;
+      } else {
+        keep(found, found.score, carriers?.size === 0 && !part);
+      }
+    }
+  }
+  // Words left out that name no test say nothing of it, but set it above no test the name fits
+  // when they are read: "Bilirubina (diretta)" is direct bilirubin as well as total bilirubin
+  if (wholeFits || [...fitByMore].some((code) => !unread.has(code))) {
+    for (const code of unread) {
+      const found = best.get(code)!;
+      if (!fitByMore.has(code)) best.set(code, { ...found, score: Math.min(found.score, MATCH_SCORE) });
     }
   }
   // Equal scores in equally likely samples go to the more common test
@@ -448,13 +504,10 @@ function standingOut(catalog: Catalog, fits: Found[]): Found | undefined {
  */
 function sampleInName(name: string): { name: string; systems: string[]; loosely: boolean } | undefined {
   const words = name.match(SAMPLE_WORDS)?.join(' ') ?? '';
-  const saysBlood = name.search(BLOOD_ENDING) !== -1;
-  const [pattern, systems] =
-    SAMPLE_HINTS.find(([sampleWords]) => sampleWords.test(words) || (saysBlood && sampleWords === BLOOD_HINT)) ?? [];
+  const [pattern, systems] = SAMPLE_HINTS.find(([sampleWords]) => sampleWords.test(words)) ?? [];
   if (!systems) return undefined;
   const rest = name
     .replace(SAMPLE_WORDS, ' ')
-    .replace(BLOOD_ENDING, '$1')
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/[\s,;:.-]+$/, '')
@@ -538,11 +591,13 @@ function withoutUnsaidChallenges(found: Found[]): Found[] {
 const CALCULATED = 'Calculated';
 
 /**
- * Whether the test meant is calculated from other tests, which the printed
- * name does not say, and a variant measuring it that trends apart is about
- * as common: then the name may mean either ("Colesterolo LDL" calculated
- * or by direct assay, which differ in what they are). Counts by machine or
- * by hand, or strips read by eye or by machine, measure one thing alike.
+ * Whether the test meant is calculated from other tests, and a variant
+ * measuring it that trends apart fits the name as well and is about as
+ * common: then the name may mean either ("Colesterolo LDL" calculated or
+ * by direct assay, which differ in what they are). LOINC's names do not
+ * have the Italian "calcolato", so a name saying it is asked too, and the
+ * choice is learned. Counts by machine or by hand, or strips read by eye
+ * or by machine, measure one thing alike.
  */
 function mayBeMeasured(catalog: Catalog, meant: Found, variants: Found[]): boolean {
   if (meant.test.method !== CALCULATED) return false;
@@ -629,19 +684,18 @@ export function matchLocally(
   const catalog = withSearchesKept(fullCatalog);
   const ucum = toUcum(value.unit);
   const properties = ucum ? ucumProperties(ucum) : [];
-  // A letter and its two-digit number written apart are one name: "Vitamina B 12" is "Vitamina B12".
-  // A spaced single digit often numbers a series ("Emoglobina A 1", "A 2"), so it stays apart.
-  const whole = spellGreek(value.name.trim()).replace(/(?<=^|\s)(\p{L}) (\d{2})(?=\s|$)/gu, '$1$2');
+  const whole = spellGreekLetters(value.name.trim());
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
-  const isLoincName = catalog.named(whole).length > 0;
-  const split = stripPrefix(whole).name !== whole && isLoincName ? { name: whole } : splitSamplePrefix(whole);
-  const worded = split.systems || isLoincName ? undefined : sampleInName(split.name);
+  // Looked up only when needed: the first lookup builds the search index
+  let knownName: boolean | undefined;
+  const isLoincName = (): boolean => (knownName ??= catalog.named(whole).length > 0);
+  const split = stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
+  const namesSample = split.name.search(SAMPLE_WORDS) !== -1;
+  const worded = split.systems || !namesSample || isLoincName() ? undefined : sampleInName(split.name);
   const unworded = worded?.name ?? split.name;
-  // An antibody as LOINC names it, unless the name is one LOINC knows ("Anti-Xa")
-  const read = isLoincName ? unworded : readAntibody(unworded);
   // "Absolute" only says the count its unit says: "Neutrophil, Absolute" in K/µL
-  const name = properties.includes('NCnc') ? withoutCountWords(read) : read;
+  const name = properties.includes('NCnc') ? withoutCountWords(unworded) : unworded;
   let { systems, sample } = sampleOf(split, worded, value.specimenHint, isPerDay(ucum));
 
   const learnedCode = learned?.(learnedKey(value));
