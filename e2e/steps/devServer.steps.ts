@@ -24,10 +24,12 @@ const PROJECT_FILES = [
   'index.html',
   'vite.config.ts',
   'ocrCache.config.ts',
+  'packageVersions.config.ts',
   'package.json',
   'tsconfig.json',
   'tsconfig.app.json',
   'tsconfig.node.json',
+  'tsconfig.scripts.json',
 ];
 
 /** How long a change takes to reach the page, at most */
