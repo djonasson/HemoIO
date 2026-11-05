@@ -97,6 +97,25 @@ describe('convertUcum', () => {
   it.each([NaN, Infinity, -Infinity])('is null for %s', (value) => {
     expect(convertUcum(value, 'mg/dL', 'g/L')).toBeNull();
   });
+
+  it('is null for a result too large to be a number', () => {
+    expect(convertUcum(1e308, 'kg/L', 'ug/L')).toBeNull();
+  });
+});
+
+describe('rejected units', () => {
+  it('write nothing to the console, whichever function reads them', () => {
+    const log = vi.spyOn(console, 'log');
+    try {
+      expect(ucumProperties('/campo')).toEqual([]);
+      expect(convertUcum(1, '/campo', 'g/L')).toBeNull();
+      expect(convertUcum(1, 'g/L', 'nonsense')).toBeNull();
+      expect(isMassAndMolar('/campo', 'mmol/L')).toBe(false);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
 });
 
 describe('isMassAndMolar', () => {
