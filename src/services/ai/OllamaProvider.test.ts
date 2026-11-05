@@ -436,6 +436,13 @@ describe('OllamaProvider', () => {
       expect(result.biomarkers[0].name).toBe('Cholesterol');
       expect(result.modelUsed).toBe('llava:13b');
       expect(result.analyzedText).toBe('[Image analysis - no text extracted]');
+      // The extraction prompt names no list of tests: the tests are chosen afterwards
+      const body = JSON.parse(vi.mocked(fetch).mock.calls.at(-1)![1]!.body as string) as {
+        messages: { content: string }[];
+      };
+      const prompt = body.messages.map((m) => m.content).join('\n');
+      expect(prompt).toContain('Analyze this lab report image');
+      expect(prompt).not.toContain('KNOWN TESTS');
     });
 
     it('should throw error when no vision model available', async () => {

@@ -29,6 +29,15 @@ describe('parseTestChoices', () => {
     expect(parseTestChoices(raw, requests)[0]).toEqual({ id: 'a', code: '2339-0', confident: true });
   });
 
+  it('reads ids the model wrote as numbers', () => {
+    const numbered: TestChoiceRequest[] = [{ ...requests[0], id: '0' }, { ...requests[1], id: '1' }];
+    const raw = '{"choices":[{"id":0,"code":"2345-7","confident":true},{"id":1,"code":"2160-0","confident":true}]}';
+    expect(parseTestChoices(raw, numbered)).toEqual([
+      { id: '0', code: '2345-7', confident: true },
+      { id: '1', code: '2160-0', confident: true },
+    ]);
+  });
+
   it('rejects a code outside the candidates', () => {
     const raw = { choices: [{ id: 'a', code: '2160-0', confident: true }, { id: 'b', code: '9999-9', confident: true }] };
     expect(parseTestChoices(raw, requests)).toEqual([

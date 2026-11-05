@@ -89,10 +89,11 @@ export function parseTestChoices(raw: unknown, requests: TestChoiceRequest[]): T
   const answered = new Map<string, Record<string, unknown>>();
   if (Array.isArray(list)) {
     for (const item of list) {
-      if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
-        const entry = item as Record<string, unknown>;
-        if (!answered.has(entry.id as string)) answered.set(entry.id as string, entry);
-      }
+      if (!item || typeof item !== 'object') continue;
+      const entry = item as Record<string, unknown>;
+      // The ids are numbers written as strings: a model may write them as numbers
+      const id = typeof entry.id === 'number' ? String(entry.id) : entry.id;
+      if (typeof id === 'string' && !answered.has(id)) answered.set(id, entry);
     }
   }
 

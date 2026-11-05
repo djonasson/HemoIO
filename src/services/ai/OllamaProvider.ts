@@ -472,7 +472,7 @@ export class OllamaProvider implements AIProvider {
 REPORT LANGUAGE: ${language}
 EXTRACT PATIENT INFO: ${extractPatientInfo ? 'Yes' : 'No'}
 
-Extract every value as the system prompt says: its name, the key of its test from KNOWN TESTS, value, unit, reference range and flags, and the lab date and laboratory name if visible.
+Extract every value as the system prompt says: its name as printed, value, unit, reference range, flags and the sample the report names for it, and the lab date and laboratory name if visible.
 
 Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt gives.`;
 
