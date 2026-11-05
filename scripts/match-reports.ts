@@ -108,10 +108,27 @@ interface SourcedValue extends PrintedValue {
   group: string;
 }
 
+/**
+ * A MATCH_ROWS row as a printed value, with only its name, unit, specimen
+ * hint and group: anything else a row holds (a value, a range) is never
+ * read, so never written to the results file
+ */
+function rowValue(row: unknown, index: number, file: string): SourcedValue {
+  const { name, unit, specimenHint, group } = (row ?? {}) as Record<string, unknown>;
+  const isText = (field: unknown): field is string => typeof field === 'string';
+  if (!isText(name) || !isText(unit)) throw new Error(`MATCH_ROWS row ${index} needs a name and a unit`);
+  return {
+    name,
+    unit,
+    ...(isText(specimenHint) && { specimenHint }),
+    group: isText(group) ? group : file,
+  };
+}
+
 /** The values to match: the MATCH_ROWS file's, else those of the MATCH_REPORTS PDFs */
 async function valuesToMatch(): Promise<SourcedValue[]> {
   const rows = outsideRepository('MATCH_ROWS');
-  if (rows) return (JSON.parse(readFileSync(rows, 'utf8')) as SourcedValue[]).map((row) => ({ ...row, group: row.group ?? basename(rows) }));
+  if (rows) return (JSON.parse(readFileSync(rows, 'utf8')) as unknown[]).map((row, i) => rowValue(row, i, basename(rows)));
   const pdfs = (process.env.MATCH_REPORTS ?? '').split(',').filter(Boolean);
   if (pdfs.length === 0) throw new Error('Set MATCH_REPORTS to a comma-separated list of PDFs, or MATCH_ROWS to a JSON file');
   const cacheDir = outsideRepository('MATCH_REPORTS_CACHE');
