@@ -147,6 +147,15 @@ export function readAntibody(name: string): string {
   return name;
 }
 
+/** Words saying a count is one, not a share: "Neutrophil, Absolute", "Neutrofili assoluti" */
+const COUNT_WORDS = /[\s,;:-]*\b(?:absolute|assolut[oiae]|abs)\b\.?/giu;
+
+/** A name without the words saying its value is a count, if more is left */
+function withoutCountWords(name: string): string {
+  const rest = name.replace(COUNT_WORDS, ' ').replace(/\s+/g, ' ').trim();
+  return /\p{L}/u.test(rest) ? rest : name;
+}
+
 /** Greek letters as their names: "α1-antitripsina", "β2-microglobulina" */
 const GREEK_LETTERS: Readonly<Record<string, string>> = {
   α: 'alfa', β: 'beta', γ: 'gamma', δ: 'delta', κ: 'kappa', λ: 'lambda',
@@ -396,13 +405,22 @@ function groupRank(catalog: Catalog, code: string): number {
  * more: of the likeliest sample, when a sample is named; else the one
  * HemoIO describes, if it describes only one (the tests it describes are
  * the usual ones); else one far more common than all others. Undefined
- * when none stands out, or when a "blood" hint leaves the sample open.
+ * when none stands out. "Blood", said loosely, leaves the sample open
+ * between blood and serum tests: a serum test is then never the one
+ * meant, a blood test only when it stands out as well ("Platelet count"
+ * said of blood is not a rare plasma count).
  */
 function usualMeaning(catalog: Catalog, rivals: Found[], systems: string[], sample: SampleSaid): Found | undefined {
   const kindOf = ({ preference }: Found): string => sampleKind(systems[preference]);
-  if (sample === 'loosely' && new Set(rivals.map(kindOf)).size > 1) return undefined;
   const likeliest = sampleKind(systems[Math.min(...rivals.map(({ preference }) => preference))]);
   const fits = sample === 'named' ? rivals.filter((rival) => kindOf(rival) === likeliest) : rivals;
+  const meant = standingOut(catalog, fits);
+  const isOpen = sample === 'loosely' && new Set(rivals.map(kindOf)).size > 1;
+  return isOpen && meant && kindOf(meant) !== 'Bld' ? undefined : meant;
+}
+
+/** The one of the fits, the one HemoIO describes if only one, or one far more common than all others */
+function standingOut(catalog: Catalog, fits: Found[]): Found | undefined {
   if (fits.length === 1) return fits[0];
 
   const described = fits.filter(({ test }) => getAddon(catalog, test.code));
@@ -507,6 +525,49 @@ function withoutUnsaidChallenges(found: Found[]): Found[] {
   return found.filter(({ test, score }) => !isChallenged(test) || score > plainBest + SCORE_EPSILON);
 }
 
+/** LOINC's method of a value calculated from other tests ("Cholesterol in LDL ... by calculation") */
+const CALCULATED = 'Calculated';
+
+/**
+ * Whether the test meant is calculated from other tests, which the printed
+ * name does not say, and a variant measuring it that trends apart is about
+ * as common: then the name may mean either ("Colesterolo LDL" calculated
+ * or by direct assay, which differ in what they are). Counts by machine or
+ * by hand, or strips read by eye or by machine, measure one thing alike.
+ */
+function mayBeMeasured(catalog: Catalog, meant: Found, variants: Found[]): boolean {
+  if (meant.test.method !== CALCULATED) return false;
+  const trend = catalog.trendGroup(meant.test.code);
+  const rank = groupRank(catalog, meant.test.code);
+  return variants.some(
+    ({ test, score }) =>
+      test.method !== '' &&
+      test.method !== CALCULATED &&
+      score >= meant.score - SCORE_EPSILON &&
+      catalog.trendGroup(test.code) !== trend &&
+      groupRank(catalog, test.code) < rank * RANK_DOMINANCE
+  );
+}
+
+/** Most blood tests offered beside a serum test said loosely of blood */
+const MAX_BLOOD_CANDIDATES = 2;
+
+/**
+ * Blood tests of a serum test's component, in any unit, that trend apart
+ * from it: a value said of blood may be one of them ("Etanolo ematico" in
+ * g/L is the blood alcohol LOINC gives in mmol/L, not the serum one)
+ */
+function bloodTestsApart(catalog: Catalog, name: string, test: CatalogTest, ucum: string | null): Candidate[] {
+  const trend = catalog.trendGroup(test.code);
+  return findByForms(catalog, name, { systems: ['Bld'], properties: [], ucum })
+    .filter(
+      ({ test: blood }) =>
+        blood.component === test.component && blood.scale === test.scale && catalog.trendGroup(blood.code) !== trend
+    )
+    .slice(0, MAX_BLOOD_CANDIDATES)
+    .map((found) => toCandidate(found.test, found.score));
+}
+
 /** Whether the most common test a code trends with is among LOINC's common ones */
 function isCommon(catalog: Catalog, code: string): boolean {
   return groupRank(catalog, code) <= COMMON_RANK;
@@ -568,7 +629,9 @@ export function matchLocally(
   const namesSample = split.name.search(SAMPLE_WORDS) !== -1 || split.name.search(BLOOD_ENDING) !== -1;
   const worded = split.systems || !namesSample || isLoincName() ? undefined : sampleInName(split.name);
   // An antibody as LOINC names it, unless the name is one LOINC knows ("Anti-Xa")
-  const name = isLoincName() ? (worded?.name ?? split.name) : readAntibody(worded?.name ?? split.name);
+  const read = isLoincName() ? (worded?.name ?? split.name) : readAntibody(worded?.name ?? split.name);
+  // "Absolute" only says the count its unit says: "Neutrophil, Absolute" in K/µL
+  const name = properties.includes('NCnc') ? withoutCountWords(read) : read;
   let { systems, sample } = sampleOf(split, worded, value.specimenHint, isPerDay(ucum));
 
   const learnedCode = learned?.(learnedKey(value));
@@ -660,6 +723,15 @@ export function matchLocally(
   // A rare test only by a name of its own that fits nothing else as well; an adjusted one never
   if (isAdjusted(meant.test)) return unsure;
   if (!isCommon(catalog, meant.test.code) && (meant.score < 1 || fits.length > 1)) return unsure;
+  if (mayBeMeasured(catalog, meant, rivals[representatives.indexOf(meant)] ?? [])) return unsure;
+  if (sample === 'loosely' && sampleKind(meant.test.system) === 'Ser/Plas' && meant.test.system !== 'Ser/Plas/Bld') {
+    // Said of blood, loosely: a serum test only when LOINC has no blood test of it that trends apart
+    const blood = bloodTestsApart(catalog, name, meant.test, ucum);
+    if (blood.length) {
+      const others = unsure.candidates.filter(({ code }) => !blood.some((test) => test.code === code));
+      return { ...unsure, candidates: [...others.slice(0, MAX_CANDIDATES - blood.length), ...blood] };
+    }
+  }
   // The test taken leads its candidates
   const others = candidates.filter(({ code }) => code !== meant.test.code);
   return {

@@ -89,6 +89,17 @@ test.describe('Identifying the test of each value', () => {
     await expect(testOption(testList(page), 'Phosphate [Mass/volume] in Serum or Plasma')).toBeVisible();
   });
 
+  test('asks about a value said of blood whose blood and serum tests trend apart', async ({ page }) => {
+    // Scenario: A value the lab says is blood is asked about when the blood and serum tests trend apart
+    const ai = await analyzeReport(page, [{ name: 'Etanolo ematico', value: 0.4, unit: 'g/L', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates.map((c) => c.code)).toEqual(
+      expect.arrayContaining(['5640-8', '5643-2'])
+    );
+    await rowFor(page, '0.4').getByRole('button', { name: /^Change test for / }).click();
+    await expect(testOption(testList(page), 'Ethanol [Mass/volume] in Blood')).toBeVisible();
+  });
+
   test('finds a test named by a word many tests share', async ({ page }) => {
     // Scenario: A test named by a word many tests share is still found
     const ai = await analyzeReport(page, [{ name: 'IgG', value: 1100, unit: 'mg/dL', confidence: 0.95 }]);

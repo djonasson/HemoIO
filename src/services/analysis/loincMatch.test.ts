@@ -460,6 +460,76 @@ describe('matchLocally', () => {
     expect(matchLocally(both, { name: 'Proteinemia', unit: 'g/dL' }).status).toBe('ambiguous');
   });
 
+  it('never takes a serum test for a value said of blood whose blood test LOINC has apart, in any unit', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['solvente zeta'], 'Ser/Plas', { component: 'Zeta', rank: 10 }),
+      madeUpTest('2-2', ['solvente zeta'], 'Bld', { component: 'Zeta', property: 'SCnc', rank: 900 }),
+      madeUpTest('3-3', ['proteine zeta'], 'Ser/Plas', { component: 'Proteine zeta', rank: 10 }),
+      madeUpTest('4-4', ['proteine zeta'], 'Bld', { component: 'Proteine zeta', property: 'SCnc', rank: 900 })
+    );
+    for (const name of ['Solvente zeta ematico', 'Solvente zeta sangue']) {
+      const result = matchLocally(tests, { name, unit: 'g/L' });
+      expect(result.status).toBe('ambiguous');
+      expect(codesOf(result)).toEqual(expect.arrayContaining(['1-1', '2-2']));
+    }
+    expect(matchLocally(tests, { name: 'Proteine zetaemia', unit: 'g/L' }).status).toBe('ambiguous');
+    // Said of serum, or of nothing, it is the serum test
+    expect(matchLocally(tests, { name: 'Solvente zeta siero', unit: 'g/L' })).toMatchObject({ status: 'match', code: '1-1' });
+    expect(matchLocally(tests, { name: 'Solvente zeta', unit: 'g/L' })).toMatchObject({ status: 'match', code: '1-1' });
+  });
+
+  it('takes a blood test said loosely of blood when it stands out among serum and blood tests', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['cellule zeta'], 'Bld', { property: 'NCnc', rank: 20 }),
+      madeUpTest('2-2', ['cellule zeta'], 'Plas', { property: 'NCnc', rank: 19000 }),
+      madeUpTest('3-3', ['enzima zeta'], 'Ser/Plas', { rank: 5 }),
+      madeUpTest('4-4', ['enzima zeta'], 'Bld', { rank: 500 })
+    );
+    expect(matchLocally(tests, { name: 'Cellule zeta', unit: '10^3/µL', specimenHint: 'blood' })).toMatchObject({
+      status: 'match',
+      code: '1-1',
+    });
+    // A serum test standing out is never taken for a value said of blood
+    expect(matchLocally(tests, { name: 'Enzima zeta', unit: 'mg/dL', specimenHint: 'blood' }).status).toBe('ambiguous');
+  });
+
+  it('asks whether a test HemoIO describes by calculation was calculated, when a measured one is about as common', () => {
+    const variants = (directRank: number): Catalog =>
+      madeUp(
+        madeUpTest('13457-7', ['lipide zeta'], 'Ser/Plas', { component: 'Lipide zeta', method: 'Calculated', rank: 76 }),
+        madeUpTest('2-2', ['lipide zeta'], 'Ser/Plas', { component: 'Lipide zeta', rank: 263 }),
+        madeUpTest('3-3', ['lipide zeta'], 'Ser/Plas', { component: 'Lipide zeta', method: 'Direct assay', rank: directRank })
+      );
+    const asked = matchLocally(variants(363), { name: 'Lipide zeta', unit: 'mg/dL' });
+    expect(asked.status).toBe('ambiguous');
+    expect(codesOf(asked)).toEqual(expect.arrayContaining(['13457-7', '2-2', '3-3']));
+    // A measurement far rarer than the calculation is not the usual meaning
+    expect(matchLocally(variants(5000), { name: 'Lipide zeta', unit: 'mg/dL' })).toMatchObject({
+      status: 'match',
+      code: '13457-7',
+    });
+  });
+
+  it('takes a count by machine for a name that does not say how it was counted', () => {
+    const tests = madeUp(
+      madeUpTest('777-3', ['cellule zeta'], 'Bld', { component: 'Cellule zeta', property: 'NCnc', method: 'Automated count', rank: 20 }),
+      madeUpTest('2-2', ['cellule zeta'], 'Bld', { component: 'Cellule zeta', property: 'NCnc', rank: 70 }),
+      madeUpTest('3-3', ['cellule zeta'], 'Bld', { component: 'Cellule zeta', property: 'NCnc', method: 'Manual count', rank: 90 })
+    );
+    expect(matchLocally(tests, { name: 'Cellule zeta', unit: '10^3/µL' })).toMatchObject({ status: 'match', code: '777-3' });
+  });
+
+  it.each(['Cellule zeta, Absolute', 'Cellule zeta assolute', 'Cellule zeta abs.'])(
+    'reads %s in a count unit as the count its unit says',
+    (name) => {
+      const tests = madeUp(
+        madeUpTest('1-1', ['cellule zeta'], 'Bld', { property: 'NCnc' }),
+        madeUpTest('2-2', ['cellule zeta'], 'Bld', { property: 'NFr' })
+      );
+      expect(matchLocally(tests, { name, unit: '10^3/µL' })).toMatchObject({ status: 'match', code: '1-1' });
+    }
+  );
+
   it('reads the blood and red cell adjectives as the sample', () => {
     const tests = madeUp(
       madeUpTest('1-1', ['solvente zeta'], 'Bld'),
@@ -723,6 +793,14 @@ describe('matchLocally in the generated catalog', () => {
     ['Anticorpi anti tireoperossidasi', 'UI/mL', undefined, '8099-4'],
     ['a1-Antitripsina', 'g/L', undefined, '1825-9'],
     ['Vitamina B 12', 'pg/mL', undefined, '2132-9'],
+    // Serum and blood bicarbonate trend together: a blood hint takes the more common
+    ['Bicarbonato', 'mmol/L', 'blood', '1963-8'],
+    // A blood count said of blood, by machine; "absolute" only says the count the unit says
+    ['Platelet count', 'K/mcL', 'blood', '777-3'],
+    ['Neutrophil, Absolute', 'K/mcL', 'blood', '751-8'],
+    ['Neutrofili assoluti', '10^3/µL', undefined, '751-8'],
+    // The beta subunit the name says, the most common hCG quantity LOINC has (19080-1, total hCG, fits it less)
+    ['Beta-HCG', 'mUI/mL', undefined, '21198-7'],
   ])('takes %s in %s (sample %s) as %s', async (name, unit, specimenHint, code) => {
     const value = { name, unit, ...(specimenHint && { specimenHint }) };
     expect(matchLocally(await loadCatalog(), value)).toMatchObject({ status: 'match', code });
@@ -762,6 +840,27 @@ describe('matchLocally in the generated catalog', () => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).toBe('ambiguous');
     if (first) expect(result.candidates[0].code).toBe(first);
+  });
+
+  it('asks whether ethanol said of blood is the blood or the serum test, which trend apart', async () => {
+    const catalog = await loadCatalog();
+    for (const name of ['Etanolo ematico', 'Etanolo sangue']) {
+      const result = matchLocally(catalog, { name, unit: 'g/L' });
+      expect(result.status).toBe('ambiguous');
+      expect(codesOf(result)).toEqual(expect.arrayContaining(['5643-2', '5640-8']));
+    }
+    expect(catalog.trendGroup('5643-2')).not.toBe(catalog.trendGroup('5640-8'));
+  });
+
+  it('asks whether an LDL cholesterol that does not say so was calculated or measured directly', async () => {
+    const catalog = await loadCatalog();
+    for (const name of ['Colesterolo LDL', 'LDL Cholesterol']) {
+      const result = matchLocally(catalog, { name, unit: 'mg/dL' });
+      expect(result.status).toBe('ambiguous');
+      expect(codesOf(result)).toEqual(expect.arrayContaining(['13457-7', '2089-1', '18262-6']));
+    }
+    // The calculated and the measured tests trend apart
+    expect(new Set(['13457-7', '2089-1', '18262-6'].map((code) => catalog.trendGroup(code))).size).toBe(3);
   });
 
   it('never takes the blood test for a fasting glucose in mmol/L, whose serum test LOINC gives no rank', async () => {

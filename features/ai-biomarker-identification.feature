@@ -36,6 +36,13 @@ Feature: Identifying the test of each value
     Then the AI should be asked which test it is
     And the tests to choose from should include "Phosphate [Mass/volume] in Serum or Plasma"
 
+  Scenario: A value the lab says is blood is asked about when the blood and serum tests trend apart
+    Given a report prints "Etanolo ematico" in g/L
+    And ethanol in blood and ethanol in serum or plasma are charted as different tests
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include "Ethanol [Mass/volume] in Blood"
+
   Scenario: A test named by a word many tests share is still found
     Given a report prints "IgG" in mg/dL
     When the report is analyzed
