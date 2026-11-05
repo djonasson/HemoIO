@@ -246,7 +246,8 @@ test.describe('Identifying the test of each value', () => {
     await goToTrends(page);
     await biomarkerSelect(page).click();
     await expect(page.getByRole('option', { name: /\(2 values\)$/ })).toHaveCount(1);
-    await expect(page.getByRole('option', { name: /^Zorblatina \(/ })).toHaveCount(0);
+    // Not a series of its own for either wording
+    await expect(page.getByRole('option', { name: /\(1 value\)$/ })).toHaveCount(0);
   });
 
   test('remembers a correction reached through a learned wording', async ({ page }) => {
