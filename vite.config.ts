@@ -11,6 +11,7 @@ import {
   ocrRuntimeCaching,
 } from './src/services/ocr/ocrAssets';
 import { OCR_CACHE_NAME } from './ocrCache.config';
+import { UCUM_LHC_VERSION } from './packageVersions.config';
 import { dataLayerReload } from './src/utils/dataLayerReload';
 
 // OCR runs from these files offline: a missing one must fail the build, not OCR
@@ -28,6 +29,7 @@ export default defineConfig(({ command }) => {
     base,
     define: {
       __OCR_CACHE_NAME__: JSON.stringify(OCR_CACHE_NAME),
+      __UCUM_LHC_VERSION__: JSON.stringify(UCUM_LHC_VERSION),
     },
     plugins: [
       // Dev server only: a data-layer change reloads the page instead of hot-updating it

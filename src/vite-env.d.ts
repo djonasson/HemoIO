@@ -3,6 +3,9 @@
 /** The cache the service worker keeps the OCR files in (see ocrCache.config.ts) */
 declare const __OCR_CACHE_NAME__: string;
 
+/** The installed @lhncbc/ucum-lhc version (see packageVersions.config.ts) */
+declare const __UCUM_LHC_VERSION__: string;
+
 // PWA plugin virtual module declarations
 declare module 'virtual:pwa-register/react' {
   import type { Dispatch, SetStateAction } from 'react';

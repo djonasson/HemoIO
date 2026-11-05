@@ -11,6 +11,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
+import { UCUM_LHC_VERSION } from '../packageVersions.config';
 import { openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import { goToDictionary, viewDetail } from './steps/dictionary.steps';
@@ -88,7 +89,7 @@ test.describe('Settings Page', () => {
         'href',
         'https://loinc.org/license'
       );
-      await expect(panel.getByText('UCUM (@lhncbc/ucum-lhc 8.0.1)')).toBeVisible();
+      await expect(panel.getByText(`UCUM (@lhncbc/ucum-lhc ${UCUM_LHC_VERSION})`)).toBeVisible();
       await expect(panel.getByText(/^The UCUM table and UCUM codes are copyright/)).toContainText(
         'Unified Codes for Units of Measures (UCUM) Organization'
       );
@@ -96,6 +97,7 @@ test.describe('Settings Page', () => {
         'href',
         'https://ucum.org/license'
       );
+      await expect(panel.getByText('is-finite (MIT license), used by the UCUM library')).toBeVisible();
     });
 
     test('underlines links', async ({ page }) => {

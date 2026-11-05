@@ -38,4 +38,25 @@ describe('AboutSettings', () => {
       'https://loinc.org/license'
     );
   });
+
+  it('shows the UCUM notice with the installed version of the UCUM library', () => {
+    renderAbout();
+
+    expect(screen.getByText(`UCUM (@lhncbc/ucum-lhc ${__UCUM_LHC_VERSION__})`)).toBeInTheDocument();
+    expect(__UCUM_LHC_VERSION__).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(screen.getByText(/^The UCUM table and UCUM codes are copyright/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Read the UCUM license' })).toHaveAttribute(
+      'href',
+      'https://ucum.org/license'
+    );
+  });
+
+  it('shows the MIT notice of is-finite, which the UCUM library ships', () => {
+    renderAbout();
+
+    expect(screen.getByText('is-finite (MIT license), used by the UCUM library')).toBeInTheDocument();
+    expect(screen.getByText(/^Copyright \(c\) Sindre Sorhus/)).toHaveTextContent(
+      'The above copyright notice and this permission notice shall be included in all copies'
+    );
+  });
 });

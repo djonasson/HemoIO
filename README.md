@@ -91,7 +91,15 @@ This material contains content from LOINC (http://loinc.org). LOINC is copyright
 
 HemoIO uses LOINC version 2.83: the LOINC code and long common name of each test in its biomarker dictionary. The app shows the same notice under Settings → About.
 
-HemoIO reads and converts units with the UCUM library @lhncbc/ucum-lhc 8.0.1, developed by the Lister Hill National Center for Biomedical Communications (LHNCBC), U.S. National Library of Medicine, with the permission and based on the copyrighted content of the Regenstrief Institute. The UCUM table and UCUM codes are copyright © 1995-2009, Regenstrief Institute, Inc. and the Unified Codes for Units of Measures (UCUM) Organization. All rights reserved. They are used under the license at https://ucum.org/license. The library is provided "as is", without warranty, under the terms in its LICENSE.md. The app shows the same notice under Settings → About.
+HemoIO reads and converts units with the UCUM library @lhncbc/ucum-lhc (the version pinned in package.json, shown under Settings → About), developed by the Lister Hill National Center for Biomedical Communications (LHNCBC), U.S. National Library of Medicine, with the permission and based on the copyrighted content of the Regenstrief Institute. The UCUM table and UCUM codes are copyright © 1995-2009, Regenstrief Institute, Inc. and the Unified Codes for Units of Measures (UCUM) Organization. All rights reserved. They are used under the license at https://ucum.org/license. The library is provided "as is", without warranty, under the terms in its LICENSE.md. The app shows the same notice under Settings → About.
+
+The UCUM library brings two small packages into the app. is-integer is used under the WTFPL, which asks for no notice. is-finite is used under the MIT license:
+
+> Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+The app shows this notice under Settings → About too.
 
 ## License
 

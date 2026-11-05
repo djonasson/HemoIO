@@ -5,13 +5,9 @@
  * caches them anew, instead of mixing new code with old files.
  */
 
-import { readFileSync } from 'fs';
+import { installedVersion } from './packageVersions.config';
 import { ocrCacheName } from './src/services/ocr/ocrAssets';
 
-function versionOf(pkg: string): string {
-  return JSON.parse(readFileSync(`node_modules/${pkg}/package.json`, 'utf8')).version;
-}
-
 export const OCR_CACHE_NAME = ocrCacheName(
-  `${versionOf('tesseract.js')}-${versionOf('tesseract.js-core')}`
+  `${installedVersion('tesseract.js')}-${installedVersion('tesseract.js-core')}`
 );
