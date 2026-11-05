@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
-import { learnedKey, matchLocally, splitSamplePrefix } from './loincMatch';
+import { learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix } from './loincMatch';
 import type { LocalMatch } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 
@@ -410,6 +410,95 @@ describe('matchLocally', () => {
     expect(codesOf(result)).toEqual(['1-1']);
   });
 
+  it('never reads international units per volume as a ratio to creatinine', () => {
+    const tests = madeUp(madeUpTest('1-1', ['ormone luteo'], 'Urine', { property: 'Ratio', component: 'Ormone luteo/Creatinine' }));
+    const result = matchLocally(tests, { name: 'Ormone luteo urinario', unit: 'mUI/mL' });
+    expect(result.status).not.toBe('match');
+  });
+
+  it('reads international units per volume as an enzyme only for one LOINC measures in enzyme units', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['reninasi'], 'Plas', { property: 'CCnc', units: ['ng/mL/h'] }),
+      madeUpTest('2-2', ['transaminasi zeta'], 'Ser/Plas', { property: 'CCnc', units: ['U/L'] })
+    );
+    expect(matchLocally(tests, { name: 'Reninasi', unit: 'µUI/mL' }).status).not.toBe('match');
+    expect(matchLocally(tests, { name: 'Transaminasi zeta', unit: 'UI/L' })).toMatchObject({ status: 'match', code: '2-2' });
+  });
+
+  it('finds by a bracket or a dashed part alone only the tests it is a name of', () => {
+    const complement = madeUp(
+      madeUpTest('1-1', ['complemento c9']),
+      madeUpTest('2-2', ['c9 proattivatore', 'complemento fattore z'])
+    );
+    expect(matchLocally(complement, { name: 'C9 attivatore (complemento)', unit: 'mg/L' }).status).toBe('ambiguous');
+    const kinase = madeUp(madeUpTest('1-1', ['fosfochinasi zeta', 'fkz'], 'Ser/Plas', { property: 'CCnc' }));
+    expect(matchLocally(kinase, { name: 'Fosfochinasi zeta - FKZ', unit: 'U/L' })).toMatchObject({
+      status: 'match',
+      code: '1-1',
+    });
+  });
+
+  it('takes the plain test over its variants LOINC names with a challenge or a time the name does not say', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['ormone zeta'], 'Ser/Plas', { component: 'Ormone zeta', rank: 3000 }),
+      madeUpTest('2-2', ['ormone zeta'], 'Ser/Plas', { component: 'Ormone zeta^1st specimen post XXX challenge', rank: 3001 }),
+      madeUpTest('3-3', ['ormone zeta 60 min'], 'Ser/Plas', { component: 'Ormone zeta^1H post XXX challenge', rank: 5 }),
+      // Its challenge's name is the printed one, as cortisol's "post corticotropin" is ACTH's
+      madeUpTest('4-4', ['stimolina'], 'Ser/Plas', { component: 'Cortisone^post 250 ug stimolina', rank: 5 }),
+      madeUpTest('5-5', ['stimolina'], 'Plas', { component: 'Stimolina', rank: 50 })
+    );
+    expect(matchLocally(tests, { name: 'Ormone zeta', unit: 'pg/mL' })).toMatchObject({ status: 'match', code: '1-1' });
+    expect(matchLocally(tests, { name: 'Ormone zeta 60 min', unit: 'pg/mL' })).toMatchObject({ status: 'match', code: '3-3' });
+    expect(matchLocally(tests, { name: 'Stimolina', unit: 'pg/mL' })).toMatchObject({ status: 'match', code: '5-5' });
+  });
+
+  it('reads a name ending in "-emia" as its substance said of blood, loosely', () => {
+    const serum = madeUp(madeUpTest('1-1', ['proteine']));
+    expect(matchLocally(serum, { name: 'Proteinemia', unit: 'g/dL' })).toMatchObject({ status: 'match', code: '1-1' });
+    // Blood is said loosely of serum tests too: serum and blood codes that trend apart are asked
+    const both = madeUp(madeUpTest('1-1', ['proteine']), madeUpTest('2-2', ['proteine'], 'Bld'));
+    expect(matchLocally(both, { name: 'Proteinemia', unit: 'g/dL' }).status).toBe('ambiguous');
+  });
+
+  it('reads the blood and red cell adjectives as the sample', () => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['solvente zeta'], 'Bld'),
+      madeUpTest('2-2', ['vitamina zeta'], 'RBC'),
+      madeUpTest('3-3', ['vitamina zeta'], 'Bld')
+    );
+    expect(matchLocally(tests, { name: 'Solvente zeta ematico', unit: 'µg/L' })).toMatchObject({ status: 'match', code: '1-1' });
+    expect(matchLocally(tests, { name: 'Vitamina zeta eritrocitaria', unit: 'ng/mL' })).toMatchObject({
+      status: 'match',
+      code: '2-2',
+    });
+  });
+
+  it.each([
+    'Anticorpi anti-perossidasi zeta',
+    'Ab anti perossidasi zeta',
+    'A.A. perossidasi zeta',
+    'Perossidasi zeta (anticorpi)',
+  ])('reads %s as the antibody LOINC names "Ab"', (name) => {
+    const tests = madeUp(
+      madeUpTest('1-1', ['perossidasi zeta ab'], 'Ser/Plas', { property: 'ACnc' }),
+      madeUpTest('2-2', ['perossidasi zeta'], 'Ser/Plas', { property: 'ACnc' })
+    );
+    expect(matchLocally(tests, { name, unit: 'UI/mL' })).toMatchObject({ status: 'match', code: '1-1' });
+  });
+
+  it('reads Greek letters, and the Latin letters a symbol font gives for them, spelled out', () => {
+    const tests = madeUp(madeUpTest('1-1', ['alfa-1-globulina zeta']), madeUpTest('2-2', ['beta-2-globulina zeta']));
+    for (const name of ['α1-globulina zeta', 'a1-globulina zeta', 'a-1 globulina zeta']) {
+      expect(matchLocally(tests, { name, unit: 'mg/L' })).toMatchObject({ status: 'match', code: '1-1' });
+    }
+    expect(matchLocally(tests, { name: 'b2-globulina zeta', unit: 'mg/L' })).toMatchObject({ status: 'match', code: '2-2' });
+  });
+
+  it('reads a letter and its number written apart as one name', () => {
+    const tests = madeUp(madeUpTest('1-1', ['vitamina q12']), madeUpTest('2-2', ['vitamina q1']));
+    expect(matchLocally(tests, { name: 'Vitamina Q 12', unit: 'pg/mL' })).toMatchObject({ status: 'match', code: '1-1' });
+  });
+
   it('offers at most eight candidates, with their LOINC names and scores', () => {
     const many = createCatalog({
       version: 't',
@@ -480,6 +569,42 @@ describe('splitSamplePrefix', () => {
     expect(splitSamplePrefix('Glucosio urinaria')).toEqual({ name: 'Glucosio', systems: urine });
     expect(splitSamplePrefix('Proteine urine 24 ore')).toEqual({ name: 'Proteine', systems: ['24H urine'] });
     expect(splitSamplePrefix('Creatinina 24h')).toEqual({ name: 'Creatinina', systems: ['24H urine'] });
+  });
+});
+
+describe('spellGreek', () => {
+  it.each([
+    ['α1-antitripsina', 'alfa-1-antitripsina'],
+    ['β2-microglobulina', 'beta-2-microglobulina'],
+    ['γ GT', 'gamma- GT'],
+    ['a1-antitripsina', 'alfa-1-antitripsina'],
+    ['b-2 microglobulina', 'beta-2 microglobulina'],
+    ['17-a-idrossiprogesterone', '17-alfa-idrossiprogesterone'],
+  ])('spells %s as %s', (name, spelled) => {
+    expect(spellGreek(name)).toBe(spelled);
+  });
+
+  it('leaves Latin letters that are no Greek stand-ins as they are', () => {
+    for (const name of ['D-dimero', 'Vitamina A', 'B-HCG', 'gGT', 'Apolipoproteina B']) expect(spellGreek(name)).toBe(name);
+  });
+});
+
+describe('readAntibody', () => {
+  it.each([
+    ['Anticorpi anti tireoglobulina', 'tireoglobulina ab'],
+    ['Anticorpi anti-tireoglobulina', 'tireoglobulina ab'],
+    ['Ab anti tireoglobulina', 'tireoglobulina ab'],
+    ['Antic. anti tireoglobulina', 'tireoglobulina ab'],
+    ['A. A. tireoglobulina', 'tireoglobulina ab'],
+    ['Anti-tireoglobulina', 'tireoglobulina ab'],
+    ['Tireoglobulina anticorpi', 'Tireoglobulina ab'],
+    ['Tireoglobulina (anticorpi)', 'Tireoglobulina ab'],
+  ])('reads %s as %s', (name, read) => {
+    expect(readAntibody(name)).toBe(read);
+  });
+
+  it('leaves a name naming no antibody as it is', () => {
+    for (const name of ['Antitrombina III', 'Antigene carcinoembrionario', 'Tireoglobulina']) expect(readAntibody(name)).toBe(name);
   });
 });
 
@@ -580,6 +705,24 @@ describe('matchLocally in the generated catalog', () => {
     ['Glucosio plasmatica', 'mg/dL', undefined, '2345-7'],
     // The eGFR HemoIO describes stands for the rates that trend with it
     ['GFR', 'mL/min/1.73m2', undefined, '98979-8'],
+    // Lab spellings of units: the mole as "M" or "moli", grams as "gr", a share's words
+    ['Litio', 'mM/L', undefined, '14334-7'],
+    ['Omocisteina', 'umoli/L', undefined, '13965-9'],
+    ['Proteine urinarie', 'gr/24h', undefined, '2889-4'],
+    ['Carbossiemoglobina', '% Hb totale', 'blood', '20563-3'],
+    ['Microalbumina', 'mg/g di creatinina', 'urine', '14959-1'],
+    ['White blood cells', 'K/mcL', 'blood', '6690-2'],
+    ['Amilasi', 'U/24 h', 'urine', '1800-2'],
+    // Not a variant LOINC names with a challenge or a time
+    ['Calcitonina', 'pg/mL', undefined, '1992-7'],
+    ['ACTH', 'pg/mL', 'plasma', '2141-0'],
+    // A substance said of blood by "-emia", of red cells by "eritrocitario"
+    ['Uricemia', 'mg/dL', undefined, '3084-1'],
+    ['Folati eritrocitari', 'ng/mL', 'blood', '2283-0'],
+    // Antibodies as LOINC names them, Greek letters spelled out, a letter and its number apart
+    ['Anticorpi anti tireoperossidasi', 'UI/mL', undefined, '8099-4'],
+    ['a1-Antitripsina', 'g/L', undefined, '1825-9'],
+    ['Vitamina B 12', 'pg/mL', undefined, '2132-9'],
   ])('takes %s in %s (sample %s) as %s', async (name, unit, specimenHint, code) => {
     const value = { name, unit, ...(specimenHint && { specimenHint }) };
     expect(matchLocally(await loadCatalog(), value)).toMatchObject({ status: 'match', code });
@@ -610,6 +753,11 @@ describe('matchLocally in the generated catalog', () => {
     ['Alfafetoproteina', 'IU/mL', '19176-7'],
     // FEU and DDU differ about two-fold: neither is taken for the other
     ['D-dimero', 'ng/mL', undefined],
+    // A renin activity is not measured in µIU/mL, nor a ratio to creatinine in mIU/mL
+    ['Renina', 'µUI/mL', undefined],
+    ['LH urinario', 'mUI/mL', undefined],
+    // C3 activator is not complement C3 because "complemento" in brackets names it
+    ['C3 attivatore (complemento)', 'mg/L', undefined],
   ])('leaves %s in %s ambiguous', async (name, unit, first) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).toBe('ambiguous');
