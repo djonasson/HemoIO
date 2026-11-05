@@ -79,6 +79,21 @@ async function expectFolderCopyUnchanged(page: Page, hash: string | null): Promi
   expect(await folderCopyHash(page)).toBe(hash);
 }
 
+/**
+ * Given the folder copy was saved before tests were identified by LOINC: the
+ * app writes format 4, so have it seal format 3 instead, as an earlier version
+ * did, under this user's own key
+ */
+async function sealAsPreLoinc(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const encode = TextEncoder.prototype.encode;
+    TextEncoder.prototype.encode = function (input?: string): Uint8Array<ArrayBuffer> {
+      const text = typeof input === 'string' ? input.replace(/^\{"version":4,/, '{"version":3,') : input;
+      return encode.call(this, text) as Uint8Array<ArrayBuffer>;
+    };
+  });
+}
+
 test.describe('Restore from the folder copy', () => {
   test.skip(
     ({ browserName }) => browserName !== 'chromium',
@@ -192,15 +207,7 @@ test.describe('Restore from the folder copy', () => {
 
   test('a copy saved before tests were identified by LOINC is reported, not offered or changed', async ({ page }) => {
     // Scenario: Folder copy saved before tests were identified by LOINC
-    // The app writes the copy as format 4: have it seal format 3 instead, as
-    // an earlier version did, under this user's own key
-    await page.addInitScript(() => {
-      const encode = TextEncoder.prototype.encode;
-      TextEncoder.prototype.encode = function (input?: string): Uint8Array<ArrayBuffer> {
-        const text = typeof input === 'string' ? input.replace(/^\{"version":4,/, '{"version":3,') : input;
-        return encode.call(this, text) as Uint8Array<ArrayBuffer>;
-      };
-    });
+    await sealAsPreLoinc(page);
     await folderWithCopy(page);
     const hash = await folderCopyHash(page);
     await loseBrowserData(page);
@@ -214,6 +221,30 @@ test.describe('Restore from the folder copy', () => {
     await expect(dialog.restore).toHaveCount(0);
     await expect(dialog.replace).toHaveCount(0);
     await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('a pre-LOINC copy the user declined is not written over after an import', async ({ page }) => {
+    // Scenario: A folder copy saved before LOINC is never written over
+    await sealAsPreLoinc(page);
+    await folderWithCopy(page);
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await dialog.notNow.click();
+    await expect(dialog.dialog).toBeHidden();
+    await seedLabData(page);
+    await expectFolderCopyUnchanged(page, hash);
+
+    // The browser has data now, so nothing asks first: the sync itself must refuse
+    await lockApp(page);
+    await unlockApp(page);
+    await expect(page.getByText('Folder sync skipped')).toBeVisible();
+    await expect(page.getByText(/saved before tests were identified by LOINC/)).toBeVisible();
+    await page.clock.fastForward('00:31');
+    expect(await folderCopyHash(page)).toBe(hash);
   });
 
   test('an empty folder file is not asked about, and is saved over', async ({ page }) => {

@@ -10,13 +10,14 @@
 
 import { decrypt, encrypt } from '@data/encryption';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
+import { isPreLoincBackupVersion } from '@services/import';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
 /**
  * Format version of the encrypted sync file. Its records are those of the
- * backup schema of the same number, so a restore reads a copy back through
- * the backup migrations: 1 named biomarkers by dictionary position, 2 by key,
- * and 3 has urea and urine red cells filed apart from BUN and urine blood.
+ * backup schema of the same number, so a restore reads a copy back as it
+ * reads a backup; a copy saved before tests were identified by LOINC (before
+ * version 4) cannot be restored, and is never written over.
  */
 export const FOLDER_SYNC_FILE_VERSION = BACKUP_SCHEMA_VERSION;
 
@@ -43,10 +44,12 @@ export interface FolderCopyStore {
 /**
  * Why a sync left the folder copy alone: the browser has no health data but
  * the folder copy does (`empty`); the session key cannot read the folder copy,
- * so what it holds is unknown (`unreadable`); or a newer HemoIO wrote it, in a
- * format this one would lose parts of (`newer`)
+ * so what it holds is unknown (`unreadable`); a newer HemoIO wrote it, in a
+ * format this one would lose parts of (`newer`); or an earlier HemoIO wrote
+ * it before tests were identified by LOINC, so it cannot be restored and may
+ * be the only copy of that history (`before-loinc`)
  */
-export type FolderProtectionReason = 'empty' | 'unreadable' | 'newer';
+export type FolderProtectionReason = 'empty' | 'unreadable' | 'newer' | 'before-loinc';
 
 export type FolderSyncOutcome =
   | { status: 'written' }
@@ -75,13 +78,13 @@ function isSyncFile(value: unknown): value is FolderSyncFile {
 }
 
 /**
- * A copy's content: `null` for no copy or an empty file, `'unreadable'` when
- * the key cannot read it, `'newer'` when a newer HemoIO wrote it
+ * A copy's content: `null` for no copy or an empty file, or why it cannot be
+ * read as a current copy
  */
 async function open(
   encrypted: ArrayBuffer | null,
   key: CryptoKey
-): Promise<FolderSyncFile | null | 'unreadable' | 'newer'> {
+): Promise<FolderSyncFile | null | Exclude<FolderProtectionReason, 'empty'>> {
   // An interrupted first write can leave an empty file; there is nothing to lose
   if (!encrypted || encrypted.byteLength === 0) return null;
 
@@ -90,6 +93,7 @@ async function open(
     // Checked first: a newer HemoIO may lay its data out in a way this one cannot check
     const version = (parsed as { version?: unknown } | null)?.version;
     if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return 'newer';
+    if (typeof version === 'number' && isPreLoincBackupVersion(version)) return 'before-loinc';
     return isSyncFile(parsed) ? parsed : 'unreadable';
   } catch {
     // Another password, or a damaged file. Not logged: a log would add nothing
@@ -113,8 +117,8 @@ async function keepsAsPrevious(
   if (replacedRecords === 0) return false;
 
   const previous = await open(await store.loadPrevious(), key);
-  // A newer HemoIO's copy cannot be counted, but it is one to undo to
-  if (previous === 'newer') return false;
+  // A newer or pre-LOINC copy cannot be counted, but it is one to undo to
+  if (previous === 'newer' || previous === 'before-loinc') return false;
   if (!previous || previous === 'unreadable') return true;
   return replacedRecords * 2 >= healthRecords(previous.data);
 }
@@ -134,11 +138,11 @@ export async function writeFolderCopy(
   // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
   const dataJson = JSON.stringify(data);
 
-  if (existing === 'unreadable' || existing === 'newer') {
+  if (typeof existing === 'string') {
     return { status: 'protected', reason: existing };
   }
   if (existing) {
-    if (existing.version === FOLDER_SYNC_FILE_VERSION && JSON.stringify(existing.data) === dataJson) {
+    if (JSON.stringify(existing.data) === dataJson) {
       return { status: 'unchanged' };
     }
     if (healthRecords(existing.data) > 0 && healthRecords(data) === 0) {

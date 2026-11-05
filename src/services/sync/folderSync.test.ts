@@ -135,10 +135,25 @@ describe('writeFolderCopy', () => {
     expect(store.saves).toBe(1);
   });
 
-  it('rewrites a copy in an older format even when the data is the same', async () => {
-    store.copy = await sealed({ version: 1, exportedAt: '2024-01-01', data: withResults() }, key);
+  it('never replaces a copy saved before tests were identified by LOINC', async () => {
+    store.copy = await sealed({ version: 3, exportedAt: '2024-01-01', data: withResults() }, key);
+    const before = store.copy;
 
-    expect(await writeFolderCopy(store, withResults(), key)).toEqual({ status: 'written' });
+    expect(await writeFolderCopy(store, withResults(2), key)).toEqual({
+      status: 'protected',
+      reason: 'before-loinc',
+    });
+    expect(store.copy).toBe(before);
+    expect(store.saves).toBe(0);
+  });
+
+  it('never replaces a pre-LOINC copy, even one without health data', async () => {
+    store.copy = await sealed({ version: 1, exportedAt: '2024-01-01', data: empty() }, key);
+
+    expect(await writeFolderCopy(store, withResults(), key)).toEqual({
+      status: 'protected',
+      reason: 'before-loinc',
+    });
   });
 
   it('never replaces a copy the key cannot open', async () => {

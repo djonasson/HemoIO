@@ -105,6 +105,16 @@ Feature: Restore From the Folder Copy
     And I should not be offered to restore it
     And the folder copy should not have been changed
 
+  Scenario: A folder copy saved before LOINC is never written over
+    Given the folder copy was saved before tests were identified by LOINC
+    And this browser no longer has any of my lab data
+    And I unlock HemoIO
+    And I choose "Not now"
+    And I import a lab report
+    When I lock and unlock HemoIO again
+    Then I should be told the folder sync was skipped because the folder copy was saved before tests were identified by LOINC
+    And the folder copy should not have been changed
+
   Scenario: Change my mind about replacing the folder copy
     Given this browser no longer has any of my lab data
     And I unlock HemoIO

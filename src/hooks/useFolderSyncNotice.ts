@@ -32,6 +32,13 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
       'The copy in your folder was saved by a newer version of HemoIO, ' +
       'so this version left it as it is. Reload HemoIO to update it and keep syncing.',
   },
+  'before-loinc': {
+    title: SKIPPED,
+    message:
+      'The copy in your folder was saved before tests were identified by LOINC, ' +
+      'so it cannot be restored, and HemoIO left it as it is. ' +
+      'To keep syncing, choose a different folder in Settings > Data.',
+  },
   failed: {
     title: 'Folder sync failed',
     message:

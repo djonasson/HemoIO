@@ -171,8 +171,8 @@ export function parseBackupJson(jsonString: string): ParsedBackupData {
 }
 
 /**
- * Validate, migrate and deserialize backup data already parsed from JSON
- * (dates still strings)
+ * Validate and deserialize backup data already parsed from JSON, refusing a
+ * version this one cannot restore (dates still strings)
  */
 export function parseBackupData(data: unknown): ParsedBackupData {
   if (!isValidBackupData(data)) {

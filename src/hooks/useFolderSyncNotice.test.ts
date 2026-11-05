@@ -49,6 +49,15 @@ describe('useFolderSyncNotice', () => {
     expect(notice.message).toMatch(/left it as it is/);
   });
 
+  it('leaves a copy saved before LOINC codes alone and points to another folder', () => {
+    renderHook(() => useFolderSyncNotice('before-loinc'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.message).toMatch(/saved before tests were identified by LOINC/);
+    expect(notice.message).toMatch(/left it as it is/);
+    expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
+  });
+
   it('says when the folder could not be written, and that the browser keeps the data', () => {
     renderHook(() => useFolderSyncNotice('failed'));
 
