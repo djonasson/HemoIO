@@ -123,12 +123,12 @@ describe('readFolderCopy, earlier formats', () => {
     expect(SYNC_FILE_VERSION).toBe(BACKUP_SCHEMA_VERSION);
   });
 
-  it.each([1, 2, 3])('reports a format %i copy, made before LOINC codes, as not a copy', async (version) => {
+  it.each([1, 2, 3])('reports a format %i copy, made before LOINC codes, as such', async (version) => {
     const key = await newKey();
 
     expect(await readFolderCopy(await sealed(copy(STORED, version), key), key)).toEqual({
       status: 'unreadable',
-      reason: 'not-a-copy',
+      reason: 'before-loinc',
     });
   });
 

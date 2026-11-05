@@ -11,7 +11,7 @@ import { Alert, Button, Group, List, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
-import type { ParsedBackupData } from '@services/import';
+import { PRE_LOINC_BACKUP_MESSAGE, type ParsedBackupData } from '@services/import';
 import type { FolderCopyProblem } from '@services/sync';
 
 export interface FolderRestoreModalProps {
@@ -43,6 +43,8 @@ function problemMessage(reason: FolderCopyProblem, folder: string): string {
         `The copy in ${folder} was saved by a newer version of HemoIO. ` +
         'Update HemoIO on this device to restore it.'
       );
+    case 'before-loinc':
+      return PRE_LOINC_BACKUP_MESSAGE;
     case 'read-failed':
       return `HemoIO couldn't read the file in ${folder}. Check that the folder is available.`;
   }

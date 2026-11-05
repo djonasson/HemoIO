@@ -7,7 +7,7 @@
  */
 
 import { decrypt } from '@data/encryption';
-import { parseBackupData, type ParsedBackupData } from '@services/import';
+import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
 import { FOLDER_SYNC_FILE_VERSION } from './folderSync';
 
 export type FolderCopyProblem =
@@ -16,6 +16,8 @@ export type FolderCopyProblem =
   /** Decrypts, but is not a folder copy HemoIO can read */
   | 'not-a-copy'
   | 'newer-version'
+  /** Saved before tests were identified by LOINC: its values cannot be restored */
+  | 'before-loinc'
   /** The file could not be read from the folder */
   | 'read-failed';
 
@@ -73,6 +75,9 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   }
   if (!Number.isInteger(envelope.version) || envelope.version < 1) {
     return { status: 'unreadable', reason: 'not-a-copy' };
+  }
+  if (isPreLoincBackupVersion(envelope.version)) {
+    return { status: 'unreadable', reason: 'before-loinc' };
   }
 
   try {

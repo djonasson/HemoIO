@@ -186,6 +186,32 @@ test.describe('Restore from the folder copy', () => {
     await expectFolderCopyUnchanged(page, hash);
   });
 
+  test('a copy saved before tests were identified by LOINC is reported, not offered or changed', async ({ page }) => {
+    // Scenario: Folder copy saved before tests were identified by LOINC
+    // The app writes the copy as format 4: have it seal format 3 instead, as
+    // an earlier version did, under this user's own key
+    await page.addInitScript(() => {
+      const encode = TextEncoder.prototype.encode;
+      TextEncoder.prototype.encode = function (input?: string): Uint8Array<ArrayBuffer> {
+        const text = typeof input === 'string' ? input.replace(/^\{"version":4,/, '{"version":3,') : input;
+        return encode.call(this, text) as Uint8Array<ArrayBuffer>;
+      };
+    });
+    await folderWithCopy(page);
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await expect(dialog.dialog).toContainText(
+      'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.'
+    );
+    await expect(dialog.restore).toHaveCount(0);
+    await expect(dialog.replace).toHaveCount(0);
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
   test('an empty folder file is not asked about, and is saved over', async ({ page }) => {
     await folderWithCopy(page);
     await writeForeignFolderCopy(page, 'empty');

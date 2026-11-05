@@ -130,18 +130,25 @@ function deserializeUserNote(data: SerializedUserNote): UserNote {
   };
 }
 
+/** Why a backup or folder copy of a version before LOINC codes cannot be restored */
+export const PRE_LOINC_BACKUP_MESSAGE =
+  'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.';
+
 /** The first backup version whose values are identified by LOINC code */
 const FIRST_LOINC_BACKUP_VERSION = 4;
+
+/** Whether a backup or folder copy of this version was made before LOINC codes */
+export function isPreLoincBackupVersion(schemaVersion: number): boolean {
+  return schemaVersion < FIRST_LOINC_BACKUP_VERSION;
+}
 
 /**
  * Refuse a backup this version cannot restore: one made before tests were
  * identified by LOINC, or by a newer version
  */
 export function assertSupportedBackupVersion(schemaVersion: number): void {
-  if (schemaVersion < FIRST_LOINC_BACKUP_VERSION) {
-    throw new Error(
-      'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.'
-    );
+  if (isPreLoincBackupVersion(schemaVersion)) {
+    throw new Error(PRE_LOINC_BACKUP_MESSAGE);
   }
   if (schemaVersion > BACKUP_SCHEMA_VERSION) {
     throw new Error(

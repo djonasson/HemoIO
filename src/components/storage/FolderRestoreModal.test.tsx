@@ -185,6 +185,10 @@ describe('FolderRestoreModal', () => {
     ['cannot-decrypt', /can't be opened with your password.*different password.*damaged/],
     ['not-a-copy', /isn't a folder copy HemoIO can read.*damaged/],
     ['newer-version', /newer version of HemoIO/],
+    [
+      'before-loinc',
+      /This backup was made before tests were identified by LOINC and cannot be restored\. Re-import your reports instead\./,
+    ],
     ['read-failed', /couldn't read the file/],
   ] as const)('explains a copy it cannot read (%s), and offers neither restore nor replace', (reason, message) => {
     renderModal({ kind: 'unreadable', reason, folderName: 'Health' });

@@ -101,8 +101,9 @@ Feature: Restore From the Folder Copy
     Given the folder copy was saved before tests were identified by LOINC
     And this browser no longer has any of my lab data
     When I unlock HemoIO
-    Then I should be told the folder copy cannot be read
+    Then I should be told the backup was made before tests were identified by LOINC and cannot be restored
     And I should not be offered to restore it
+    And the folder copy should not have been changed
 
   Scenario: Change my mind about replacing the folder copy
     Given this browser no longer has any of my lab data

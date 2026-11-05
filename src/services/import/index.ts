@@ -17,6 +17,8 @@ export {
   type JsonImportOptions,
   type ImportResult,
   type ParsedBackupData,
+  PRE_LOINC_BACKUP_MESSAGE,
+  isPreLoincBackupVersion,
 } from './jsonImport';
 
 export {
