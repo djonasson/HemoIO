@@ -84,6 +84,7 @@ Feature: Trend Charts
     Then only the values in g/dL should be plotted
     And I should be told that one value in the other unit is shown on a line of its own
     And that value should be offered as its own line, named with its unit
+    And that line's reference link and notes should name the test without the unit
 
   Scenario: Handle missing data gracefully
     Given I have lab results with gaps in dates

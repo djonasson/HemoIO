@@ -54,7 +54,9 @@ export function dictionaryEntries(catalog: Catalog, valueKeys: Iterable<string>)
 export function groupByClass(entries: ReadonlyArray<DictionaryEntry>): DictionaryGroup[] {
   const groups = new Map<string, DictionaryEntry[]>();
   for (const entry of entries) {
-    groups.set(entry.classLabel, [...(groups.get(entry.classLabel) ?? []), entry]);
+    const members = groups.get(entry.classLabel);
+    if (members) members.push(entry);
+    else groups.set(entry.classLabel, [entry]);
   }
   return [...groups]
     .map(([classLabel, members]) => ({ classLabel, entries: members }))

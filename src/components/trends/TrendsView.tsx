@@ -229,7 +229,7 @@ export function TrendsView({
         size="xs"
         leftSection={<IconBook size={14} aria-hidden />}
         onClick={() => onOpenReference(selectedBiomarkerData.trendCode)}
-        aria-label={`View reference for ${selectedBiomarkerData.name}`}
+        aria-label={`View reference for ${selectedBiomarkerData.testName}`}
       >
         View reference
       </Button>
@@ -461,7 +461,7 @@ export function TrendsView({
             <NotesSection
               // A fresh editor per biomarker: a draft saved after switching would go to the new one
               key={selectedBiomarkerId}
-              title={`Notes for ${selectedBiomarkerData?.name || 'Biomarker'}`}
+              title={`Notes for ${selectedBiomarkerData?.testName || 'Biomarker'}`}
               notes={selectedBiomarkerNotes}
               onCreateNote={handleCreateNote}
               onUpdateNote={handleUpdateNote}

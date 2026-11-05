@@ -18,7 +18,11 @@ import {
   loincTestLabel,
   sampleLabel,
   splitPrintedSample,
-  testDescription, testDisplayName, testUnits, trendCode } from '@data/loinc/display';
+  testDescription,
+  testDisplayName,
+  testUnits,
+  trendCode,
+} from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';

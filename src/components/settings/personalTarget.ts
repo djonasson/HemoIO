@@ -27,7 +27,10 @@ export function hasTargetRange(range: TargetRange | undefined): range is TargetR
   return range !== undefined && (range.low !== undefined || range.high !== undefined);
 }
 
-/** A test's target, given in its standard unit, or in its range's unit when it has no standard unit */
+/**
+ * A test's target, given in its standard unit, else in its range's unit,
+ * else in the first unit LOINC gives the test
+ */
 export function toPersonalTarget(
   catalog: Catalog,
   code: string,
@@ -37,7 +40,7 @@ export function toPersonalTarget(
   return {
     biomarkerKey: code,
     biomarkerName: testDisplayName(catalog, { biomarkerKey: code }),
-    unit: testUnits(catalog, code)?.canonicalUnit ?? standard?.unit ?? '',
+    unit: testUnits(catalog, code)?.canonicalUnit ?? standard?.unit ?? catalog.test(code)?.units[0] ?? '',
     standardLow: standard?.low,
     standardHigh: standard?.high,
     personalLow: target?.low,

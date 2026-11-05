@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { unitsMatch } from '@services/units/definitions';
 import { toUcum } from '@services/units/ucum';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { TEST_ADDONS, getAddon } from './addons';
@@ -35,6 +36,15 @@ describe('TEST_ADDONS', () => {
     'gives %s its reference range in its standard unit',
     (_code, addon) => {
       expect(addon.referenceRange!.unit).toBe(addon.canonicalUnit);
+    }
+  );
+
+  it.each(ADDONS.filter(([, addon]) => addon.canonicalUnit))(
+    'lists each unit of %s once, not again in another spelling',
+    (_code, addon) => {
+      const units = [addon.canonicalUnit!, ...(addon.alternativeUnits ?? [])];
+      const repeated = units.filter((unit, i) => units.slice(0, i).some((earlier) => unitsMatch(earlier, unit)));
+      expect(repeated).toEqual([]);
     }
   );
 

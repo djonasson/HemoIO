@@ -11,6 +11,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { backButton, expectDetailPage, searchField } from './steps/dictionary.steps';
+import { notesHeader } from './steps/userNotes.steps';
 import {
   GLUCOSE,
   HDL,
@@ -464,6 +465,9 @@ test.describe('Trend direction indicator', () => {
 
     await selectBiomarker(page, 'Hemoglobin in xyz/L');
     await expect(page.getByRole('main').getByText('Showing 1 data point', { exact: true })).toBeVisible();
+    // The reference and the notes belong to the whole test, so they name it without the unit
+    await expect(referenceLink(page, 'Hemoglobin')).toBeVisible();
+    await expect(notesHeader(page.getByRole('main'), 'Notes for Hemoglobin')).toBeVisible();
   });
 
   test('draws glucose in mg/dL and in mmol/L as one line', async ({ page }) => {

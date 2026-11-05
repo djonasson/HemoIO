@@ -82,11 +82,11 @@ export async function openSettingsTab(page: Page, tab: string | RegExp): Promise
   await expect(tabButton).toHaveAttribute('aria-selected', 'true');
 }
 
-/** Requests for the LOINC test catalog chunk, in the dev server and in a build */
+/** Requests for the LOINC test catalog file, in the dev server and in a build */
 const TEST_CATALOG_REQUEST = /catalog\.generated/;
 
 /**
- * Given the LOINC test catalog cannot be loaded — its chunk fails as it
+ * Given the LOINC test catalog cannot be loaded — its file fails as it
  * would offline before it was ever downloaded. Resolves with a function
  * that lets it load again.
  */

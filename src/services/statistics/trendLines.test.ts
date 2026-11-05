@@ -54,7 +54,13 @@ describe('buildTrendLines', () => {
     expect(main.elsewhere).toEqual({ count: 1, units: ['mg/g'] });
 
     const own = [...lines.values()].find((line) => line.key !== '2345-7')!;
-    expect(own).toMatchObject({ trendCode: '2345-7', name: 'Glucose in mg/g', unit: 'mg/g', unitOptions: [] });
+    expect(own).toMatchObject({
+      trendCode: '2345-7',
+      name: 'Glucose in mg/g',
+      testName: 'Glucose',
+      unit: 'mg/g',
+      unitOptions: [],
+    });
     expect(pointsOf(own)).toEqual(['3 mg/g']);
   });
 

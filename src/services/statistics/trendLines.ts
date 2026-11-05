@@ -39,7 +39,10 @@ export interface TrendLine {
   key: string;
   /** The test the line is of; notes, targets and the preferred unit are kept under it */
   trendCode: string;
+  /** The line's name: the test's name, with the unit for a line of its own */
   name: string;
+  /** The test's name alone, for what belongs to the whole test (its reference, its notes) */
+  testName: string;
   unit: string;
   /** Units the line can be shown in; none for a line of its own */
   unitOptions: string[];
@@ -67,7 +70,9 @@ export function buildTrendLines(
     for (const value of result.testValues) {
       if (!isTrendable(value)) continue;
       const code = trendCode(catalog, value.biomarkerKey);
-      byTest.set(code, [...(byTest.get(code) ?? []), { result, value }]);
+      const entries = byTest.get(code);
+      if (entries) entries.push({ result, value });
+      else byTest.set(code, [{ result, value }]);
     }
   }
 
@@ -109,7 +114,9 @@ export function buildTrendLines(
         main.push({ ...point, unit: lineUnit });
       } else {
         const unitKey = normalizeUnitForLookup(converted.unit);
-        byUnit.set(unitKey, [...(byUnit.get(unitKey) ?? []), point]);
+        const points = byUnit.get(unitKey);
+        if (points) points.push(point);
+        else byUnit.set(unitKey, [point]);
       }
     }
 
@@ -126,6 +133,7 @@ export function buildTrendLines(
       key: code,
       trendCode: code,
       name,
+      testName: name,
       unit,
       unitOptions: units ? preferredUnitOptions(units) : [],
       classLabel,
@@ -143,6 +151,7 @@ export function buildTrendLines(
         key,
         trendCode: code,
         name: `${name} in ${otherUnit}`,
+        testName: name,
         unit: otherUnit,
         unitOptions: [],
         classLabel,

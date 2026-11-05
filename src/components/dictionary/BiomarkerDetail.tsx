@@ -100,7 +100,7 @@ export function BiomarkerDetail({
   const range = standardRange(catalog, code);
   const units = testUnits(catalog, code);
   const shownUnits = units ? [units.canonicalUnit, ...units.alternativeUnits] : test.units;
-  const targetUnit = units?.canonicalUnit ?? range?.unit ?? '';
+  const targetUnit = units?.canonicalUnit ?? range?.unit ?? test.units[0] ?? '';
   const hasTarget = hasTargetRange(personalTarget);
   // The codes the test's values may also be saved under: glucose in mmol/L for glucose in mg/dL
   const otherCodes = catalog
@@ -311,7 +311,8 @@ export function BiomarkerDetail({
             <Text size="xs" c="dimmed" mb="xs">
               Your values for {name} may also be recorded under these codes.
             </Text>
-            <Stack gap={4} component="ul" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {/* role="list": Safari drops the list role from an unstyled list */}
+            <Stack gap={4} component="ul" role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {otherCodes.map((member) => (
                 <Text key={member.code} component="li" size="sm">
                   {member.name} · {member.code}

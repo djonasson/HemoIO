@@ -20,6 +20,8 @@ const WBC = '6690-2';
 const GLUCOSE = '2345-7';
 /** Glucose in blood: a test HemoIO has no description of */
 const UNDESCRIBED = '2339-0';
+/** Lymphocytes per 100 leukocytes: a test whose trend group holds no other code */
+const SINGLE_CODE = '736-9';
 
 /** Renders the detail of `code` with no results, no target and spy callbacks */
 function renderDetailOf(
@@ -106,6 +108,12 @@ describe('BiomarkerDetail', () => {
       expect(screen.queryByText('Reference Range')).not.toBeInTheDocument();
       expect(screen.queryByText('High Values')).not.toBeInTheDocument();
     });
+
+    it('gives its personal target in a unit LOINC gives the test', () => {
+      renderDetailOf(UNDESCRIBED, { personalTarget: { low: 70, high: 90 } });
+      const target = screen.getByRole('region', { name: 'Personal target' });
+      expect(within(target).getByText(`70 - 90 ${catalog.test(UNDESCRIBED)!.units[0]}`)).toBeInTheDocument();
+    });
   });
 
   describe('sections', () => {
@@ -190,6 +198,14 @@ describe('BiomarkerDetail', () => {
         within(codes).getByText(`${catalog.test('14749-6')!.name} · 14749-6`)
       ).toBeInTheDocument();
       expect(within(codes).queryByText(new RegExp(`· ${GLUCOSE}$`))).not.toBeInTheDocument();
+      // An unstyled list keeps its list role for screen readers
+      expect(within(codes).getByRole('list')).toBeInTheDocument();
+    });
+
+    it('has no Other LOINC codes section for a test with no other codes', () => {
+      expect(catalog.groupCodes(catalog.trendGroup(SINGLE_CODE))).toEqual([SINGLE_CODE]);
+      renderDetailOf(SINGLE_CODE);
+      expect(screen.queryByRole('region', { name: 'Other LOINC codes' })).not.toBeInTheDocument();
     });
   });
 });

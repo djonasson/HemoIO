@@ -29,10 +29,10 @@ describe('toPersonalTarget', () => {
     });
   });
 
-  it('names a test HemoIO has no add-on for by LOINC, with no standard range', () => {
+  it('names a test HemoIO has no add-on for by LOINC, in a LOINC unit, with no standard range', () => {
     expect(toPersonalTarget(catalog, '2339-0', undefined)).toMatchObject({
       biomarkerName: 'Glucose Bld-mCnc',
-      unit: '',
+      unit: 'mg/dL',
       standardLow: undefined,
       standardHigh: undefined,
     });
