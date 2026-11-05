@@ -12,7 +12,8 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
-import { seedLabData } from './steps/data.steps';
+import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
+import { goToTimeline, labResultCards } from './steps/timeline.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { loginWithOllama } from './steps/importWizard.steps';
@@ -793,6 +794,8 @@ test.describe('Backups from earlier versions', () => {
   test('refuses a backup made before tests were identified by LOINC', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);
+    // My data: one lab result the old backup does not have
+    await seedLabData(page, { labResults: [{ ...SEED_LAB_RESULTS[0], labName: 'Own Clinic' }], testValues: [] });
     await navigateToSettings(page);
     const backupPath = createBackupFile({ ...createValidBackupData(), schemaVersion: 3 });
 
@@ -804,6 +807,11 @@ test.describe('Backups from earlier versions', () => {
       ).toBeVisible();
       await expect(page.getByText(/re-import your reports instead/i)).toBeVisible();
       await expect(page.getByRole('dialog', { name: 'Restore from Backup' })).toBeHidden();
+
+      // And my data should be unchanged
+      await goToTimeline(page);
+      await expect(labResultCards(page)).toHaveCount(1);
+      await expect(labResultCards(page)).toContainText('Own Clinic');
     } finally {
       cleanupBackupFile(backupPath);
     }
