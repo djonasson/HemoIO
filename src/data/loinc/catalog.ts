@@ -70,6 +70,8 @@ export interface Catalog {
   scoredSearch(query: string, filter?: CatalogSearchFilter): ScoredTest[];
   /** The most common tests of these properties and systems, most common first */
   common(filter: CatalogSearchFilter, limit: number): CatalogTest[];
+  /** The test whose long common name this is, whatever its case and spacing */
+  byLongName(name: string): CatalogTest | undefined;
   /**
    * What a code trends with: the group joining its mass and molar codes
    * (for a rate, its mass and molar rate groups), else the group joining
@@ -297,6 +299,13 @@ export function createCatalog(file: CatalogFile): Catalog {
     else codesByTrendGroup.set(trend, [test.code]);
   }
 
+  // Built the first time a long name is looked up
+  let longNames: Map<string, CatalogTest> | undefined;
+  const byLongName = (name: string): CatalogTest | undefined => {
+    longNames ??= new Map([...file.tests].reverse().map((test) => [normalise(test.name), test]));
+    return longNames.get(normalise(name));
+  };
+
   function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
     const phrase = normalise(query);
     // A query of sample, quantity or other generic words alone names no test
@@ -357,6 +366,7 @@ export function createCatalog(file: CatalogFile): Catalog {
         )
         .sort(byRank)
         .slice(0, limit),
+    byLongName,
     trendGroup: (code) => trendGroups.get(code) ?? code,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
     groupCodes: (trendGroup) =>

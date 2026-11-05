@@ -97,7 +97,8 @@ export function ucumProperties(ucum: string): string[] {
   if (ucum === '1') return ['SpGrav', 'Ratio', 'pH'];
 
   if (length === -3 && time === 0) {
-    if (mass === 1 && !amount) return ['MCnc'];
+    // A mass per volume, or that in the cells (MCHC in g/dL)
+    if (mass === 1 && !amount) return ['MCnc', 'EntMCnc'];
     if (mass === 0 && amount) return ['SCnc'];
     if (mass === 0) return ['NCnc'];
   }

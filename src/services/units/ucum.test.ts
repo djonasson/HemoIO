@@ -46,7 +46,7 @@ describe('toUcum', () => {
 
 describe('ucumProperties', () => {
   it.each([
-    ['mg/dL', ['MCnc']],
+    ['mg/dL', ['MCnc', 'EntMCnc']],
     ['mmol/L', ['SCnc']],
     ['meq/L', ['SCnc']],
     ['10*9/L', ['NCnc']],

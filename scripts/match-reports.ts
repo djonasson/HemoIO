@@ -19,8 +19,8 @@
  * Output goes only to the terminal: never paste it into the repository.
  */
 import { request } from 'node:http';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { it } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
 import { matchLocally, type PrintedValue } from '@services/analysis/loincMatch';
@@ -76,11 +76,24 @@ async function printedValues(pdf: string, cacheDir: string | undefined): Promise
   return values;
 }
 
+/** A path with its symbolic links resolved, as far as it exists yet */
+function realPath(path: string): string {
+  if (existsSync(path)) return realpathSync(path);
+  const parent = dirname(path);
+  return parent === path ? path : join(realPath(parent), basename(path));
+}
+
+/** Whether a path is the folder or within it */
+function isInside(path: string, folder: string): boolean {
+  const rel = relative(folder, path);
+  return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/'));
+}
+
 it('matches the printed values of real reports locally', async () => {
   const pdfs = (process.env.MATCH_REPORTS ?? '').split(',').filter(Boolean);
   if (pdfs.length === 0) throw new Error('Set MATCH_REPORTS to a comma-separated list of PDFs');
   const cacheDir = process.env.MATCH_REPORTS_CACHE && resolve(process.env.MATCH_REPORTS_CACHE);
-  if (cacheDir && (cacheDir === REPOSITORY || cacheDir.startsWith(`${REPOSITORY}/`))) {
+  if (cacheDir && isInside(realPath(cacheDir), realpathSync(REPOSITORY))) {
     throw new Error('MATCH_REPORTS_CACHE must be outside the repository');
   }
 

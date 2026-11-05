@@ -114,12 +114,13 @@ Feature: Unit Conversion
     Then they should be recognized as equivalent after unit conversion
     And the values should be merged without conflict
 
-  Scenario: Detect equivalent protein/creatinine ratio values
+  Scenario: Merge a protein/creatinine ratio in mg/mmol once I choose the mass ratio test
     Given a lab report contains protein/creatinine ratio as both 15 mg/mmolcreat. and 132 mg/gcreat.
-    And the AI knows the LOINC test of each
     When the values are analyzed
-    Then they should be recognized as equivalent measurements
-    And the values should be merged without conflict
+    Then the mg/mmol value should be saved as "Protein/Creatinine [Ratio] in Urine", LOINC's own test for that unit
+    And both values should be kept, with no duplicate conflict warning
+    When I choose "Protein/Creatinine [Mass Ratio] in Urine" for the mg/mmol value
+    Then it should be marked "Not saved", as the same measurement as 132 mg/gcreat.
 
   Scenario: Merge the values an Italian report gives in two units
     Given a lab report gives uric acid as 247 µmol/L and 4.15 mg/dL, iron as 38.4 µmol/L and 214 µg/dL, vitamin D (25-OH) as 81.5 nmol/L and 32.6 ng/mL, reticulocytes as 16.7 ‰ and 1.67 %, urine urea per litre ("Urea/L (urine)") as 117 mmol/L and 7 g/L, and HbA1c as 42 mmol/mol Hb and 6.0 %

@@ -151,7 +151,9 @@ test.describe('Restore from the folder copy', () => {
 
     // From now on saves reach the folder: a one-result backup replaces the copy
     await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });
-    // The save reaches the folder after the restore: data lost before it is lost from both
+    // The save reaches the folder after the restore: data lost before it is lost from both.
+    // The first change of the copy is this save, because the sync right after "Replace"
+    // never writes empty data over a copy that has some (writeFolderCopy in folderSync.ts)
     await expect.poll(() => folderCopyHash(page)).not.toBe(original);
     await loseBrowserData(page);
     await unlockApp(page);

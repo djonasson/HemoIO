@@ -191,6 +191,52 @@ describe('matchLocally', () => {
     });
   });
 
+  it('reads a sample word anywhere in the name as its sample, a blood word loosely', () => {
+    const ferritin = madeUp(madeUpTest('1-1', ['ferritina']), madeUpTest('2-2', ['ferritina'], 'Bld', { rank: 900 }));
+    expect(matchLocally(ferritin, { name: 'Ferritina siero', unit: 'ng/mL' })).toMatchObject({
+      status: 'match',
+      code: '1-1',
+    });
+    expect(matchLocally(ferritin, { name: 'Ferritina, Blood', unit: 'ng/mL' })).toMatchObject({
+      status: 'ambiguous',
+    });
+    expect(matchLocally(ferritin, { name: 'Ferritina sangue', unit: 'ng/mL' }).status).toBe('ambiguous');
+  });
+
+  it('takes a long common name printed in full as that test', () => {
+    const ferritin = madeUp(
+      { ...madeUpTest('1-1', ['ferritina']), name: 'Ferritin [Mass/volume] in Serum or Plasma' },
+      { ...madeUpTest('2-2', ['ferritina'], 'Bld'), name: 'Ferritin [Mass/volume] in Blood' }
+    );
+    const value = { name: 'Ferritin [Mass/volume] in Blood', unit: 'ng/mL' };
+    expect(matchLocally(ferritin, value)).toMatchObject({ status: 'match', code: '2-2' });
+    // Unless its unit is of another property
+    expect(matchLocally(ferritin, { ...value, unit: 'mmol/L' }).status).not.toBe('match');
+  });
+
+  it('keeps variants that each name a method apart, and takes the one naming none over them', () => {
+    const variant = (code: string, method: string, rank: number): CatalogTest =>
+      madeUpTest(code, ['d-dimero'], 'PPP', { component: 'Fibrin D-dimer', method, rank });
+    const named = madeUp(variant('1-1', 'FEU', 500), variant('2-2', 'DDU', 501));
+    expect(matchLocally(named, { name: 'D-dimero', unit: 'ng/mL' }).status).toBe('ambiguous');
+    const withPlain = madeUp(variant('1-1', 'FEU', 500), variant('2-2', 'DDU', 501), variant('3-3', '', 700));
+    expect(matchLocally(withPlain, { name: 'D-dimero', unit: 'ng/mL' })).toMatchObject({
+      status: 'match',
+      code: '3-3',
+    });
+  });
+
+  it('takes the plain test over a per-cell one the name fits as well', () => {
+    const hemoglobin = madeUp(
+      madeUpTest('1-1', ['emoglobina'], 'Bld', { rank: 20 }),
+      madeUpTest('2-2', ['emoglobina'], 'RBC', { property: 'EntMCnc', rank: 10 })
+    );
+    expect(matchLocally(hemoglobin, { name: 'Emoglobina', unit: 'g/dL' })).toMatchObject({
+      status: 'match',
+      code: '1-1',
+    });
+  });
+
   it('takes the most common of tests that trend together when the AI says only "blood"', () => {
     // "Blood" is said loosely of serum tests too, so it does not pick the blood code
     const file = {
@@ -321,7 +367,7 @@ describe('splitSamplePrefix', () => {
       name: 'Fibrinogeno',
       systems: ['Plas', 'Ser/Plas', 'PPP', 'Ser/Plas/Bld'],
     });
-    expect(splitSamplePrefix('Sg-Emoglobina')).toEqual({ name: 'Emoglobina', systems: ['Bld', 'Ser/Plas/Bld'] });
+    expect(splitSamplePrefix('Sg-Emoglobina')).toEqual({ name: 'Emoglobina', systems: ['Bld', 'RBC', 'Ser/Plas/Bld'] });
     expect(splitSamplePrefix('U: Glucosio')).toEqual({ name: 'Glucosio', systems: ['Urine', 'Urine sed'] });
     expect(splitSamplePrefix('U24-Proteine')).toEqual({ name: 'Proteine', systems: ['24H urine'] });
   });
@@ -396,11 +442,24 @@ describe('matchLocally in the generated catalog', () => {
     ['Proteine', 'mg/dL', 'urine', '2888-6'],
     ['U-Creatinina', 'µmol/L', undefined, '14683-7'],
     ['U-Proteine/Creatinina', 'mg/gcreat.', undefined, '2890-2'],
-    // LOINC files mg/mmol as another ratio; HemoIO describes 2890-2 in it, and converts
-    ['U-Proteine/Creatinina', 'mg/mmolcreat.', undefined, '2890-2'],
+    // LOINC files mg/mmol under its own ratio code, which wins over 2890-2 HemoIO describes in it
+    ['Proteine/creatinina urine', 'mg/mmol', undefined, '34366-5'],
     // Not "Vitamin D+Metabolites", the name of "Vitamina D" alone
     ['Vitamina D (25-OH)', 'ng/mL', undefined, '62292-8'],
     ['ALT', 'U/L', 'blood', '1742-6'],
+    // A long common name printed in full is that test
+    ['Glucose [Mass/volume] in Blood', 'mg/dL', undefined, '2339-0'],
+    ['Calcium [Mass/volume] in Blood', 'mg/dL', undefined, '49765-1'],
+    ['Glucosio siero', 'mg/dL', undefined, '2345-7'],
+    // The LOINC test of the unit's property, not one HemoIO describes in that unit
+    ['Microalbumina', 'µg/min', 'urine', '49023-5'],
+    ['Albumina', 'g/dL', undefined, '1751-7'],
+    ['S-Albumina', 'g/L', undefined, '1751-7'],
+    // The red cell indices of a blood count
+    ['MCV', 'fL', undefined, '787-2'],
+    ['MCH', 'pg', undefined, '785-6'],
+    ['MCHC', 'g/dL', undefined, '786-4'],
+    ['Emoglobina', 'g/dL', undefined, '718-7'],
     ['U Albumina 24h', 'mg/24h', undefined, '1755-8'],
     ['Eritrociti', 'per campo', 'urine', '13945-1'],
     ['Fibrinogeno', 'mg/dL', undefined, '3255-7'],
@@ -418,6 +477,26 @@ describe('matchLocally in the generated catalog', () => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).not.toBe('match');
     expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    // Blood is said loosely of serum tests too
+    ['Glucosio sangue', 'mg/dL', '2339-0'],
+    ['Glucosio su sangue', 'mg/dL', '2339-0'],
+    ['Glucose, Blood', 'mg/dL', '2339-0'],
+    ['Potassio sangue', 'mmol/L', undefined],
+    ['Sodio sangue', 'mmol/L', undefined],
+    ['Calcium, Blood', 'mg/dL', '49765-1'],
+    // The tests of the unit's property come first, the one HemoIO describes in it is not taken
+    ['Alfa-fetoproteina', 'IU/mL', '19176-7'],
+    ['AFP', 'kU/L', '19176-7'],
+    ['U-Glucosio', 'mmol/L', '22705-8'],
+    // FEU and DDU differ about two-fold: neither is taken for the other
+    ['D-dimero', 'ng/mL', undefined],
+  ])('leaves %s in %s ambiguous', async (name, unit, first) => {
+    const result = matchLocally(await loadCatalog(), { name, unit });
+    expect(result.status).toBe('ambiguous');
+    if (first) expect(result.candidates[0].code).toBe(first);
   });
 
   it('offers the HbA1c test HemoIO describes in mmol/mol, which LOINC files as a mass share', async () => {

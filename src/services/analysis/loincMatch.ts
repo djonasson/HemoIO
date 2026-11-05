@@ -57,22 +57,23 @@ const DAY_URINE = '24H urine';
 const URINE = ['Urine', 'Urine sed'];
 
 /** Where a value with no sample named most likely comes from, likeliest first */
-const DEFAULT_SYSTEMS = ['Ser/Plas', 'Ser', 'Plas', 'Ser/Plas/Bld', 'Bld', 'PPP'];
+const DEFAULT_SYSTEMS = ['Ser/Plas', 'Ser', 'Plas', 'Ser/Plas/Bld', 'Bld', 'RBC', 'PPP'];
 
 /**
  * Sample prefixes labs print before a test name, and the systems they mean.
  * "Ser/Plas/Bld" is LOINC's system for a test of any of the three (eGFR);
- * "PPP", platelet-poor plasma, that of the clotting tests.
+ * "PPP", platelet-poor plasma, that of the clotting tests; "RBC", that of
+ * the red cell indices of a blood count (MCV, MCH, MCHC).
  */
 const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
   ['U24', [DAY_URINE]],
   ['dU', [DAY_URINE]],
   ['Se', ['Ser', 'Ser/Plas', 'Ser/Plas/Bld']],
   ['Pl', ['Plas', 'Ser/Plas', 'PPP', 'Ser/Plas/Bld']],
-  ['Sg', ['Bld', 'Ser/Plas/Bld']],
+  ['Sg', ['Bld', 'RBC', 'Ser/Plas/Bld']],
   ['S', ['Ser', 'Ser/Plas', 'Ser/Plas/Bld']],
   ['P', ['Plas', 'Ser/Plas', 'PPP', 'Ser/Plas/Bld']],
-  ['B', ['Bld', 'Ser/Plas/Bld']],
+  ['B', ['Bld', 'RBC', 'Ser/Plas/Bld']],
   ['U', URINE],
 ];
 
@@ -83,10 +84,13 @@ const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
  */
 const BLOOD_HINT = /\b(?:blood|sangue)\b/i;
 const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
-  [/\b(?:serum|siero)\b/i, ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
-  [/\bplasma\b/i, ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
-  [BLOOD_HINT, ['Bld', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld')]],
+  [/\b(?:serum|siero|sierico)\b/i, ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
+  [/\bplasma(?:tico)?\b/i, ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
+  [BLOOD_HINT, ['Bld', 'RBC', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld' && system !== 'RBC')]],
 ];
+
+/** Words naming serum, plasma or blood in a printed name: "Glucosio sangue", "Calcium, Blood" */
+const SAMPLE_WORDS = /\b(?:serum|siero|sierico|plasma|plasmatico|blood|sangue)\b/gi;
 
 /**
  * What says the value's sample: nothing; a prefix or a hint, which rule
@@ -162,12 +166,16 @@ interface Scope {
   systems: string[];
   properties: string[];
   ucum: string | null;
+  /** Whether tests HemoIO describes in the unit fit it too (see fitsDescribedUnit) */
+  described?: boolean;
 }
 
 /**
  * Whether the test fits a unit LOINC files under another property: HemoIO
  * describes it in that unit, and no test it trends with has the unit's
- * property ("mmol/mol" HbA1c, but not "mmol/L" for mass glucose)
+ * property ("mmol/mol" HbA1c, but not "mmol/L" for mass glucose). Only
+ * asked when no test of the unit's property fits the name: a description
+ * never moves a value off the LOINC test of its own property.
  */
 function fitsDescribedUnit(catalog: Catalog, test: CatalogTest, { properties, ucum }: Scope): boolean {
   const addon = ucum ? getAddon(catalog, test.code) : undefined;
@@ -185,7 +193,9 @@ function findTests(catalog: Catalog, name: string, scope: Scope): Found[] {
     .scoredSearch(name, { systems: [...new Set(systems.map((system) => (system === DAY_URINE ? 'Urine' : system)))] })
     .filter(
       ({ test }) =>
-        properties.length === 0 || properties.includes(test.property) || fitsDescribedUnit(catalog, test, scope)
+        properties.length === 0 ||
+        properties.includes(test.property) ||
+        (scope.described === true && fitsDescribedUnit(catalog, test, scope))
     )
     .map(({ test, score }) => ({
       test,
@@ -252,11 +262,15 @@ function rankOf(rank: number): number {
   return rank || Number.POSITIVE_INFINITY;
 }
 
-/** Whether two tests trend together, or are one test by another method or collection time */
+/**
+ * Whether two tests trend together, or one is the other with a method or
+ * collection time named. Two variants that each name a method (D-dimer
+ * FEU and DDU) mean different things, so they stay apart.
+ */
 function isSameFit(catalog: Catalog, a: CatalogTest, b: CatalogTest): boolean {
   return (
     catalog.trendGroup(a.code) === catalog.trendGroup(b.code) ||
-    (a.component === b.component && a.property === b.property && a.system === b.system)
+    (a.component === b.component && a.property === b.property && a.system === b.system && (!a.method || !b.method))
   );
 }
 
@@ -265,6 +279,7 @@ const SERUM_OR_PLASMA: ReadonlySet<string> = new Set(['Ser', 'Ser/Plas', 'Plas',
 
 function sampleKind(system: string): string {
   if (SERUM_OR_PLASMA.has(system)) return 'Ser/Plas';
+  if (system === 'RBC') return 'Bld';
   return URINE.includes(system) ? 'Urine' : system;
 }
 
@@ -295,7 +310,26 @@ function usualMeaning(catalog: Catalog, rivals: Found[], systems: string[], samp
   const [first, second] = fits
     .map((found) => ({ found, rank: groupRank(catalog, found.test.code) }))
     .sort((a, b) => a.rank - b.rank);
-  return first.rank * RANK_DOMINANCE <= second.rank ? first.found : undefined;
+  // An unranked test is common to no one
+  return Number.isFinite(first.rank) && first.rank * RANK_DOMINANCE <= second.rank ? first.found : undefined;
+}
+
+/**
+ * A name's serum, plasma or blood words read as its sample, as a prefix
+ * is: "Glucosio sangue" is glucose said of blood. Blood is said loosely
+ * of serum tests too, so a blood word alone leaves the sample open.
+ */
+function sampleInName(name: string): { name: string; systems: string[]; loosely: boolean } | undefined {
+  const words = name.match(SAMPLE_WORDS)?.join(' ') ?? '';
+  const [pattern, systems] = SAMPLE_HINTS.find(([sampleWords]) => sampleWords.test(words)) ?? [];
+  if (!systems) return undefined;
+  const rest = name
+    .replace(SAMPLE_WORDS, ' ')
+    .replace(/\(\s*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s,;:.-]+$/, '')
+    .trim();
+  return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT } : undefined;
 }
 
 function toCandidate(test: CatalogTest, score: number): Candidate {
@@ -325,52 +359,90 @@ export function matchLocally(
     return { status: 'match', code: learnedTest.code, candidates: [toCandidate(learnedTest, 1)] };
   }
 
-  // What looks like a prefix is part of a name LOINC knows: "P-ANCA", "B-HCG"
-  const whole = value.name.trim();
-  const isLoincName = (): boolean => catalog.scoredSearch(whole).some(({ score }) => score === 1);
-  const { name, systems: named } =
-    stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
-  const hinted = named ?? (value.specimenHint ? hintSystems(value.specimenHint) : undefined);
-  const systems = hinted ?? DEFAULT_SYSTEMS;
-  const sample: SampleSaid =
-    hinted === undefined ? 'none' : !named && BLOOD_HINT.test(value.specimenHint ?? '') ? 'loosely' : 'named';
   const ucum = toUcum(value.unit);
   const properties = ucum ? ucumProperties(ucum) : [];
+  const whole = value.name.trim();
 
-  let found = findByForms(catalog, name, { systems, properties, ucum });
-  // What looked like a prefix may be part of the name: "B-HCG", "P-ANCA"
-  if (found.length === 0 && name !== value.name.trim()) {
-    found = findByForms(catalog, value.name, { systems: DEFAULT_SYSTEMS, properties, ucum });
+  // A LOINC long common name printed in full is that test
+  const spelled = catalog.byLongName(whole);
+  if (spelled && properties.includes(spelled.property)) {
+    return { status: 'match', code: spelled.code, candidates: [toCandidate(spelled, 1)] };
   }
 
-  const candidates = found.slice(0, MAX_CANDIDATES).map(({ test, score }) => toCandidate(test, score));
-  const [top] = found;
-  if (!top) {
-    const common = properties.length
+  // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
+  const key = nameKey(whole);
+  const isLoincName = (): boolean =>
+    catalog
+      .scoredSearch(whole)
+      .some(({ test, score }) => score === 1 && (test.names.includes(key) || nameKey(test.name) === key));
+  const split = stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
+  const worded = split.systems || split.name.search(SAMPLE_WORDS) === -1 || isLoincName() ? undefined : sampleInName(split.name);
+  const name = worded?.name ?? split.name;
+  const said = split.systems ?? worded?.systems;
+  const hinted = said ?? (value.specimenHint ? hintSystems(value.specimenHint) : undefined);
+  const systems = hinted ?? DEFAULT_SYSTEMS;
+  const loosely = split.systems ? false : worded ? worded.loosely : BLOOD_HINT.test(value.specimenHint ?? '');
+  const sample: SampleSaid = hinted === undefined ? 'none' : loosely ? 'loosely' : 'named';
+
+  const search = (searched: string, scope: Scope): Found[] => {
+    const byProperty = findByForms(catalog, searched, scope);
+    // A test HemoIO describes in the unit, only when none of the unit's property fits
+    if (byProperty.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)) return byProperty;
+    const withDescribed = findByForms(catalog, searched, { ...scope, described: true });
+    return withDescribed.length ? withDescribed : byProperty;
+  };
+  let found = search(name, { systems, properties, ucum });
+  // What looked like a prefix may be part of the name: "B-HCG", "P-ANCA"
+  if (found.length === 0 && name !== whole) {
+    found = search(whole, { systems: DEFAULT_SYSTEMS, properties, ucum });
+  }
+
+  const common = (): CatalogTest[] =>
+    properties.length
       ? catalog.common({ properties, systems: systems.map((s) => (s === DAY_URINE ? 'Urine' : s)) }, MAX_CANDIDATES)
       : [];
-    return { status: 'none', candidates: common.map((test) => toCandidate(test, 0)) };
+  const [top] = found;
+  if (!top) return { status: 'none', candidates: common().map((test) => toCandidate(test, 0)) };
+  const candidates = found.slice(0, MAX_CANDIDATES).map(({ test, score }) => toCandidate(test, score));
+  if (properties.length === 0) return { status: 'ambiguous', candidates };
+  if (top.score < MATCH_SCORE - SCORE_EPSILON) {
+    // No name fits well: the unit's common tests may hold the one meant ("Ematocrito")
+    const close = candidates.slice(0, MAX_CANDIDATES / 2);
+    const usual = common()
+      .filter((test) => !close.some(({ code }) => code === test.code))
+      .map((test) => toCandidate(test, 0));
+    return { status: 'ambiguous', candidates: [...close, ...usual].slice(0, MAX_CANDIDATES) };
   }
-  if (properties.length === 0 || top.score < MATCH_SCORE - SCORE_EPSILON) return { status: 'ambiguous', candidates };
 
   // Tests that fit about as well as the top are rivals, but tests in one
   // trend group (a test's mass and molar, or blood, serum and plasma,
-  // codes) are one fit, and so are variants of one test by method or
-  // collection time the name does not name: the one HemoIO describes, else
-  // the best fit, stands for them. A "blood" hint leaves the sample open,
-  // so then the most common of them does
-  const rivals: Found[][] = [];
+  // codes) are one fit, and so is a test with its variants by a method or
+  // collection time the name does not name. The one HemoIO describes
+  // stands for them (under a "blood" hint, which leaves the sample open,
+  // the most common one it describes), else the one naming no method, else
+  // the best fit.
+  const byFoundOrder = (a: Found, b: Found): number => found.indexOf(a) - found.indexOf(b);
+  let rivals: Found[][] = [];
   for (const fit of found) {
     if (top.score - fit.score >= MATCH_MARGIN - SCORE_EPSILON) break;
-    const same = rivals.find(([first]) => isSameFit(catalog, first.test, fit.test));
-    if (same) same.push(fit);
-    else rivals.push([fit]);
+    // A test naming no method joins every variant of it in one fit
+    const isSame = (variants: Found[]): boolean => variants.some(({ test }) => isSameFit(catalog, test, fit.test));
+    const joined = rivals.filter(isSame);
+    rivals = joined.length
+      ? rivals.flatMap((variants) =>
+          variants === joined[0] ? [[...joined.flat(), fit].sort(byFoundOrder)] : joined.includes(variants) ? [] : [variants]
+        )
+      : [...rivals, [fit]];
   }
-  const byRank = (a: Found, b: Found): number => rankOf(a.test.rank) - rankOf(b.test.rank);
-  const fits = rivals.map((variants) => {
-    const ordered = sample === 'loosely' ? [...variants].sort(byRank) : variants;
-    return ordered.find(({ test }) => getAddon(catalog, test.code)) ?? ordered[0];
+  const representatives = rivals.map((variants) => {
+    const ordered = sample === 'loosely' ? [...variants].sort((a, b) => byRank(a.test, b.test)) : variants;
+    return (
+      ordered.find(({ test }) => getAddon(catalog, test.code)) ?? ordered.find(({ test }) => !test.method) ?? ordered[0]
+    );
   });
+  // A per-cell quantity is named as one (MCHC): a name fitting both means the plain one
+  const plain = representatives.filter(({ test }) => !test.property.startsWith('Ent'));
+  const fits = plain.length ? plain : representatives;
   const meant = fits.length === 1 ? fits[0] : usualMeaning(catalog, fits, systems, sample);
   if (!meant || meant.score < MATCH_SCORE - SCORE_EPSILON) return { status: 'ambiguous', candidates };
   // The test taken leads its candidates
