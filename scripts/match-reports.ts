@@ -20,7 +20,7 @@
  */
 import { request } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { it } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
 import { matchLocally, type PrintedValue } from '@services/analysis/loincMatch';
@@ -86,7 +86,7 @@ function realPath(path: string): string {
 /** Whether a path is the folder or within it */
 function isInside(path: string, folder: string): boolean {
   const rel = relative(folder, path);
-  return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/'));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 it('matches the printed values of real reports locally', async () => {
