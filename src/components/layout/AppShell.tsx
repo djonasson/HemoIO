@@ -53,6 +53,7 @@ import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { FolderRestoreModal } from '@components/storage';
 import { modelForProvider } from '@services/ai';
+import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import {
   afterRestoreAdvice,
@@ -168,11 +169,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   const saveImport = useSaveImport(syncNow);
   const handleImportComplete = useCallback(
-    async (results: ReviewedResult[]) => {
+    async (plan: SavePlan<ReviewedResult>) => {
       setIsSavingImport(true);
       try {
         // Not saved: the wizard stays on its confirm step to try again
-        if (await saveImport(results)) openView('timeline');
+        if (await saveImport(plan)) openView('timeline');
       } finally {
         setIsSavingImport(false);
       }
@@ -439,7 +440,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 interface MainContentProps {
   view: AppView;
   /** Resolves once the save has settled; the wizard shows it saving until then */
-  onImportComplete: (results: ReviewedResult[]) => Promise<void>;
+  onImportComplete: (plan: SavePlan<ReviewedResult>) => Promise<void>;
   onNavigateToImport: () => void;
   onNavigate: (view: AppView) => void;
   focus: ViewFocus | null;

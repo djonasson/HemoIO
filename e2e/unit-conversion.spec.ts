@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { expandLabResult } from './steps/timeline.steps';
-import { continueToConfirm, main, reviewRow } from './steps/importWizard.steps';
+import { continueToConfirm, main, reviewRow, saveResults } from './steps/importWizard.steps';
 import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
 import type { TestChoiceMock } from './steps/ai.steps';
 import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
@@ -710,6 +710,8 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
   });
 
   test('should merge a value once I choose the test of the other value of its name', async ({ page }) => {
+    // Two imports, each analyzed
+    test.slow();
     // Scenario: Merge a value once I choose its test
     // Under a blood heading, blood and serum creatinine both fit: neither is matched locally
     await openApp(page);
@@ -729,6 +731,17 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(main(page).getByRole('alert').filter({ hasText: '1 value not saved' })).toContainText(
       'the same measurement as another value of their test'
     );
+
+    // The test chosen for the value set aside is learned too: not asked again
+    await saveResults(page);
+    await expect(page.getByPlaceholder('Search by lab name')).toBeVisible();
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+    ], 1, { testChoice: aiChooses({ 'Creatinine|mg/dL': '2160-0' }) });
+    await expect(reviewRows(page)).toHaveCount(1);
+    await expect(reviewRows(page)).toContainText('0.76');
+    await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
   test('should keep every value of a test I choose when its values conflict', async ({ page }) => {

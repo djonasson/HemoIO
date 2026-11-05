@@ -143,6 +143,8 @@ Feature: Unit Conversion
     When I choose "Creatinine [Moles/volume] in Serum or Plasma" for the µmol/L value
     Then it should be marked "Not saved", as the same measurement as 0.76 mg/dL
     And the confirmation should say it is not saved
+    When I save the import and import the same report again
+    Then the µmol/L value should be merged with the mg/dL one without asking
 
   Scenario: Keep every value of a test I choose when its values conflict
     Given a lab report gives creatinine under a blood heading as 0.76 mg/dL and as 1.5 mg/dL, and as 67 µmol/L

@@ -5,6 +5,8 @@ import { SaveError } from '@data/db/saveError';
 import { saveImportResults } from '@services/persistence';
 import { useSaveImport } from './useSaveImport';
 import type { ReviewedResult } from '@components/import';
+import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
+import type { SavePlan } from '@services/analysis/reviewedSave';
 
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 vi.mock('@services/persistence', () => ({ saveImportResults: vi.fn() }));
@@ -39,6 +41,8 @@ const REVIEWED = [
   },
 ] as unknown as ReviewedResult[];
 
+const PLAN: SavePlan<ReviewedResult> = { toSave: REVIEWED, notSaved: [] };
+
 function renderSave(syncNow = vi.fn().mockResolvedValue(undefined)) {
   return renderHook(() => useSaveImport(syncNow));
 }
@@ -58,7 +62,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     expect(saved).toBe(true);
@@ -71,6 +75,33 @@ describe('useSaveImport', () => {
     expect(syncNow).toHaveBeenCalled();
   });
 
+  it('learns the test chosen for a value set aside as the duplicate of another', async () => {
+    vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
+    const { result } = renderSave();
+    const picked: MatchedBiomarker = {
+      name: 'Creatinine',
+      value: 67,
+      unit: 'µmol/L',
+      confidence: 0.95,
+      loincCode: '14682-9',
+      candidates: [],
+      identifiedBy: 'user',
+    };
+    const savedAs = REVIEWED[0].editedBiomarkers[0];
+
+    await act(async () => {
+      await result.current({
+        toSave: REVIEWED,
+        notSaved: [{ fileName: 'hiv-test.pdf', biomarker: picked, reason: 'duplicate', savedAs }],
+      });
+    });
+
+    expect(saveImportResults).toHaveBeenCalledWith(REVIEWED, encryptedDb.db);
+    expect(learnTests).toHaveBeenCalledWith(
+      expect.arrayContaining([{ key: 'creatinine|umol/L', code: '14682-9', confirmed: true }])
+    );
+  });
+
   it('is done once the import is saved and shown, while names are learned and synced after', async () => {
     vi.mocked(saveImportResults).mockResolvedValue({ totalLabResults: 1, totalTestValues: 1 });
     let learned!: () => void;
@@ -80,7 +111,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     expect(saved).toBe(true);
@@ -99,7 +130,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     await waitFor(() => expect(syncNow).toHaveBeenCalled());
@@ -117,7 +148,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     expect(saved).toBe(true);
@@ -138,7 +169,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     expect(saved).toBe(false);
@@ -160,7 +191,7 @@ describe('useSaveImport', () => {
     const { result } = renderSave();
 
     await act(async () => {
-      await result.current(REVIEWED);
+      await result.current(PLAN);
     });
 
     expect(JSON.stringify(vi.mocked(notifications.show).mock.calls)).not.toMatch(
@@ -174,7 +205,7 @@ describe('useSaveImport', () => {
 
     let saved: boolean | undefined;
     await act(async () => {
-      saved = await result.current(REVIEWED);
+      saved = await result.current(PLAN);
     });
 
     expect(saved).toBe(false);

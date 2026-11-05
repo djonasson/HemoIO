@@ -31,10 +31,11 @@ import { ConfirmStep } from './ConfirmStep';
  */
 export interface ImportWizardProps {
   /**
-   * Saves the reviewed results. The wizard shows it is saving until this
-   * settles, and stays on the confirm step: on failure, to try again.
+   * Saves the reviewed results the plan keeps (the values it sets aside are
+   * learned from too). The wizard shows it is saving until this settles, and
+   * stays on the confirm step: on failure, to try again.
    */
-  onComplete: (results: ReviewedResult[]) => Promise<unknown>;
+  onComplete: (plan: SavePlan<ReviewedResult>) => Promise<unknown>;
   /** Callback when wizard is cancelled */
   onCancel?: () => void;
   /** AI provider type */
@@ -115,11 +116,11 @@ export function ImportWizard({
   const handleConfirm = useCallback(async () => {
     setIsSaving(true);
     try {
-      await onComplete(toSave);
+      await onComplete({ toSave, notSaved });
     } finally {
       setIsSaving(false);
     }
-  }, [onComplete, toSave]);
+  }, [onComplete, toSave, notSaved]);
 
   // Render current step content
   const renderStepContent = () => {

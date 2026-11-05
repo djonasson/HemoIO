@@ -15,20 +15,21 @@ import { useEncryptedDb } from './useEncryptedDb';
 import { useLabResults } from './useLabResults';
 import { usePreferences } from './usePreferences';
 import type { ReviewedResult } from '@components/import';
+import type { SavePlan } from '@services/analysis/reviewedSave';
 
 /**
  * @param syncNow - Copies the saved data to the sync folder, when one is set up
- * @returns A function that saves an import and resolves to whether it was saved
+ * @returns A function that saves an import's plan and resolves to whether it was saved
  */
 export function useSaveImport(
   syncNow: () => Promise<void>
-): (results: ReviewedResult[]) => Promise<boolean> {
+): (plan: SavePlan<ReviewedResult>) => Promise<boolean> {
   const { db, isReady } = useEncryptedDb();
   const { refresh } = useLabResults();
   const { learnTests } = usePreferences();
 
   return useCallback(
-    async (results: ReviewedResult[]) => {
+    async ({ toSave: results, notSaved }: SavePlan<ReviewedResult>) => {
       if (!db || !isReady) {
         notifications.show({
           title: 'Import not saved',
@@ -57,8 +58,9 @@ export function useSaveImport(
       // Not waited for: the import is saved, and the user may go on. The
       // sync comes after, as it copies the learned names too.
       void learnTests(
-        // What the user decided for a wording and unit is matched without asking from now on
-        results.flatMap((r) => r.editedBiomarkers.map(toLearn))
+        // What the user decided for a wording and unit is matched without asking from now on,
+        // a value set aside as the duplicate of another included: its test was decided too
+        [...results.flatMap((r) => r.editedBiomarkers), ...notSaved.map((v) => v.biomarker)].map(toLearn)
       )
         .catch((err: unknown) =>
           notifySaveFailed('Learned names not saved', err, 'The import was saved.')
