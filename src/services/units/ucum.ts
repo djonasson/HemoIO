@@ -149,21 +149,24 @@ export function convertUcum(value: number, from: string, to: string): number | n
 }
 
 /**
- * Whether one unit is a mass concentration and the other an amount
- * concentration. A rate (per volume per time) is not a concentration.
+ * The conversion UCUM gives between two units as a report prints them, when
+ * they measure the same thing in one dimension: mass and mass (g/dL to
+ * g/L), amount and amount, count and count. None for a unit of no
+ * dimension (a share, a ratio: what it is a share of decides), an
+ * arbitrary unit ([IU]), or a mass to an amount, which needs a molar mass.
  */
-export function isMassAndMolar(a: string, b: string): boolean {
-  const first = readUnit(a);
-  const second = readUnit(b);
-  if (!first?.dim_ || !second?.dim_) return false;
-  const perVolume = (unit: UcumUnit, mass: number): boolean => {
-    const [length, time, unitMass] = unit.dim_?.dimVec_ ?? [];
-    return length === -3 && time === 0 && unitMass === mass;
-  };
-  const massConcentration = (unit: UcumUnit): boolean => !isAmount(unit) && perVolume(unit, 1);
-  const amountConcentration = (unit: UcumUnit): boolean => isAmount(unit) && perVolume(unit, 0);
-  return (
-    (massConcentration(first) && amountConcentration(second)) ||
-    (amountConcentration(first) && massConcentration(second))
-  );
+export function ucumConversion(fromPrinted: string, toPrinted: string): { factor: number; offset: number } | undefined {
+  const from = toUcum(fromPrinted);
+  const to = toUcum(toPrinted);
+  const fromUnit = from ? readUnit(from) : null;
+  const toUnit = to ? readUnit(to) : null;
+  if (!from || !to || !fromUnit?.dim_ || !toUnit?.dim_) return undefined;
+  if (fromUnit.isArbitrary_ || toUnit.isArbitrary_) return undefined;
+  if (fromUnit.dim_.dimVec_.every((exponent) => exponent === 0)) return undefined;
+  // UCUM reads a mole as a count: never take moles for cells, nor for a mass
+  if (fromUnit.moleExp_ !== toUnit.moleExp_ || fromUnit.equivalentExp_ !== toUnit.equivalentExp_) return undefined;
+  const zero = convertUcum(0, from, to);
+  const one = convertUcum(1, from, to);
+  if (zero === null || one === null) return undefined;
+  return { factor: one - zero, offset: zero };
 }

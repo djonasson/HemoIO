@@ -213,6 +213,13 @@ describe('unit spellings', () => {
     });
   });
 
+  it('converts units of one dimension as UCUM does, for a test with no conversions of its own', () => {
+    expect(getConversion('Zorblatin', 'g/dL', 'g/L')).toEqual({ factor: 10, offset: 0 });
+    expect(getConversion('Zorblatin', 'x10³/µL', '10^9/L')).toEqual({ factor: 1, offset: 0 });
+    // A mass to moles needs the substance's molar mass
+    expect(getConversion('Zorblatin', 'mg/dL', 'mmol/L')).toBeUndefined();
+  });
+
   it('converts a creatinine ratio written without spaces or a dot', () => {
     expect(getConversion('Protein/Creatinine', 'mg/mmolcreat', 'mg/g')).toBeDefined();
   });

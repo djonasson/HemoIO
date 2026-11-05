@@ -11,6 +11,7 @@
  */
 
 import { unitsMatch } from '../../utils/unitSpelling';
+import { ucumConversion } from './ucum';
 
 export { normalizeUnitForLookup, unitsMatch } from '../../utils/unitSpelling';
 
@@ -1052,7 +1053,8 @@ export function getConversion(
       };
     }
   }
-  return undefined;
+  // Units of one dimension convert as UCUM says, for any test: g/dL → g/L
+  return ucumConversion(fromUnit, toUnit);
 }
 
 /**
