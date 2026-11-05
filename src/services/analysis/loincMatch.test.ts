@@ -108,6 +108,27 @@ describe('matchLocally', () => {
     expect(matchLocally(catalog, value, learned)).toMatchObject({ status: 'match', code: '2339-0' });
   });
 
+  it('ignores a learned code of another sample than the one the value is said to be of', () => {
+    const value = { name: 'Glucosio', unit: 'mg/dL' };
+    const learned = (key: string): string | undefined => (key === learnedKey(value) ? '2339-0' : undefined);
+    expect(matchLocally(catalog, { ...value, specimenHint: 'urine' }, learned)).toMatchObject({
+      status: 'match',
+      code: '2350-7',
+    });
+    expect(matchLocally(catalog, { ...value, name: 'U-Glucosio' }, learned)).toMatchObject({ code: '2350-7' });
+    // "Blood" is said loosely, so the code learned stands
+    expect(matchLocally(catalog, { ...value, specimenHint: 'blood' }, learned)).toMatchObject({ code: '2339-0' });
+  });
+
+  it('offers the tests a name fits whatever their unit, for a unit it cannot read or none of them has', () => {
+    const unreadable = matchLocally(catalog, { name: 'Glucosio', unit: 'boh' });
+    expect(unreadable.status).toBe('ambiguous');
+    expect(codesOf(unreadable)).toContain('2345-7');
+    const otherProperty = matchLocally(catalog, { name: 'Neutrofili', unit: 'mg/dL' });
+    expect(otherProperty.status).toBe('ambiguous');
+    expect(codesOf(otherProperty)).toEqual(expect.arrayContaining(['751-8', '770-8']));
+  });
+
   it('ignores a learned code the catalog does not have', () => {
     const result = matchLocally(catalog, { name: 'P-Glucosio', unit: 'mg/dL' }, () => '99999-9');
     expect(result).toMatchObject({ status: 'match', code: '2345-7' });
@@ -348,6 +369,47 @@ describe('matchLocally', () => {
     expect(result).toMatchObject({ status: 'match', code: '2350-7' });
   });
 
+  it('takes a test LOINC does not count among its common ones only by a name of its own that fits nothing else', () => {
+    const rare = (code: string, names: string[], rank: number): CatalogTest => madeUpTest(code, names, 'Ser/Plas', { rank });
+    // A name it only shares words with: asked, with the unit's common tests the name is near
+    const phosphorus = madeUp(rare('1-1', ['fosfolipidi fosforo'], 8953), rare('2-2', ['fosfato'], 55));
+    const shared = matchLocally(phosphorus, { name: 'Fosforo', unit: 'mg/dL' });
+    expect(shared.status).toBe('ambiguous');
+    expect(codesOf(shared)).toEqual(['1-1', '2-2']);
+    // Its own name that another test's name fits about as well: asked
+    const beta = madeUp(rare('1-1', ['beta 1'], 11770), rare('2-2', ['beta 1 globulina'], 5925));
+    expect(matchLocally(beta, { name: 'Beta 1', unit: 'mg/dL' }).status).toBe('ambiguous');
+    // Its own name, and no other test's: taken
+    expect(matchLocally(madeUp(rare('1-1', ['beta 1'], 11770)), { name: 'Beta 1', unit: 'mg/dL' })).toMatchObject({
+      status: 'match',
+      code: '1-1',
+    });
+    // A common test's own name sets it above the rest
+    const common = madeUp(rare('1-1', ['beta 1'], 1500), rare('2-2', ['beta 1 globulina'], 5925));
+    expect(matchLocally(common, { name: 'Beta 1', unit: 'mg/dL' })).toMatchObject({ status: 'match', code: '1-1' });
+  });
+
+  it('weighs a rare test whose related name is the printed one as the tests the name fits as well', () => {
+    const vitamins = madeUp(
+      madeUpTest('1-1', ['total vitamin d', 'vitamin d+metabolites'], 'Ser/Plas', { rank: 2621 }),
+      madeUpTest('2-2', ['vitamina d 25 oh', '25-hydroxyvitamin d'], 'Ser/Plas', { rank: 194 }),
+      madeUpTest('3-3', ['vitamina d3 25 oh'], 'Ser/Plas', { rank: 2194 })
+    );
+    expect(matchLocally(vitamins, { name: 'Vitamina D', unit: 'ng/mL' })).toMatchObject({
+      status: 'match',
+      code: '2-2',
+    });
+  });
+
+  it('never takes a test LOINC names with an adjustment without asking', () => {
+    const hba1c = madeUp(
+      madeUpTest('1-1', ['hba1c'], 'Bld', { property: 'SFr', component: 'Hemoglobin A1c^^standardized', rank: 1 })
+    );
+    const result = matchLocally(hba1c, { name: 'HbA1c', unit: 'mmol/mol' });
+    expect(result.status).toBe('ambiguous');
+    expect(codesOf(result)).toEqual(['1-1']);
+  });
+
   it('offers at most eight candidates, with their LOINC names and scores', () => {
     const many = createCatalog({
       version: 't',
@@ -397,6 +459,18 @@ describe('splitSamplePrefix', () => {
       name: 'Glucosio',
       systems: ['Urine', 'Urine sed'],
     });
+  });
+
+  it('reads the 24 hours however written', () => {
+    for (const day of ['24h', '24 h', '24-hour', '24 hour', '24hr', '24 hrs', '24 ore']) {
+      expect(splitSamplePrefix(`Proteine urine ${day}`)).toEqual({ name: 'Proteine', systems: ['24H urine'] });
+    }
+  });
+
+  it('reads the Italian and English urine words of either number and gender', () => {
+    for (const word of ['urinario', 'urinaria', 'urinari', 'urinarie', 'urinary']) {
+      expect(splitSamplePrefix(`Proteine ${word}`)).toEqual({ name: 'Proteine', systems: ['Urine', 'Urine sed'] });
+    }
   });
 
   it('reads urine and 24-hour words anywhere in the name', () => {
@@ -480,6 +554,27 @@ describe('matchLocally in the generated catalog', () => {
     // A molar code LOINC gives no rank, kept for the ranked mass code it trends with
     ['U-Glucosio', 'mmol/L', undefined, '15076-3'],
     ['CRP', 'nmol/L', undefined, '76485-2'],
+    // Words many tests share, which are a name of one
+    ['IgG', 'mg/dL', undefined, '2465-3'],
+    ['Se-IgG', 'g/L', undefined, '2465-3'],
+    // HemoIO describes HbA1c in mmol/mol, which LOINC files under an adjusted, rarer code
+    ['HbA1c', 'mmol/mol', undefined, '4548-4'],
+    ['Emoglobina glicata (HbA1c)', 'mmol/mol', undefined, '4548-4'],
+    // Not "Vitamin D+Metabolites", a rarer test with "total vitamin D" among its related names
+    ['Vitamina D', 'ng/mL', undefined, '62292-8'],
+    ['Vitamin D', 'ng/mL', undefined, '62292-8'],
+    // A day's unit is the 24-hour collection, as is the AI's "24h urine"
+    ['Proteinuria', 'mg/24h', undefined, '2889-4'],
+    ['Proteinuria', 'mg/24h', '24h urine', '2889-4'],
+    ['Proteine urinarie', 'mg/24h', undefined, '2889-4'],
+    ['Calcio urinario', 'mg/24h', undefined, '6874-2'],
+    ['Sodio urinario', 'mmol/24h', undefined, '2956-1'],
+    ['Creatinina 24hr', 'mg/24h', undefined, '2162-6'],
+    // The serum and plasma words of either number and gender
+    ['Calcio sierica', 'mg/dL', undefined, '17861-6'],
+    ['Glucosio plasmatica', 'mg/dL', undefined, '2345-7'],
+    // The eGFR HemoIO describes stands for the rates that trend with it
+    ['GFR', 'mL/min/1.73m2', undefined, '98979-8'],
   ])('takes %s in %s (sample %s) as %s', async (name, unit, specimenHint, code) => {
     const value = { name, unit, ...(specimenHint && { specimenHint }) };
     expect(matchLocally(await loadCatalog(), value)).toMatchObject({ status: 'match', code });
@@ -522,6 +617,50 @@ describe('matchLocally in the generated catalog', () => {
     expect(result.status === 'match' ? result.code : undefined).not.toBe('76629-5');
     expect(codesOf(result)).toContain('14771-0');
     expect(catalog.trendGroup('14771-0')).toBe(catalog.trendGroup('1558-6'));
+  });
+
+  it.each([
+    ['Fosforo', 'mg/dL', '2777-1'],
+    ['S-Fosforo', 'mg/dL', '2777-1'],
+    ['Fosforo sierico', 'mg/dL', '2777-1'],
+    ['Ematocrito', '%', '4544-3'],
+    ['Beta 1', '%', '32732-0'],
+    ['Beta 2', 'g/dL', '32731-2'],
+    ['HbA1c (IFCC)', 'mmol/mol', '4548-4'],
+    ['Calciuria', 'mg/24h', '6874-2'],
+    ['Urea urinaria', 'g/24h', '48999-7'],
+    ['Se-PCR', 'mg/L', undefined],
+    ['IgE totali', 'kU/L', '19113-0'],
+  ])('never takes %s in %s without asking, and offers the test meant', async (name, unit, code) => {
+    const result = matchLocally(await loadCatalog(), { name, unit });
+    expect(result.status).toBe('ambiguous');
+    if (code) expect(codesOf(result)).toContain(code);
+  });
+
+  it('keeps a 24-hour value in a day\'s unit off the other timed collections', async () => {
+    const catalog = await loadCatalog();
+    for (const value of [
+      { name: 'Proteinuria', unit: 'mg/24h' },
+      { name: 'Calcio urinario', unit: 'mg/24h' },
+      { name: 'Urea urinaria', unit: 'g/24h' },
+      { name: 'Glucosio', unit: 'mg/24h', specimenHint: 'urine' },
+    ]) {
+      const result = matchLocally(catalog, value);
+      const tests = result.candidates.filter(({ score }) => score > 0).map(({ code }) => catalog.test(code)!);
+      expect(tests.length).toBeGreaterThan(0);
+      expect(tests.every((test) => /24 hour Urine/.test(test.name))).toBe(true);
+    }
+  });
+
+  it('files a value in % and in mmol/mol, and one in ng/mL and in nmol/L, under one test each', async () => {
+    const catalog = await loadCatalog();
+    const trendOf = (name: string, unit: string): string => {
+      const result = matchLocally(catalog, { name, unit });
+      return result.status === 'match' ? catalog.trendGroup(result.code) : result.status;
+    };
+    expect(trendOf('HbA1c', 'mmol/mol')).toBe(trendOf('HbA1c', '%'));
+    expect(trendOf('Vitamina D', 'nmol/L')).toBe(trendOf('Vitamina D', 'ng/mL'));
+    expect(trendOf('Fosfato urine 24h', 'mmol/24h')).toBe(trendOf('Fosfato urine 24h', 'mg/24h'));
   });
 
   it('offers the HbA1c test HemoIO describes in mmol/mol, which LOINC files as a mass share', async () => {

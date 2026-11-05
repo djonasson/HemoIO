@@ -69,6 +69,33 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
+  test("files a value in a day's unit under the 24-hour urine test", async ({ page }) => {
+    // Scenario: A value in a day's unit is filed under the 24-hour urine test
+    const ai = await analyzeReport(page, [{ name: 'Proteinuria', value: 150, unit: 'mg/24h', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '150'))).toHaveText('Protein [Mass/time] in 24 hour Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('asks about a name shared only with a rarely used test, offering the common tests it may be', async ({
+    page,
+  }) => {
+    // Scenario: A name shared only with a rarely used test is asked about, with the common tests it may be
+    const ai = await analyzeReport(page, [{ name: 'Fosforo', value: 3.5, unit: 'mg/dL', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates.map((c) => c.code)).toEqual(
+      expect.arrayContaining(['2567-6', '2777-1'])
+    );
+    await rowFor(page, '3.5').getByRole('button', { name: /^Change test for / }).click();
+    await expect(testOption(testList(page), 'Phosphate [Mass/volume] in Serum or Plasma')).toBeVisible();
+  });
+
+  test('finds a test named by a word many tests share', async ({ page }) => {
+    // Scenario: A test named by a word many tests share is still found
+    const ai = await analyzeReport(page, [{ name: 'IgG', value: 1100, unit: 'mg/dL', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '1100'))).toHaveText('IgG [Mass/volume] in Serum or Plasma');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
   test('lets the AI decide a value several tests fit', async ({ page }) => {
     // Scenario: A value several tests fit is decided by the AI
     await analyzeReport(page, [GLUCOSIO], 1, {
@@ -143,6 +170,15 @@ test.describe('Identifying the test of each value', () => {
 
     await openLearnedNames(page);
     await expect(learnedNames(page)).toContainText(`glucosio (mg/dL) → ${BLOOD_GLUCOSE} · 2339-0`);
+  });
+
+  test('does not give a value said to be of another sample the test learned for its wording', async ({ page }) => {
+    // Two imports, the first saved
+    test.slow();
+    // Scenario: A value said to be of another sample is not given the test learned for its wording
+    await learnGlucosio(page);
+    await analyzeReport(page, [{ ...GLUCOSIO, specimenHint: 'urine' }]);
+    await expect(savedAsCell(rowFor(page, '95'))).toHaveText('Glucose [Mass/volume] in Urine');
   });
 
   test("remembers the AI's choice once I save it", async ({ page }) => {

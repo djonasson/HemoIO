@@ -23,6 +23,30 @@ Feature: Identifying the test of each value
     And it should carry no label that asks for a check
     And the AI should not be asked which test it is
 
+  Scenario: A value in a day's unit is filed under the 24-hour urine test
+    Given a report prints "Proteinuria" in mg/24h
+    When the report is analyzed
+    Then the value should be saved as "Protein [Mass/time] in 24 hour Urine"
+    And the AI should not be asked which test it is
+
+  Scenario: A name shared only with a rarely used test is asked about, with the common tests it may be
+    Given a report prints "Fosforo" in mg/dL
+    And only a rarely used test, phospholipid phosphorus, has "fosforo" among its names
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include "Phosphate [Mass/volume] in Serum or Plasma"
+
+  Scenario: A test named by a word many tests share is still found
+    Given a report prints "IgG" in mg/dL
+    When the report is analyzed
+    Then the value should be saved as "IgG [Mass/volume] in Serum or Plasma"
+    And the AI should not be asked which test it is
+
+  Scenario: A value said to be of another sample is not given the test learned for its wording
+    Given "Glucosio" in mg/dL was learned as "Glucose [Mass/volume] in Blood"
+    When a report prints "Glucosio" in mg/dL under a urine heading
+    Then the value should be saved as "Glucose [Mass/volume] in Urine"
+
   Scenario: A value several tests fit is decided by the AI
     Given a report prints "Glucosio" in mg/dL, which fits glucose in serum or plasma and glucose in blood
     And the AI is sure it is glucose in serum or plasma
