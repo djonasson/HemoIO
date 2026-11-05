@@ -107,6 +107,14 @@ Feature: Import Wizard
     When I add it with no unit and choose the test "Specific gravity of Urine"
     Then I should be able to continue without giving it a unit
 
+  Scenario: A value printed without a unit, saved as a test measured in one, needs its unit
+    Given the report prints "Glucose" without a unit
+    And the AI is sure it is "Glucose [Mass/volume] in Serum or Plasma"
+    When I try to continue to the confirmation
+    Then I should be told that the value is missing its unit
+    When I choose its test and give it the unit mg/dL
+    Then I should be able to continue
+
   Scenario: A value whose number is cleared must be filled in before saving
     Given I am editing a value of 14.5 g/dL on the review step
     When I clear its number

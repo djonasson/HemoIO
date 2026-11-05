@@ -393,6 +393,28 @@ test.describe('Import Wizard', () => {
       await expect(main(page).getByRole('row').filter({ hasText: 'Peso specifico' })).toBeVisible();
     });
 
+    test('asks a unit of a value printed without one, once saved as a test measured in one', async ({ page }) => {
+      // Scenario: A value printed without a unit, saved as a test measured in one, needs its unit
+      await loginWithOllama(page, [
+        { extraction: extraction([{ name: 'Glucose', value: 95, unit: '', confidence: 0.95 }]) },
+      ]);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+      const glucose = reviewRow(page, 'Glucose');
+      await expect(savedAsCell(glucose)).toHaveText('Glucose [Mass/volume] in Serum or Plasma');
+
+      await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+      await expect(main(page).getByText('Cannot Continue')).toBeVisible();
+      await expect(main(page).getByText(/Glucose in ".*" is missing: unit/)).toBeVisible();
+
+      // A test the user chooses stays while the unit is given
+      await changeTest(page, glucose, 'Glucose [Mass/volume] in Serum or Plasma');
+      await glucose.getByRole('button', { name: 'Edit biomarker' }).click();
+      const editing = editingRow(page);
+      await editing.getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
+      await editing.getByRole('button', { name: 'Save changes' }).click();
+      await continueToConfirm(page);
+    });
+
     test('asks for a cleared number, and keeps a negative one as typed', async ({ page }) => {
       // Scenario: A value whose number is cleared must be filled in before saving
       await loginWithOllama(page);

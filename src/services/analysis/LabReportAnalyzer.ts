@@ -19,7 +19,14 @@ import {
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
 import { getAIProvider, AIAnalysisError } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
-import { asAnalyzed, identifyValues, isFoundWithoutAsking, type Identification, type LearnedTests } from './identification';
+import {
+  asAnalyzed,
+  identifyValues,
+  isFoundWithoutAsking,
+  needsTest,
+  type Identification,
+  type LearnedTests,
+} from './identification';
 import type {
   AIProviderConfig,
   AIProviderType,
@@ -28,14 +35,7 @@ import type {
 } from '../ai';
 import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
-import {
-  clusterMeasurements,
-  comparable,
-  groupBySameTest,
-  groupUnit,
-  isSettled,
-  preferredValue,
-} from './sameMeasurement';
+import { groupBySameTest, settleGroup } from './sameMeasurement';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -50,8 +50,6 @@ export interface DuplicateConflict {
     convertedValue?: number;
     convertedUnit?: string;
   }>;
-  /** Whether the values match after conversion */
-  valuesMatch: boolean;
   /** Message describing the conflict */
   message: string;
 }
@@ -66,8 +64,6 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   candidates: Candidate[];
   /** Flag indicating this biomarker has a duplicate conflict that needs user review */
   hasDuplicateConflict?: boolean;
-  /** Details about the duplicate conflict if present */
-  duplicateConflict?: DuplicateConflict;
   /**
    * The value as the analyzer read it. An edited value is identified from
    * this and its current name and unit, so nothing typed on the way counts:
@@ -426,17 +422,13 @@ export async function analyzeLabReport(
     matchedBiomarkers = deduplicationResult.deduplicated;
     duplicateConflicts = deduplicationResult.conflicts;
 
-    const unidentified = matchedBiomarkers.filter((b) => !b.loincCode && !b.savedAsUnknown).length;
+    const unidentified = matchedBiomarkers.filter(needsTest).length;
     if (unidentified > 0) warnings.push(unidentifiedNote(unidentified));
 
-    // Add warnings for duplicate conflicts
     if (duplicateConflicts.length > 0) {
-      const conflictCount = duplicateConflicts.filter((c) => !c.valuesMatch).length;
-      if (conflictCount > 0) {
-        warnings.push(
-          `${conflictCount} biomarker(s) have conflicting duplicate values that need review`
-        );
-      }
+      warnings.push(
+        `${duplicateConflicts.length} biomarker(s) have conflicting duplicate values that need review`
+      );
     }
 
     completeStage(matchingStage);
@@ -501,18 +493,16 @@ function deduplicateBiomarkers(
       continue;
     }
 
-    const code = group[0].loincCode;
-    const name = (code && catalog.test(code)?.name) || group[0].name;
-    const unit = groupUnit(group, catalog);
-    const { canonicalUnit } = unit;
-    const values = group.map((b) => comparable(b, unit));
-    const clusters = clusterMeasurements(values);
-
-    if (isSettled(values, clusters)) {
-      for (const cluster of clusters) deduplicated.push(preferredValue(cluster, unit).biomarker);
+    const settled = settleGroup(group, catalog);
+    if (settled.settled) {
+      deduplicated.push(...settled.kept);
       continue;
     }
 
+    const { values } = settled;
+    const { canonicalUnit } = settled.unit;
+    const code = group[0].loincCode;
+    const name = (code && catalog.test(code)?.name) || group[0].name;
     const units = [...new Set(group.map((b) => b.unit))];
     const uncomparable = values.some((v) => v.comparison === undefined);
     const conflict: DuplicateConflict = {
@@ -523,7 +513,6 @@ function deduplicateBiomarkers(
         convertedValue: canonicalUnit ? v.converted : undefined,
         convertedUnit: canonicalUnit && v.converted !== undefined ? canonicalUnit : undefined,
       })),
-      valuesMatch: false,
       message:
         uncomparable
           ? `"${name}" is reported in ${units.slice(0, -1).join(', ')} and in ${units.at(-1)}, ` +
@@ -542,7 +531,7 @@ function deduplicateBiomarkers(
     };
     conflicts.push(conflict);
     for (const value of values) {
-      deduplicated.push({ ...value.biomarker, hasDuplicateConflict: true, duplicateConflict: conflict });
+      deduplicated.push({ ...value.biomarker, hasDuplicateConflict: true });
     }
   }
 

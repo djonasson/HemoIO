@@ -6,15 +6,10 @@
 import { isPerHundredCounted } from '@/utils/unitSpelling';
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
+import { unitsMatch } from '@services/units';
 import { toUcum, ucumProperties } from '@services/units/ucum';
-import {
-  clusterMeasurements,
-  comparable,
-  groupBySameTest,
-  groupUnit,
-  isSettled,
-  preferredValue,
-} from './sameMeasurement';
+import { needsTest } from './identification';
+import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -52,19 +47,29 @@ export type MissingField = 'name' | 'value' | 'unit';
 /** Standard units of tests whose results have no unit: pH, specific gravity */
 const NO_UNIT = new Set(['', '1', '[pH]']);
 
-/** Whether a LOINC test's results come with no unit: an ordinal, a pH, a specific gravity */
+/** A unit with no dimension: UCUM's unity or an annotation alone ("{ratio}") */
+const isUnitless = (ucum: string): boolean => NO_UNIT.has(ucum) || /^\{[^}]*\}$/.test(ucum);
+
+/**
+ * Whether a LOINC test's results come with no unit: an ordinal, a pH, a
+ * specific gravity, a ratio LOINC gives no dimension
+ */
 function hasNoUnit(catalog: Catalog, code: string): boolean {
   const test = catalog.test(code);
   if (!test) return false;
   const canonical = getAddon(catalog, code)?.canonicalUnit;
-  return test.scale !== 'Qn' || test.property === 'SpGrav' || (canonical !== undefined && NO_UNIT.has(canonical));
+  if (test.scale !== 'Qn' || test.property === 'SpGrav') return true;
+  if (canonical !== undefined) return NO_UNIT.has(canonical);
+  return test.units.length > 0 && test.units.every(isUnitless);
 }
 
 /**
  * What a value lacks to be saved: a name, a number, or a unit. A value the
- * report gave no unit may have none (a screening result, a ratio), and so
- * may one of a test whose results have none; one the user emptied, or a
- * row typed in review, otherwise needs one.
+ * report gave no unit may have none while it has no test (a screening
+ * result saved as "Not a LOINC test"), and so may one of a test whose
+ * results have none. A value of a test measured in a unit needs one, even
+ * when the report printed none: saved without, it could not be converted
+ * nor drawn beside the test's other values.
  */
 export function missingFields(biomarker: MatchedBiomarker, catalog?: Catalog): MissingField[] {
   const missing: MissingField[] = [];
@@ -72,28 +77,33 @@ export function missingFields(biomarker: MatchedBiomarker, catalog?: Catalog): M
   if (!Number.isFinite(biomarker.value)) missing.push('value');
   const reportGaveUnit = !biomarker.analyzed || biomarker.analyzed.unit.trim() !== '';
   const testHasUnit = !(catalog && biomarker.loincCode && hasNoUnit(catalog, biomarker.loincCode));
-  if (!biomarker.unit.trim() && reportGaveUnit && testHasUnit) missing.push('unit');
+  const needsUnit = testHasUnit && (reportGaveUnit || (!!catalog && !!biomarker.loincCode));
+  if (!biomarker.unit.trim() && needsUnit) missing.push('unit');
   return missing;
 }
 
 /**
  * Whether a value's unit is surely not one of its test's kind: a U/L value
  * saved as a mass concentration, a daily amount as a concentration. A unit
+ * the test is offered in (HemoIO's own units for it, LOINC's examples) fits,
+ * whatever UCUM reads it as ("UI/L" for an enzyme, "%" for MCHC). A unit
  * UCUM cannot read, or that tells nothing certain, is not judged.
  */
 export function unitMisfits(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
   const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
   const ucum = biomarker.unit.trim() ? toUcum(biomarker.unit) : null;
   if (!test || !ucum) return false;
+  const addon = getAddon(catalog, test.code);
+  const offered = [...(addon?.canonicalUnit ? [addon.canonicalUnit] : []), ...(addon?.alternativeUnits ?? [])];
+  const fitsOffered = offered.some((unit) => unitsMatch(unit, biomarker.unit) || toUcum(unit) === ucum);
+  if (fitsOffered || test.units.includes(ucum)) return false;
   const kinds = ucumProperties(ucum).map(quantityKind);
   return kinds.length > 0 && !kinds.includes(quantityKind(test.property));
 }
 
 /** Whether a value has its test or "Not a LOINC test", and nothing missing */
 function isReady(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
-  return (
-    missingFields(biomarker, catalog).length === 0 && (!!biomarker.loincCode || !!biomarker.savedAsUnknown)
-  );
+  return missingFields(biomarker, catalog).length === 0 && !needsTest(biomarker);
 }
 
 /**
@@ -108,8 +118,7 @@ function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
   return (
     !!analyzed &&
     biomarker.identifiedBy !== 'user' &&
-    !biomarker.loincCode &&
-    !biomarker.savedAsUnknown &&
+    needsTest(biomarker) &&
     nameKey(biomarker.name) === nameKey(analyzed.name) &&
     biomarker.unit === analyzed.unit &&
     isPerHundredCounted(biomarker.unit) &&
@@ -118,18 +127,30 @@ function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
 }
 
 /**
+ * Whether a twin (see mayLeaveOut) is the same test as a value saved with a
+ * code: the same printed name, no other sample said, and that code among
+ * the twin's candidates when it has any. A urine sediment count printed
+ * under the name of a blood count is not the blood count's twin.
+ */
+function isTwinOf(twin: MatchedBiomarker, coded: MatchedBiomarker): boolean {
+  return (
+    nameKey(twin.name) === nameKey(coded.name) &&
+    (!twin.specimenHint || !coded.specimenHint || twin.specimenHint === coded.specimenHint) &&
+    (twin.candidates.length === 0 || twin.candidates.some((candidate) => candidate.code === coded.loincCode))
+  );
+}
+
+/**
  * The values of a file the import leaves out: twins (see mayLeaveOut) of a
- * value of the same printed name saved with a code. A report that gives one
- * test in two forms keeps the one it can read, and the user need not remove
- * the other by hand.
+ * value of the same test saved with a code (see isTwinOf). A report that
+ * gives one test in two forms keeps the one it can read, and the user need
+ * not remove the other by hand.
  */
 function twins(values: readonly MatchedBiomarker[], catalog: Catalog): MatchedBiomarker[] {
   const candidates = values.filter(mayLeaveOut);
   if (candidates.length === 0) return [];
-  const coded = new Set(
-    values.filter((value) => value.loincCode && isReady(value, catalog)).map((value) => nameKey(value.name))
-  );
-  return candidates.filter((value) => coded.has(nameKey(value.name)));
+  const coded = values.filter((value) => value.loincCode && isReady(value, catalog));
+  return candidates.filter((twin) => coded.some((value) => isTwinOf(twin, value)));
 }
 
 /**
@@ -147,14 +168,8 @@ function duplicates(
   const coded = values.filter((value) => value.loincCode && isReady(value, catalog));
   for (const group of groupBySameTest(coded, catalog)) {
     if (group.length === 1) continue;
-    const unit = groupUnit(group, catalog);
-    const values = group.map((b) => comparable(b, unit));
-    const clusters = clusterMeasurements(values);
-    if (!isSettled(values, clusters)) continue;
-    for (const cluster of clusters) {
-      const kept = preferredValue(cluster, unit).biomarker;
-      for (const { biomarker } of cluster) if (biomarker !== kept) left.set(biomarker, kept);
-    }
+    const settled = settleGroup(group, catalog);
+    if (settled.settled) for (const [biomarker, kept] of settled.setAside) left.set(biomarker, kept);
   }
   return left;
 }
@@ -193,6 +208,4 @@ export function planSave<T extends ReviewedFile>(results: readonly T[], catalog:
 }
 
 /** Whether a value still needs its test chosen, or "Not a LOINC test", before it can be saved */
-export function needsTest(biomarker: MatchedBiomarker): boolean {
-  return !biomarker.loincCode && !biomarker.savedAsUnknown;
-}
+export { needsTest } from './identification';

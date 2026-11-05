@@ -6,7 +6,7 @@
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { canConvert, convertValue, normalizeUnit, unitsMatch } from '../units';
-import { quantityKind, type Catalog } from '@data/loinc/catalog';
+import { quantityKind, type Catalog, type CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
@@ -71,24 +71,37 @@ export interface ComparableValue {
 
 /** What the values of one test are compared in */
 export interface GroupUnit {
-  /** The substance conversions use: the test's LOINC component */
-  component?: string;
+  /**
+   * What conversions use: the test itself (component, property and sample),
+   * as a rate or a volume converts only knowing its property
+   */
+  substance?: CatalogTest;
   /** HemoIO's standard unit of the test, if it has one */
   canonicalUnit?: string;
-  /** The unit values are compared in: the standard one, else the first value's */
+  /**
+   * The unit values are compared in: the standard one, else the first unit
+   * of a value that every value reaches (two values in a unit that cannot
+   * reach the standard one compare in their own), else the standard one or
+   * the first value's
+   */
   unit: string;
 }
 
 /** The unit a group of values of one test is compared in */
 export function groupUnit(group: readonly MatchedBiomarker[], catalog: Catalog): GroupUnit {
   const codes = group.flatMap((b) => (b.loincCode ? [b.loincCode] : []));
-  const component = codes.map((code) => catalog.test(code)?.component).find(Boolean);
+  const substance = codes.map((code) => catalog.test(code)).find(Boolean);
   const canonicalUnit = codes.map((code) => getAddon(catalog, code)?.canonicalUnit).find(Boolean);
-  return { component, canonicalUnit, unit: canonicalUnit ?? group[0].unit };
+  const reaches = (from: string, to: string): boolean =>
+    unitsMatch(from, to) || (!!substance && canConvert(substance, from, to));
+  const choices = [...(canonicalUnit ? [canonicalUnit] : []), ...group.map((b) => b.unit)];
+  const unit =
+    choices.find((choice) => group.every((b) => reaches(b.unit, choice))) ?? canonicalUnit ?? group[0].unit;
+  return { substance, canonicalUnit, unit };
 }
 
 /** A value in its group's unit; one that cannot be converted has no comparison */
-export function comparable(biomarker: MatchedBiomarker, { component, unit }: GroupUnit): ComparableValue {
+export function comparable(biomarker: MatchedBiomarker, { substance, unit }: GroupUnit): ComparableValue {
   if (unitsMatch(biomarker.unit, unit)) {
     return {
       biomarker,
@@ -97,10 +110,10 @@ export function comparable(biomarker: MatchedBiomarker, { component, unit }: Gro
       allowance: roundingAllowance(biomarker.value),
     };
   }
-  if (!component || !canConvert(component, biomarker.unit, unit)) return { biomarker, allowance: 0 };
+  if (!substance || !canConvert(substance, biomarker.unit, unit)) return { biomarker, allowance: 0 };
   try {
-    const convert = (value: number, precision?: number) =>
-      convertValue(component, value, biomarker.unit, unit, precision).convertedValue;
+    const convert = (value: number, precision?: number): number =>
+      convertValue(substance, value, biomarker.unit, unit, precision).convertedValue;
     const comparison = convert(biomarker.value, COMPARISON_PRECISION);
     const step = roundingAllowance(biomarker.value);
     return {
@@ -161,24 +174,32 @@ export function clusterMeasurements(values: readonly ComparableValue[]): Compara
   return clusters;
 }
 
-/**
- * Whether each measurement of one test's values can be kept once without
- * asking: there is one measurement; distinct measurements come under
- * distinct printed names (a 24-hour and a spot sample); or values that
- * cannot be compared come under different codes, so nothing says they are
- * one. Otherwise the values conflict and the user keeps the right one.
- */
-export function isSettled(values: readonly ComparableValue[], clusters: readonly ComparableValue[][]): boolean {
-  if (clusters.length === 1) return true;
-  const reportedName = (value: ComparableValue) => nameKey(value.biomarker.name);
-  const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
-  const distinctNames = namesPerCluster.every(
+/** Whether each cluster has one printed name, and no two clusters the same one */
+function distinctNames(clusters: readonly ComparableValue[][]): boolean {
+  const namesPerCluster = clusters.map((c) => new Set(c.map((value) => nameKey(value.biomarker.name))));
+  return namesPerCluster.every(
     (names, i) =>
       names.size === 1 && namesPerCluster.every((other, j) => i === j || !other.has([...names][0]))
   );
-  const uncomparable = values.some((v) => v.comparison === undefined);
-  const oneCode = new Set(values.map((v) => v.biomarker.loincCode)).size === 1;
-  return (distinctNames && !uncomparable) || (uncomparable && !oneCode);
+}
+
+/**
+ * Whether each measurement of one test's values can be kept once without
+ * asking. The values that can be compared must be one measurement, or
+ * distinct measurements under distinct printed names (a 24-hour and a spot
+ * sample). A value that cannot be compared is kept beside them only under a
+ * code no other value has: nothing says it is one with them. Otherwise the
+ * values conflict and the user keeps the right one.
+ */
+export function isSettled(values: readonly ComparableValue[], clusters: readonly ComparableValue[][]): boolean {
+  if (clusters.length === 1) return true;
+  const compared = clusters.filter((cluster) => cluster[0].comparison !== undefined);
+  if (compared.length > 1 && !distinctNames(compared)) return false;
+  const codeCount = (code: string | undefined): number =>
+    values.filter((v) => v.biomarker.loincCode === code).length;
+  return values.every(
+    (v) => v.comparison !== undefined || (!!v.biomarker.loincCode && codeCount(v.biomarker.loincCode) === 1)
+  );
 }
 
 /** The value of a cluster that is kept: the one in the standard unit, else the first */
@@ -187,4 +208,31 @@ export function preferredValue(cluster: readonly ComparableValue[], unit: GroupU
   return (
     cluster.find((v) => canonicalUnit !== undefined && unitsMatch(v.biomarker.unit, canonicalUnit)) ?? cluster[0]
   );
+}
+
+/** One test's values, settled or in conflict */
+export type SettledGroup =
+  /** Each value kept, or set aside for the value kept in its place */
+  | { settled: true; kept: MatchedBiomarker[]; setAside: Map<MatchedBiomarker, MatchedBiomarker> }
+  /** The values conflict: the user keeps the right one */
+  | { settled: false; values: ComparableValue[]; unit: GroupUnit };
+
+/**
+ * Settle one test's values (see groupBySameTest): each measurement kept
+ * once, in the standard unit when one of its values is in it, unless the
+ * values conflict (see isSettled)
+ */
+export function settleGroup(group: readonly MatchedBiomarker[], catalog: Catalog): SettledGroup {
+  const unit = groupUnit(group, catalog);
+  const values = group.map((b) => comparable(b, unit));
+  const clusters = clusterMeasurements(values);
+  if (!isSettled(values, clusters)) return { settled: false, values, unit };
+  const kept: MatchedBiomarker[] = [];
+  const setAside = new Map<MatchedBiomarker, MatchedBiomarker>();
+  for (const cluster of clusters) {
+    const preferred = preferredValue(cluster, unit).biomarker;
+    kept.push(preferred);
+    for (const { biomarker } of cluster) if (biomarker !== preferred) setAside.set(biomarker, preferred);
+  }
+  return { settled: true, kept, setAside };
 }

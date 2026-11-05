@@ -160,7 +160,6 @@ describe('ReviewStep', () => {
           {
             biomarkerName: 'Glucose',
             originalValues: [{ value: 100, unit: 'mg/dL' }, { value: 110, unit: 'mg/dL' }],
-            valuesMatch: false,
             message: 'Different values detected',
           },
         ],
@@ -184,7 +183,6 @@ describe('ReviewStep', () => {
           {
             biomarkerName: 'Glucose',
             originalValues: [{ value: 100, unit: 'mg/dL' }, { value: 110, unit: 'mg/dL' }],
-            valuesMatch: false,
             message: 'Different values detected',
           },
         ],

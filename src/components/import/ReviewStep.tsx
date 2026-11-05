@@ -276,7 +276,7 @@ export function ReviewStep({
 
   // Get unique duplicate conflicts for display
   const allDuplicateConflicts = reviewedResults.flatMap(
-    (r) => r.duplicateConflicts?.filter((c) => !c.valuesMatch) || []
+    (r) => r.duplicateConflicts ?? []
   );
 
   // Total biomarkers

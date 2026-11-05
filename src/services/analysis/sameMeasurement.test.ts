@@ -1,0 +1,82 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import { loadCatalog, type Catalog } from '@data/loinc/catalog';
+import { clusterMeasurements, groupUnit, isSettled, settleGroup, type ComparableValue } from './sameMeasurement';
+import type { MatchedBiomarker } from './LabReportAnalyzer';
+
+let catalog: Catalog;
+
+beforeAll(async () => {
+  catalog = await loadCatalog();
+});
+
+function value(name: string, amount: number, unit: string, loincCode?: string): MatchedBiomarker {
+  return { name, value: amount, unit, confidence: 0.95, loincCode, candidates: [] };
+}
+
+/** A value as compared: with a number in the group's unit, or none when it cannot be converted */
+function compared(biomarker: MatchedBiomarker, comparison?: number): ComparableValue {
+  return { biomarker, comparison, converted: comparison, allowance: 0 };
+}
+
+describe('isSettled', () => {
+  const settled = (values: ComparableValue[]): boolean => isSettled(values, clusterMeasurements(values));
+
+  it('settles one measurement, and distinct ones under distinct printed names', () => {
+    expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 30, 'ng/mL', 'A'), 30)])).toBe(true);
+    expect(settled([compared(value('Spot', 1, 'g/L', 'A'), 1), compared(value('Daily', 5, 'g/L', 'A'), 5)])).toBe(true);
+  });
+
+  it('calls two measurements of one printed name a conflict', () => {
+    expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 45, 'ng/mL', 'A'), 45)])).toBe(false);
+  });
+
+  it('keeps a value that cannot be compared beside others when its code is its own', () => {
+    expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 80, 'nmol/L', 'B'))])).toBe(true);
+  });
+
+  it('still calls a conflict between comparable values of one code when another code cannot be compared', () => {
+    expect(
+      settled([
+        compared(value('Vit D', 32.6, 'ng/mL', 'A'), 32.6),
+        compared(value('Vit D', 45, 'ng/mL', 'A'), 45),
+        compared(value('Vit D', 81.5, 'nmol/L', 'B')),
+      ])
+    ).toBe(false);
+  });
+
+  it('calls a conflict when a value that cannot be compared shares its code with another', () => {
+    expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 80, 'odd', 'A'))])).toBe(false);
+  });
+});
+
+describe('settleGroup', () => {
+  it('flags two vitamin D3 values of one code even beside a value in another unit', () => {
+    const group = [
+      value('Vitamina D3', 32.6, 'ng/mL', '1989-3'),
+      value('Vitamina D3', 45.0, 'ng/mL', '1989-3'),
+      value('Vitamina D3', 81.5, 'nmol/L', '14635-7'),
+    ];
+    expect(settleGroup(group, catalog).settled).toBe(false);
+  });
+
+  it('compares two values in a unit that cannot reach the standard one in their own unit', () => {
+    // ESR: HemoIO's unit is mm/h; "per campo" reaches nothing
+    const same = settleGroup([value('VES', 12, 'per campo', '30341-2'), value('VES', 12, 'per campo', '30341-2')], catalog);
+    expect(same).toMatchObject({ settled: true, kept: [expect.objectContaining({ value: 12 })] });
+    expect(groupUnit([value('VES', 12, 'per campo', '30341-2')], catalog).unit).toBe('per campo');
+  });
+
+  it('settles a rate or a volume given twice in a unit only the test itself converts', () => {
+    const esr = settleGroup([value('ESR', 12, 'mm/hr', '30341-2'), value('ESR', 12, 'mm/hr', '30341-2')], catalog);
+    expect(esr.settled).toBe(true);
+    const mcv = settleGroup([value('MCV', 88, 'µm³', '787-2'), value('MCV', 88, 'fL', '787-2')], catalog);
+    expect(mcv).toMatchObject({ settled: true, kept: [expect.objectContaining({ unit: 'fL' })] });
+  });
+
+  it('keeps the value in the standard unit and sets the other aside for it', () => {
+    const mgdl = value('Glucose', 90, 'mg/dL', '2345-7');
+    const mmol = value('Glucose', 5.0, 'mmol/L', '2345-7');
+    const result = settleGroup([mmol, mgdl], catalog);
+    expect(result).toEqual({ settled: true, kept: [mgdl], setAside: new Map([[mmol, mgdl]]) });
+  });
+});

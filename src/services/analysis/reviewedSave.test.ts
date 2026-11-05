@@ -77,6 +77,19 @@ describe('unitMisfits', () => {
     expect(unitMisfits({ ...CODED, loincCode: '2890-2', unit: 'mg/mmol' }, catalog)).toBe(false);
   });
 
+  it("takes the units HemoIO offers a test, and LOINC's own, as fitting", async () => {
+    const real = await loadCatalog();
+    const misfits = (loincCode: string, unit: string): boolean => unitMisfits({ ...CODED, loincCode, unit }, real);
+    // Enzymes in the Italian UI/L (ALT, AST, GGT), MCHC in %, HbA1c in mmol/mol
+    for (const enzyme of ['1742-6', '1920-8', '2324-2']) expect(misfits(enzyme, 'UI/L')).toBe(false);
+    expect(misfits('786-4', '%')).toBe(false);
+    expect(misfits('4548-4', 'mmol/mol')).toBe(false);
+    expect(misfits('20405-7', 'EU/dL')).toBe(false);
+    expect(misfits('2756-5', '[pH]')).toBe(false);
+    // Still a misfit: an enzyme unit for a mass concentration
+    expect(misfits('2345-7', 'UI/L')).toBe(true);
+  });
+
   it('says nothing of a unit it cannot read, no unit, or no test', () => {
     expect(unitMisfits({ ...glucose, unit: UNREADABLE_SHARE }, catalog)).toBe(false);
     expect(unitMisfits({ ...glucose, unit: '' }, catalog)).toBe(false);
@@ -110,6 +123,16 @@ describe('missingFields', () => {
     const screening = analyzed({ name: 'Proteine', unit: '', loincCode: undefined, savedAsUnknown: true });
     expect(missingFields(screening)).toEqual([]);
   });
+
+  it('asks a unit of a value the report gave none once its test is measured in one', async () => {
+    const real = await loadCatalog();
+    const printed = analyzed({ name: 'Glicemia', value: 90, unit: '', loincCode: undefined, identifiedBy: undefined });
+    expect(missingFields(chooseTest(printed, '2345-7'), real)).toEqual(['unit']);
+    // A urine pH and an ordinal have none
+    expect(missingFields(chooseTest(printed, '2756-5'), real)).toEqual([]);
+    expect(missingFields(chooseTest(printed, '5802-4'), real)).toEqual([]);
+    expect(missingFields(chooseTest(printed, null), real)).toEqual([]);
+  });
 });
 
 describe('planSave', () => {
@@ -123,6 +146,13 @@ describe('planSave', () => {
     const plan = planSave([file([TWIN, CODED])], catalog);
     expect(plan.toSave[0].editedBiomarkers).toEqual([CODED]);
     expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: TWIN, reason: 'twin' }]);
+  });
+
+  it('pairs a twin only with a value of the same test, not one of its name in another sample', () => {
+    expect(leftOut([{ ...TWIN, specimenHint: 'urine' }, { ...CODED, specimenHint: 'blood' }])).toEqual([]);
+    expect(leftOut([{ ...TWIN, specimenHint: 'blood' }, { ...CODED, specimenHint: 'blood' }])).toHaveLength(1);
+    const otherTests = { ...TWIN, candidates: [{ code: '5821-4', name: 'Leukocytes in Urine sediment', score: 0.9 }] };
+    expect(leftOut([otherTests, CODED])).toEqual([]);
   });
 
   it('matches the printed name whatever its case or spacing', () => {

@@ -58,13 +58,16 @@ export function identifyLocally(
   return { candidates: match.candidates, identificationFlags: flags };
 }
 
+/** Whether a value has no test decided yet: no code, and not "Not a LOINC test" */
+export function needsTest(identification: Pick<Identification, 'loincCode' | 'savedAsUnknown'>): boolean {
+  return !identification.loincCode && !identification.savedAsUnknown;
+}
+
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */
 export function needsChoice(
   identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'candidates'>
 ): boolean {
-  return (
-    !identification.loincCode && !identification.savedAsUnknown && identification.candidates.length > 0
-  );
+  return needsTest(identification) && identification.candidates.length > 0;
 }
 
 /** The AI's choice applied: a confident one is the value's test, an unsure one goes first among the candidates */
