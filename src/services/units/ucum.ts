@@ -22,6 +22,15 @@ function countedWord(word: string): string {
 /** Spellings that need their own rule to reach UCUM, in the order they apply */
 const UCUM_REWRITES: ReadonlyArray<[RegExp, string | ((...groups: string[]) => string)]> = [
   [/^\/100 WBC$/, '/100{WBCs}'],
+  // Spaces about a slash: "ug/ L"
+  [/\s*\/\s*/g, '/'],
+  // A share with words for what it is of: "% Hb totale", "% in volume"
+  [/^% \D.*$/, '%'],
+  // The mole as "M" after a prefix ("uM/L", "nM/24 h") and in the Italian plural ("umoli/L")
+  [/(^|\/)([pnuµm])M(?=\/)/, '$1$2mol'],
+  [/(^|\/)([pnuµm]?)moli(?=\/|$)/, '$1$2mol'],
+  // Grams written "gr" in Italian ("gr/L", "g/gr"): UCUM's grain is "[gr]"
+  [/(^|\/|[mµun])gr(?=\/|$)/g, '$1g'],
   // "x10³/µL", "10^9/L", "×10^6/µL": a power of ten that counts
   [/^[x×]?10(?:\^(\d+)|([⁰¹²³⁴⁵⁶⁷⁸⁹]+))/, (_all, power = '', superscript = '') =>
     `10*${power || [...superscript].map((c) => SUPERSCRIPT_DIGITS.indexOf(c)).join('')}`],
@@ -30,7 +39,8 @@ const UCUM_REWRITES: ReadonlyArray<[RegExp, string | ((...groups: string[]) => s
   [/^(?:million|mil\.?)(?=\/|$)/i, '10*6'],
   [/^thousand(?=\/|$)/i, '10*3'],
   [/^cells?\//i, '{cells}/'],
-  [/\bmcg\b/, 'ug'],
+  // "mc" for micro: "mcg", "mcL" ("K/mcL")
+  [/\bmc(?=g\b|[lL]\b)/g, 'u'],
   [/\bmEq\b/, 'meq'],
   // International units are an arbitrary unit in brackets, with a prefix outside
   [/(^|\/)([kmµun]?)IU\b/, (_all, start, prefix) => `${start}${prefix}[IU]`],
@@ -134,10 +144,14 @@ export function ucumProperties(ucum: string): string[] {
   if (ucum.includes('[HPF]')) return ['Naric', 'NCnc'];
   if (isShare(ucum)) return ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth'];
   if (unit.isArbitrary_ || /^\{[^}]*\}$/.test(ucum)) {
-    // Labs print enzyme activity in international units too ("ALT 30 UI/L"):
-    // so many per volume may be catalytic as well as arbitrary (a hormone)
-    const perVolume = ucum.includes('[IU]') && length === -3 && time === 0 && mass === 0;
-    return perVolume ? ['ACnc', 'CCnc', 'Ratio', 'Titr'] : ['ACnc', 'Ratio', 'Titr'];
+    // So many per volume is a concentration, never a ratio or a titer (a
+    // dilution, of no unit). Labs print enzyme activity in international
+    // units too ("ALT 30 UI/L"): so many per volume may be catalytic as well
+    // as arbitrary (a hormone).
+    if (length === -3 && time === 0 && mass === 0) return ucum.includes('[IU]') ? ['ACnc', 'CCnc'] : ['ACnc'];
+    // So many per time: a day's amount ("UI/24 h")
+    if (length === 0 && time === -1 && mass === 0) return ['ARat'];
+    return ['ACnc', 'Ratio', 'Titr'];
   }
   if (ucum === '1') return ['SpGrav', 'Ratio', 'pH'];
 
@@ -153,6 +167,8 @@ export function ucumProperties(ucum: string): string[] {
     if (mass === 1 && !amount) return ['MRat'];
     if (mass === 0 && amount) return ['SRat'];
   }
+  // An enzyme's activity over a time: a day's ("U/24 h")
+  if (length === 0 && time === -2 && mass === 0 && amount && CATALYTIC_U.test(ucum)) return ['CRat'];
   // A volume, or that of one cell (MCV in fL)
   if (length === 3 && time === 0 && mass === 0 && !amount) return ['Vol', ...perCell('EntMeanVol', 'EntVol')];
   // A duration (liquefaction in minutes)

@@ -69,12 +69,13 @@ const UNIT_SPELLINGS = new Map<string, string>([
 
 /**
  * Units reports write with a word that only names what they count per:
- * creatinine ratios ("mg/g cr", "mg/gcreat.", "mg/mmol creatinina") and
- * cells per 100 white cells ("/100WBC", "/100 GB", "/100 leucociti",
- * "/100 globuli bianchi")
+ * creatinine ratios of any mass, grams also written "gr" ("mg/g cr",
+ * "mg/gcreat.", "µg/gr creatinina", "mg/g di creatinina", "mg/mmol
+ * creatinina") and cells per 100 white cells ("/100WBC", "/100 GB", "/100
+ * leucociti", "/100 globuli bianchi")
  */
 const UNIT_PATTERNS: ReadonlyArray<[RegExp, string]> = [
-  [/^mg\/ ?(g|mmol) ?(?:cr|crea|creat|creatinine|creatinina)\.?$/, 'mg/$1'],
+  [/^(µg|ug|mcg|mg|ng|g)r?\/ ?(g|mmol)r? ?(?:di )?(?:cr|crea|creat|creatinine|creatinina|creatininuria)\.?$/, '$1/$2'],
   [/^(?:\/|per) ?100 ?(?:wbc|gb|leucociti|leukocytes|white (?:blood )?cells|globuli bianchi)$/, '/100 WBC'],
 ];
 

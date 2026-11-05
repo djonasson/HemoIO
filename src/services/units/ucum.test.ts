@@ -55,6 +55,20 @@ describe('toUcum', () => {
     ['kIU/L', 'k[IU]/L'],
     ['‰', '[ppth]'],
     ['ratio', '1'],
+    // Lab spellings: a space after the slash, a share's words, the mole as
+    // "M" or "moli", grams as "gr"
+    ['µg/ L', 'ug/L'],
+    ['% Hb totale', '%'],
+    ['% in volume', '%'],
+    ['uM/L', 'umol/L'],
+    ['nM/24 h', 'nmol/(24.h)'],
+    ['pmoli/L', 'pmol/L'],
+    ['umoli/24 h', 'umol/(24.h)'],
+    ['gr/L', 'g/L'],
+    ['mg/gr creat.', 'mg/g'],
+    // "mc" for micro
+    ['K/mcL', '10*3/uL'],
+    ['mcg/dL', 'ug/dL'],
   ])('writes %s as %s', (printed, ucum) => {
     expect(toUcum(printed)).toBe(ucum);
   });
@@ -93,9 +107,14 @@ describe('ucumProperties', () => {
     ['mmol/min/L', ['CCnc']],
     ['g/(24.h)', ['MRat']],
     ['mmol/(24.h)', ['SRat']],
-    // Enzyme activity is printed in IU/L too: catalytic as well as arbitrary
-    ['[IU]/L', ['ACnc', 'CCnc', 'Ratio', 'Titr']],
-    ['m[IU]/mL', ['ACnc', 'CCnc', 'Ratio', 'Titr']],
+    // Enzyme activity is printed in IU/L too: catalytic as well as arbitrary,
+    // but so many per volume is never a ratio or a titer
+    ['[IU]/L', ['ACnc', 'CCnc']],
+    ['m[IU]/mL', ['ACnc', 'CCnc']],
+    ["[arb'U]/mL", ['ACnc']],
+    // So many a day, of a hormone and of an enzyme
+    ['[IU]/(24.h)', ['ARat']],
+    ['U/(24.h)', ['CRat']],
     ['[IU]/g', ['ACnc', 'Ratio', 'Titr']],
     ['[ppth]', ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth']],
     ['min', ['Time']],

@@ -20,6 +20,17 @@ describe('normalizeUnitForLookup', () => {
     expect(normalizeUnitForLookup(unit)).toBe('mg/g');
   });
 
+  it.each([
+    ['µg/gr creatinina', 'µg/g'],
+    ['ug/g creat.', 'ug/g'],
+    ['mcg/g Cr', 'mcg/g'],
+    ['mg/g di creatinina', 'mg/g'],
+    ['gr/gr creat.', 'g/g'],
+    ['ng/g creatininuria', 'ng/g'],
+  ])('reads %s, a creatinine ratio of another mass or with grams as "gr", as %s', (unit, normalized) => {
+    expect(normalizeUnitForLookup(unit)).toBe(normalized);
+  });
+
   it.each(['mg/mmol cr', 'mg/mmolcr', 'mg/mmolcreat.', 'mg/mmol creatinina'])(
     'reads %s as mg/mmol of creatinine',
     (unit) => {
