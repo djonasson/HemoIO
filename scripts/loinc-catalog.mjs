@@ -32,6 +32,25 @@ const DEFAULT_OUT = path.join(
 const EXTRA_CODES = new Set(['98979-8', '107184-4', '22664-7']);
 
 /**
+ * Whether a LOINC parent group joins mass and molar codes ("MassMolConc<SAME:
+ * Comp|Tm|Sys|Meth><Prop:MCncORSCncORMSCnc>"). Duplicates joinsMassAndMolar
+ * in src/data/loinc/catalog.ts, which reads it the same way at runtime.
+ * @param {string} parentName
+ * @returns {boolean}
+ */
+function joinsMassAndMolar(parentName) {
+  const same = parentName.match(/<SAME:([^>]*)>/)?.[1];
+  const property = parentName.match(/<Prop:([^>]*)>/)?.[1];
+  return (
+    same !== undefined &&
+    !same.includes('Prop') &&
+    property !== undefined &&
+    property.includes('MCnc') &&
+    property.includes('SCnc')
+  );
+}
+
+/**
  * Parse CSV text into rows, one object per record keyed by the header.
  * Handles quoted fields with embedded commas and newlines, and "" escapes.
  * A generator, so a release's 100 MB table is never held as row objects.
@@ -162,13 +181,32 @@ export function buildCatalog(dir) {
     groupsByCode.set(row.LoincNumber, list);
   }
 
+  const parentNames = new Map();
+  for (const row of readRows(path.join(groupDir, 'ParentGroup.csv'))) {
+    parentNames.set(row.ParentGroupId, row.ParentGroup);
+  }
+  const groupRows = [...readRows(path.join(groupDir, 'Group.csv'))];
+  const massMolarGroups = new Set(
+    groupRows.filter((row) => joinsMassAndMolar(parentNames.get(row.ParentGroupId) ?? '')).map((row) => row.GroupId),
+  );
+
   const tests = [];
+  /**
+   * Unranked codes that convert by mass and moles with others: kept once the
+   * table is read if a ranked code shares their group, as a value printed in
+   * the other unit ("Fasting glucose" in mmol/L) is that test all the same
+   */
+  const partners = [];
+  const rankedGroups = new Set();
   for (const row of readRows(path.join(dir, 'LoincTable', 'Loinc.csv'))) {
     // CLASSTYPE 1 is laboratory; a rank of 0 or none marks a rarely used code
     const parsedRank = Number.parseInt(row.COMMON_TEST_RANK, 10);
     const rank = parsedRank > 0 ? parsedRank : 0;
     if (row.STATUS !== 'ACTIVE' || row.CLASSTYPE !== '1') continue;
-    if (rank === 0 && !EXTRA_CODES.has(row.LOINC_NUM)) continue;
+    const massMolar = [...(groupsByCode.get(row.LOINC_NUM) ?? [])].filter((id) => massMolarGroups.has(id));
+    if (rank > 0) massMolar.forEach((id) => rankedGroups.add(id));
+    const partner = rank === 0 && !EXTRA_CODES.has(row.LOINC_NUM);
+    if (partner && massMolar.length === 0) continue;
     const names = new Set();
     for (const raw of [
       row.COMPONENT,
@@ -180,7 +218,7 @@ export function buildCatalog(dir) {
       const key = nameKey(raw ?? '');
       if (key) names.add(key);
     }
-    tests.push({
+    (partner ? partners : tests).push({
       code: row.LOINC_NUM,
       name: row.LONG_COMMON_NAME,
       shortName: row.SHORTNAME,
@@ -196,15 +234,12 @@ export function buildCatalog(dir) {
       groups: [...(groupsByCode.get(row.LOINC_NUM) ?? [])].sort(),
     });
   }
+  tests.push(...partners.filter((test) => test.groups.some((id) => rankedGroups.has(id))));
   tests.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
 
   const usedGroups = new Set(tests.flatMap((t) => t.groups));
-  const parentNames = new Map();
-  for (const row of readRows(path.join(groupDir, 'ParentGroup.csv'))) {
-    parentNames.set(row.ParentGroupId, row.ParentGroup);
-  }
   const groups = [];
-  for (const row of readRows(path.join(groupDir, 'Group.csv'))) {
+  for (const row of groupRows) {
     if (!usedGroups.has(row.GroupId)) continue;
     groups.push({
       id: row.GroupId,

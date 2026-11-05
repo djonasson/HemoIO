@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { buildCatalog } from './loinc-catalog.mjs';
 
 const FILES = path.join(__dirname, '__fixtures__', 'loinc', '2.83', 'files');
+
+/**
+ * The fixture release with the rows of scripts/__fixtures__/loinc-extra/<name>
+ * added to its files, in a folder of its own: rows the shared fixture leaves
+ * out so the app tests built on it keep their candidates
+ */
+function withRows(name: string): string {
+  const files = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'loinc-')), '2.83', 'files');
+  fs.cpSync(FILES, files, { recursive: true });
+  const extra = path.join(__dirname, '__fixtures__', 'loinc-extra', name);
+  for (const file of fs.readdirSync(extra, { recursive: true, encoding: 'utf8' })) {
+    const from = path.join(extra, file);
+    if (fs.statSync(from).isFile()) fs.appendFileSync(path.join(files, file), fs.readFileSync(from));
+  }
+  return files;
+}
 
 describe('buildCatalog', () => {
   const catalog = buildCatalog(FILES);
@@ -19,6 +37,20 @@ describe('buildCatalog', () => {
 
   it('keeps an unranked code the add-on table describes', () => {
     expect(find('107184-4')).toMatchObject({ name: 'Spermatozoa [#] in Semen', rank: 0 });
+  });
+
+  it('keeps an unranked code that converts by mass and moles with a ranked one', () => {
+    const files = withRows('fasting-glucose');
+    try {
+      const tests = buildCatalog(files).tests;
+      // Fasting glucose in mmol/L (14771-0) has no rank; in mg/dL (1558-6) it has
+      expect(tests.find((t) => t.code === '14771-0')).toMatchObject({ rank: 0, groups: ['LG50685-3'] });
+      expect(tests.find((t) => t.code === '1558-6')!.rank).toBeGreaterThan(0);
+      // An unranked code in a group of another kind stays out
+      expect(tests.find((t) => t.code === '100746-7')).toBeUndefined();
+    } finally {
+      fs.rmSync(path.dirname(path.dirname(files)), { recursive: true, force: true });
+    }
   });
 
   it('copies the LOINC fields', () => {

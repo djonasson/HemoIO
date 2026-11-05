@@ -474,6 +474,9 @@ describe('matchLocally in the generated catalog', () => {
     ['Hct', '%', undefined, '4544-3'],
     // "-uria" says the substance is in urine
     ['Microalbuminuria', 'µg/min', undefined, '49023-5'],
+    // A molar code LOINC gives no rank, kept for the ranked mass code it trends with
+    ['U-Glucosio', 'mmol/L', undefined, '15076-3'],
+    ['CRP', 'nmol/L', undefined, '76485-2'],
   ])('takes %s in %s (sample %s) as %s', async (name, unit, specimenHint, code) => {
     const value = { name, unit, ...(specimenHint && { specimenHint }) };
     expect(matchLocally(await loadCatalog(), value)).toMatchObject({ status: 'match', code });
@@ -503,13 +506,20 @@ describe('matchLocally in the generated catalog', () => {
     ['AFP', 'kU/L', '19176-7'],
     // Two of its LOINC name's words written as one
     ['Alfafetoproteina', 'IU/mL', '19176-7'],
-    ['U-Glucosio', 'mmol/L', '22705-8'],
     // FEU and DDU differ about two-fold: neither is taken for the other
     ['D-dimero', 'ng/mL', undefined],
   ])('leaves %s in %s ambiguous', async (name, unit, first) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.status).toBe('ambiguous');
     if (first) expect(result.candidates[0].code).toBe(first);
+  });
+
+  it('never takes the blood test for a fasting glucose in mmol/L, whose serum test LOINC gives no rank', async () => {
+    const catalog = await loadCatalog();
+    const result = matchLocally(catalog, { name: 'Fasting glucose', unit: 'mmol/L' });
+    expect(result.status === 'match' ? result.code : undefined).not.toBe('76629-5');
+    expect(codesOf(result)).toContain('14771-0');
+    expect(catalog.trendGroup('14771-0')).toBe(catalog.trendGroup('1558-6'));
   });
 
   it('offers the HbA1c test HemoIO describes in mmol/mol, which LOINC files as a mass share', async () => {
