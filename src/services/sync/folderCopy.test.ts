@@ -24,7 +24,7 @@ const STORED = {
     {
       id: 3,
       labResultId: 7,
-      biomarkerKey: 'glucose',
+      biomarkerKey: '2345-7',
       value: 95,
       unit: 'mg/dL',
       createdAt: '2024-01-15T10:00:00.000Z',
@@ -97,6 +97,15 @@ describe('readFolderCopy', () => {
           : await sealed(content, key);
       expect(await readFolderCopy(bytes, key)).toEqual({ status: 'unreadable', reason: 'not-a-copy' });
     }
+  });
+
+  it('reports a copy with a value keyed by anything but a LOINC code or an unknown key as not a copy', async () => {
+    const odd = { ...STORED, testValues: [{ ...STORED.testValues[0], biomarkerKey: 'glucose' }] };
+    const key = await newKey();
+    expect(await readFolderCopy(await sealed(copy(odd), key), key)).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
   });
 
   it('reports a copy without a readable save date as not a copy', async () => {

@@ -4,11 +4,12 @@
  * Imports backup data from JSON format.
  */
 
-import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
+import { isUnknownKey } from '@data/loinc/keys';
 import {
   BACKUP_SCHEMA_VERSION,
   isValidBackupData,
 } from '../export/jsonExport';
+import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
 
 /**
  * Import mode options
@@ -142,6 +143,33 @@ export function isPreLoincBackupVersion(schemaVersion: number): boolean {
   return schemaVersion < FIRST_LOINC_BACKUP_VERSION;
 }
 
+/** A LOINC code: up to seven digits, a dash and a check digit ("2345-7") */
+const LOINC_CODE = /^\d{1,7}-\d$/;
+
+/** Why a backup holding a key that is no test's cannot be restored */
+export const UNKNOWN_KEY_BACKUP_MESSAGE =
+  'This backup holds values of tests HemoIO does not know, so it was not restored. It may be damaged.';
+
+/** Whether a stored key is one HemoIO writes: a LOINC code, or the unknown key of a name */
+function isStoredTestKey(key: unknown): boolean {
+  return typeof key === 'string' && (LOINC_CODE.test(key) || (isUnknownKey(key) && key.length > 'unknown:'.length));
+}
+
+/**
+ * Refuse a backup whose values (or notes on a test) name a test by anything
+ * but a LOINC code or an unknown key: such a key would reach every screen
+ * that looks a test up, and no HemoIO wrote it
+ */
+export function assertKnownTestKeys(data: { testValues: unknown[]; userNotes: unknown[] }): void {
+  const valueKeys = data.testValues.map((tv) => (tv as { biomarkerKey?: unknown }).biomarkerKey);
+  const noteKeys = data.userNotes
+    .map((note) => (note as { biomarkerKey?: unknown }).biomarkerKey)
+    .filter((key) => key !== undefined && key !== null);
+  if (![...valueKeys, ...noteKeys].every(isStoredTestKey)) {
+    throw new Error(UNKNOWN_KEY_BACKUP_MESSAGE);
+  }
+}
+
 /**
  * Refuse a backup this version cannot restore: one made before tests were
  * identified by LOINC, or by a newer version
@@ -180,6 +208,7 @@ export function parseBackupData(data: unknown): ParsedBackupData {
   }
 
   assertSupportedBackupVersion(data.schemaVersion);
+  assertKnownTestKeys(data);
 
   // Deserialize data (cast since JSON parsing gives strings for dates)
   return {

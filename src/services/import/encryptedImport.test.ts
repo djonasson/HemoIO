@@ -14,6 +14,7 @@ import {
 import { exportToEncryptedJson } from '../export/encryptedExport';
 import { exportToJson } from '../export/jsonExport';
 import type { ExportDataSources } from '../export/jsonExport';
+import { UNKNOWN_KEY_BACKUP_MESSAGE } from './jsonImport';
 import type { Settings } from '@/types';
 import { encryptForBackup } from '@data/encryption/backupEncryption';
 import {
@@ -36,7 +37,7 @@ describe('encryptedImport', () => {
       {
         id: 1,
         labResultId: 1,
-        biomarkerKey: 'marker-1',
+        biomarkerKey: '2345-7',
         value: 100,
         unit: 'mg/dL',
         createdAt: new Date('2024-01-15'),
@@ -187,6 +188,17 @@ describe('encryptedImport', () => {
       expect(result.testValues).toHaveLength(1);
       expect(result.userNotes).toHaveLength(1);
       expect(result.wasEncrypted).toBe(true);
+    });
+
+    it('refuses a backup with a value keyed by anything but a LOINC code or an unknown key', async () => {
+      const password = 'SecurePassword123!';
+      const sources = {
+        ...mockDataSources,
+        testValues: [{ ...mockDataSources.testValues[0], biomarkerKey: 'glucose' }],
+      };
+      const encrypted = await exportToEncryptedJson(sources, { password });
+
+      await expect(parseEncryptedBackup(encrypted, password)).rejects.toThrow(UNKNOWN_KEY_BACKUP_MESSAGE);
     });
 
     it('should round-trip AI model choices', async () => {

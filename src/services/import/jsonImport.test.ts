@@ -10,6 +10,7 @@ import {
   updateTestValueReferences,
   updateNoteReferences,
   getImportPreview,
+  UNKNOWN_KEY_BACKUP_MESSAGE,
   type ParsedBackupData,
 } from './jsonImport';
 import { BACKUP_SCHEMA_VERSION, exportToJson, type ExportDataSources } from '../export/jsonExport';
@@ -29,7 +30,7 @@ function createMockTestValue(id: number, labResultId: number): TestValue {
   return {
     id,
     labResultId,
-    biomarkerKey: 'marker-1',
+    biomarkerKey: '2345-7',
     value: 95,
     unit: 'mg/dL',
     createdAt: new Date('2024-01-15'),
@@ -80,6 +81,30 @@ describe('jsonImport', () => {
       expect(parsed.labResults).toHaveLength(2);
       expect(parsed.testValues).toHaveLength(2);
       expect(parsed.userNotes).toHaveLength(1);
+    });
+
+    it('accepts values keyed by a LOINC code or an unknown key', () => {
+      const sources = createMockDataSources();
+      sources.testValues[1] = { ...sources.testValues[1], biomarkerKey: 'unknown:zorblatina' };
+
+      expect(parseBackupJson(exportToJson(sources)).testValues).toHaveLength(2);
+    });
+
+    it.each(['glucose', 'marker-1', '2345-77', 'unknown:', '<img src=x>', ''])(
+      'refuses a backup with a value keyed %j, which no HemoIO writes',
+      (key) => {
+        const sources = createMockDataSources();
+        sources.testValues[0] = { ...sources.testValues[0], biomarkerKey: key };
+
+        expect(() => parseBackupJson(exportToJson(sources))).toThrow(UNKNOWN_KEY_BACKUP_MESSAGE);
+      }
+    );
+
+    it('refuses a backup with a note on a key no HemoIO writes', () => {
+      const sources = createMockDataSources();
+      sources.userNotes[0] = { ...sources.userNotes[0], biomarkerKey: 'glucose' };
+
+      expect(() => parseBackupJson(exportToJson(sources))).toThrow(UNKNOWN_KEY_BACKUP_MESSAGE);
     });
 
     it('should convert date strings to Date objects', () => {

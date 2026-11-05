@@ -19,7 +19,7 @@ import {
 } from '@/types/backup';
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
 import { isValidBackupData } from '../export/jsonExport';
-import { assertSupportedBackupVersion } from './jsonImport';
+import { assertKnownTestKeys, assertSupportedBackupVersion } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
@@ -155,6 +155,7 @@ export async function parseEncryptedBackup(
   }
 
   assertSupportedBackupVersion(backupData.schemaVersion);
+  assertKnownTestKeys(backupData);
 
   // Deserialize dates
   return {

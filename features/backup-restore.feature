@@ -220,3 +220,9 @@ Feature: Backup and Restore
     Then I should see that it cannot be restored and that I should re-import my reports
     And no restore dialog should open
     And my data should be unchanged
+
+  Scenario: A backup naming a test HemoIO does not know is refused
+    Given I have a backup file with a value whose test is neither a LOINC code nor "Not a LOINC test"
+    When I choose it on the Data tab
+    Then I should see that it holds tests HemoIO does not know and was not restored
+    And no restore dialog should open

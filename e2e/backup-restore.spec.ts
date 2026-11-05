@@ -816,6 +816,27 @@ test.describe('Backups from earlier versions', () => {
       cleanupBackupFile(backupPath);
     }
   });
+
+  // Scenario: A backup naming a test HemoIO does not know is refused
+  test('refuses a backup whose values name a test by anything but a LOINC code', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await navigateToSettings(page);
+    const data = createValidBackupData();
+    const backupPath = createBackupFile({
+      ...data,
+      testValues: data.testValues.map((tv) => ({ ...tv, biomarkerKey: 'glucose' })),
+    });
+
+    try {
+      await uploadBackupFile(page, backupPath);
+
+      await expect(page.getByText(/holds values of tests HemoIO does not know/i)).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Restore from Backup' })).toBeHidden();
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
+  });
 });
 
 /**
