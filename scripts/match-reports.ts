@@ -16,6 +16,13 @@
  * values) are kept there as JSON and read back on the next run, so tuning
  * needs Ollama once; the directory must be outside the repository.
  *
+ * With MATCH_ROWS instead, the values are read from a JSON file of printed
+ * values ({ name, unit, specimenHint?, group? }, the group naming where each
+ * came from), such as rows parsed from labs' public test guides. The file must
+ * be outside the repository. Counts are then given per group too, and with
+ * MATCH_ROWS_OUT set every value's result, with the LOINC test taken, is
+ * written there as JSON (also outside the repository) for checking by hand.
+ *
  * Output goes only to the terminal: never paste it into the repository.
  */
 import { request } from 'node:http';
@@ -23,7 +30,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { it } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
-import { matchLocally, type PrintedValue } from '@services/analysis/loincMatch';
+import { matchLocally, type LocalMatch, type PrintedValue } from '@services/analysis/loincMatch';
 import { OllamaProvider } from '@services/ai/OllamaProvider';
 import { extractTextFromPDF } from '@services/ocr/pdfExtractor';
 
@@ -89,30 +96,65 @@ function isInside(path: string, folder: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-it('matches the printed values of real reports locally', async () => {
-  const pdfs = (process.env.MATCH_REPORTS ?? '').split(',').filter(Boolean);
-  if (pdfs.length === 0) throw new Error('Set MATCH_REPORTS to a comma-separated list of PDFs');
-  const cacheDir = process.env.MATCH_REPORTS_CACHE && resolve(process.env.MATCH_REPORTS_CACHE);
-  if (cacheDir && isInside(realPath(cacheDir), realpathSync(REPOSITORY))) {
-    throw new Error('MATCH_REPORTS_CACHE must be outside the repository');
-  }
+/** A path from the environment, which must lie outside the repository */
+function outsideRepository(variable: string): string | undefined {
+  const path = process.env[variable] && resolve(process.env[variable]);
+  if (path && isInside(realPath(path), realpathSync(REPOSITORY))) throw new Error(`${variable} must be outside the repository`);
+  return path;
+}
 
-  const catalog = await loadCatalog();
-  const counts = { match: 0, ambiguous: 0, none: 0 };
-  const lines: string[] = [];
+/** A printed value, with the report or guide it came from */
+interface SourcedValue extends PrintedValue {
+  group: string;
+}
+
+/** The values to match: the MATCH_ROWS file's, else those of the MATCH_REPORTS PDFs */
+async function valuesToMatch(): Promise<SourcedValue[]> {
+  const rows = outsideRepository('MATCH_ROWS');
+  if (rows) return (JSON.parse(readFileSync(rows, 'utf8')) as SourcedValue[]).map((row) => ({ ...row, group: row.group ?? basename(rows) }));
+  const pdfs = (process.env.MATCH_REPORTS ?? '').split(',').filter(Boolean);
+  if (pdfs.length === 0) throw new Error('Set MATCH_REPORTS to a comma-separated list of PDFs, or MATCH_ROWS to a JSON file');
+  const cacheDir = outsideRepository('MATCH_REPORTS_CACHE');
+  const values: SourcedValue[] = [];
   for (const pdf of pdfs) {
-    lines.push(`== ${basename(pdf)}`);
-    for (const value of await printedValues(pdf, cacheDir)) {
-      const match = matchLocally(catalog, value);
-      counts[match.status]++;
-      const top = match.candidates
-        .slice(0, 3)
-        .map(({ code, name, score }) => `${code} ${name} (${score.toFixed(2)})`)
-        .join(' | ');
-      const code = match.status === 'match' ? ` ${match.code}` : '';
-      lines.push(`${value.name} [${value.unit}] ${match.status}${code} :: ${top}`);
-    }
+    for (const value of await printedValues(pdf, cacheDir)) values.push({ ...value, group: basename(pdf) });
   }
-  lines.push(`match ${counts.match}, ambiguous ${counts.ambiguous}, none ${counts.none}`);
+  return values;
+}
+
+it('matches the printed values of real reports locally', async () => {
+  const resultsFile = outsideRepository('MATCH_ROWS_OUT');
+  const catalog = await loadCatalog();
+  const counts = new Map<string, Record<LocalMatch['status'], number>>();
+  const lines: string[] = [];
+  const results: unknown[] = [];
+  let group: string | undefined;
+  for (const value of await valuesToMatch()) {
+    if (value.group !== group) lines.push(`== ${(group = value.group)}`);
+    const match = matchLocally(catalog, value);
+    const count = counts.get(value.group) ?? { match: 0, ambiguous: 0, none: 0 };
+    count[match.status]++;
+    counts.set(value.group, count);
+    const top = match.candidates
+      .slice(0, 3)
+      .map(({ code, name, score }) => `${code} ${name} (${score.toFixed(2)})`)
+      .join(' | ');
+    const code = match.status === 'match' ? ` ${match.code}` : '';
+    lines.push(`${value.name} [${value.unit}] ${match.status}${code} :: ${top}`);
+    const taken = match.status === 'match' ? catalog.test(match.code) : undefined;
+    results.push({
+      ...value,
+      status: match.status,
+      ...(taken && { code: taken.code, loincName: taken.name, property: taken.property, system: taken.system }),
+      candidates: match.candidates.map(({ code, name, score }) => ({ code, name, score })),
+    });
+  }
+  const total = { match: 0, ambiguous: 0, none: 0 };
+  for (const [name, count] of counts) {
+    lines.push(`${name}: match ${count.match}, ambiguous ${count.ambiguous}, none ${count.none}`);
+    for (const status of ['match', 'ambiguous', 'none'] as const) total[status] += count[status];
+  }
+  lines.push(`match ${total.match}, ambiguous ${total.ambiguous}, none ${total.none}`);
   process.stdout.write(`${lines.join('\n')}\n`);
+  if (resultsFile) writeFileSync(resultsFile, JSON.stringify(results, null, 1));
 });
