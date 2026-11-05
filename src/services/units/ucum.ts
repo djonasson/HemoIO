@@ -75,6 +75,13 @@ function isShare(ucum: string): boolean {
 /** UCUM's enzyme unit, with or without a prefix: "U/L", "mU/mL", "kU/L" */
 const CATALYTIC_U = /(?<![A-Za-z[])[a-zµ]?U(?![A-Za-z\]])/;
 
+/**
+ * A quantity of one cell (an "entitic" property: MCV, MCH, MCHC) is
+ * printed in the units a cell's size is: fL, pg and g/dL or g/L. Read in
+ * other units, it would only add the per-cell tests as rivals.
+ */
+const PER_CELL_UNITS: ReadonlySet<string> = new Set(['g/dL', 'g/L', 'pg', 'fL']);
+
 /** Whether a unit counts an amount of substance (moles or equivalents) */
 function isAmount(unit: UcumUnit): boolean {
   return unit.moleExp_ !== 0 || unit.equivalentExp_ !== 0;
@@ -90,6 +97,7 @@ export function ucumProperties(ucum: string): string[] {
   if (!unit?.dim_) return [];
   const [length, time, mass] = unit.dim_.dimVec_;
   const amount = isAmount(unit);
+  const perCell = (...properties: string[]): string[] => (PER_CELL_UNITS.has(ucum) ? properties : []);
 
   if (ucum.includes('[HPF]')) return ['Naric', 'NCnc'];
   if (isShare(ucum)) return ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth'];
@@ -98,7 +106,7 @@ export function ucumProperties(ucum: string): string[] {
 
   if (length === -3 && time === 0) {
     // A mass per volume, or that in the cells (MCHC in g/dL)
-    if (mass === 1 && !amount) return ['MCnc', 'EntMCnc'];
+    if (mass === 1 && !amount) return ['MCnc', ...perCell('EntMCnc')];
     if (mass === 0 && amount) return ['SCnc'];
     if (mass === 0) return ['NCnc'];
   }
@@ -109,14 +117,14 @@ export function ucumProperties(ucum: string): string[] {
     if (mass === 0 && amount) return ['SRat'];
   }
   // A volume, or that of one cell (MCV in fL)
-  if (length === 3 && time === 0 && mass === 0 && !amount) return ['Vol', 'EntMeanVol', 'EntVol'];
+  if (length === 3 && time === 0 && mass === 0 && !amount) return ['Vol', ...perCell('EntMeanVol', 'EntVol')];
   if (length === 1 && time === -1 && mass === 0 && !amount) {
     // Volume per time per body surface (a filtration rate), else a speed (sedimentation)
     return /m2\b/.test(ucum) ? ['ArVRat'] : ['Vel', 'Sedimentation Rate'];
   }
   if (length === 0 && time === 0) {
     // A mass, or that of one cell (MCH in pg)
-    if (mass === 1 && !amount) return ['Mass', 'EntMass'];
+    if (mass === 1 && !amount) return ['Mass', ...perCell('EntMass')];
     // A mass per mass of something (mg/g creatinine)
     if (mass === 0 && !amount && /g/.test(ucum)) return ['MRto', 'Ratio'];
     // An amount per amount (HbA1c in mmol/mol)

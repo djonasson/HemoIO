@@ -46,7 +46,10 @@ describe('toUcum', () => {
 
 describe('ucumProperties', () => {
   it.each([
-    ['mg/dL', ['MCnc', 'EntMCnc']],
+    ['mg/dL', ['MCnc']],
+    ['ng/mL', ['MCnc']],
+    ['g/dL', ['MCnc', 'EntMCnc']],
+    ['g/L', ['MCnc', 'EntMCnc']],
     ['mmol/L', ['SCnc']],
     ['meq/L', ['SCnc']],
     ['10*9/L', ['NCnc']],
@@ -63,9 +66,10 @@ describe('ucumProperties', () => {
     ['{cells}/[HPF]', ['Naric', 'NCnc']],
     ['mg/g', ['MRto', 'Ratio']],
     ['mg/mmol', ['Ratio']],
-    ['mL', ['Vol', 'EntMeanVol', 'EntVol']],
+    ['mL', ['Vol']],
     ['fL', ['Vol', 'EntMeanVol', 'EntVol']],
     ['pg', ['Mass', 'EntMass']],
+    ['mg', ['Mass']],
     ['mmol/mol', ['SFr', 'SRto', 'Ratio']],
     ['mL/min/(1.73.m2)', ['ArVRat']],
     ['mm/h', ['Vel', 'Sedimentation Rate']],

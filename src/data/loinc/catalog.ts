@@ -312,10 +312,23 @@ export function createCatalog(file: CatalogFile): Catalog {
     return longNames.get(normalise(name));
   };
 
+  /**
+   * A word no name has, read as two name words written as one
+   * ("alfafetoproteina" for "alfa" and "fetoproteina"), else itself
+   */
+  function partsOf(word: string): string[] {
+    if (testsByWord.has(word) || matchesOf(word).length) return [word];
+    for (let cut = MIN_STEM; cut <= word.length - MIN_STEM; cut++) {
+      const parts = [word.slice(0, cut), word.slice(cut)];
+      if (parts.every((part) => testsByWord.has(part) && tellsTest(part))) return parts;
+    }
+    return [word];
+  }
+
   function scoredSearch(query: string, filter: CatalogSearchFilter = {}): ScoredTest[] {
     const phrase = normalise(query);
     // A query of sample, quantity or other generic words alone names no test
-    const words = [...new Set(wordsOf(phrase))].filter(tellsTest).map((word) => ({
+    const words = [...new Set(wordsOf(phrase).flatMap(partsOf))].filter(tellsTest).map((word) => ({
       word,
       matches: matchesOf(word),
     }));

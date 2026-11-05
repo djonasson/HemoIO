@@ -49,6 +49,13 @@ describe('buildCatalog', () => {
     expect(names.filter((n) => n.includes('&amp') || n.includes('punto nel tempo'))).toEqual([]);
   });
 
+  it('adds the abbreviation that leads the short name of a component of one part', () => {
+    expect(find('2885-2')!.names).toContain('prot'); // Protein: "Prot SerPl-mCnc"
+    expect(find('107184-4')!.names).toContain('sperm'); // Spermatozoa: "Sperm Smn"
+    // "Rat Epith+Ser+Ur IgE RAST": its component's abbreviation is spread over the short name
+    expect(find('102975-0')!.names).not.toContain('rat');
+  });
+
   it('normalises names and removes duplicates', () => {
     const names = find('2345-7')!.names;
     expect(new Set(names).size).toBe(names.length);

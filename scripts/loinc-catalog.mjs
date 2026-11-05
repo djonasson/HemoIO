@@ -117,6 +117,21 @@ function splitList(value) {
 }
 
 /**
+ * LOINC's abbreviation of a component of one part, which leads its short
+ * name: "Hct" of "Hct VFr Bld Auto" (hematocrit, "Erythrocyte/Blood"),
+ * "Prot" of "Prot SerPl-mCnc". A component of several words or parts
+ * ("Bilirubin.direct", "Cholesterol in HDL") has its abbreviation spread
+ * over the short name, so it gets none.
+ * @param {Record<string, string>} row a Loinc.csv row
+ * @returns {string | undefined}
+ */
+function componentAbbreviation(row) {
+  if (/[.^\s]/.test(row.COMPONENT)) return undefined;
+  const [head] = (row.SHORTNAME ?? '').split(' ');
+  return /\p{L}/u.test(head ?? '') ? head : undefined;
+}
+
+/**
  * Build the catalog from a release's `files` folder. The version is the name
  * of the folder that holds it (<version>/files), as the download script lays
  * it out.
@@ -157,6 +172,7 @@ export function buildCatalog(dir) {
     const names = new Set();
     for (const raw of [
       row.COMPONENT,
+      componentAbbreviation(row),
       ...splitList(row.RELATEDNAMES2),
       row.SHORTNAME,
       ...(italian.get(row.LOINC_NUM) ?? []),

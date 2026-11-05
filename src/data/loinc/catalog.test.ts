@@ -164,6 +164,20 @@ describe('search', () => {
   });
 });
 
+describe('scoredSearch of a word written as two', () => {
+  it('reads a word no name has as two name words of one test', () => {
+    const fused = createCatalog({
+      version: 't',
+      groups: [],
+      tests: [madeUpTest('1-1', ['alfa-1-fetoproteina']), madeUpTest('2-2', ['alfa-1-antitripsina'])],
+    });
+    const [first, second] = fused.scoredSearch('alfafetoproteina');
+    expect(first).toMatchObject({ test: { code: '1-1' }, score: 0.9 });
+    expect(second.score).toBeLessThan(0.9);
+    expect(fused.search('zorbfetoproteina').map((test) => test.code)).toEqual([]);
+  });
+});
+
 describe('scoredSearch', () => {
   it('gives the same tests as search, each with its score', () => {
     const scored = catalog.scoredSearch('glucosio', { properties: ['MCnc'] });

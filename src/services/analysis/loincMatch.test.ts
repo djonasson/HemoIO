@@ -385,6 +385,13 @@ describe('splitSamplePrefix', () => {
     expect(splitSamplePrefix('P.C.R.')).toEqual({ name: 'P.C.R.' });
   });
 
+  it('reads a name ending in "-uria" as its substance in urine', () => {
+    expect(splitSamplePrefix('Microalbuminuria')).toEqual({ name: 'Microalbumin', systems: ['Urine', 'Urine sed'] });
+    expect(splitSamplePrefix('Proteinuria 24h')).toEqual({ name: 'Protein', systems: ['24H urine'] });
+    // Too short a stem to be a substance
+    expect(splitSamplePrefix('Uria')).toEqual({ name: 'Uria' });
+  });
+
   it('reads the urinalysis section prefix as urine', () => {
     expect(splitSamplePrefix('U-Esame standard Glucosio')).toEqual({
       name: 'Glucosio',
@@ -463,6 +470,10 @@ describe('matchLocally in the generated catalog', () => {
     ['U Albumina 24h', 'mg/24h', undefined, '1755-8'],
     ['Eritrociti', 'per campo', 'urine', '13945-1'],
     ['Fibrinogeno', 'mg/dL', undefined, '3255-7'],
+    // LOINC's abbreviation of the component leads its short name: "Hct VFr Bld Auto"
+    ['Hct', '%', undefined, '4544-3'],
+    // "-uria" says the substance is in urine
+    ['Microalbuminuria', 'µg/min', undefined, '49023-5'],
   ])('takes %s in %s (sample %s) as %s', async (name, unit, specimenHint, code) => {
     const value = { name, unit, ...(specimenHint && { specimenHint }) };
     expect(matchLocally(await loadCatalog(), value)).toMatchObject({ status: 'match', code });
@@ -490,6 +501,8 @@ describe('matchLocally in the generated catalog', () => {
     // The tests of the unit's property come first, the one HemoIO describes in it is not taken
     ['Alfa-fetoproteina', 'IU/mL', '19176-7'],
     ['AFP', 'kU/L', '19176-7'],
+    // Two of its LOINC name's words written as one
+    ['Alfafetoproteina', 'IU/mL', '19176-7'],
     ['U-Glucosio', 'mmol/L', '22705-8'],
     // FEU and DDU differ about two-fold: neither is taken for the other
     ['D-dimero', 'ng/mL', undefined],

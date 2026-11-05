@@ -101,6 +101,8 @@ type SampleSaid = 'none' | 'named' | 'loosely';
 /** The urinalysis section prefix, read before the plain "U-" */
 const URINALYSIS_PREFIX = /^U\s*-\s*Esame standard\b[\s\-.:]*/i;
 const URINE_WORD = /\burin(?:a|e|ari[oa])\b/gi;
+/** A substance said of urine by its ending: "Microalbuminuria", "Proteinuria" */
+const URINE_ENDING = /(\p{L}{4,})uria\b/giu;
 const DAY_WORD = /\b24\s*(?:h|ore)\b/gi;
 
 /** A LOINC long common name of a 24-hour urine test: "... in 24 hour Urine" */
@@ -122,17 +124,18 @@ function stripPrefix(name: string): { name: string; systems?: string[] } {
 
 /**
  * A printed test name without its sample prefix ("S-", "P.", "U:", "U-Esame
- * standard") or urine words ("urina", "urinario", "24h", "24 ore"), and the
- * LOINC systems they name. "24H urine" stands for 24-hour urine. A name
- * naming no sample has no systems.
+ * standard") or urine words ("urina", "urinario", "24h", "24 ore", the
+ * ending of "proteinuria"), and the LOINC systems they name. "24H urine"
+ * stands for 24-hour urine. A name naming no sample has no systems.
  */
 export function splitSamplePrefix(name: string): { name: string; systems?: string[] } {
   const prefixed = stripPrefix(name.trim());
-  const urine = prefixed.name.search(URINE_WORD) !== -1;
+  const urine = prefixed.name.search(URINE_WORD) !== -1 || prefixed.name.search(URINE_ENDING) !== -1;
   const day = prefixed.name.search(DAY_WORD) !== -1;
   if (!urine && !day) return prefixed;
 
   const rest = prefixed.name
+    .replace(URINE_ENDING, '$1')
     .replace(URINE_WORD, ' ')
     .replace(DAY_WORD, ' ')
     .replace(/\(\s*\)/g, ' ')
