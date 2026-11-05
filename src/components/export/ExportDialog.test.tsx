@@ -254,6 +254,45 @@ describe('ExportDialog', () => {
       const exportButton = screen.getByRole('button', { name: /export/i });
       expect(exportButton).not.toBeDisabled();
     });
+
+    it('exports nothing, not every value, once the chosen tests have no values left', async () => {
+      const [result] = defaultProps.labResultsData;
+      const glucose = { ...result.testValues[0], biomarkerKey: '2345-7' };
+      const hemoglobin = { ...glucose, id: 2, biomarkerKey: '718-7', value: 14, unit: 'g/dL' };
+      const options = [
+        { value: '2345-7', label: 'Glucose', keys: ['2345-7'] },
+        { value: '718-7', label: 'Hemoglobin', keys: ['718-7'] },
+      ];
+      const before = [{ ...result, testValues: [glucose, hemoglobin] }];
+      const ui = (props: Partial<typeof defaultProps>) => (
+        <MantineProvider env="test">
+          <DatesProvider settings={{ locale: 'en' }}>
+            <ExportDialog
+              {...defaultProps}
+              labResultsData={before}
+              biomarkerOptions={options}
+              {...props}
+            />
+          </DatesProvider>
+        </MantineProvider>
+      );
+      const { rerender } = render(ui({}));
+      await userEvent.click(screen.getByRole('textbox', { name: 'Select biomarkers to include' }));
+      await userEvent.click(await screen.findByRole('option', { name: 'Glucose' }));
+
+      // The glucose values are deleted while the dialog is closed, then it opens on the data as it is now
+      rerender(ui({ opened: false }));
+      rerender(ui({ labResultsData: [{ ...result, testValues: [hemoglobin] }], biomarkerOptions: [options[1]] }));
+
+      expect(await screen.findByText(/0 test values/)).toBeInTheDocument();
+      expect(screen.getByText(/The biomarkers you chose have no values now/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Export$/ })).toBeDisabled();
+
+      // Clearing the choice exports every biomarker again
+      await userEvent.click(screen.getByRole('button', { name: 'Clear the choice' }));
+      expect(await screen.findByText(/1 test value\b/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Export$/ })).toBeEnabled();
+    });
   });
 
   describe('accessibility', () => {

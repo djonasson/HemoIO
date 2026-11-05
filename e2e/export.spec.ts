@@ -257,12 +257,56 @@ test.describe('Export on LOINC codes', () => {
     const rows = fs.readFileSync(await download.path(), 'utf-8').trim().split(/\r?\n/);
 
     expect(rows[0]).toMatch(/^Date,Lab Name,Biomarker,LOINC,Value,Unit/);
-    expect(rows.find((row) => row.includes('Glucose'))).toMatch(/,Glucose,2345-7,95,mg\/dL/);
+    // ="2345-7": a spreadsheet keeps the code as text instead of reading it as a date
+    expect(rows.find((row) => row.includes('Glucose'))).toMatch(/,Glucose,"=""2345-7""",95,mg\/dL/);
     expect(rows.find((row) => row.includes('Zorblatin'))).toMatch(/,Zorblatin,,3,U\/L/);
   });
 });
 
 test.describe('Export after changes in this session', () => {
+  test('exports nothing for a choice of biomarkers that no longer have values', async ({ page }) => {
+    // Scenario: A choice of biomarkers that no longer have values exports nothing
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // Glucose (2345-7) only on 2024-01-15; hemoglobin on both days
+    await seedLabData(page, {
+      testValues: [
+        { id: 1, labResultId: 1, biomarkerKey: '718-7', value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+        { id: 2, labResultId: 1, biomarkerKey: '2345-7', value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+        { id: 3, labResultId: 2, biomarkerKey: '718-7', value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
+      ],
+    });
+
+    // When I choose to export only Glucose values and cancel the export
+    await openExportDialog(page);
+    await exportDialog(page).getByRole('textbox', { name: 'Select biomarkers to include' }).click();
+    await page.getByRole('option', { name: 'Glucose' }).click();
+    await expect(exportDialog(page).getByText('2 lab results, 1 test value')).toBeVisible();
+    await exportDialog(page).getByRole('button', { name: 'Cancel' }).click();
+    await expect(exportDialog(page)).toBeHidden();
+
+    // And I delete the lab result from 2024-01-15
+    await goToTimeline(page);
+    await labResultCard(page, '2024-01-15')
+      .getByRole('button', { name: 'Delete this lab result' })
+      .click();
+    const confirm = page.getByRole('dialog', { name: 'Delete Lab Result' });
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(labResultCards(page)).toHaveCount(1);
+
+    // And I open the export dialog again
+    await openExportDialog(page);
+    const dialog = exportDialog(page);
+    await expect(dialog.getByText('1 lab result, 0 test values')).toBeVisible();
+    await expect(dialog.getByText(/The biomarkers you chose have no values now/)).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Export', exact: true })).toBeDisabled();
+
+    // When I clear the choice
+    await dialog.getByRole('button', { name: 'Clear the choice' }).click();
+    await expect(dialog.getByText('1 lab result, 1 test value')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Export', exact: true })).toBeEnabled();
+  });
+
   test('includes changes made since the app was opened', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);

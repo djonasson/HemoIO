@@ -16,7 +16,7 @@ export interface CsvExportOptions {
   startDate?: Date;
   /** Filter by end date */
   endDate?: Date;
-  /** Filter by specific biomarkers */
+  /** Only values saved under these keys; none given exports every value, an empty list none */
   biomarkerKeys?: string[];
   /** Include reference ranges in output */
   includeReferenceRanges?: boolean;
@@ -69,6 +69,15 @@ function escapeCSV(value: string | number | boolean | undefined | null): string 
 }
 
 /**
+ * A field spreadsheet apps keep as text: Excel, LibreOffice and Google Sheets
+ * read a bare LOINC code such as 2345-7 as a date, but evaluate ="2345-7" to
+ * the text itself. The field stays valid CSV (RFC 4180).
+ */
+function asText(value: string): string {
+  return `="${value}"`;
+}
+
+/**
  * Build CSV header row based on options
  */
 function buildHeader(options: CsvExportOptions): string[] {
@@ -99,7 +108,7 @@ function buildRow(
     labResult.labName,
     biomarkerName,
     // The value's LOINC code; none for a value saved as not a LOINC test
-    isUnknownKey(testValue.biomarkerKey) ? '' : testValue.biomarkerKey,
+    isUnknownKey(testValue.biomarkerKey) ? '' : asText(testValue.biomarkerKey),
     String(testValue.value),
     testValue.unit,
   ];
@@ -135,7 +144,7 @@ function filterResults(
  * Filter test values based on options
  */
 function filterTestValues(testValues: TestValue[], options: CsvExportOptions): TestValue[] {
-  if (!options.biomarkerKeys || options.biomarkerKeys.length === 0) {
+  if (!options.biomarkerKeys) {
     return testValues;
   }
 

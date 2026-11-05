@@ -112,14 +112,19 @@ export function ExportDialog({
     return { start: getPresetStartDate(dateRangePreset), end: null };
   }, [dateRangePreset, customStartDate, customEndDate]);
 
-  // The stored keys of the chosen tests' values
-  const selectedKeys = useMemo(
-    () =>
-      biomarkerOptions
-        .filter((option) => selectedBiomarkers.includes(option.value))
-        .flatMap((option) => option.keys),
+  // The chosen tests that still have values: data reloaded since the choice
+  // may have none left for some of them
+  const chosenOptions = useMemo(
+    () => biomarkerOptions.filter((option) => selectedBiomarkers.includes(option.value)),
     [biomarkerOptions, selectedBiomarkers]
   );
+  // The stored keys of the chosen tests' values; none chosen exports every test.
+  // A choice none of whose tests has values left exports nothing, never every value.
+  const selectedKeys = useMemo(
+    () => (selectedBiomarkers.length > 0 ? chosenOptions.flatMap((option) => option.keys) : undefined),
+    [chosenOptions, selectedBiomarkers]
+  );
+  const choiceGone = selectedBiomarkers.length > 0 && chosenOptions.length === 0;
 
   // Check if there's data to export
   const hasData = labResultsData.length > 0;
@@ -143,10 +148,9 @@ export function ExportDialog({
     // Count test values
     let testValueCount = 0;
     for (const result of filteredResults) {
-      let values = result.testValues;
-      if (selectedBiomarkers.length > 0) {
-        values = values.filter((tv) => selectedKeys.includes(tv.biomarkerKey));
-      }
+      const values = selectedKeys
+        ? result.testValues.filter((tv) => selectedKeys.includes(tv.biomarkerKey))
+        : result.testValues;
       testValueCount += values.length;
     }
 
@@ -154,7 +158,7 @@ export function ExportDialog({
       labResults: filteredResults.length,
       testValues: testValueCount,
     };
-  }, [labResultsData, effectiveDateRange, selectedBiomarkers, selectedKeys]);
+  }, [labResultsData, effectiveDateRange, selectedKeys]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -165,7 +169,7 @@ export function ExportDialog({
         const csv = exportToCsv(labResultsData, {
           startDate: effectiveDateRange.start ?? undefined,
           endDate: effectiveDateRange.end ?? undefined,
-          biomarkerKeys: selectedBiomarkers.length > 0 ? selectedKeys : undefined,
+          biomarkerKeys: selectedKeys,
           includeReferenceRanges,
         });
         const filename = generateCsvFilename({
@@ -190,7 +194,6 @@ export function ExportDialog({
     labResultsData,
     fullDataSources,
     effectiveDateRange,
-    selectedBiomarkers,
     selectedKeys,
     includeReferenceRanges,
     onClose,
@@ -284,12 +287,26 @@ export function ExportDialog({
               label="Biomarkers"
               placeholder="All biomarkers"
               data={biomarkerOptions.map(({ value, label }) => ({ value, label }))}
-              value={selectedBiomarkers}
+              value={chosenOptions.map((option) => option.value)}
               onChange={setSelectedBiomarkers}
               clearable
               searchable
               aria-label="Select biomarkers to include"
             />
+
+            {choiceGone && (
+              <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+                <Stack gap="xs" align="flex-start">
+                  <Text size="sm">
+                    The biomarkers you chose have no values now. Choose biomarkers again, or clear
+                    the choice to export every biomarker.
+                  </Text>
+                  <Button size="xs" variant="light" onClick={() => setSelectedBiomarkers([])}>
+                    Clear the choice
+                  </Button>
+                </Stack>
+              </Alert>
+            )}
 
             {/* Options */}
             <Checkbox
@@ -347,7 +364,7 @@ export function ExportDialog({
             leftSection={<IconDownload size={16} />}
             onClick={handleExport}
             loading={isExporting}
-            disabled={!hasData || isLoading}
+            disabled={!hasData || isLoading || (format === 'csv' && choiceGone)}
           >
             Export
           </Button>

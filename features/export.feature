@@ -38,7 +38,20 @@ Feature: Export Lab Results
     When I export my results to CSV
     Then each row should name its test as the app does
     And a LOINC column should give the code of each identified value
+    And the code should be written so a spreadsheet keeps it as text, not as a date
     And it should be empty for the value that is not a LOINC test
+
+  Scenario: A choice of biomarkers that no longer have values exports nothing
+    Given I have lab results from "2024-01-15" and "2024-02-20"
+    And only the lab result from "2024-01-15" has a glucose value
+    When I choose to export only "Glucose" values and cancel the export
+    And I delete the lab result from "2024-01-15"
+    And I open the export dialog again
+    Then the preview should count no test values
+    And I should be told that the biomarkers I chose have no values now
+    And the export button should be disabled
+    When I clear the choice
+    Then the export button should be enabled
 
   Scenario: Export all data to JSON
     When I click the "Export" button

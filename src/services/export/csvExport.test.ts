@@ -190,6 +190,12 @@ describe('csvExport', () => {
       expect(csv).not.toContain('Cholesterol');
     });
 
+    it('exports no values when the chosen tests have none: an empty filter is not every test', () => {
+      const csv = exportToCsv(createMockExportData(), { biomarkerKeys: [] });
+
+      expect(csv.split('\n')).toHaveLength(1); // Just header
+    });
+
     it('should escape commas in values', () => {
       const data = createMockExportData();
       data[0].labResult.labName = 'Lab, Inc.';
@@ -226,8 +232,14 @@ describe('csvExport', () => {
 
     it("gives each identified value's LOINC code, and none for a value that is not a LOINC test", () => {
       const lines = exportToCsv(createMockExportData()).split('\n');
-      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,2345-7,95,mg/dL,70,100');
+      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,"=""2345-7""",95,mg/dL,70,100');
       expect(lines[4]).toBe('2024-03-20,LabCorp,Cholesterol,,185,mg/dL,0,200');
+    });
+
+    it('writes a LOINC code as text, so a spreadsheet does not read "2345-7" as a date', () => {
+      const [, row] = exportToCsv(createMockExportData()).split('\n');
+      // The field is ="2345-7", quoted: spreadsheet apps evaluate it to the text 2345-7
+      expect(row.split(',')[3]).toBe('"=""2345-7"""');
     });
 
     it('should handle unknown biomarker names', () => {
