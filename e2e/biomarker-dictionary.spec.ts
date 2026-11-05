@@ -41,7 +41,8 @@ async function openDictionary(page: Page): Promise<void> {
 }
 
 /** Glucose in blood (2339-0): a LOINC test HemoIO has no description of, named by LOINC's short name */
-const UNDESCRIBED = { key: '2339-0', name: 'Glucose Bld-mCnc', longName: 'Glucose [Mass/volume] in Blood' };
+// LOINC's short name "Glucose Bld-mCnc" less its mass property: the test has a molar code too
+const UNDESCRIBED = { key: '2339-0', name: 'Glucose Bld', longName: 'Glucose [Mass/volume] in Blood' };
 
 /**
  * A LOINC class's accordion control; its accessible name is "<class> <count>"
@@ -174,6 +175,16 @@ test.describe('Biomarker Dictionary', () => {
       await searchField(page).fill('glucose blood');
 
       await expectBiomarkerListed(page.getByRole('main'), UNDESCRIBED.name);
+    });
+
+    test('finds a test by its LOINC code', async ({ page }) => {
+      // Scenario: Search for a test by its LOINC code
+      // 14749-6 is glucose in mmol/L, one test with glucose in mg/dL
+      await searchField(page).fill('14749-6');
+
+      await expect(
+        page.getByRole('main').getByRole('button', { name: /^View details for / }).first()
+      ).toHaveAccessibleName('View details for Glucose');
     });
 
     test('should ignore extra spaces in a search', async ({ page }) => {
@@ -339,7 +350,8 @@ test.describe('Biomarker Dictionary', () => {
         {
           userPreferences: {
             unitPreferences: {},
-            personalTargets: { '2345-7': { low: 70, high: 90 } },
+            // Kept under glucose's LOINC group, LG49881-2 (2345-7 and 14749-6)
+            personalTargets: { 'LG49881-2': { low: 70, high: 90 } },
             theme: 'system',
             dateFormat: 'MM/DD/YYYY',
           },

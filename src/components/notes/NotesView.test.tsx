@@ -110,7 +110,8 @@ describe('NotesView', () => {
     await userEvent.click(
       screen.getByRole('button', { name: 'Glucose · 125 mg/dL · Jan 15, 2024' })
     );
-    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'));
+    // On the value itself, so Trends opens the line it is on
+    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'), 2);
   });
 
   it('searches and marks matches', async () => {

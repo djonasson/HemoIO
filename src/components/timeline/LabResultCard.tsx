@@ -51,8 +51,8 @@ export interface LabResultCardProps {
   onUpdateNote?: (id: number, content: string, tags: string[]) => Promise<void>;
   /** Callback when deleting a note */
   onDeleteNote?: (id: number) => Promise<void>;
-  /** Open a test's trend at this result's date */
-  onOpenTrend?: (biomarkerKey: string, date: Date) => void;
+  /** Open a test's trend on one of this result's values */
+  onOpenTrend?: (biomarkerKey: string, date: Date, testValueId?: number) => void;
   /** Receives the card's expand button, for the list to move focus to it */
   toggleRef?: React.Ref<HTMLDivElement>;
 }
@@ -266,7 +266,9 @@ export function LabResultCard({
               <TestValuesList
                 testValues={result.testValues}
                 onOpenTrend={
-                  onOpenTrend ? (biomarkerKey) => onOpenTrend(biomarkerKey, result.date) : undefined
+                  onOpenTrend
+                    ? (biomarkerKey, testValueId) => onOpenTrend(biomarkerKey, result.date, testValueId)
+                    : undefined
                 }
               />
 

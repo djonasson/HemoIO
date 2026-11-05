@@ -23,7 +23,7 @@ import { IconNotes, IconSearch } from '@tabler/icons-react';
 import { useNotes } from '@hooks/useNotes';
 import { useLabResults } from '@hooks/useLabResults';
 import { RelativeTime } from '@components/common/RelativeTime';
-import { testDisplayName, trendCode } from '@data/loinc/display';
+import { testName, trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import {
   describeNoteAttachment,
@@ -35,7 +35,7 @@ import { NoteContent } from './NoteContent';
 
 export interface NotesViewProps {
   onOpenLabResult: (labResultId: number) => void;
-  onOpenTrend: (biomarkerKey: string, date?: Date) => void;
+  onOpenTrend: (biomarkerKey: string, date?: Date, testValueId?: number) => void;
 }
 
 export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): React.ReactNode {
@@ -83,7 +83,7 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
       labResults,
       testValues,
       // A note can name a test no result has a value for
-      biomarkerName: (key) => testDisplayName(catalog, { biomarkerKey: key, rawText: printed.get(key) }),
+      biomarkerName: (key) => testName(catalog, key, printed.get(key)),
     };
   }, [catalog, results]);
 
@@ -99,10 +99,10 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
     [notes, searchTerm, startDate, endDate, biomarkerKey, tag]
   );
 
-  const open = (attachment: NoteAttachment) => {
+  const open = (attachment: NoteAttachment, testValueId: number | undefined) => {
     if (attachment.kind === 'lab-result') onOpenLabResult(attachment.labResultId);
     else if (attachment.kind === 'measurement')
-      onOpenTrend(attachment.biomarkerKey, attachment.date);
+      onOpenTrend(attachment.biomarkerKey, attachment.date, testValueId);
     else if (attachment.kind === 'biomarker') onOpenTrend(attachment.biomarkerKey);
   };
 
@@ -198,7 +198,7 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
                           variant="subtle"
                           size="compact-sm"
                           px={0}
-                          onClick={() => open(attachment)}
+                          onClick={() => open(attachment, note.testValueId)}
                         >
                           {attachment.label}
                         </Button>

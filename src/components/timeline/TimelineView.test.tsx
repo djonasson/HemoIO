@@ -157,7 +157,7 @@ describe('TimelineView', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Glucose, open trend' }));
 
-    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'));
+    expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'), 1);
   });
 
   it('should call refresh when try again is clicked', () => {

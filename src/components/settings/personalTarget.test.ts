@@ -19,7 +19,8 @@ describe('hasTargetRange', () => {
 describe('toPersonalTarget', () => {
   it('pairs a test with its standard range and stored target', () => {
     expect(toPersonalTarget(catalog, '2345-7', { high: 90 })).toEqual({
-      biomarkerKey: '2345-7',
+      // Kept under the test's LOINC group, whichever code shows it
+      biomarkerKey: catalog.trendGroup('2345-7'),
       biomarkerName: 'Glucose',
       unit: 'mg/dL',
       standardLow: 70,

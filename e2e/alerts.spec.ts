@@ -392,7 +392,8 @@ test.describe('Alerts with Data', () => {
         { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 140 }] },
         { date: '2024-05-20', values: [{ biomarker: GLUCOSE, value: 130 }] },
       ]),
-      userPreferences: { acknowledgedAlerts: { '2345-7': '2024-03-10T10:00:00.000Z' } },
+      // Kept under glucose's LOINC group, LG49881-2 (2345-7 and 14749-6)
+      userPreferences: { acknowledgedAlerts: { 'LG49881-2': '2024-03-10T10:00:00.000Z' } },
     });
     await viewAlerts(page);
 
@@ -457,8 +458,43 @@ test.describe('Alerts with Data', () => {
     await seedAlertData(page, [{ date: '2024-03-10', values: [{ biomarker: bloodGlucose, value: 150 }] }]);
     await viewAlerts(page);
 
-    await expect(alertCard(page, 'Glucose Bld-mCnc')).toBeVisible();
+    // LOINC's "Glucose Bld-mCnc" less its mass property: the test has a molar code too
+    await expect(alertCard(page, 'Glucose Bld')).toBeVisible();
     await expect(page.getByRole('main').getByText('Glicemia capillare')).toHaveCount(0);
+  });
+
+  // Scenario: An alert states its value as Trends shows it
+  test('states a value recorded in mmol/L in mg/dL, as Trends shows glucose', async ({ page }) => {
+    const molarGlucose = { key: '14749-6', name: 'Glicemia', unit: 'mmol/L', low: 3.9, high: 5.6 };
+    await seedAlertData(page, [{ date: '2024-03-10', values: [{ biomarker: molarGlucose, value: 7.5 }] }]);
+    await viewAlerts(page);
+
+    await expect(alertCard(page, 'Glucose')).toContainText('135 mg/dL');
+    await expect(alertCard(page, 'Glucose')).not.toContainText('mmol/L');
+  });
+
+  // Scenario: An alert about a value on a line of its own opens that line
+  test('opens the line of its own an alert value is on, highlighting that value', async ({ page }) => {
+    await seedAlertData(page, [
+      // Two values in the other unit, so its line is drawn as a chart
+      { date: '2024-01-15', values: [{ biomarker: HEMOGLOBIN, value: 13 }, { biomarker: HEMOGLOBIN, value: 20, unit: 'xyz/L' }] },
+      {
+        date: '2024-03-10',
+        values: [
+          { biomarker: HEMOGLOBIN, value: 14 },
+          // Out of its printed range, in a unit hemoglobin does not convert to
+          { biomarker: HEMOGLOBIN, value: 30, unit: 'xyz/L' },
+        ],
+      },
+    ]);
+    await viewAlerts(page);
+
+    await alertCard(page, 'Hemoglobin').click();
+
+    await expect(biomarkerSelect(page)).toHaveValue(/^Hemoglobin in xyz\/L \(/);
+    await expect(
+      page.getByRole('main').locator('[aria-label="Mar 10, 24: 30 xyz/L (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
   });
 
   // Scenario: Rapid improvement alert

@@ -158,7 +158,7 @@ everything the user stores per test is keyed by a code.
 │ - personalTargets  │   │ - biomarker- │       │ - standard range   │
 │ - acknowledged-    │   │   Key (trend │       │ - units offered    │
 │   Alerts           │   │   code)      │       └────────────────────┘
-│   (by trend code)  │   │ - labResult/ │
+│   (by test key)    │   │ - labResult/ │
 │ - learnedTests     │   │   testValue  │       ┌──────────────┐
 │   (wording|unit →  │   └──────────────┘       │   Settings   │
 │    code)           │                          │ - storage,   │
@@ -179,7 +179,7 @@ everything the user stores per test is keyed by a code.
   A code without an add-on uses that of a code it trends with, else shows its
   LOINC name and the range printed on the report.
 - **UserPreferences**: Preferred units, personal targets and acknowledged
-  alerts, each keyed by **trend code**; the tests the user taught
+  alerts, each keyed by **test key** (the test's LOINC trend group); the tests the user taught
   (`learnedTests`: a lab's wording and UCUM unit → the code chosen); theme
   and date format.
 - **UserNote**: A note on a lab result, a value, or a test (by trend code).
@@ -194,11 +194,15 @@ and plasma codes when LOINC groups them. `Catalog.trendGroup` joins them,
 from LOINC's group files: a parent group that joins mass and substance
 concentrations, the groups of a rate's or a ratio's mass and molar forms
 (same component and sample), else a group of a test in any of blood, serum
-or plasma. `trendCode` (`display.ts`) names a group by the member HemoIO
-describes, else its most common code. Trend lines, alerts, targets, unit
-preferences, notes, the Biomarkers page and the CSV export are keyed by it; each
+or plasma. `testKey` (`display.ts`) is that group: unit preferences,
+personal targets and acknowledged alerts are kept under it, so they stay
+when HemoIO's add-ons or LOINC's ranks change. `trendCode` names a group by
+the member HemoIO describes, else its most common code, a code of blood in
+general before an arterial or venous one; trend lines, notes, the Biomarkers
+page and the CSV export show a test under it, and `testName` names it. Each
 value still converts through its own code, so a value whose unit cannot be
-converted gets a line of its own instead of being dropped.
+converted gets a line of its own instead of being dropped; a link into
+Trends names the value, so Trends opens the line that value is on.
 
 ## Storage Architecture
 

@@ -11,6 +11,7 @@ import { SettingsPage } from './SettingsPage';
 import { SaveError } from '@data/db/saveError';
 import { CatalogContext } from '@contexts/useCatalog';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { testKey } from '@data/loinc/display';
 
 const catalog = fixtureCatalog();
 
@@ -25,7 +26,8 @@ const mockDb = vi.hoisted(() => ({
 // Personal targets come from the shared preferences
 const mockPreferences = vi.hoisted(() => ({
   unitPreferences: {},
-  personalTargets: { '2345-7': { low: 70, high: 90 } } as Record<
+  // Glucose's target, under its test key (see below: the catalog is not loaded yet here)
+  personalTargets: {} as Record<
     string,
     { low?: number; high?: number }
   >,
@@ -34,6 +36,7 @@ const mockPreferences = vi.hoisted(() => ({
   setPersonalTarget: vi.fn(),
   reload: vi.fn(),
 }));
+mockPreferences.personalTargets[testKey(catalog, '2345-7')] = { low: 70, high: 90 };
 
 const mockShowNotification = vi.hoisted(() => vi.fn());
 vi.mock('@mantine/notifications', () => ({
@@ -325,7 +328,7 @@ describe('SettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Save Target' }));
 
       await waitFor(() =>
-        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('2345-7', {
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith(testKey(catalog, '2345-7'), {
           low: 70,
           high: 95,
         })
@@ -373,7 +376,7 @@ describe('SettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Clear personal target for Glucose' }));
 
       await waitFor(() =>
-        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith('2345-7', null)
+        expect(mockPreferences.setPersonalTarget).toHaveBeenCalledWith(testKey(catalog, '2345-7'), null)
       );
     });
 

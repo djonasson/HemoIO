@@ -65,8 +65,10 @@ export interface TrendsViewProps {
   onNavigateToAlerts?: () => void;
   /** Biomarker to show when the view opens */
   initialBiomarkerKey?: string;
-  /** Date of the data point to highlight */
+  /** Date of the data point to highlight, when the value itself is not known */
   highlightDate?: Date;
+  /** The value to show and highlight: the view opens on the line it is on */
+  highlightTestValueId?: number;
   /** Show a biomarker's page in the biomarker dictionary */
   onOpenReference?: (biomarkerKey: string) => void;
 }
@@ -74,11 +76,13 @@ export interface TrendsViewProps {
 /** Why some of a test's values are on lines of their own */
 function elsewhereMessage(elsewhere: { count: number; units: string[] }, unit: string): string {
   const one = elsewhere.count === 1;
-  return `${elsewhere.count} ${one ? 'value' : 'values'} recorded in ${elsewhere.units.join(', ')} ${
+  const recorded = elsewhere.units.map((other) => (other ? `in ${other}` : 'with no unit')).join(', ');
+  const target = unit ? `converted to ${unit}` : "compared with this line's values, which have no unit";
+  return `${elsewhere.count} ${one ? 'value' : 'values'} recorded ${recorded} ${
     one ? 'is' : 'are'
   } shown on ${one ? 'a line of its own' : 'lines of their own'}: ${
     one ? 'it' : 'they'
-  } cannot be converted to ${unit}.`;
+  } cannot be ${target}.`;
 }
 
 /**
@@ -89,6 +93,7 @@ export function TrendsView({
   onNavigateToAlerts,
   initialBiomarkerKey,
   highlightDate,
+  highlightTestValueId,
   onOpenReference,
 }: TrendsViewProps = {}) {
   const catalog = useCatalog();
@@ -103,27 +108,35 @@ export function TrendsView({
     getNotesForTestValue,
   } = useNotes();
 
-  // A test opened from elsewhere is its trend group's line
-  const initialLine = initialBiomarkerKey ? trendCode(catalog, initialBiomarkerKey) : undefined;
-
-  // State
-  const [selectedBiomarkerId, setSelectedBiomarkerId] = useState<string | null>(
-    initialLine ?? null
+  // Every line of a test: its notes are filed under its trend code, its
+  // preferred unit under its test key
+  const trendLines = useMemo(
+    () => buildTrendLines(catalog, results, unitPreferences),
+    [catalog, results, unitPreferences]
   );
+
+  // A test opened from elsewhere: the line its value is on, which is a line
+  // of its own for a value whose unit does not convert; else the test's line
+  const initialLine = useMemo(() => {
+    if (highlightTestValueId !== undefined) {
+      for (const line of trendLines.values()) {
+        if (line.dataPoints.some((point) => point.testValueId === highlightTestValueId)) return line.key;
+      }
+    }
+    return initialBiomarkerKey ? trendCode(catalog, initialBiomarkerKey) : undefined;
+  }, [catalog, trendLines, initialBiomarkerKey, highlightTestValueId]);
+
+  // State: the line chosen here; until one is, the line opened on (its
+  // values may still be loading)
+  const [chosenLine, setChosenLine] = useState<string | null | undefined>(undefined);
+  const selectedBiomarkerId = chosenLine === undefined ? (initialLine ?? null) : chosenLine;
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [compareMarkers, setCompareMarkers] = useState<string[]>([]);
 
-  // Every line of a test, and all a test's own (notes, targets, preferred
-  // unit), are kept under the test's trend code
-  const trendLines = useMemo(
-    () => buildTrendLines(catalog, results, unitPreferences),
-    [catalog, results, unitPreferences]
-  );
-  const selectedTest = selectedBiomarkerId
-    ? (trendLines.get(selectedBiomarkerId)?.trendCode ?? selectedBiomarkerId)
-    : null;
+  const selectedLine = selectedBiomarkerId ? trendLines.get(selectedBiomarkerId) : undefined;
+  const selectedTest = selectedBiomarkerId ? (selectedLine?.trendCode ?? selectedBiomarkerId) : null;
 
   // Get notes for selected biomarker
   const selectedBiomarkerNotes = useMemo(() => {
@@ -264,19 +277,20 @@ export function TrendsView({
 
   // Handle reset
   const handleReset = useCallback(() => {
-    setSelectedBiomarkerId(null);
+    setChosenLine(null);
     setStartDate(null);
     setEndDate(null);
   }, []);
 
+  const selectedTestKey = selectedLine?.testKey;
   const handlePreferredUnitChange = useCallback(
     (unit: string) => {
-      if (!selectedTest) return;
-      setPreferredUnit(selectedTest, unit).catch((err: unknown) =>
+      if (!selectedTestKey) return;
+      setPreferredUnit(selectedTestKey, unit).catch((err: unknown) =>
         notifySaveFailed('Preferred unit not saved', err)
       );
     },
-    [selectedTest, setPreferredUnit]
+    [selectedTestKey, setPreferredUnit]
   );
 
   // Handle compare mode
@@ -375,7 +389,7 @@ export function TrendsView({
         <TrendChartControls
           biomarkerOptions={biomarkerOptions}
           selectedBiomarkerId={selectedBiomarkerId}
-          onBiomarkerChange={setSelectedBiomarkerId}
+          onBiomarkerChange={setChosenLine}
           startDate={startDate}
           endDate={endDate}
           onStartDateChange={setStartDate}
@@ -437,9 +451,14 @@ export function TrendsView({
               referenceRange={referenceRange}
               trendDirection={trendAnalysis?.direction}
               height={350}
-              // The highlight marks the opened alert's value, so only on its biomarker
+              // The highlight marks the opened value, so only on its line
+              highlightTestValueId={
+                selectedBiomarkerId === initialLine ? highlightTestValueId : undefined
+              }
               highlightDate={
-                selectedBiomarkerId === initialLine ? highlightDate : undefined
+                selectedBiomarkerId === initialLine && highlightTestValueId === undefined
+                  ? highlightDate
+                  : undefined
               }
               notePreviews={notePreviews}
               onPointSelect={setSelectedPoint}

@@ -25,6 +25,8 @@ export type ViewFocus =
       biomarkerKey: string;
       /** Date of the data point to highlight, if any */
       date?: Date;
+      /** The value to open the trend on, and highlight */
+      testValueId?: number;
     }
   | { view: 'timeline'; labResultId: number }
   | { view: 'dictionary'; biomarkerKey: string };

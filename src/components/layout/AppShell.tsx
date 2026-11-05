@@ -470,8 +470,8 @@ function MainContent({
   const trendFocus = focus?.view === 'trends' ? focus : null;
   const timelineFocus = focus?.view === 'timeline' ? focus.labResultId : null;
   const dictionaryFocus = focus?.view === 'dictionary' ? focus.biomarkerKey : undefined;
-  const onOpenTrend = (biomarkerKey: string, date?: Date): void =>
-    onOpen({ view: 'trends', biomarkerKey, date });
+  const onOpenTrend = (biomarkerKey: string, date?: Date, testValueId?: number): void =>
+    onOpen({ view: 'trends', biomarkerKey, date, testValueId });
   const onOpenLabResult = (labResultId: number): void => onOpen({ view: 'timeline', labResultId });
   const onOpenReference = (biomarkerKey: string): void => onOpen({ view: 'dictionary', biomarkerKey });
   const { hasApiKey, getApiKey, isLoading: isLoadingApiKey } = useEncryptedApiKey();
@@ -561,6 +561,7 @@ function MainContent({
         onNavigateToAlerts={() => onNavigate('alerts')}
         initialBiomarkerKey={trendFocus?.biomarkerKey}
         highlightDate={trendFocus?.date}
+        highlightTestValueId={trendFocus?.testValueId}
         onOpenReference={onOpenReference}
       />
     );

@@ -86,6 +86,12 @@ Feature: Trend Charts
     And that value should be offered as its own line, named with its unit
     And that line's reference link and notes should name the test without the unit
 
+  Scenario: Units spelled differently, and values with no unit, on lines of their own
+    Given I have hemoglobin values in g/dL, one in "xyz/L", one in "XYZ/L" and one with no unit
+    When I view the hemoglobin trend chart
+    Then the values in "xyz/L" and "XYZ/L" should be one line of their own
+    And the value with no unit should be offered as "Hemoglobin with no unit"
+
   Scenario: Handle missing data gracefully
     Given I have lab results with gaps in dates
     When I view the trend chart

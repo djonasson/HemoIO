@@ -9,9 +9,11 @@ import { CatalogContext } from '@contexts/useCatalog';
 
 // The list, its search and each detail come from the catalog, loaded as in the unlocked app
 let catalog: Catalog;
+// Reading the 13 MB catalog and building its search index take seconds on a busy machine
 beforeAll(async () => {
   catalog = await loadCatalog();
-});
+  catalog.scoredSearch('glucose');
+}, 60_000);
 
 const GLUCOSE = '2345-7';
 
@@ -158,7 +160,8 @@ describe('DictionaryView', () => {
     await userEvent.type(screen.getByLabelText('Personal target high value'), '90');
     await userEvent.click(screen.getByRole('button', { name: 'Save Target' }));
 
-    expect(mockSetPersonalTarget).toHaveBeenCalledWith(GLUCOSE, { low: 70, high: 90 });
+    // Kept under the test's LOINC group
+    expect(mockSetPersonalTarget).toHaveBeenCalledWith(catalog.trendGroup(GLUCOSE), { low: 70, high: 90 });
   });
 
   it('tells the user when the target could not be saved', async () => {

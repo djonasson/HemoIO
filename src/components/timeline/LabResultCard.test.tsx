@@ -327,6 +327,6 @@ describe('LabResultCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Hemoglobin, open trend' }));
 
-    expect(onOpenTrend).toHaveBeenCalledWith('marker-1', new Date('2024-01-15T12:00:00Z'));
+    expect(onOpenTrend).toHaveBeenCalledWith('marker-1', new Date('2024-01-15T12:00:00Z'), 1);
   });
 });

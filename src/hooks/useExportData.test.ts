@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useExportData } from './useExportData';
+import { createCatalog, type Catalog } from '@data/loinc/catalog';
 
 // Mock useEncryptedDb
 const mockDb = {
@@ -15,10 +16,11 @@ const mockDb = {
   getSettings: vi.fn(),
 };
 
+const catalogs = vi.hoisted(() => ({ current: undefined as Catalog | undefined }));
 vi.mock('@contexts/useCatalog', async () => {
   const { fixtureCatalog } = await import('@/test/loincFixture');
-  const catalog = fixtureCatalog();
-  return { useCatalog: () => catalog };
+  const fixture = fixtureCatalog();
+  return { useCatalog: () => catalogs.current ?? fixture };
 });
 
 vi.mock('./useEncryptedDb', () => ({
@@ -31,6 +33,7 @@ vi.mock('./useEncryptedDb', () => ({
 describe('useExportData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    catalogs.current = undefined;
     mockDb.getPreferences.mockResolvedValue(undefined);
     mockDb.getSettings.mockResolvedValue(undefined);
   });
@@ -187,6 +190,35 @@ describe('useExportData', () => {
 
     expect(result.current.biomarkerOptions).toEqual([
       { value: '2345-7', label: 'Glucose', keys: ['2345-7', '14749-6'] },
+    ]);
+  });
+
+  it("labels a test by the test's name, not by the code its first value was saved under", async () => {
+    // Made-up lactate in moles (the more common) and in mass, one LOINC group
+    const group = { id: 'LG-T1', parentId: 'LG-P', parentName: 'Sample types', name: 'Lactate|Pt|ANYBldSerPl' };
+    const row = { component: 'Lactate', system: 'Bld', scale: 'Qn', method: '', classCode: 'CHEM', names: [], units: [], groups: [group.id] };
+    catalogs.current = createCatalog({
+      version: 'test',
+      groups: [group],
+      tests: [
+        { ...row, code: '90020-3', name: 'Lactate [Moles/volume] in Blood', shortName: 'Lactate Bld-sCnc', property: 'SCnc', rank: 300 },
+        { ...row, code: '90021-1', name: 'Lactate [Mass/volume] in Blood', shortName: 'Lactate Bld-mCnc', property: 'MCnc', rank: 700 },
+      ],
+    });
+    mockDb.getAllLabResults.mockResolvedValue([
+      { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllTestValues.mockResolvedValue([
+      { id: 1, labResultId: 1, biomarkerKey: '90021-1', value: 9, unit: 'mg/dL', createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, labResultId: 1, biomarkerKey: '90020-3', value: 1, unit: 'mmol/L', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.biomarkerOptions).toEqual([
+      { value: '90020-3', label: 'Lactate Bld', keys: ['90021-1', '90020-3'] },
     ]);
   });
 

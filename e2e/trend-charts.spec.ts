@@ -470,6 +470,25 @@ test.describe('Trend direction indicator', () => {
     await expect(notesHeader(page.getByRole('main'), 'Notes for Hemoglobin')).toBeVisible();
   });
 
+  test('puts units spelled differently on one line of their own, and names a line with no unit', async ({ page }) => {
+    // Scenario: Units spelled differently, and values with no unit, on lines of their own
+    await seedAndOpenTrends(page, [
+      { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
+      { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 140, unit: 'xyz/L' }] },
+      { date: '2024-05-01', values: [{ biomarker: HEMOGLOBIN, value: 150, unit: 'XYZ/L' }] },
+      { date: '2024-06-01', values: [{ biomarker: HEMOGLOBIN, value: 13, unit: '' }] },
+    ]);
+
+    await biomarkerSelect(page).click();
+    await expect(page.getByRole('option', { name: /^Hemoglobin in xyz\/L / })).toHaveCount(1);
+    await expect(page.getByRole('option', { name: /^Hemoglobin in XYZ\/L / })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: /^Hemoglobin with no unit / })).toHaveCount(1);
+    await page.keyboard.press('Escape');
+
+    await selectBiomarker(page, 'Hemoglobin in xyz/L');
+    await expect(dataPoints(page)).toHaveCount(2);
+  });
+
   test('draws glucose in mg/dL and in mmol/L as one line', async ({ page }) => {
     // Scenario: Glucose in mg/dL and in mmol/L is one line
     const molarGlucose = { key: '14749-6', name: 'Glicemia', unit: 'mmol/L', low: 3.9, high: 5.6 };

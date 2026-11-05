@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { testKey } from '@data/loinc/display';
 import { unknownBiomarkerKey } from '@data/loinc/keys';
 import { buildTrendLines, type TrendableResult } from './trendLines';
 
@@ -39,8 +40,37 @@ describe('buildTrendLines', () => {
     expect(line.unitOptions).toEqual(['mg/dL', 'mmol/L']);
     expect(pointsOf(line)).toEqual(['90 mg/dL', '126 mg/dL']);
 
-    const preferred = buildTrendLines(catalog, glucose, { '2345-7': 'mmol/L' }).get('2345-7');
+    // The preference is the test's, kept under its LOINC group
+    const preferred = buildTrendLines(catalog, glucose, { [testKey(catalog, '2345-7')]: 'mmol/L' }).get('2345-7');
     expect(pointsOf(preferred)).toEqual(['5 mmol/L', '7 mmol/L']);
+    expect(preferred?.testKey).toBe(catalog.trendGroup('14749-6'));
+  });
+
+  it('puts values whose units differ only in spelling or case on one line of their own', () => {
+    const lines = buildTrendLines(
+      catalog,
+      [
+        ...glucose,
+        result('2024-03-10', [value('2345-7', 3, 'mg/g')]),
+        result('2024-04-10', [value('2345-7', 4, 'MG/G')]),
+      ],
+      {}
+    );
+    const own = [...lines.values()].filter((line) => line.key !== '2345-7');
+    expect(own).toHaveLength(1);
+    expect(pointsOf(own[0])).toEqual(['3 mg/g', '4 MG/G']);
+    expect(lines.get('2345-7')!.elsewhere).toEqual({ count: 2, units: ['mg/g'] });
+  });
+
+  it('names a line of values with no unit as such', () => {
+    const lines = buildTrendLines(
+      catalog,
+      [...glucose, result('2024-03-10', [value('2345-7', 3, '')])],
+      {}
+    );
+    const own = [...lines.values()].find((line) => line.key !== '2345-7')!;
+    expect(own.name).toBe('Glucose with no unit');
+    expect(own.key).not.toMatch(/ in $/);
   });
 
   it('gives a value that cannot be converted a line of its own', () => {

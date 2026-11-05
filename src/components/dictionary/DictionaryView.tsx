@@ -11,7 +11,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mantine/core';
 import { useCatalog } from '@contexts/useCatalog';
-import { testUnits, trendCode } from '@data/loinc/display';
+import { testKey, testUnits, trendCode } from '@data/loinc/display';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { useLabResults } from '@hooks/useLabResults';
 import { usePreferences } from '@hooks/usePreferences';
@@ -96,7 +96,7 @@ export function DictionaryView({
             catalog,
             results,
             selected,
-            resolveDisplayUnit(testUnits(catalog, selected), unitPreferences[selected])
+            resolveDisplayUnit(testUnits(catalog, selected), unitPreferences[testKey(catalog, selected)])
           )
         : null,
     [catalog, results, selected, unitPreferences]
@@ -112,7 +112,7 @@ export function DictionaryView({
     [setPersonalTarget]
   );
 
-  const target = selected ? personalTargets[selected] : undefined;
+  const target = selected ? personalTargets[testKey(catalog, selected)] : undefined;
 
   return (
     <>

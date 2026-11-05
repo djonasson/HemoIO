@@ -5,7 +5,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { testDisplayName, trendCode } from '@data/loinc/display';
+import { testDisplayName, testName, trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { TestValue } from '@/types';
@@ -133,7 +133,12 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         const name = testDisplayName(catalog, tv);
         biomarkerNames.set(tv.biomarkerKey, name);
         const test = trendCode(catalog, tv.biomarkerKey);
-        const option = tests.get(test) ?? { value: test, label: name, keys: [] };
+        // The test's name, whichever of its codes its first value was saved under
+        const option = tests.get(test) ?? {
+          value: test,
+          label: testName(catalog, test, tv.rawText),
+          keys: [],
+        };
         option.keys.push(tv.biomarkerKey);
         tests.set(test, option);
       }

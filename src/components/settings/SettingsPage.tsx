@@ -34,7 +34,7 @@ import {
 } from '@hooks';
 import { useCatalog } from '@contexts/useCatalog';
 import { TEST_ADDONS } from '@data/loinc/addons';
-import { trendCode } from '@data/loinc/display';
+import { testKey } from '@data/loinc/display';
 import { modelForProvider, testProviderConnection } from '@services/ai';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from './BackupRestore';
@@ -130,13 +130,14 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
   // The tests HemoIO describes, and any other test the user set a target for
   const personalTargets = useMemo<PersonalTarget[]>(() => {
-    const codes = new Set(
+    // Targets are kept under test keys: a LOINC group, or a code alone in none
+    const keys = new Set(
       [...Object.keys(TEST_ADDONS), ...Object.keys(targetMap)]
-        .filter((code) => catalog.test(code))
-        .map((code) => trendCode(catalog, code))
+        .filter((key) => catalog.groupCodes(catalog.trendGroup(key)).length > 0)
+        .map((key) => testKey(catalog, key))
     );
-    return [...codes]
-      .map((code) => toPersonalTarget(catalog, code, targetMap[code]))
+    return [...keys]
+      .map((key) => toPersonalTarget(catalog, key, targetMap[key]))
       .sort((a, b) => a.biomarkerName.localeCompare(b.biomarkerName));
   }, [catalog, targetMap]);
   const [isSavingTargets, setIsSavingTargets] = useState(false);

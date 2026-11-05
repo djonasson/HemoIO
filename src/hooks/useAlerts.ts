@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import { useLabResults, type EnrichedTestValue, type TestValueStatus } from './useLabResults';
+import { useLabResults, type TestValueStatus } from './useLabResults';
 import { useAlertState } from './useAlertState';
 import { usePreferences } from './usePreferences';
 import {
@@ -24,15 +24,10 @@ import {
   type ReferenceRange,
   type TrendDirection,
 } from '@services/alerts';
-import { testDisplayName, testUnits, trendCode } from '@data/loinc/display';
+import { buildTrendLines, type TrendLine } from '@services/statistics/trendLines';
 import { useCatalog } from '@contexts/useCatalog';
-import {
-  convertForDisplay,
-  convertMeasurement,
-  preferredUnitFor,
-  resolveDisplayUnit,
-} from '@services/units';
 import { isTrendable } from '@/utils/isTrendable';
+import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 export type { AlertType };
 
@@ -47,8 +42,8 @@ export interface BiomarkerAlert {
   /** Severity level */
   severity: AlertSeverity;
   /**
-   * The test: its trend code, so codes that trend together (glucose in mg/dL
-   * and in mmol/L) share one card
+   * The test: its test key (see testKey), so codes that trend together
+   * (glucose in mg/dL and in mmol/L) share one card
    */
   biomarkerKey: string;
   /** Biomarker name */
@@ -71,6 +66,8 @@ export interface BiomarkerAlert {
   labName: string;
   /** Lab result ID for navigation */
   labResultId: number;
+  /** The value the alert is about, so Trends opens the line it is on */
+  testValueId?: number;
   /** The status of the test's latest value, whatever this alert is about */
   latestStatus: TestValueStatus;
   /** Alert message */
@@ -157,6 +154,13 @@ export function useAlerts(): UseAlertsResult {
     [results]
   );
 
+  // Alerts are about the values Trends charts, as Trends charts them: an
+  // alert opens its trend, and a trend alert's direction is the line's
+  const trendLines = useMemo(
+    () => buildTrendLines(catalog, results, unitPreferences),
+    [catalog, results, unitPreferences]
+  );
+
   /**
    * Every alert the lab results raise, before acknowledgements and dismissals;
    * unordered, as the cards set their own order
@@ -164,125 +168,79 @@ export function useAlerts(): UseAlertsResult {
   const allAlerts = useMemo(() => {
     const alertList: BiomarkerAlert[] = [];
 
-    // Each test's numeric values across results, with their result's date and lab
-    const biomarkerValues = new Map<
-      string,
-      { values: EnrichedTestValue[]; labInfo: Map<number, { date: Date; labName: string }> }
-    >();
-
-    for (const result of results) {
-      for (const testValue of result.testValues) {
-        // Only values Trends charts: an alert opens its trend
-        if (!isTrendable(testValue)) continue;
-
-        const test = trendCode(catalog, testValue.biomarkerKey);
-        let entry = biomarkerValues.get(test);
-        if (!entry) {
-          entry = { values: [], labInfo: new Map() };
-          biomarkerValues.set(test, entry);
-        }
-        entry.values.push(testValue);
-        entry.labInfo.set(testValue.labResultId, { date: result.date, labName: result.labName });
-      }
+    // Each test's lines: its main line, and lines of their own for values
+    // whose unit does not convert to the main line's
+    const linesByTest = new Map<string, TrendLine[]>();
+    for (const line of trendLines.values()) {
+      const lines = linesByTest.get(line.testKey);
+      if (lines) lines.push(line);
+      else linesByTest.set(line.testKey, [line]);
     }
 
-    for (const [biomarkerKey, { values, labInfo }] of biomarkerValues.entries()) {
-      const units = testUnits(catalog, biomarkerKey);
-      const loincTest = catalog.test(biomarkerKey);
-      const biomarkerName = testDisplayName(catalog, { biomarkerKey, rawText: values[0].rawText });
-      const dateOf = (tv: EnrichedTestValue) => labInfo.get(tv.labResultId)!.date;
+    for (const [biomarkerKey, lines] of linesByTest) {
+      const { testName: biomarkerName, isLoincTest, classLabel } = lines[0];
 
       // Most recent first; on one day an out-of-range value comes first, so a
       // day with one reads as out of range whatever order its values are in
-      const outOfRange = (tv: EnrichedTestValue) => tv.status === 'high' || tv.status === 'low';
-      const sortedValues = [...values].sort(
-        (a, b) =>
-          dateOf(b).getTime() - dateOf(a).getTime() || Number(outOfRange(b)) - Number(outOfRange(a))
-      );
+      const outOfRange = (point: TrendDataPoint) => point.status === 'high' || point.status === 'low';
+      const points = lines
+        .flatMap((line) => line.dataPoints.map((point) => ({ point, line })))
+        .sort(
+          (a, b) =>
+            b.point.date.getTime() - a.point.date.getTime() ||
+            Number(outOfRange(b.point)) - Number(outOfRange(a.point))
+        );
+      const [latest] = points;
+      const latestStatus = latest.point.status ?? 'unknown';
 
-      // Each value converts as the code it was recorded under
-      const substanceOf = (tv: EnrichedTestValue) => catalog.test(tv.biomarkerKey) ?? '';
-      // Alerts state values in the preferred unit when one is set
-      const preferredUnit = preferredUnitFor(units, unitPreferences[biomarkerKey]);
-
-      const latestStatus = sortedValues[0].status;
-
-      /** The fields every alert about this test value shares */
+      /** The fields every alert about this value shares, stated in its line's unit */
       const alertFor = (
-        tv: EnrichedTestValue,
+        point: TrendDataPoint,
         type: AlertType,
         status: BiomarkerAlert['status']
-      ): Omit<BiomarkerAlert, 'severity' | 'message'> => {
-        const display = convertForDisplay(substanceOf(tv), tv, preferredUnit);
-        const info = labInfo.get(tv.labResultId)!;
-        return {
-          id: generateAlertId(biomarkerKey, tv.id ?? tv.labResultId, type),
-          type,
-          biomarkerKey,
-          biomarkerName,
-          category: loincTest && catalog.classLabel(loincTest.classCode),
-          value: display.value as number,
-          unit: display.unit,
-          referenceRange: { low: display.referenceRangeLow, high: display.referenceRangeHigh },
-          status,
-          date: info.date,
-          labName: info.labName,
-          labResultId: tv.labResultId,
-          latestStatus,
-        };
-      };
+      ): Omit<BiomarkerAlert, 'severity' | 'message'> => ({
+        id: generateAlertId(biomarkerKey, point.testValueId ?? point.labResultId ?? 0, type),
+        type,
+        biomarkerKey,
+        biomarkerName,
+        category: isLoincTest ? classLabel : undefined,
+        value: point.value,
+        unit: point.unit,
+        referenceRange: { low: point.referenceRange?.low, high: point.referenceRange?.high },
+        status,
+        date: point.date,
+        labName: point.labName ?? '',
+        labResultId: point.labResultId ?? 0,
+        testValueId: point.testValueId,
+        latestStatus,
+      });
 
-      for (const testValue of sortedValues) {
-        if (testValue.status === 'high' || testValue.status === 'low') {
-          const alert = alertFor(testValue, 'out_of_range', testValue.status);
-          alertList.push({
-            ...alert,
-            // A ratio to the range, so worked out on the recorded values
-            severity: outOfRangeSeverity(testValue.value as number, testValue.status, {
-              low: testValue.referenceRangeLow,
-              high: testValue.referenceRangeHigh,
-            }),
-            message: outOfRangeMessage(
-              biomarkerName,
-              testValue.status,
-              alert.value,
-              alert.unit,
-              alert.referenceRange!
-            ),
-          });
-        }
+      for (const { point } of points) {
+        if (point.status !== 'high' && point.status !== 'low') continue;
+        const alert = alertFor(point, 'out_of_range', point.status);
+        alertList.push({
+          ...alert,
+          // A ratio to the range: the same in any unit the value converts to
+          severity: outOfRangeSeverity(point.value, point.status, alert.referenceRange),
+          message: outOfRangeMessage(
+            biomarkerName,
+            point.status,
+            alert.value,
+            alert.unit,
+            alert.referenceRange!
+          ),
+        });
       }
 
-      // A trend is only worth an alert while it ends out of range, and values
-      // are compared in one unit so a lab's unit change is not read as a trend
-      const latestValue = sortedValues[0];
+      // A trend is only worth an alert while it ends out of range. It is read
+      // on the line the latest value is on, in that line's unit, so a lab's
+      // unit change is not read as a trend and the chart it opens shows it
       const latestOutOfRange =
         latestStatus === 'high' || latestStatus === 'low' ? latestStatus : null;
-      const trendUnit =
-        resolveDisplayUnit(units, unitPreferences[biomarkerKey]) ?? latestValue.unit;
-      const converted = sortedValues.map((tv) => ({
-        date: dateOf(tv),
-        ...convertMeasurement(
-          substanceOf(tv),
-          { value: tv.value as number, unit: tv.unit },
-          trendUnit
-        ),
-      }));
-      // Values that cannot be converted can still be compared as recorded,
-      // when they all share one unit (e.g. TSH always in mUI/L)
-      const recorded = sortedValues.map((tv) => ({ date: dateOf(tv), value: tv.value as number }));
-      const sameRecordedUnit = sortedValues.every(
-        (tv) => tv.unit.trim().toLowerCase() === latestValue.unit.trim().toLowerCase()
-      );
-      const points = converted.every((point) => point.unit === trendUnit)
-        ? converted
-        : sameRecordedUnit
-          ? recorded
-          : null;
-      const trend = latestOutOfRange && points ? detectConsistentDirection(points) : null;
+      const trend = latestOutOfRange ? detectConsistentDirection(latest.line.dataPoints) : null;
       if (latestOutOfRange && trend) {
         alertList.push({
-          ...alertFor(latestValue, 'trend', latestOutOfRange),
+          ...alertFor(latest.point, 'trend', latestOutOfRange),
           severity: 'warning',
           direction: trend.direction,
           message: trendMessage(trend.direction, trend.start, trend.end),
@@ -290,13 +248,10 @@ export function useAlerts(): UseAlertsResult {
       }
 
       // Improvement: was abnormal, now normal
-      if (
-        sortedValues.length >= 2 &&
-        latestStatus === 'normal' &&
-        (sortedValues[1].status === 'high' || sortedValues[1].status === 'low')
-      ) {
+      const previous = points[1]?.point;
+      if (latestStatus === 'normal' && previous && outOfRange(previous)) {
         alertList.push({
-          ...alertFor(latestValue, 'improvement', 'normal'),
+          ...alertFor(latest.point, 'improvement', 'normal'),
           severity: 'positive',
           message: improvementMessage(biomarkerName),
         });
@@ -304,7 +259,7 @@ export function useAlerts(): UseAlertsResult {
     }
 
     return alertList;
-  }, [catalog, results, unitPreferences]);
+  }, [trendLines]);
 
   /**
    * The cards: a cheap step, so acknowledging or dismissing does not rebuild

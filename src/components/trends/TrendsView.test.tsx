@@ -13,6 +13,7 @@ import { useLabResults } from '@hooks/useLabResults';
 import { useAlerts } from '@hooks/useAlerts';
 import { CatalogContext } from '@contexts/useCatalog';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { testKey } from '@data/loinc/display';
 import type { LabResultWithDetails, EnrichedTestValue } from '@hooks/useLabResults';
 
 const catalog = fixtureCatalog();
@@ -524,6 +525,64 @@ describe('TrendsView', () => {
     expect(await screen.findByRole('option', { name: 'Glucose in xyz/dL (1 value)' })).toBeInTheDocument();
   });
 
+  it('opens on the line a linked value is on, not the line of a same-day value', async () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', [
+          createMockTestValue(1, 1, '2345-7', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
+          // The same day, in a unit glucose does not convert to: a line of its own
+          createMockTestValue(2, 1, '2345-7', 'Glucose', 150, 'high', 'xyz/dL', 70, 100),
+        ]),
+        createMockResult(2, '2024-02-15', [
+          createMockTestValue(3, 2, '2345-7', 'Glucose', 110, 'high', 'mg/dL', 70, 100),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(
+      <TrendsView initialBiomarkerKey="2345-7" highlightDate={new Date('2024-01-15')} highlightTestValueId={2} />
+    );
+
+    // The value's own line, not the test's line its same-day value is on
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/choose a biomarker/i)).toHaveValue('Glucose in xyz/dL (1 value)')
+    );
+  });
+
+  it('says which values have no unit, and never "converted to ." for a line with none', async () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [
+        createMockResult(1, '2024-01-15', [
+          createMockTestValue(1, 1, 'unknown:zorblatin', 'Zorblatin', 4, 'normal', ''),
+        ]),
+        createMockResult(2, '2024-02-15', [
+          createMockTestValue(2, 2, 'unknown:zorblatin', 'Zorblatin', 5, 'normal', ''),
+          createMockTestValue(3, 2, 'unknown:zorblatin', 'Zorblatin', 9, 'normal', 'mg/L'),
+        ]),
+      ],
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TrendsView initialBiomarkerKey="unknown:zorblatin" />);
+
+    expect(
+      await screen.findByText(
+        "1 value recorded in mg/L is shown on a line of its own: it cannot be compared with this line's values, which have no unit."
+      )
+    ).toBeInTheDocument();
+  });
+
   it('one line for glucose in mg/dL and mmol/L, in the preferred unit', async () => {
     // Glucose under its mass code in mg/dL and its molar code in mmol/L: one
     // test, so 100 mg/dL and 5.55 mmol/L are both shown as ~100 mg/dL
@@ -601,7 +660,7 @@ describe('TrendsView preferred unit', () => {
   const renderWithGlucose = () => renderWithTwoValues('2345-7', 'Glucose');
 
   it('shows glucose in the stored preferred unit', () => {
-    mockUnitPreferences = { '2345-7': 'mmol/L' };
+    mockUnitPreferences = { [testKey(catalog, '2345-7')]: 'mmol/L' };
     renderWithGlucose();
 
     expect(screen.getByRole('textbox', { name: 'Preferred unit' })).toHaveValue('mmol/L');
@@ -613,7 +672,8 @@ describe('TrendsView preferred unit', () => {
     await userEvent.click(screen.getByRole('textbox', { name: 'Preferred unit' }));
     await userEvent.click(await screen.findByRole('option', { name: 'mmol/L' }));
 
-    expect(mockSetPreferredUnit).toHaveBeenCalledWith('2345-7', 'mmol/L');
+    // Kept under the test's LOINC group
+    expect(mockSetPreferredUnit).toHaveBeenCalledWith(testKey(catalog, '2345-7'), 'mmol/L');
   });
 
   it('tells the user when the unit could not be saved', async () => {

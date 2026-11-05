@@ -4,7 +4,7 @@
  * unit. A value that cannot be converted to its line's unit is not read on
  * that line's scale: it goes on a line of its own, for its unit.
  */
-import { testDisplayName, testUnits, trendCode } from '@data/loinc/display';
+import { testKey, testName, testUnits, trendCode } from '@data/loinc/display';
 import {
   convertMeasurement,
   normalizeUnitForLookup,
@@ -37,8 +37,10 @@ export interface TrendableResult {
 export interface TrendLine {
   /** Identifies the line: its test's trend code, with the unit for a line of its own */
   key: string;
-  /** The test the line is of; notes, targets and the preferred unit are kept under it */
+  /** The code the test is shown under; its notes are filed under it */
   trendCode: string;
+  /** The key the test's preferred unit, target and acknowledged alerts are kept under (see testKey) */
+  testKey: string;
   /** The line's name: the test's name, with the unit for a line of its own */
   name: string;
   /** The test's name alone, for what belongs to the whole test (its reference, its notes) */
@@ -58,6 +60,16 @@ export interface TrendLine {
 
 const OTHER_CLASS = 'Other';
 
+/** One key for a unit however it is spelled or cased, as unitsMatch reads units */
+function unitKey(unit: string): string {
+  return normalizeUnitForLookup(unit).toLowerCase();
+}
+
+/** A line of its own's name: the test's, with the unit its values share */
+function ownLineName(name: string, unit: string): string {
+  return unit ? `${name} in ${unit}` : `${name} with no unit`;
+}
+
 /** Every line, in no order; keyed by TrendLine.key */
 export function buildTrendLines(
   catalog: Catalog,
@@ -69,24 +81,25 @@ export function buildTrendLines(
   for (const result of results) {
     for (const value of result.testValues) {
       if (!isTrendable(value)) continue;
-      const code = trendCode(catalog, value.biomarkerKey);
-      const entries = byTest.get(code);
+      const key = testKey(catalog, value.biomarkerKey);
+      const entries = byTest.get(key);
       if (entries) entries.push({ result, value });
-      else byTest.set(code, [{ result, value }]);
+      else byTest.set(key, [{ result, value }]);
     }
   }
 
   const lines = new Map<string, TrendLine>();
-  for (const [code, entries] of byTest) {
+  for (const [key, entries] of byTest) {
     entries.sort((a, b) => a.result.date.getTime() - b.result.date.getTime());
+    const code = trendCode(catalog, key);
     const test = catalog.test(code);
     const units = testUnits(catalog, code);
-    const name = testDisplayName(catalog, { biomarkerKey: code, rawText: entries[0].value.rawText });
+    const name = testName(catalog, key, entries[0].value.rawText);
     const classLabel = test ? catalog.classLabel(test.classCode) : OTHER_CLASS;
 
     // The preferred unit when the test offers it, else its standard unit;
     // a test HemoIO has no unit for keeps its first unit
-    const lineUnit = resolveDisplayUnit(units, unitPreferences[code]) ?? entries[0].value.unit;
+    const lineUnit = resolveDisplayUnit(units, unitPreferences[key]) ?? entries[0].value.unit;
     const byUnit = new Map<string, TrendDataPoint[]>();
     let main: TrendDataPoint[] = [];
     for (const { result, value } of entries) {
@@ -113,10 +126,9 @@ export function buildTrendLines(
       if (unitsMatch(converted.unit, lineUnit)) {
         main.push({ ...point, unit: lineUnit });
       } else {
-        const unitKey = normalizeUnitForLookup(converted.unit);
-        const points = byUnit.get(unitKey);
+        const points = byUnit.get(unitKey(converted.unit));
         if (points) points.push(point);
-        else byUnit.set(unitKey, [point]);
+        else byUnit.set(unitKey(converted.unit), [point]);
       }
     }
 
@@ -132,6 +144,7 @@ export function buildTrendLines(
     lines.set(code, {
       key: code,
       trendCode: code,
+      testKey: key,
       name,
       testName: name,
       unit,
@@ -146,11 +159,12 @@ export function buildTrendLines(
     });
     for (const points of others) {
       const otherUnit = points[0].unit;
-      const key = `${code} in ${normalizeUnitForLookup(otherUnit)}`;
-      lines.set(key, {
-        key,
+      const lineKey = ownLineName(code, unitKey(otherUnit));
+      lines.set(lineKey, {
+        key: lineKey,
         trendCode: code,
-        name: `${name} in ${otherUnit}`,
+        testKey: key,
+        name: ownLineName(name, otherUnit),
         testName: name,
         unit: otherUnit,
         unitOptions: [],

@@ -66,6 +66,14 @@ Feature: Timeline View
     Then I should be navigated to the trend view for glucose
     And the data point from "2024-01-15" should be highlighted
 
+  Scenario: Open the trend of a value on a line of its own
+    Given I have a lab result with a hemoglobin value in g/dL and one in a unit that cannot be converted to g/dL
+    When I navigate to the Timeline view
+    And I expand the lab result card
+    And I click the biomarker name of the value in the other unit
+    Then I should be navigated to the trend of hemoglobin in that unit
+    And that value should be highlighted
+
   Scenario: Biomarker description stays available on hover
     Given I have a lab result with a glucose value
     When I navigate to the Timeline view

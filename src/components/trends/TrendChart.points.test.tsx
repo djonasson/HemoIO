@@ -47,6 +47,16 @@ describe('TrendChart points', () => {
     expect(point('98 mg/dL').getAttribute('aria-label')).not.toMatch(/notes/);
   });
 
+  it('highlights the linked value itself, not every point of its day', () => {
+    const sameDay = [
+      ...POINTS,
+      { date: new Date('2024-01-15T15:00:00Z'), value: 130, unit: 'mg/dL', status: 'high' as const, testValueId: 7 },
+    ];
+    renderChart({ dataPoints: sameDay, highlightDate: new Date('2024-01-15'), highlightTestValueId: 7 });
+    expect(point('130 mg/dL')).toHaveAttribute('aria-current', 'true');
+    expect(point('125 mg/dL')).not.toHaveAttribute('aria-current');
+  });
+
   it('makes points buttons that open with click, Enter and Space', async () => {
     const onPointSelect = vi.fn();
     renderChart({ onPointSelect });

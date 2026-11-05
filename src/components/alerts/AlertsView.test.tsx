@@ -67,7 +67,7 @@ describe('AlertsView', () => {
 
     await userEvent.click(screen.getByRole('article', { name: /^Alert for Glucose:/ }));
 
-    expect(onOpenTrend).toHaveBeenCalledWith('glucose', date);
+    expect(onOpenTrend).toHaveBeenCalledWith('glucose', date, undefined);
   });
 
   it("opens the trend at an earlier result's own date", async () => {
@@ -88,6 +88,6 @@ describe('AlertsView', () => {
     await userEvent.click(within(list).getByRole('button'));
 
     expect(onOpenTrend).toHaveBeenCalledTimes(1);
-    expect(onOpenTrend).toHaveBeenCalledWith('glucose', earlier);
+    expect(onOpenTrend).toHaveBeenCalledWith('glucose', earlier, undefined);
   });
 });

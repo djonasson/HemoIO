@@ -143,6 +143,19 @@ Feature: Alerts
     Given I have an out-of-range value of a LOINC test HemoIO has no name for
     When I navigate to the Alerts view
     Then its card should name the test by its LOINC short name
+    And that name should not say mass or moles when the test has codes of both
+
+  Scenario: An alert states its value as Trends shows it
+    Given I have an out-of-range glucose value recorded in mmol/L
+    When I navigate to the Alerts view
+    Then its card should state the value in mg/dL, the unit Trends shows glucose in
+
+  Scenario: An alert about a value on a line of its own opens that line
+    Given I have hemoglobin values in g/dL
+    And on the same day an out-of-range hemoglobin value in a unit that cannot be converted to g/dL
+    When I click the alert about the value in the other unit
+    Then I should be navigated to the trend of hemoglobin in that unit
+    And that value should be highlighted, not the value in g/dL of the same day
 
   Scenario: Alert accessibility
     Given I have abnormal value alerts

@@ -341,7 +341,8 @@ test.describe('Settings Page', () => {
           { day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL' },
           { day: '2024-02-20', biomarker: { key: '14749-6', name: 'Glucose' }, value: 6, unit: 'mmol/L' },
         ],
-        preferences({ '2345-7': { low: 70, high: 90 } })
+        // Kept under glucose's LOINC group, LG49881-2 (2345-7 and 14749-6)
+        preferences({ 'LG49881-2': { low: 70, high: 90 } })
       );
 
       await goToDictionary(page);
@@ -365,7 +366,8 @@ test.describe('Settings Page', () => {
       await seedMeasurements(
         page,
         [{ day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL' }],
-        preferences({ '2339-0': { high: 120 } })
+        // Kept under blood glucose's LOINC group, LG49883-8 (2339-0 in mg/dL and mmol/L)
+        preferences({ 'LG49883-8': { high: 120 } })
       );
 
       await openSettingsTab(page, 'Personal Targets');
@@ -373,7 +375,7 @@ test.describe('Settings Page', () => {
         page.getByRole('button', { name: 'Set personal target for White Blood Cell Count', exact: true })
       ).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Clear personal target for Glucose Bld-mCnc', exact: true })
+        page.getByRole('button', { name: 'Clear personal target for Glucose Bld', exact: true })
       ).toBeVisible();
     });
   });

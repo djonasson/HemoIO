@@ -7,6 +7,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useAlerts, type BiomarkerAlert, type UseAlertsResult } from './useAlerts';
 import { useLabResults } from './useLabResults';
 import type { LabResultWithDetails, EnrichedTestValue } from './useLabResults';
+import { fixtureCatalog } from '@/test/loincFixture';
+import { testKey } from '@data/loinc/display';
 
 // Mock useLabResults
 vi.mock('./useLabResults', () => ({
@@ -39,6 +41,11 @@ vi.mock('@contexts/useCatalog', async () => {
   const catalog = fixtureCatalog();
   return { useCatalog: () => catalog };
 });
+
+/** The key a test's preferences and acknowledgements are kept under, as the app keeps them */
+const catalog = fixtureCatalog();
+const GLUCOSE_KEY = testKey(catalog, '2345-7');
+const HEMOGLOBIN_KEY = testKey(catalog, '718-7');
 
 function createMockTestValue(
   id: number,
@@ -96,7 +103,7 @@ describe('useAlerts', () => {
 
   it('keeps a trend whose values were recorded in two other units than the preferred one', () => {
     // No direct mmol/L → g/L factor exists; the values go through g/dL
-    mockUnitPreferences = { '718-7': 'g/L' };
+    mockUnitPreferences = { [HEMOGLOBIN_KEY]: 'g/L' };
     const values: Array<[number, string]> = [
       [17, 'g/dL'],
       [10.9, 'mmol/L'],
@@ -123,7 +130,7 @@ describe('useAlerts', () => {
   });
 
   it('reports an out-of-range value in the preferred unit', () => {
-    mockUnitPreferences = { '2345-7': 'mmol/L' };
+    mockUnitPreferences = { [GLUCOSE_KEY]: 'mmol/L' };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, {
@@ -256,6 +263,7 @@ describe('useAlerts', () => {
   it('should generate alert for low value', () => {
     const testValue = createMockTestValue(1, 1, {
       value: 10,
+      unit: 'g/dL',
       status: 'low',
       referenceRangeLow: 12,
       rawText: 'Hemoglobin',
@@ -277,7 +285,7 @@ describe('useAlerts', () => {
     expect(alertsOf(result.current)).toHaveLength(1);
     expect(alertsOf(result.current)[0].status).toBe('low');
     expect(alertsOf(result.current)[0].message).toBe(
-      'Hemoglobin is low at 10 mg/dL (reference ≥ 12 mg/dL)'
+      'Hemoglobin is low at 10 g/dL (reference ≥ 12 g/dL)'
     );
     expect(alertsOf(result.current)[0].severity).toBe('warning');
   });
@@ -357,7 +365,7 @@ describe('useAlerts', () => {
       result.current.dismissGroup(result.current.groups[0]);
     });
 
-    expect(alertState.dismiss).toHaveBeenCalledWith('2345-7', new Date('2024-03-10'));
+    expect(alertState.dismiss).toHaveBeenCalledWith(GLUCOSE_KEY, new Date('2024-03-10'));
   });
 
   it('leaves dismissed cards out, and out of the count', () => {
@@ -366,7 +374,7 @@ describe('useAlerts', () => {
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
       ]),
     ]);
-    alertState.dismissedThrough = { '2345-7': new Date('2024-01-15') };
+    alertState.dismissedThrough = { [GLUCOSE_KEY]: new Date('2024-01-15') };
 
     const { result } = renderHook(() => useAlerts());
 
@@ -397,8 +405,9 @@ describe('useAlerts', () => {
 
     expect(result.current.groups).toHaveLength(1);
     const [card] = result.current.groups;
-    expect(card).toMatchObject({ biomarkerKey: '2345-7', resultCount: 2 });
-    expect(card.headline).toMatchObject({ biomarkerName: 'Glucose', value: 7.5, unit: 'mmol/L' });
+    expect(card).toMatchObject({ biomarkerKey: GLUCOSE_KEY, resultCount: 2 });
+    // In the unit Trends shows the test in, as the chart the card opens does
+    expect(card.headline).toMatchObject({ biomarkerName: 'Glucose', value: 135, unit: 'mg/dL' });
   });
 
   it('should group alerts by biomarker', () => {
@@ -519,8 +528,8 @@ describe('useAlerts', () => {
 
     const resultsFor = (key: string) =>
       result.current.groups.find((group) => group.biomarkerKey === key)?.resultCount;
-    expect(resultsFor('2345-7')).toBe(2);
-    expect(resultsFor('718-7')).toBe(1);
+    expect(resultsFor(GLUCOSE_KEY)).toBe(2);
+    expect(resultsFor(HEMOGLOBIN_KEY)).toBe(1);
   });
 
   it('should detect improvement when value returns to normal', () => {
@@ -624,7 +633,7 @@ describe('useAlerts', () => {
     expect(result.current.unacknowledgedCount).toBe(outOfRangeAlerts.length);
   });
   it('counts results acknowledged through their date as not new, and newer ones as new', async () => {
-    alertState.acknowledgedThrough = { '2345-7': new Date('2024-02-01') };
+    alertState.acknowledgedThrough = { [GLUCOSE_KEY]: new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
@@ -661,7 +670,7 @@ describe('useAlerts', () => {
   });
 
   it('counts the cards acknowledgements hide', async () => {
-    alertState.acknowledgedThrough = { '2345-7': new Date('2024-02-01') };
+    alertState.acknowledgedThrough = { [GLUCOSE_KEY]: new Date('2024-02-01') };
     mockResults([
       createMockResult(1, '2024-01-15', [
         createMockTestValue(1, 1, { value: 150, status: 'high', referenceRangeHigh: 100 }),
@@ -706,7 +715,7 @@ describe('useAlerts', () => {
 
     await result.current.acknowledgeGroup(result.current.groups[0]);
 
-    expect(alertState.acknowledge).toHaveBeenCalledWith('2345-7', new Date('2024-03-10'));
+    expect(alertState.acknowledge).toHaveBeenCalledWith(GLUCOSE_KEY, new Date('2024-03-10'));
   });
 
   it('raises a trend alert for four consecutive decreasing values', async () => {
@@ -754,6 +763,28 @@ describe('useAlerts', () => {
 
     const trend = alertsOf(result.current).find((a) => a.type === 'trend');
     expect(trend).toMatchObject({ direction: 'increasing' });
+  });
+
+  it("reads a trend on the line Trends draws the latest value on, apart from values on a line of their own", () => {
+    // An early value in a unit glucose does not convert to is on a line of its own
+    mockResults([
+      createMockResult(9, '2023-12-10', [
+        createMockTestValue(9, 9, { value: 3, unit: 'mg/g', status: 'high', referenceRangeHigh: 2 }),
+      ]),
+      ...[110, 120, 130, 140].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, { value, status: 'high', referenceRangeHigh: 100 }),
+        ])
+      ),
+    ]);
+
+    const { result } = renderHook(() => useAlerts());
+
+    const trend = alertsOf(result.current).find((a) => a.type === 'trend');
+    expect(trend).toMatchObject({ direction: 'increasing', value: 140, unit: 'mg/dL', testValueId: 4 });
+    // Each alert names the value it is about, so Trends opens the line it is on
+    const own = alertsOf(result.current).find((a) => a.unit === 'mg/g');
+    expect(own).toMatchObject({ type: 'out_of_range', testValueId: 9 });
   });
 
   it('does not raise a trend alert for only three consecutive values', () => {

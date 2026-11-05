@@ -70,9 +70,9 @@ export interface TestValue {
 // User's display preferences
 export interface UserPreferences {
   id?: number;
-  unitPreferences: Record<string, string>; // trend code -> preferred unit
-  personalTargets: Record<string, { low?: number; high?: number }>; // trend code -> target range
-  /** Per trend code: alerts dated on or before this ISO date are acknowledged */
+  unitPreferences: Record<string, string>; // test key (see testKey) -> preferred unit
+  personalTargets: Record<string, { low?: number; high?: number }>; // test key -> target range
+  /** Per test key: alerts dated on or before this ISO date are acknowledged */
   acknowledgedAlerts?: Record<string, string>;
   /** The tests the user taught: a lab's wording and unit (learned key) -> LOINC code or unknown key */
   learnedTests?: Record<string, string>;

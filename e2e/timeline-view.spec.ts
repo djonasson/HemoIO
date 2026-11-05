@@ -336,6 +336,40 @@ test.describe('Timeline with Data', () => {
     ).toHaveAttribute('aria-current', 'true');
   });
 
+  // Scenario: Open the trend of a value on a line of its own
+  test('opens the line of its own a value is on, highlighting that value', async ({ page }) => {
+    // Two values in the other unit, so its line is drawn as a chart
+    const jan = labResult(2, '2024-01-15', 'LabCorp');
+    const mar = labResult(1, '2024-03-10', 'Quest Diagnostics');
+    await seedLabData(page, {
+      labResults: [mar, jan],
+      testValues: [
+        ...testValues(jan, [{ biomarker: BIOMARKERS.HEMOGLOBIN, value: 20, unit: 'xyz/L', low: 12, high: 17.5 }], 3),
+        ...testValues(
+        mar,
+        [
+          { biomarker: BIOMARKERS.HEMOGLOBIN, value: 14, low: 12, high: 17.5 },
+          // A unit hemoglobin does not convert to: a line of its own
+          { biomarker: BIOMARKERS.HEMOGLOBIN, value: 30, unit: 'xyz/L', low: 12, high: 17.5 },
+        ],
+        1
+        ),
+      ],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-03-10');
+    await card
+      .getByRole('row', { name: /^Hemoglobin: 30 xyz\/L,/ })
+      .getByRole('button', { name: 'Hemoglobin, open trend', exact: true })
+      .click();
+
+    await expect(biomarkerSelect(page)).toHaveValue(/^Hemoglobin in xyz\/L \(/);
+    await expect(
+      page.getByRole('main').locator('[aria-label="Mar 10, 24: 30 xyz/L (high)"]')
+    ).toHaveAttribute('aria-current', 'true');
+  });
+
   // Scenario: Biomarker description stays available on hover
   test("keeps the test's description on hover", async ({ page }) => {
     const result = labResult(1, '2024-01-15', 'Quest Diagnostics');

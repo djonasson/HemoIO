@@ -53,6 +53,8 @@ export interface TrendChartProps {
   showLegend?: boolean;
   /** Date of the data point to highlight (e.g. opened from an alert) */
   highlightDate?: Date;
+  /** The value whose point to highlight; given, the date is not read */
+  highlightTestValueId?: number;
   /** Preview of the newest note per test value, for points that have notes */
   notePreviews?: Record<number, string>;
   /** Called when a data point is clicked or activated from the keyboard */
@@ -126,6 +128,7 @@ export function TrendChart({
   height = 300,
   showLegend = false,
   highlightDate,
+  highlightTestValueId,
   notePreviews,
   onPointSelect,
 }: TrendChartProps) {
@@ -318,9 +321,11 @@ export function TrendChart({
                         : '#868e96';
 
                 const highlighted =
-                  highlightDate !== undefined &&
-                  payload.date instanceof Date &&
-                  payload.date.toDateString() === highlightDate.toDateString();
+                  highlightTestValueId !== undefined
+                    ? payload.testValueId === highlightTestValueId
+                    : highlightDate !== undefined &&
+                      payload.date instanceof Date &&
+                      payload.date.toDateString() === highlightDate.toDateString();
                 const preview =
                   payload.testValueId !== undefined
                     ? notePreviews?.[payload.testValueId]

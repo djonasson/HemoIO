@@ -20,8 +20,8 @@ export interface TimelineViewProps {
   onNavigateToImport: () => void;
   /** Lab result to open and scroll to, e.g. when coming from a note */
   focusLabResultId?: number;
-  /** Open a test's trend at a result's date */
-  onOpenTrend?: (biomarkerKey: string, date: Date) => void;
+  /** Open a test's trend on a result's value */
+  onOpenTrend?: (biomarkerKey: string, date: Date, testValueId?: number) => void;
 }
 
 /**
