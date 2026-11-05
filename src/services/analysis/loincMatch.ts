@@ -6,7 +6,7 @@
  */
 import { getAddon, TEST_ADDONS } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
-import { toUcum, ucumProperties } from '@services/units/ucum';
+import { isCatalyticUnit, toUcum, ucumProperties } from '@services/units/ucum';
 import { byRank, isDayUrine, isPanel, type Catalog, type CatalogTest, type ScoredTest } from '@data/loinc/catalog';
 
 /** A value as the report prints it */
@@ -93,12 +93,17 @@ const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
  * which splitSamplePrefix reads. "Blood" is said loosely of serum tests
  * too, so it only makes blood the likelier.
  */
-const BLOOD_HINT = /\b(?:blood|sangue|ematic[oaie]|ematiche)\b/i;
+const SERUM_WORDS = 'serum|siero|sieric[oaie]|sieriche';
+const PLASMA_WORDS = 'plasma|plasmatic[oaie]|plasmatiche';
+// The red cells: "Folati eritrocitari"
+const RED_CELL_WORDS = 'erythrocytes?|eritrocitari[oae]?';
+const BLOOD_WORDS = 'blood|sangue|ematic[oaie]|ematiche';
+const wordsOf = (words: string, flags: string): RegExp => new RegExp(`\\b(?:${words})\\b`, flags);
+const BLOOD_HINT = wordsOf(BLOOD_WORDS, 'i');
 const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
-  [/\b(?:serum|siero|sieric[oaie]|sieriche)\b/i, ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
-  [/\bplasma(?:tic[oaie]|tiche)?\b/i, ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
-  // The red cells: "Folati eritrocitari"
-  [/\b(?:erythrocytes?|eritrocitari[oae]?|eritrocitarie)\b/i, ['RBC']],
+  [wordsOf(SERUM_WORDS, 'i'), ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
+  [wordsOf(PLASMA_WORDS, 'i'), ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
+  [wordsOf(RED_CELL_WORDS, 'i'), ['RBC']],
   [BLOOD_HINT, ['Bld', 'RBC', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld' && system !== 'RBC')]],
 ];
 
@@ -106,8 +111,7 @@ const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
  * Words naming serum, plasma, red cells or blood in a printed name:
  * "Glucosio sangue", "Calcium, Blood", "Piombo ematico", "Folati eritrocitari"
  */
-const SAMPLE_WORDS =
-  /\b(?:serum|siero|sieric[oaie]|sieriche|plasma|plasmatic[oaie]|plasmatiche|blood|sangue|ematic[oaie]|ematiche|erythrocytes?|eritrocitari[oae]?|eritrocitarie)\b/gi;
+const SAMPLE_WORDS = wordsOf([SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, BLOOD_WORDS].join('|'), 'gi');
 /**
  * A substance said of blood by its ending: "Uricemia", "Colesterolemia".
  * Blood is said loosely of serum tests too, as by a blood word.
@@ -143,8 +147,8 @@ const ANTIBODY_WORD = /\(?\banticorp[oi]\b\)?/iu;
 export function readAntibody(name: string): string {
   const before = name.match(ANTIBODY_BEFORE);
   if (before) return `${name.slice(before[0].length).trim()} ab`;
-  if (ANTIBODY_WORD.test(name)) return `${name.replace(ANTIBODY_WORD, ' ').replace(/\s+/g, ' ').trim()} ab`;
-  return name;
+  const rest = name.replace(ANTIBODY_WORD, ' ');
+  return rest === name ? name : `${squeeze(rest)} ab`;
 }
 
 /** Words saying a count is one, not a share: "Neutrophil, Absolute", "Neutrofili assoluti" */
@@ -152,8 +156,13 @@ const COUNT_WORDS = /[\s,;:-]*\b(?:absolute|assolut[oiae]|abs)\b\.?/giu;
 
 /** A name without the words saying its value is a count, if more is left */
 function withoutCountWords(name: string): string {
-  const rest = name.replace(COUNT_WORDS, ' ').replace(/\s+/g, ' ').trim();
+  const rest = squeeze(name.replace(COUNT_WORDS, ' '));
   return /\p{L}/u.test(rest) ? rest : name;
+}
+
+/** Text with its runs of spaces made one, and none at its ends */
+function squeeze(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** Greek letters as their names: "α1-antitripsina", "β2-microglobulina" */
@@ -169,9 +178,8 @@ const GREEK_LETTERS: Readonly<Record<string, string>> = {
  * ("a1-antitripsina", "b-2 microglobulina", "17-a-idrossiprogesterone").
  */
 export function spellGreek(name: string): string {
-  return name
-    .replace(/(^|[^\p{L}])([αβγδκλ])(?=[^\p{L}]|$)-?/gu, (_all, start: string, letter: string) => `${start}${GREEK_LETTERS[letter]}-`)
-    .replace(/(^|[\s(-])([abg])(?:-|(?=\d))/gu, (_all, start: string, letter: string) => `${start}${GREEK_LETTERS[letter]}-`);
+  const spelled = (_all: string, letter: string): string => `${GREEK_LETTERS[letter]}-`;
+  return name.replace(/(?<!\p{L})([αβγδκλ])(?!\p{L})-?/gu, spelled).replace(/(?<=^|[\s(-])([abg])(?:-|(?=\d))/gu, spelled);
 }
 
 /** The name without a leading sample prefix, and the systems the prefix means */
@@ -255,9 +263,6 @@ function fitsDescribedUnit(catalog: Catalog, test: CatalogTest, { properties, uc
     .some((code) => properties.includes(catalog.test(code)?.property ?? ''));
 }
 
-/** A unit of UCUM's enzyme unit: "U/L", "mU/mL", "U/g{Hb}" */
-const ENZYME_UNIT = /(?<![A-Za-z[])[kmu]?U(?![A-Za-z\]])/;
-
 /**
  * Whether a test's property fits the unit as LOINC measures the test.
  * International units per volume are read as catalytic only because labs
@@ -267,7 +272,7 @@ const ENZYME_UNIT = /(?<![A-Za-z[])[kmu]?U(?![A-Za-z\]])/;
 function fitsProperty(test: CatalogTest, { properties, ucum }: Scope): boolean {
   if (!properties.includes(test.property)) return false;
   if (test.property !== 'CCnc' || !ucum?.includes('[IU]') || test.units.length === 0) return true;
-  return test.units.some((unit) => ENZYME_UNIT.test(unit) || unit.includes('[IU]'));
+  return test.units.some((unit) => isCatalyticUnit(unit) || unit.includes('[IU]'));
 }
 
 /** Tests whose names fit, of the given samples, and of the unit's properties or described in it, best first */
@@ -318,15 +323,16 @@ function withSearchesKept(catalog: Catalog): Catalog {
  */
 function nameForms(name: string): { form: string; left: string; part?: true }[] {
   const brackets = [...name.matchAll(/\(([^()]*)\)/g)].map(([, inner]) => inner.trim());
-  const outside = name.replace(/\([^()]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  const outside = squeeze(name.replace(/\([^()]*\)/g, ' '));
   const dashed = outside.split(/\s+[-–]\s+/);
-  const parts = [...brackets, ...(dashed.length > 1 ? dashed : [])];
+  const dashedParts = dashed.length > 1 ? dashed : [];
+  const parts = [...brackets, ...dashedParts];
   const forms = [
     { form: name, left: '' },
     { form: outside, left: brackets.join(' ') },
     ...parts.map((part, i) => ({
       form: part,
-      left: [...(dashed.length > 1 ? [] : [outside]), ...parts.filter((_, j) => j !== i)].join(' '),
+      left: [...(dashedParts.length ? [] : [outside]), ...parts.filter((_, j) => j !== i)].join(' '),
       part: true as const,
     })),
   ];
@@ -346,10 +352,12 @@ function nameForms(name: string): { form: string; left: string; part?: true }[] 
 function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
   const best = new Map<string, Found>();
   for (const { form, left, part } of nameForms(name)) {
-    const carriers = left ? new Set(findTests(catalog, left, scope).map(({ test }) => test.code)) : undefined;
+    // Searched only once a test is found that the rest may rule out
+    let carriers: Set<string> | undefined;
     for (const found of findTests(catalog, form, scope)) {
-      if (carriers?.size && !carriers.has(found.test.code)) continue;
       if (part && found.score < 1) continue;
+      if (left) carriers ??= new Set(findTests(catalog, left, scope).map(({ test }) => test.code));
+      if (carriers?.size && !carriers.has(found.test.code)) continue;
       const known = best.get(found.test.code);
       if (!known || found.score > known.score) best.set(found.test.code, found);
     }
@@ -439,9 +447,10 @@ function standingOut(catalog: Catalog, fits: Found[]): Found | undefined {
  * of serum tests too, so a blood word alone leaves the sample open.
  */
 function sampleInName(name: string): { name: string; systems: string[]; loosely: boolean } | undefined {
-  const ending = name.search(BLOOD_ENDING) === -1 ? [] : ['sangue'];
-  const words = [...(name.match(SAMPLE_WORDS) ?? []), ...ending].join(' ');
-  const [pattern, systems] = SAMPLE_HINTS.find(([sampleWords]) => sampleWords.test(words)) ?? [];
+  const words = name.match(SAMPLE_WORDS)?.join(' ') ?? '';
+  const saysBlood = name.search(BLOOD_ENDING) !== -1;
+  const [pattern, systems] =
+    SAMPLE_HINTS.find(([sampleWords]) => sampleWords.test(words) || (saysBlood && sampleWords === BLOOD_HINT)) ?? [];
   if (!systems) return undefined;
   const rest = name
     .replace(SAMPLE_WORDS, ' ')
@@ -624,12 +633,12 @@ export function matchLocally(
   const whole = spellGreek(value.name.trim()).replace(/(?<=^|\s)(\p{L}) (\d{1,2})(?=\s|$)/gu, '$1$2');
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
-  const isLoincName = (): boolean => catalog.named(whole).length > 0;
-  const split = stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
-  const namesSample = split.name.search(SAMPLE_WORDS) !== -1 || split.name.search(BLOOD_ENDING) !== -1;
-  const worded = split.systems || !namesSample || isLoincName() ? undefined : sampleInName(split.name);
+  const isLoincName = catalog.named(whole).length > 0;
+  const split = stripPrefix(whole).name !== whole && isLoincName ? { name: whole } : splitSamplePrefix(whole);
+  const worded = split.systems || isLoincName ? undefined : sampleInName(split.name);
+  const unworded = worded?.name ?? split.name;
   // An antibody as LOINC names it, unless the name is one LOINC knows ("Anti-Xa")
-  const read = isLoincName() ? (worded?.name ?? split.name) : readAntibody(worded?.name ?? split.name);
+  const read = isLoincName ? unworded : readAntibody(unworded);
   // "Absolute" only says the count its unit says: "Neutrophil, Absolute" in K/µL
   const name = properties.includes('NCnc') ? withoutCountWords(read) : read;
   let { systems, sample } = sampleOf(split, worded, value.specimenHint, isPerDay(ucum));

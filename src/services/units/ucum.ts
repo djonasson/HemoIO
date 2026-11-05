@@ -117,6 +117,11 @@ function isShare(ucum: string): boolean {
 /** UCUM's enzyme unit, with or without a prefix: "U/L", "mU/mL", "kU/L" */
 const CATALYTIC_U = /(?<![A-Za-z[])[a-zµ]?U(?![A-Za-z\]])/;
 
+/** Whether a UCUM unit is of the enzyme unit: "U/L", "mU/mL", "U/g{Hb}", not "[IU]/L" */
+export function isCatalyticUnit(unit: string): boolean {
+  return CATALYTIC_U.test(unit);
+}
+
 /**
  * A quantity of one cell (an "entitic" property: MCV, MCH, MCHC) is
  * printed in the units a cell's size is: fL, pg and g/dL or g/L. Read in

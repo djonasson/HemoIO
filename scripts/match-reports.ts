@@ -125,15 +125,18 @@ async function valuesToMatch(): Promise<SourcedValue[]> {
 it('matches the printed values of real reports locally', async () => {
   const resultsFile = outsideRepository('MATCH_ROWS_OUT');
   const catalog = await loadCatalog();
+  const zero = (): Record<LocalMatch['status'], number> => ({ match: 0, ambiguous: 0, none: 0 });
   const counts = new Map<string, Record<LocalMatch['status'], number>>();
+  const total = zero();
   const lines: string[] = [];
   const results: unknown[] = [];
   let group: string | undefined;
   for (const value of await valuesToMatch()) {
     if (value.group !== group) lines.push(`== ${(group = value.group)}`);
     const match = matchLocally(catalog, value);
-    const count = counts.get(value.group) ?? { match: 0, ambiguous: 0, none: 0 };
+    const count = counts.get(value.group) ?? zero();
     count[match.status]++;
+    total[match.status]++;
     counts.set(value.group, count);
     const top = match.candidates
       .slice(0, 3)
@@ -149,10 +152,8 @@ it('matches the printed values of real reports locally', async () => {
       candidates: match.candidates.map(({ code, name, score }) => ({ code, name, score })),
     });
   }
-  const total = { match: 0, ambiguous: 0, none: 0 };
   for (const [name, count] of counts) {
     lines.push(`${name}: match ${count.match}, ambiguous ${count.ambiguous}, none ${count.none}`);
-    for (const status of ['match', 'ambiguous', 'none'] as const) total[status] += count[status];
   }
   lines.push(`match ${total.match}, ambiguous ${total.ambiguous}, none ${total.none}`);
   process.stdout.write(`${lines.join('\n')}\n`);
