@@ -61,7 +61,7 @@ function escapeCSV(value: string | number | boolean | undefined | null): string 
   const stringValue = String(value);
 
   // If the value contains comma, quote, or newline, wrap in quotes and escape internal quotes
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+  if (/[,"\n\r]/.test(stringValue)) {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
 
@@ -75,6 +75,29 @@ function escapeCSV(value: string | number | boolean | undefined | null): string 
  */
 function asText(value: string): string {
   return `="${value}"`;
+}
+
+/** A LOINC code: digits, a hyphen and its check digit */
+const LOINC_CODE = /^\d{1,7}-\d$/;
+
+/** Characters a spreadsheet reads a field starting with as a formula */
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+/** A plain number, such as -5 or 1.2e3, which a spreadsheet reads as a number, not a formula */
+const PLAIN_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
+/**
+ * A text field a spreadsheet does not run: text from a report or a backup
+ * starting as a formula would ("=HYPERLINK(...)") is prefixed with ' so it
+ * reads as text (OWASP's advice on CSV injection). Plain numbers stay numbers.
+ */
+function textField(value: string): string {
+  return FORMULA_START.test(value) && !PLAIN_NUMBER.test(value.trim()) ? `'${value}` : value;
+}
+
+/** The LOINC column: a code as text a spreadsheet keeps; any other key as plain text */
+function loincField(key: string): string {
+  return LOINC_CODE.test(key) ? asText(key) : textField(key);
 }
 
 /**
@@ -105,12 +128,12 @@ function buildRow(
 ): string[] {
   const row = [
     formatDate(labResult.date, options.dateFormat),
-    labResult.labName,
-    biomarkerName,
+    textField(labResult.labName),
+    textField(biomarkerName),
     // The value's LOINC code; none for a value saved as not a LOINC test
-    isUnknownKey(testValue.biomarkerKey) ? '' : asText(testValue.biomarkerKey),
-    String(testValue.value),
-    testValue.unit,
+    isUnknownKey(testValue.biomarkerKey) ? '' : loincField(testValue.biomarkerKey),
+    textField(String(testValue.value)),
+    textField(testValue.unit),
   ];
 
   if (options.includeReferenceRanges !== false) {

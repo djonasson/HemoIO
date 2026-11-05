@@ -242,6 +242,38 @@ describe('csvExport', () => {
       expect(row.split(',')[3]).toBe('"=""2345-7"""');
     });
 
+    it('writes a key that is not a LOINC code as plain text, so it cannot break out of ="…"', () => {
+      const data = createMockExportData();
+      data[0].testValues[0].biomarkerKey = '1"&HYPERLINK("http://x")&"';
+      const [, row] = exportToCsv(data).split('\n');
+      expect(row).toContain(',"1""&HYPERLINK(""http://x"")&""",');
+      expect(row).not.toContain('=');
+    });
+
+    it('neutralises text fields a spreadsheet would read as a formula', () => {
+      for (const start of ['=', '+', '-', '@', '\t', '\r']) {
+        const data = createMockExportData();
+        data[0].labResult.labName = `${start}SUM(A1)`;
+        data[0].biomarkerNames.set(data[0].testValues[0].biomarkerKey, `${start}cmd`);
+        data[0].testValues[0].unit = `${start}x`;
+        data[0].testValues[0].value = `${start}y`;
+        const [, row] = exportToCsv(data).split('\n');
+        const fields = row.replace(/"/g, '');
+        expect(fields).toContain(`'${start}SUM(A1)`);
+        expect(fields).toContain(`'${start}cmd`);
+        expect(fields).toContain(`'${start}x`);
+        expect(fields).toContain(`'${start}y`);
+      }
+    });
+
+    it('leaves numbers such as -5 as numbers', () => {
+      const data = createMockExportData();
+      data[0].testValues[0].value = -5;
+      data[0].testValues[0].referenceRangeLow = -10;
+      const [, row] = exportToCsv(data).split('\n');
+      expect(row).toContain(',-5,mg/dL,-10,');
+    });
+
     it('should handle unknown biomarker names', () => {
       const data = createMockExportData();
       data[0].testValues[0].biomarkerKey = 'unknown:zorb'; // No name given
