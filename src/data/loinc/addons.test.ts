@@ -32,6 +32,12 @@ describe('TEST_ADDONS', () => {
     }
   );
 
+  it.each(ADDONS)('writes every unit of %s so that toUcum reads it', (_code, addon) => {
+    const units = [addon.canonicalUnit, addon.referenceRange?.unit, ...(addon.alternativeUnits ?? [])];
+    const unread = units.filter((unit): unit is string => unit !== undefined && toUcum(unit) === null);
+    expect(unread).toEqual([]);
+  });
+
   it.each(ADDONS.filter(([, addon]) => addon.referenceRange && addon.canonicalUnit))(
     'gives %s its reference range in its standard unit',
     (_code, addon) => {
