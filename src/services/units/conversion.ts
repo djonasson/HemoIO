@@ -5,13 +5,7 @@
  * conversion is for a substance, named by its LOINC component ("Glucose").
  */
 
-import {
-  conversionsOf,
-  findConversionDefinition,
-  getConversion,
-  normalizeUnitForLookup,
-  type SubstanceRef,
-} from './definitions';
+import { getConversion, normalizeUnitForLookup, type SubstanceRef } from './definitions';
 
 /**
  * Result of a unit conversion
@@ -27,15 +21,6 @@ export interface ConversionResult {
   targetUnit: string;
   /** Number of decimal places used */
   precision: number;
-}
-
-/**
- * Reference range with units
- */
-export interface ReferenceRange {
-  low?: number;
-  high?: number;
-  unit: string;
 }
 
 /**
@@ -138,9 +123,6 @@ export function convertValue(
 
   if (conversion === undefined) {
     const component = typeof substance === 'string' ? substance : substance.component;
-    if (!findConversionDefinition(substance)) {
-      throw new ConversionError(`No conversion definitions found for "${component}"`);
-    }
     throw new ConversionError(
       `Conversion from "${normalizedFrom}" to "${normalizedTo}" is not supported for "${component}"`
     );
@@ -160,54 +142,6 @@ export function convertValue(
 }
 
 /**
- * Convert a reference range to a different unit
- *
- * @param substance - The test's LOINC component, or the test itself
- * @param range - The reference range to convert
- * @param toUnit - The target unit
- * @param precision - Optional decimal places
- * @returns Converted reference range
- * @throws ConversionError if conversion is not supported
- */
-export function convertReferenceRange(
-  substance: SubstanceRef,
-  range: ReferenceRange,
-  toUnit: string,
-  precision?: number
-): ReferenceRange {
-  // Without an explicit precision, each bound gets its own value-aware precision
-  const usedPrecision = precision;
-
-  const result: ReferenceRange = {
-    unit: toUnit,
-  };
-
-  if (range.low !== undefined) {
-    const lowResult = convertValue(
-      substance,
-      range.low,
-      range.unit,
-      toUnit,
-      usedPrecision
-    );
-    result.low = lowResult.convertedValue;
-  }
-
-  if (range.high !== undefined) {
-    const highResult = convertValue(
-      substance,
-      range.high,
-      range.unit,
-      toUnit,
-      usedPrecision
-    );
-    result.high = highResult.convertedValue;
-  }
-
-  return result;
-}
-
-/**
  * Check if a conversion is supported for a substance
  *
  * @param substance - The test's LOINC component, or the test itself
@@ -224,68 +158,6 @@ export function canConvert(
     return true;
   }
   return getConversion(substance, fromUnit, toUnit) !== undefined;
-}
-
-/**
- * Get all supported units for a substance
- *
- * @param substance - The test's LOINC component, or the test itself
- * @returns Array of supported unit strings, or empty array if it has no conversions
- */
-export function getSupportedUnits(substance: SubstanceRef): string[] {
-  const units = new Set<string>();
-  for (const conversion of conversionsOf(substance)) {
-    units.add(conversion.from);
-    units.add(conversion.to);
-  }
-
-  return Array.from(units);
-}
-
-/**
- * Format a value with its unit for display
- *
- * @param value - The numeric value
- * @param unit - The unit
- * @param precision - Optional decimal places
- * @returns Formatted string like "5.5 mmol/L"
- */
-export function formatValueWithUnit(
-  value: number,
-  unit: string,
-  precision?: number
-): string {
-  const usedPrecision = precision ?? getPrecisionForValue(value, unit);
-  const formattedValue = roundToPrecision(value, usedPrecision);
-
-  // Handle units that don't need a space (like %)
-  if (unit === '%') {
-    return `${formattedValue}%`;
-  }
-
-  return `${formattedValue} ${unit}`;
-}
-
-/**
- * Parse a value with unit string like "5.5 mmol/L" or "100mg/dL"
- *
- * @param valueString - String containing value and unit
- * @returns Object with value and unit, or null if parsing fails
- */
-export function parseValueWithUnit(
-  valueString: string
-): { value: number; unit: string } | null {
-  // Match number followed by optional space and a unit (must contain at least one letter)
-  const match = valueString.trim().match(/^([\d.]+)\s*([a-zA-Z/%µμ°^].*)$/);
-  if (!match) return null;
-
-  const value = parseFloat(match[1]);
-  if (isNaN(value)) return null;
-
-  const unit = match[2].trim();
-  if (!unit) return null;
-
-  return { value, unit };
 }
 
 /**

@@ -1,20 +1,13 @@
 export {
   convertValue,
-  convertReferenceRange,
   canConvert,
-  getSupportedUnits,
-  formatValueWithUnit,
-  parseValueWithUnit,
   normalizeUnit,
   ConversionError,
   type ConversionResult,
-  type ReferenceRange,
 } from './conversion';
 
 export {
-  UNIT_CONVERSIONS,
   findConversionDefinition,
-  getConversionFactor,
   normalizeUnitForLookup,
   unitsMatch,
   type UnitConversion,

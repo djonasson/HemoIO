@@ -1,14 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   convertValue,
-  convertReferenceRange,
   canConvert,
-  getSupportedUnits,
-  formatValueWithUnit,
-  parseValueWithUnit,
   normalizeUnit,
   ConversionError,
 } from './conversion';
+import { convertMeasurement } from './convertMeasurement';
 
 describe('Unit Conversion Service', () => {
   describe('convertValue', () => {
@@ -218,9 +215,11 @@ describe('Unit Conversion Service', () => {
     });
 
     it('converts a reference range with the master equation', () => {
-      expect(
-        convertReferenceRange('Hemoglobin A1c/Hemoglobin.total', { low: 4, high: 5.6, unit: '%' }, 'mmol/mol', 0)
-      ).toEqual({ low: 20, high: 38, unit: 'mmol/mol' });
+      const measurement = { value: 5, unit: '%', referenceRangeLow: 4, referenceRangeHigh: 5.6 };
+      expect(convertMeasurement('Hemoglobin A1c/Hemoglobin.total', measurement, 'mmol/mol').referenceRange).toEqual({
+        low: 20.22,
+        high: 37.71,
+      });
     });
   });
 
@@ -229,42 +228,6 @@ describe('Unit Conversion Service', () => {
     it('converts pg to fmol and back', () => {
       expect(convertValue('Hemoglobin', 30, 'pg', 'fmol', 2).convertedValue).toBe(1.86);
       expect(convertValue('Hemoglobin', 1.9, 'fmol', 'pg', 1).convertedValue).toBe(30.6);
-    });
-  });
-
-  describe('convertReferenceRange', () => {
-    it('converts both low and high values', () => {
-      const result = convertReferenceRange(
-        'Glucose',
-        { low: 70, high: 100, unit: 'mg/dL' },
-        'mmol/L'
-      );
-
-      expect(result.low).toBeCloseTo(3.89, 1);
-      expect(result.high).toBeCloseTo(5.55, 1);
-      expect(result.unit).toBe('mmol/L');
-    });
-
-    it('handles missing low value', () => {
-      const result = convertReferenceRange(
-        'Glucose',
-        { high: 100, unit: 'mg/dL' },
-        'mmol/L'
-      );
-
-      expect(result.low).toBeUndefined();
-      expect(result.high).toBeCloseTo(5.55, 1);
-    });
-
-    it('handles missing high value', () => {
-      const result = convertReferenceRange(
-        'Glucose',
-        { low: 70, unit: 'mg/dL' },
-        'mmol/L'
-      );
-
-      expect(result.low).toBeCloseTo(3.89, 1);
-      expect(result.high).toBeUndefined();
     });
   });
 
@@ -284,63 +247,6 @@ describe('Unit Conversion Service', () => {
 
     it('returns false for unknown biomarkers', () => {
       expect(canConvert('Unknown', 'mg/dL', 'mmol/L')).toBe(false);
-    });
-  });
-
-  describe('getSupportedUnits', () => {
-    it('returns all units for a biomarker', () => {
-      const units = getSupportedUnits('Glucose');
-      expect(units).toContain('mg/dL');
-      expect(units).toContain('mmol/L');
-    });
-
-    it('returns empty array for unknown biomarker', () => {
-      const units = getSupportedUnits('Unknown');
-      expect(units).toEqual([]);
-    });
-  });
-
-  describe('formatValueWithUnit', () => {
-    it('formats value with space before unit', () => {
-      expect(formatValueWithUnit(100, 'mg/dL')).toBe('100 mg/dL');
-    });
-
-    it('formats percentage without space', () => {
-      expect(formatValueWithUnit(45, '%')).toBe('45%');
-    });
-
-    it('respects precision', () => {
-      expect(formatValueWithUnit(5.5555, 'mmol/L', 2)).toBe('5.56 mmol/L');
-    });
-
-    it('uses default precision when not specified', () => {
-      // mg/dL has default precision of 0
-      expect(formatValueWithUnit(99.7, 'mg/dL')).toBe('100 mg/dL');
-    });
-  });
-
-  describe('parseValueWithUnit', () => {
-    it('parses value with space before unit', () => {
-      const result = parseValueWithUnit('100 mg/dL');
-      expect(result?.value).toBe(100);
-      expect(result?.unit).toBe('mg/dL');
-    });
-
-    it('parses value without space', () => {
-      const result = parseValueWithUnit('5.5mmol/L');
-      expect(result?.value).toBe(5.5);
-      expect(result?.unit).toBe('mmol/L');
-    });
-
-    it('parses decimal values', () => {
-      const result = parseValueWithUnit('5.55 mmol/L');
-      expect(result?.value).toBe(5.55);
-    });
-
-    it('returns null for invalid input', () => {
-      expect(parseValueWithUnit('invalid')).toBeNull();
-      expect(parseValueWithUnit('')).toBeNull();
-      expect(parseValueWithUnit('100')).toBeNull();
     });
   });
 

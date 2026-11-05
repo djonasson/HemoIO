@@ -483,18 +483,27 @@ ships, are in the README and under Settings → About, with the library's
 installed version (`packageVersions.config.ts`).
 
 - **`toUcum`** turns a printed spelling into UCUM ("x10³/µL" → "10*3/uL",
-  "mUI/mL" → "m[IU]/mL", "/24h" → "/(24.h)"), or null when UCUM rejects it.
-  The library's own console output on rejected units is silenced.
+  "mUI/mL" → "m[IU]/mL", "/24h" → "/(24.h)", "mm/1h" → "mm/h", "fl" →
+  "fL", "RBC/HPF" → "{RBC}/[HPF]", "‰" → "[ppth]"), or null when UCUM
+  rejects it. The library's own console output on rejected units is
+  silenced.
 - **`ucumProperties`** reads which LOINC properties a unit implies from its
   dimension: mass per volume is MCnc, amount per volume SCnc, a share NFr,
-  MFr or VFr, and so on. The per-cell properties (MCV, MCH, MCHC) are read
-  only from fL, pg and g/dL or g/L. Matching searches only tests of these
-  properties.
-- **`convertUcum`** converts between units of one dimension; it never
-  returns NaN or Infinity. Mass ↔ molar conversion needs a molar mass:
-  `definitions.ts` holds them by LOINC component (and property or sample
-  where the component alone is not enough), so each value converts through
-  its own code's component.
+  MFr or VFr, and so on. International units per volume are ACnc and also
+  CCnc, as labs print enzyme activity in IU/L. The per-cell properties
+  (MCV, MCH, MCHC) are read only from fL, pg and g/dL or g/L. Matching
+  searches only tests of these properties.
+- **`ucumConversion`** converts what UCUM can: a unit to itself however
+  spelled, units of one dimension (g/dL → g/L, cells/µL → 10^9/L), one
+  arbitrary unit rescaled (mIU/mL → IU/L), and, given a substance's molar
+  mass and charge, mass ↔ moles ↔ equivalents. It never converts between
+  shares or ratios of no dimension, nor between different arbitrary units.
+  `definitions.ts` holds each LOINC component's molar mass and charge (a
+  component with a subpart, "Cholesterol.in LDL", uses its substance's),
+  and only the conversions UCUM cannot give: the HbA1c equation, IU/L ↔
+  U/L, shares against ratios, approximations for one sample. A test checks
+  that no such row is one UCUM converts too. Each value converts through its
+  own code's component.
 
 ### Offline Capability
 
