@@ -637,6 +637,25 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     );
   });
 
+  test('should keep every value of a test I choose when its values conflict', async ({ page }) => {
+    // Scenario: Keep every value of a test I choose when its values conflict
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinine', value: 1.5, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinine', value: 67, unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+    ], 1, { testChoice: aiChooses({ 'Creatinine|mg/dL': '2160-0' }) });
+
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(3);
+    await expect(duplicateWarning(page)).toBeVisible();
+
+    await changeTest(page, rows.filter({ hasText: 'µmol/L' }), MOLAR_CREATININE);
+    await expect(main(page).getByText(/the same measurement as/)).toHaveCount(0);
+    await continueToConfirm(page);
+    await expect(main(page).getByRole('alert').filter({ hasText: /not saved/ })).toHaveCount(0);
+  });
+
   test('should keep a share and an absolute count of the same cells apart', async ({ page }) => {
     // Scenario: Keep a share and an absolute count of the same cells apart
     await openApp(page);

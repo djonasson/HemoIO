@@ -34,8 +34,8 @@ import {
   comparable,
   groupBySameTest,
   groupUnit,
+  isSettled,
   preferredValue,
-  type ComparableValue,
 } from './sameMeasurement';
 
 /**
@@ -523,22 +523,13 @@ function deduplicateBiomarkers(
     const values = group.map((b) => comparable(b, unit));
     const clusters = clusterMeasurements(values);
 
-    const reportedName = (value: ComparableValue) => value.biomarker.name.toLowerCase().trim();
-    const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
-    const distinctNames = namesPerCluster.every(
-      (names, i) =>
-        names.size === 1 &&
-        namesPerCluster.every((other, j) => i === j || !other.has([...names][0]))
-    );
-    const uncomparable = values.some((v) => v.comparison === undefined);
-    const oneCode = new Set(group.map((b) => b.loincCode)).size === 1;
-
-    if (clusters.length === 1 || (distinctNames && !uncomparable) || (uncomparable && !oneCode)) {
+    if (isSettled(values, clusters)) {
       for (const cluster of clusters) deduplicated.push(preferredValue(cluster, unit).biomarker);
       continue;
     }
 
     const units = [...new Set(group.map((b) => b.unit))];
+    const uncomparable = values.some((v) => v.comparison === undefined);
     const conflict: DuplicateConflict = {
       biomarkerName: name,
       originalValues: values.map((v) => ({

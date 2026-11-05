@@ -139,6 +139,14 @@ Feature: Unit Conversion
     Then it should be marked "Not saved", as the same measurement as 0.76 mg/dL
     And the confirmation should say it is not saved
 
+  Scenario: Keep every value of a test I choose when its values conflict
+    Given a lab report gives creatinine under a blood heading as 0.76 mg/dL and as 1.5 mg/dL, and as 67 µmol/L
+    And the AI knows the test of the mg/dL values but is not sure of the µmol/L one
+    When the values are analyzed
+    Then the two mg/dL values should be flagged as a duplicate conflict
+    When I choose "Creatinine [Moles/volume] in Serum or Plasma" for the µmol/L value
+    Then no value should be marked "Not saved": I settle the conflict, as the analysis leaves me to
+
   Scenario: Read the units Italian reports write for ratios to creatinine and cells per 100 white cells
     Given a lab report gives the protein/creatinine ratio in "mg/g cr", the albumin/creatinine ratio in "mg/gcr" and nucleated red cells ("Eritroblasti") in "/100WBC"
     When the values are reviewed

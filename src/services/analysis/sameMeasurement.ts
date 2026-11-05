@@ -162,6 +162,26 @@ export function clusterMeasurements(values: readonly ComparableValue[]): Compara
   return clusters;
 }
 
+/**
+ * Whether each measurement of one test's values can be kept once without
+ * asking: there is one measurement; distinct measurements come under
+ * distinct printed names (a 24-hour and a spot sample); or values that
+ * cannot be compared come under different codes, so nothing says they are
+ * one. Otherwise the values conflict and the user keeps the right one.
+ */
+export function isSettled(values: readonly ComparableValue[], clusters: readonly ComparableValue[][]): boolean {
+  if (clusters.length === 1) return true;
+  const reportedName = (value: ComparableValue) => value.biomarker.name.toLowerCase().trim();
+  const namesPerCluster = clusters.map((c) => new Set(c.map(reportedName)));
+  const distinctNames = namesPerCluster.every(
+    (names, i) =>
+      names.size === 1 && namesPerCluster.every((other, j) => i === j || !other.has([...names][0]))
+  );
+  const uncomparable = values.some((v) => v.comparison === undefined);
+  const oneCode = new Set(values.map((v) => v.biomarker.loincCode)).size === 1;
+  return (distinctNames && !uncomparable) || (uncomparable && !oneCode);
+}
+
 /** The value of a cluster that is kept: the one in the standard unit, else the first */
 export function preferredValue(cluster: readonly ComparableValue[], unit: GroupUnit): ComparableValue {
   const { canonicalUnit } = unit;

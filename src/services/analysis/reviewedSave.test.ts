@@ -161,6 +161,19 @@ describe('planSave', () => {
       expect(leftOut([undecided(5), SERUM])).toEqual([]);
     });
 
+    it('is kept, as the analyzer keeps them, when another measurement of its test shares a printed name', () => {
+      // 90 mg/dL and 5 mmol/L are one measurement, but a second "Glucosio" of
+      // 120 mg/dL makes the three a conflict the user settles
+      const other = analyzed({ name: 'Glucosio', value: 120, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+      expect(leftOut([chooseTest(undecided(5), '14749-6'), SERUM, other])).toEqual([]);
+    });
+
+    it('is left out when the other measurements of its test have names of their own', () => {
+      const fasting = analyzed({ name: 'Glicemia', value: 120, unit: 'mg/dL', normalizedUnit: 'mg/dL', loincCode: '2345-7' });
+      const molar = chooseTest(undecided(5), '14749-6');
+      expect(leftOut([molar, SERUM, fasting])).toEqual([molar]);
+    });
+
     it('is kept when its test is the same substance in another sample', () => {
       expect(leftOut([chooseTest(undecided(5), '15074-8'), SERUM])).toEqual([]);
     });

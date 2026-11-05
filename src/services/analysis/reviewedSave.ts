@@ -7,7 +7,14 @@ import { isPerHundredCounted } from '@/utils/unitSpelling';
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { toUcum, ucumProperties } from '@services/units/ucum';
-import { clusterMeasurements, comparable, groupBySameTest, groupUnit, preferredValue } from './sameMeasurement';
+import {
+  clusterMeasurements,
+  comparable,
+  groupBySameTest,
+  groupUnit,
+  isSettled,
+  preferredValue,
+} from './sameMeasurement';
 import type { Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -139,7 +146,8 @@ function twins(values: readonly MatchedBiomarker[], catalog: Catalog): MatchedBi
  * The values of a file that are the same measurement as another value of
  * their test, each with the one saved in its place (in the standard unit,
  * else the first): a value the analyzer could not merge, as it had no test
- * then, is merged once the user gives it one
+ * then, is merged once the user gives it one. Values the analyzer would
+ * call a conflict (see isSettled) are all kept, for the user to settle.
  */
 function duplicates(
   values: readonly MatchedBiomarker[],
@@ -150,7 +158,10 @@ function duplicates(
   for (const group of groupBySameTest(coded, catalog)) {
     if (group.length === 1) continue;
     const unit = groupUnit(group, catalog);
-    for (const cluster of clusterMeasurements(group.map((b) => comparable(b, unit)))) {
+    const values = group.map((b) => comparable(b, unit));
+    const clusters = clusterMeasurements(values);
+    if (!isSettled(values, clusters)) continue;
+    for (const cluster of clusters) {
       const kept = preferredValue(cluster, unit).biomarker;
       for (const { biomarker } of cluster) if (biomarker !== kept) left.set(biomarker, kept);
     }
