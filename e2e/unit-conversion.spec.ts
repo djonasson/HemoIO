@@ -22,8 +22,12 @@ import type { TestChoiceMock } from './steps/ai.steps';
 import { biomarkerDetail, goToDictionary, searchField, viewDetail } from './steps/dictionary.steps';
 import {
   ALT,
+  CARBON_DIOXIDE,
+  CORTISOL_MASS,
+  CORTISOL_MOLAR,
   CREATININE,
   EGFR,
+  FSH,
   GLUCOSE,
   HEMATOCRIT,
   HEMOGLOBIN,
@@ -34,6 +38,9 @@ import {
   URINE_CREATININE,
   URINE_EPITHELIAL_CELLS,
   VITAMIN_D,
+  VITAMIN_D3_MASS,
+  VITAMIN_D3_MOLAR,
+  WBC,
   analyzeReport,
   duplicateWarning,
   expectTrendValues,
@@ -192,7 +199,7 @@ test.describe('Unit Conversion - With Data', () => {
     await expect(trendTitle(page, 'Vitamin D', 'ng/mL')).toBeVisible();
     await expectTrendValues(page, [
       { value: '28', unit: 'ng/mL' },
-      { value: '30.1', unit: 'ng/mL' },
+      { value: '30', unit: 'ng/mL' },
     ]);
   });
 
@@ -508,6 +515,81 @@ test.describe('Unit Conversion - International Aliases', () => {
     await expectTrendValues(page, [
       { value: '45', unit: '%' },
       { value: '42', unit: '%' },
+    ]);
+  });
+});
+
+test.describe('Unit Conversion - By Molar Mass, Charge and UCUM', () => {
+  test('should show a substance measured in mass and in moles on one line', async ({ page }) => {
+    // Scenario: Show a substance measured in mass and in moles on one line
+    // (25-OH vitamin D3 400.64 g/mol, cortisol 362.46 g/mol)
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: VITAMIN_D3_MASS, value: 32.6, unit: 'ng/mL' },
+      { day: DAY_2, biomarker: VITAMIN_D3_MOLAR, value: 81.5, unit: 'nmol/L' },
+      { day: DAY_1, biomarker: CORTISOL_MASS, value: 15, unit: 'µg/dL' },
+      { day: DAY_2, biomarker: CORTISOL_MOLAR, value: 410, unit: 'nmol/L' },
+    ]);
+
+    await openTrend(page, '25\\(OH\\)D3 SerPl');
+    await expectTrendValues(page, [
+      { value: '32.6', unit: 'ng/mL' },
+      { value: '32.7', unit: 'ng/mL' },
+    ]);
+    await openTrend(page, 'Cortis SerPl');
+    await expectTrendValues(page, [
+      { value: '15', unit: 'µg/dL' },
+      { value: '14.86', unit: 'µg/dL' },
+    ]);
+  });
+
+  test('should show a value in equivalents with values in moles', async ({ page }) => {
+    // Scenario: Show a value in equivalents with values in moles
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: CARBON_DIOXIDE, value: 25, unit: 'mEq/L' },
+      { day: DAY_2, biomarker: CARBON_DIOXIDE, value: 27, unit: 'mmol/L' },
+    ]);
+
+    await openTrend(page, 'Carbon Dioxide');
+    await expect(trendTitle(page, 'Carbon Dioxide', 'mEq/L')).toBeVisible();
+    await expectTrendValues(page, [
+      { value: '25', unit: 'mEq/L' },
+      { value: '27', unit: 'mEq/L' },
+    ]);
+  });
+
+  test('should show two spellings of one international unit on one line', async ({ page }) => {
+    // Scenario: Show two spellings of one international unit on one line
+    const DAY_3 = '2024-03-25';
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: FSH, value: 6.2, unit: 'mIU/mL' },
+      { day: DAY_2, biomarker: FSH, value: 7.4, unit: 'mUI/mL' },
+      { day: DAY_3, biomarker: FSH, value: 8, unit: 'IU/L' },
+    ]);
+
+    await openTrend(page, 'FSH SerPl-aCnc');
+    await expectTrendValues(page, [
+      { value: '6.2', unit: 'mIU/mL' },
+      { value: '7.4', unit: 'mIU/mL' },
+      { value: '8', unit: 'mIU/mL' },
+    ]);
+  });
+
+  test('should convert a white cell count given per microlitre', async ({ page }) => {
+    // Scenario: Convert a white cell count given per microlitre (7200 cells/µL = 7.2 10^9/L)
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: WBC, value: 6.5, unit: '10^9/L' },
+      { day: DAY_2, biomarker: WBC, value: 7200, unit: 'cells/µL' },
+    ]);
+
+    await openTrend(page, 'White Blood Cell Count');
+    await expect(trendTitle(page, 'White Blood Cell Count', '10^9/L')).toBeVisible();
+    await expectTrendValues(page, [
+      { value: '6.5', unit: '10^9/L' },
+      { value: '7.2', unit: '10^9/L' },
     ]);
   });
 });

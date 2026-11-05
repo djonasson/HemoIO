@@ -228,3 +228,24 @@ Feature: Unit Conversion
     When I convert it to kIU/L
     Then the result should be 150 kIU/L
     And the units should be recognized as equivalent
+
+  # Units converted by what UCUM knows, with each substance's molar mass and charge
+  Scenario: Show a substance measured in mass and in moles on one line
+    Given I have vitamin D3 values of 32.6 ng/mL and 81.5 nmol/L, and cortisol values of 15 µg/dL and 410 nmol/L, each saved under its LOINC test for that kind of unit
+    When I view the trend of each
+    Then both values of each should be on one line, converted by the substance's molar mass
+
+  Scenario: Show a value in equivalents with values in moles
+    Given I have carbon dioxide values of 25 mEq/L and 27 mmol/L
+    When I view the carbon dioxide trend
+    Then both values should be on one line in mEq/L
+
+  Scenario: Show two spellings of one international unit on one line
+    Given I have FSH values of 6.2 mIU/mL and 7.4 mUI/mL, and 8 IU/L
+    When I view the FSH trend
+    Then all three values should be on one line, as one mIU/mL is one IU/L
+
+  Scenario: Convert a white cell count given per microlitre
+    Given I have white blood cell counts of 6.5 10^9/L and 7200 cells/µL
+    When I view the white blood cell trend
+    Then both values should be on one line in 10^9/L, the second as 7.2

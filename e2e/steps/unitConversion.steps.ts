@@ -44,6 +44,14 @@ export const URINE_EPITHELIAL_CELLS: DictionaryBiomarker = { key: '5787-7', name
 export const URINE_CREATININE: DictionaryBiomarker = { key: '2161-8', name: 'Urine Creatinine' };
 export const PROTEIN_CREATININE_RATIO: DictionaryBiomarker = { key: '2890-2', name: 'Protein Creatinine Ratio' };
 export const ALT: DictionaryBiomarker = { key: '1742-6', name: 'Alanine Aminotransferase' };
+export const WBC: DictionaryBiomarker = { key: '6690-2', name: 'White Blood Cell Count' };
+export const CARBON_DIOXIDE: DictionaryBiomarker = { key: '2028-9', name: 'Carbon Dioxide' };
+export const FSH: DictionaryBiomarker = { key: '15067-2', name: 'FSH SerPl-aCnc' };
+/** Vitamin D3 and cortisol each have a LOINC test for mass and one for moles, and no add-on */
+export const VITAMIN_D3_MASS: DictionaryBiomarker = { key: '1989-3', name: '25(OH)D3 SerPl-mCnc' };
+export const VITAMIN_D3_MOLAR: DictionaryBiomarker = { key: '14635-7', name: '25(OH)D3 SerPl-sCnc' };
+export const CORTISOL_MASS: DictionaryBiomarker = { key: '2143-6', name: 'Cortis SerPl-mCnc' };
+export const CORTISOL_MOLAR: DictionaryBiomarker = { key: '14675-3', name: 'Cortis SerPl-sCnc' };
 
 /** One recorded value, as a lab report would state it */
 export interface Measurement {
