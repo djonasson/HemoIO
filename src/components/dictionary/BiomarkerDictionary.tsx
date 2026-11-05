@@ -5,7 +5,7 @@
  * by LOINC class, and search the whole LOINC catalog.
  */
 
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Stack,
   TextInput,
@@ -53,16 +53,14 @@ export function BiomarkerDictionary({
 }: BiomarkerDictionaryProps): React.ReactNode {
   const catalog = useCatalog();
   const [searchTerm, setSearchTerm] = useState('');
-  // The catalog is large: typing stays responsive while results catch up
-  const query = useDeferredValue(searchTerm);
 
   const entries = useMemo(() => dictionaryEntries(catalog, valueKeys), [catalog, valueKeys]);
   const groups = useMemo(() => groupByClass(entries), [entries]);
 
   // null: no search, so the class view
   const filteredBiomarkers = useMemo(
-    () => (query.trim() ? searchDictionary(catalog, entries, query) : null),
-    [catalog, entries, query]
+    () => (searchTerm.trim() ? searchDictionary(catalog, entries, searchTerm) : null),
+    [catalog, entries, searchTerm]
   );
 
   return (

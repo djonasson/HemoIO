@@ -39,6 +39,7 @@ import {
   LONG_NOTE,
 } from './steps/userNotes.steps';
 import { readStoredRows } from './steps/dataAtRest.steps';
+import { seedLabData } from './steps/data.steps';
 import { pickDate } from './steps/trends.steps';
 
 function tagsInput(container: Locator): Locator {
@@ -359,10 +360,10 @@ test.describe('Notes with Data', () => {
 
   test('should show notes in trends view for selected biomarker', async ({ page }) => {
     await seedNotesData(page, [
-      noteSeed(1, { biomarkerId: BIOMARKERS.GLUCOSE.id }, 'Glucose was high after a big dinner', [
+      noteSeed(1, { biomarkerKey: BIOMARKERS.GLUCOSE.key }, 'Glucose was high after a big dinner', [
         'diet',
       ]),
-      noteSeed(2, { biomarkerId: BIOMARKERS.HEMOGLOBIN.id }, 'Hemoglobin note'),
+      noteSeed(2, { biomarkerKey: BIOMARKERS.HEMOGLOBIN.key }, 'Hemoglobin note'),
     ]);
 
     const main = await viewTrendsFor(page, 'Glucose');
@@ -376,7 +377,7 @@ test.describe('Notes with Data', () => {
   test('should mark trend chart data points that have notes', async ({ page }) => {
     // Test value 2 is the 2024-01-15 Glucose measurement
     await seedNotesData(page, [
-      noteSeed(1, { biomarkerId: BIOMARKERS.GLUCOSE.id, testValueId: 2 }, 'Big dinner the night before'),
+      noteSeed(1, { biomarkerKey: BIOMARKERS.GLUCOSE.key, testValueId: 2 }, 'Big dinner the night before'),
     ]);
 
     const main = await viewTrendsFor(page, 'Glucose');
@@ -495,10 +496,10 @@ test.describe('Notes with Data', () => {
 test.describe('Notes view', () => {
   const NOTES = [
     noteSeed(1, { labResultId: 1 }, 'Felt a headache after the fast', ['symptoms'], '2024-01-16'),
-    noteSeed(2, { biomarkerId: BIOMARKERS.GLUCOSE.id }, 'Cutting back on sugar', ['diet'], '2024-03-01'),
+    noteSeed(2, { biomarkerKey: BIOMARKERS.GLUCOSE.key }, 'Cutting back on sugar', ['diet'], '2024-03-01'),
     noteSeed(
       3,
-      { biomarkerId: BIOMARKERS.GLUCOSE.id, testValueId: 2, labResultId: 1 },
+      { biomarkerKey: BIOMARKERS.GLUCOSE.key, testValueId: 2, labResultId: 1 },
       'Big dinner the night before',
       ['diet', 'symptoms'],
       '2024-07-05'
@@ -677,5 +678,35 @@ test.describe('Note formatting and display', () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).not.toContain('Secret symptom');
+  });
+});
+
+test.describe('Notes on LOINC codes', () => {
+  test('files a note on glucose in mmol/L under Glucose', async ({ page }) => {
+    // Scenario: Notes name their test as the rest of the app does
+    await page.goto('/');
+    await setupOrUnlock(page);
+    const at = `${JAN_DAY}T12:00:00.000Z`;
+    await seedLabData(page, {
+      labResults: [{ id: 1, date: at, labName: 'Quest Diagnostics', createdAt: at, updatedAt: at }],
+      testValues: [
+        // Glucose in mmol/L: its own LOINC code, one test with glucose in mg/dL
+        { id: 1, labResultId: 1, biomarkerKey: '14749-6', rawText: 'Glicemia', value: 7, unit: 'mmol/L', confidence: 0.95, createdAt: at, updatedAt: at },
+      ],
+      userNotes: [
+        noteSeed(1, { biomarkerKey: '14749-6', testValueId: 1, labResultId: 1 }, 'After a big dinner', [], '2024-01-16'),
+        noteSeed(2, { biomarkerKey: BIOMARKERS.GLUCOSE.key }, 'Cutting back on sugar', [], '2024-03-01'),
+      ],
+    });
+
+    const main = await goToNotes(page);
+    await expect(
+      noteCards(main).filter({ hasText: 'After a big dinner' })
+    ).toHaveAccessibleName(`Note attached to Glucose · 7 mmol/L · ${shortDate(JAN_DAY)}`);
+
+    await main.getByRole('textbox', { name: 'Filter notes by biomarker' }).click();
+    await expect(page.getByRole('option', { name: /^Glucose/ })).toHaveCount(1);
+    await page.getByRole('option', { name: 'Glucose', exact: true }).click();
+    await expect(noteCards(main)).toHaveCount(2);
   });
 });

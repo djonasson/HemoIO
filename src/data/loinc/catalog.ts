@@ -3,8 +3,8 @@
  * local LOINC release by scripts/loinc-catalog.mjs, with lookups by code,
  * name search, and the trend groups that join closely related codes.
  *
- * The data file is large (about 13 MB), so it is loaded on first use as its
- * own chunk and never with the app's start.
+ * The data file is large (about 13 MB), so it is fetched on first use as a
+ * file of its own and never with the app's start.
  */
 
 /** One LOINC test as the generated catalog holds it */
@@ -273,6 +273,24 @@ export function createCatalog(file: CatalogFile): Catalog {
   };
 }
 
+/** Where the catalog file is served; a build emits it as an asset of its own */
+const CATALOG_URL = new URL('./catalog.generated.json', import.meta.url).href;
+
+/**
+ * The catalog file. Fetched, not imported: a browser keeps a failed
+ * import() failed for as long as the page is open, so trying again could
+ * never load it, while a failed fetch is tried afresh. Tests run in Node,
+ * which cannot fetch a file: URL, so they import it.
+ */
+async function readCatalogFile(): Promise<CatalogFile> {
+  if (import.meta.env.MODE === 'test') {
+    return (await import('./catalog.generated.json')).default as CatalogFile;
+  }
+  const response = await fetch(CATALOG_URL);
+  if (!response.ok) throw new Error(`The test catalog could not be fetched (HTTP ${response.status})`);
+  return (await response.json()) as CatalogFile;
+}
+
 let loading: Promise<Catalog> | undefined;
 let loaded: Catalog | undefined;
 
@@ -281,9 +299,9 @@ let loaded: Catalog | undefined;
  * kept, so the next call tries again.
  */
 export function loadCatalog(): Promise<Catalog> {
-  loading ??= import('./catalog.generated.json')
-    .then((module) => {
-      loaded = createCatalog(module.default as CatalogFile);
+  loading ??= readCatalogFile()
+    .then((file) => {
+      loaded = createCatalog(file);
       return loaded;
     })
     .catch((error: unknown) => {

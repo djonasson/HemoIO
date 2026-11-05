@@ -173,12 +173,11 @@ test.describe('Export Dialog', () => {
 });
 
 test.describe('Export with Data', () => {
-  // Named test values as a v1 backup stores them: biomarkerId is the legacy
-  // dictionary position (3 = Hemoglobin, 22 = Glucose)
+  // Test values keyed by LOINC code (718-7 = Hemoglobin, 2345-7 = Glucose)
   const TEST_VALUES = [
-    { id: 1, labResultId: 1, biomarkerId: 3, value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-    { id: 2, labResultId: 1, biomarkerId: 22, value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
-    { id: 3, labResultId: 2, biomarkerId: 3, value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
+    { id: 1, labResultId: 1, biomarkerKey: '718-7', value: 14.5, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 2, labResultId: 1, biomarkerKey: '2345-7', value: 125, unit: 'mg/dL', rawText: 'Glucose', createdAt: '2024-01-15T10:00:00.000Z', updatedAt: '2024-01-15T10:00:00.000Z' },
+    { id: 3, labResultId: 2, biomarkerKey: '718-7', value: 15.0, unit: 'g/dL', rawText: 'Hemoglobin', createdAt: '2024-02-20T14:30:00.000Z', updatedAt: '2024-02-20T14:30:00.000Z' },
   ];
 
   test.beforeEach(async ({ page }) => {
@@ -234,6 +233,32 @@ test.describe('Export with Data', () => {
 
     // Both lab results remain in range; only the one Glucose value is included
     await expect(exportDialog(page).getByText('2 lab results, 1 test value')).toBeVisible();
+  });
+});
+
+test.describe('Export on LOINC codes', () => {
+  test("gives each value's LOINC code, and none for a value that is not a LOINC test", async ({ page }) => {
+    // Scenario: CSV export gives each value's LOINC code
+    const at = '2024-01-15T10:00:00.000Z';
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, {
+      labResults: [{ id: 1, date: at, labName: 'Quest Diagnostics', createdAt: at, updatedAt: at }],
+      testValues: [
+        { id: 1, labResultId: 1, biomarkerKey: '2345-7', value: 95, unit: 'mg/dL', rawText: 'Glicemia', createdAt: at, updatedAt: at },
+        { id: 2, labResultId: 1, biomarkerKey: 'unknown:zorblatin', value: 3, unit: 'U/L', rawText: 'Zorblatin', createdAt: at, updatedAt: at },
+      ],
+    });
+    await openExportDialog(page);
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+    const rows = fs.readFileSync(await download.path(), 'utf-8').trim().split(/\r?\n/);
+
+    expect(rows[0]).toMatch(/^Date,Lab Name,Biomarker,LOINC,Value,Unit/);
+    expect(rows.find((row) => row.includes('Glucose'))).toMatch(/,Glucose,2345-7,95,mg\/dL/);
+    expect(rows.find((row) => row.includes('Zorblatin'))).toMatch(/,Zorblatin,,3,U\/L/);
   });
 });
 

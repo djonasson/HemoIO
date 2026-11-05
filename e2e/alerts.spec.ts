@@ -38,9 +38,9 @@ import {
 } from './steps/trends.steps';
 
 /**
- * A normal baseline visit followed by one with three abnormal values from
- * three categories: glucose high (metabolic), hemoglobin low (CBC), HDL low
- * (lipid).
+ * A normal baseline visit followed by one with three abnormal values of
+ * two LOINC classes: glucose high and HDL low (Chemistry), hemoglobin low
+ * (Hematology).
  */
 const ABNORMAL_VISITS: LabVisit[] = [
   {
@@ -385,14 +385,14 @@ test.describe('Alerts with Data', () => {
   test('a later abnormal result makes an acknowledged test new again', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);
-    // Glucose (legacy ID 22) acknowledged through the second visit
+    // Glucose (2345-7) acknowledged through the second visit
     await seedLabData(page, {
       ...buildLabData([
         { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
         { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 140 }] },
         { date: '2024-05-20', values: [{ biomarker: GLUCOSE, value: 130 }] },
       ]),
-      userPreferences: { acknowledgedAlerts: { 22: '2024-03-10T10:00:00.000Z' } },
+      userPreferences: { acknowledgedAlerts: { '2345-7': '2024-03-10T10:00:00.000Z' } },
     });
     await viewAlerts(page);
 
@@ -422,19 +422,43 @@ test.describe('Alerts with Data', () => {
     await expect(main.getByText('All values within normal range')).toBeHidden();
   });
 
-  // Scenario: Filter alerts by category
-  test('should filter alerts by category', async ({ page }) => {
+  // Scenario: Filter alerts by LOINC class
+  test('should filter alerts by LOINC class', async ({ page }) => {
     await seedAlertData(page, ABNORMAL_VISITS);
     await viewAlerts(page);
     await expect(alertCards(page)).toHaveCount(3);
 
     await page.getByRole('main').getByRole('textbox', { name: 'Filter alerts by category' }).click();
-    await page.getByRole('option', { name: /^Metabolic/ }).click();
+    await page.getByRole('option', { name: /^Chemistry/ }).click();
 
     await expect(alertCard(page, 'Glucose')).toBeVisible();
+    await expect(alertCard(page, 'HDL Cholesterol')).toBeVisible();
     await expect(alertCard(page, 'Hemoglobin')).toBeHidden();
-    await expect(alertCard(page, 'HDL Cholesterol')).toBeHidden();
+    await expect(alertCards(page)).toHaveCount(2);
+  });
+
+  // Scenario: Glucose in mg/dL and in mmol/L is one alert card
+  test('shows glucose in mg/dL and in mmol/L as one card', async ({ page }) => {
+    const molarGlucose = { key: '14749-6', name: 'Glicemia', unit: 'mmol/L', low: 3.9, high: 5.6 };
+    await seedAlertData(page, [
+      { date: '2024-01-15', values: [{ biomarker: GLUCOSE, value: 150 }] },
+      { date: '2024-03-10', values: [{ biomarker: molarGlucose, value: 8 }] },
+    ]);
+    await viewAlerts(page);
+
     await expect(alertCards(page)).toHaveCount(1);
+    await expect(alertCard(page, 'Glucose').getByText('2 results · 2 new', { exact: true })).toBeVisible();
+  });
+
+  // Scenario: Alerts name a test as LOINC does where HemoIO has no name for it
+  test("names a test HemoIO has no name for by LOINC's short name", async ({ page }) => {
+    // Glucose in blood (2339-0) has no add-on
+    const bloodGlucose = { key: '2339-0', name: 'Glicemia capillare', unit: 'mg/dL', low: 70, high: 100 };
+    await seedAlertData(page, [{ date: '2024-03-10', values: [{ biomarker: bloodGlucose, value: 150 }] }]);
+    await viewAlerts(page);
+
+    await expect(alertCard(page, 'Glucose Bld-mCnc')).toBeVisible();
+    await expect(page.getByRole('main').getByText('Glicemia capillare')).toHaveCount(0);
   });
 
   // Scenario: Rapid improvement alert

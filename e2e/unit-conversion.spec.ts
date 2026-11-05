@@ -279,6 +279,27 @@ test.describe('Unit Conversion - With Data', () => {
     ).toBeVisible();
   });
 
+  test('applies a preferred unit to every LOINC code of the test', async ({ page }) => {
+    // Scenario: A preferred unit applies to every LOINC code of the test
+    const molarGlucose = { key: '14749-6', name: 'Glucose' };
+    await openApp(page);
+    await seedMeasurements(page, [
+      { day: DAY_1, biomarker: GLUCOSE, value: 100, unit: 'mg/dL' },
+      { day: DAY_2, biomarker: molarGlucose, value: 7, unit: 'mmol/L', rawText: 'Glicemia' },
+    ]);
+
+    await openTrend(page, 'Glucose');
+    await setPreferredUnit(page, 'mmol/L');
+    await expectTrendValues(page, [
+      { value: '5.55', unit: 'mmol/L' },
+      { value: '7', unit: 'mmol/L' },
+    ]);
+
+    await openFromMenu(page, 'Timeline');
+    const first = await expandLabResult(page, DAY_1);
+    await expect(first.getByRole('row', { name: /^Glucose: 5\.55 mmol\/L,/ })).toBeVisible();
+  });
+
   test('should handle precision appropriately', async ({ page }) => {
     // Scenario: Handle precision appropriately — converted values are shown
     // with sensible decimals, never raw floating-point results
@@ -760,7 +781,7 @@ test.describe('Unit Conversion - Error Handling', () => {
   test('should handle missing conversion factor gracefully', async ({ page }) => {
     // A value whose unit cannot be converted to the chart's unit (field
     // counts vs. counts per µL) is neither relabelled nor plotted on the
-    // wrong scale: it is left off the chart, and the chart says so
+    // wrong scale: it goes on a line of its own, and the chart says so
     await openApp(page);
     await seedMeasurements(page, [
       { day: DAY_1, biomarker: URINE_EPITHELIAL_CELLS, value: 2, unit: '/HPF' },
@@ -775,7 +796,7 @@ test.describe('Unit Conversion - Error Handling', () => {
     await expect(
       page
         .getByRole('main')
-        .getByText('1 value recorded in /µL is not shown: it cannot be converted to /HPF.')
+        .getByText('1 value recorded in /µL is shown on a line of its own: it cannot be converted to /HPF.')
     ).toBeVisible();
   });
 });

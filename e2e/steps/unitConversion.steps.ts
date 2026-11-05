@@ -2,14 +2,13 @@
  * Step definitions for features/unit-conversion.feature
  *
  * The app converts units where the user can see it in two places:
- * - Trends: every value of a biomarker is plotted in the dictionary's
- *   canonical unit, whatever unit it was recorded in.
+ * - Trends: every value of a test is plotted in its standard (or
+ *   preferred) unit, whatever unit it was recorded in.
  * - Import review: the same biomarker reported twice in different units is
  *   compared after conversion and merged, or flagged as a conflict.
  *
  * Measurements are seeded through a backup restore (see data.steps.ts).
- * Biomarker IDs are 1-indexed positions in BIOMARKER_DEFINITIONS
- * (src/data/biomarkers/dictionary.ts); display names come from rawText.
+ * Tests are keyed by LOINC code, with the names HemoIO shows for them.
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
@@ -27,23 +26,24 @@ import { removeTempFile, writeTempFile } from './tempFiles';
 import { dataPoints, goToTrends, selectBiomarker } from './trends.steps';
 
 export interface DictionaryBiomarker {
-  id: number;
+  /** LOINC code */
+  key: string;
   name: string;
 }
 
-export const HEMOGLOBIN: DictionaryBiomarker = { id: 3, name: 'Hemoglobin' };
-export const HEMATOCRIT: DictionaryBiomarker = { id: 4, name: 'Hematocrit' };
-export const GLUCOSE: DictionaryBiomarker = { id: 22, name: 'Glucose' };
-export const CREATININE: DictionaryBiomarker = { id: 23, name: 'Creatinine' };
-export const EGFR: DictionaryBiomarker = { id: 31, name: 'eGFR' };
-export const TOTAL_CHOLESTEROL: DictionaryBiomarker = { id: 32, name: 'Total Cholesterol' };
-export const TSH: DictionaryBiomarker = { id: 38, name: 'Thyroid Stimulating Hormone' };
-export const TPO_ANTIBODIES: DictionaryBiomarker = { id: 43, name: 'TPO Antibodies' };
-export const VITAMIN_D: DictionaryBiomarker = { id: 50, name: 'Vitamin D' };
-export const URINE_EPITHELIAL_CELLS: DictionaryBiomarker = { id: 65, name: 'Urine Epithelial Cells' };
-export const URINE_CREATININE: DictionaryBiomarker = { id: 66, name: 'Urine Creatinine' };
-export const PROTEIN_CREATININE_RATIO: DictionaryBiomarker = { id: 70, name: 'Protein Creatinine Ratio' };
-export const ALT: DictionaryBiomarker = { id: 73, name: 'Alanine Aminotransferase' };
+export const HEMOGLOBIN: DictionaryBiomarker = { key: '718-7', name: 'Hemoglobin' };
+export const HEMATOCRIT: DictionaryBiomarker = { key: '4544-3', name: 'Hematocrit' };
+export const GLUCOSE: DictionaryBiomarker = { key: '2345-7', name: 'Glucose' };
+export const CREATININE: DictionaryBiomarker = { key: '2160-0', name: 'Creatinine' };
+export const EGFR: DictionaryBiomarker = { key: '98979-8', name: 'eGFR' };
+export const TOTAL_CHOLESTEROL: DictionaryBiomarker = { key: '2093-3', name: 'Total Cholesterol' };
+export const TSH: DictionaryBiomarker = { key: '3016-3', name: 'Thyroid Stimulating Hormone' };
+export const TPO_ANTIBODIES: DictionaryBiomarker = { key: '8099-4', name: 'TPO Antibodies' };
+export const VITAMIN_D: DictionaryBiomarker = { key: '62292-8', name: 'Vitamin D' };
+export const URINE_EPITHELIAL_CELLS: DictionaryBiomarker = { key: '5787-7', name: 'Urine Epithelial Cells' };
+export const URINE_CREATININE: DictionaryBiomarker = { key: '2161-8', name: 'Urine Creatinine' };
+export const PROTEIN_CREATININE_RATIO: DictionaryBiomarker = { key: '2890-2', name: 'Protein Creatinine Ratio' };
+export const ALT: DictionaryBiomarker = { key: '1742-6', name: 'Alanine Aminotransferase' };
 
 /** One recorded value, as a lab report would state it */
 export interface Measurement {
@@ -54,7 +54,7 @@ export interface Measurement {
   unit: string;
   low?: number;
   high?: number;
-  /** Name as printed on the report; defaults to the dictionary name */
+  /** Name as printed on the report; defaults to the name HemoIO shows */
   rawText?: string;
 }
 
@@ -79,7 +79,7 @@ export async function seedMeasurements(
     return {
       id: index + 1,
       labResultId: days.indexOf(m.day) + 1,
-      biomarkerId: m.biomarker.id,
+      biomarkerKey: m.biomarker.key,
       rawText: m.rawText ?? m.biomarker.name,
       value: m.value,
       unit: m.unit,

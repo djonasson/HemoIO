@@ -5,7 +5,7 @@
  * fresh browser profile, or unlocks an existing one.
  */
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Route } from '@playwright/test';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 
@@ -80,4 +80,27 @@ export async function openSettingsTab(page: Page, tab: string | RegExp): Promise
   const tabButton = page.getByRole('tab', { name: tab, exact: true });
   await tabButton.click();
   await expect(tabButton).toHaveAttribute('aria-selected', 'true');
+}
+
+/** Requests for the LOINC test catalog chunk, in the dev server and in a build */
+const TEST_CATALOG_REQUEST = /catalog\.generated/;
+
+/**
+ * Given the LOINC test catalog cannot be loaded — its chunk fails as it
+ * would offline before it was ever downloaded. Resolves with a function
+ * that lets it load again.
+ */
+export async function blockTestCatalog(page: Page): Promise<() => Promise<void>> {
+  const abort = (route: Route): Promise<void> => route.abort('internetdisconnected');
+  await page.route(TEST_CATALOG_REQUEST, abort);
+  return () => page.unroute(TEST_CATALOG_REQUEST, abort);
+}
+
+/**
+ * Then I should be told the test catalog could not be loaded, and offered to try again
+ */
+export async function expectTestCatalogError(page: Page): Promise<void> {
+  const alert = page.getByRole('alert').filter({ hasText: 'Test catalog could not be loaded' });
+  await expect(alert).toBeVisible();
+  await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible();
 }

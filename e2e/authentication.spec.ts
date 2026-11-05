@@ -1,6 +1,10 @@
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock } from './steps/app.steps';
+import {
+  blockTestCatalog,
+  expectTestCatalogError,
+  setupOrUnlock,
+} from './steps/app.steps';
 import { SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
   readStoredData,
@@ -131,6 +135,39 @@ test.describe('Authentication', () => {
 
       // Should still be on login screen (session was cleared)
       await expect(page.getByText('Enter your password to unlock your lab data')).toBeVisible();
+    });
+  });
+
+  test.describe('The test catalog', () => {
+    test.beforeEach(async ({ page }) => {
+      await setupUser(page, 'TestPassword123!');
+      // A new page load: the catalog loaded at setup is gone from memory
+      await page.reload();
+      await expect(page.getByText('Enter your password to unlock your lab data')).toBeVisible();
+    });
+
+    test('says so when the test catalog cannot be loaded after unlocking', async ({ page }) => {
+      // Scenario: The test catalog cannot be loaded after unlocking
+      await blockTestCatalog(page);
+      await page.getByLabel('Password').fill('TestPassword123!');
+      await page.getByRole('button', { name: 'Unlock' }).click();
+
+      await expectTestCatalogError(page);
+      await expect(page.locator('nav').getByText('Settings', { exact: true })).toHaveCount(0);
+    });
+
+    test('loads the test catalog when I try again', async ({ page }) => {
+      // Scenario: Trying again loads the test catalog
+      const unblock = await blockTestCatalog(page);
+      await page.getByLabel('Password').fill('TestPassword123!');
+      await page.getByRole('button', { name: 'Unlock' }).click();
+      await expectTestCatalogError(page);
+
+      await unblock();
+      await page.getByRole('button', { name: 'Try again' }).click();
+
+      await expect(page.locator('nav').getByText('Settings', { exact: true })).toBeVisible();
+      await expect(page.getByRole('alert').filter({ hasText: 'Test catalog could not be loaded' })).toHaveCount(0);
     });
   });
 

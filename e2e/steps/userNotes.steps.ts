@@ -47,7 +47,7 @@ export const NOTES_TEST_VALUES = [
 export interface NoteSeed {
   id: number;
   labResultId?: number;
-  biomarkerId?: number;
+  biomarkerKey?: string;
   testValueId?: number;
   content: string;
   tags: string[];
@@ -57,7 +57,7 @@ export interface NoteSeed {
 
 export function noteSeed(
   id: number,
-  attachTo: Pick<NoteSeed, 'labResultId' | 'biomarkerId' | 'testValueId'>,
+  attachTo: Pick<NoteSeed, 'labResultId' | 'biomarkerKey' | 'testValueId'>,
   content: string,
   tags: string[] = [],
   day = '2024-01-16'

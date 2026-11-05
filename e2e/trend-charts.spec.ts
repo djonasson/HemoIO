@@ -446,7 +446,8 @@ test.describe('Trend direction indicator', () => {
     await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toBeVisible();
   });
 
-  test('does not plot a value whose unit cannot be converted to the chart unit', async ({ page }) => {
+  test('gives a value whose unit cannot be converted to the chart unit a line of its own', async ({ page }) => {
+    // Scenario: Values in a unit the chart cannot convert get a line of their own
     await seedAndOpenTrends(page, [
       { date: '2024-03-01', values: [{ biomarker: HEMOGLOBIN, value: 12.5 }] },
       { date: '2024-04-01', values: [{ biomarker: HEMOGLOBIN, value: 14.0 }] },
@@ -457,9 +458,35 @@ test.describe('Trend direction indicator', () => {
     await expect(dataPoints(page)).toHaveCount(2);
     await expect(
       page.getByRole('main').getByText(
-        '1 value recorded in xyz/L is not shown: it cannot be converted to g/dL.'
+        '1 value recorded in xyz/L is shown on a line of its own: it cannot be converted to g/dL.'
       )
     ).toBeVisible();
+
+    await selectBiomarker(page, 'Hemoglobin in xyz/L');
+    await expect(page.getByRole('main').getByText('Showing 1 data point', { exact: true })).toBeVisible();
+  });
+
+  test('draws glucose in mg/dL and in mmol/L as one line', async ({ page }) => {
+    // Scenario: Glucose in mg/dL and in mmol/L is one line
+    const molarGlucose = { key: '14749-6', name: 'Glicemia', unit: 'mmol/L', low: 3.9, high: 5.6 };
+    await seedAndOpenTrends(page, [
+      { date: '2024-03-01', values: [{ biomarker: GLUCOSE, value: 90 }] },
+      { date: '2024-04-01', values: [{ biomarker: molarGlucose, value: 7 }] },
+      { date: '2024-05-01', values: [{ biomarker: GLUCOSE, value: 100 }] },
+    ]);
+
+    await biomarkerSelect(page).click();
+    await expect(page.getByRole('option', { name: /^Glucose / })).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await selectBiomarker(page, 'Glucose');
+    await expect(dataPoints(page)).toHaveCount(3);
+    await expect(dataPoints(page).nth(1)).toHaveAttribute('aria-label', /: 126 mg\/dL \(/);
+
+    const unit = page.getByRole('main').getByRole('textbox', { name: 'Preferred unit' });
+    await unit.click();
+    await page.getByRole('option', { name: 'mmol/L', exact: true }).click();
+    await expect(dataPoints(page).nth(1)).toHaveAttribute('aria-label', /: 7 mmol\/L \(/);
+    await expect(dataPoints(page)).toHaveCount(3);
   });
 
   test('should show stable when values barely change', async ({ page }) => {
@@ -554,9 +581,9 @@ test('a test with a single unit offers its reference page', async ({ page }) => 
   await expectDetailPage(page, RDW.name);
 });
 
-test('a test outside the biomarker dictionary offers no reference page', async ({ page }) => {
-  // A legacy hash ID: a test the dictionary does not have
-  const zorblatin = { id: 10042, name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
+test('a value saved as not a LOINC test offers no reference page', async ({ page }) => {
+  // Scenario: No reference link for a value saved as not a LOINC test
+  const zorblatin = { key: 'unknown:zorblatinindex', name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
   await seedAndOpenTrends(page, [
     { date: '2024-03-01', values: [{ biomarker: zorblatin, value: 3 }] },
     { date: '2024-04-01', values: [{ biomarker: zorblatin, value: 4 }] },
@@ -566,4 +593,19 @@ test('a test outside the biomarker dictionary offers no reference page', async (
 
   await expect(dataPoints(page)).toHaveCount(2);
   await expect(page.getByRole('main').getByRole('button', { name: /^View reference/ })).toHaveCount(0);
+});
+
+test('trends a test that is not a LOINC test by its printed name, one line per unit', async ({ page }) => {
+  // Scenario: Values of a test that is not a LOINC test trend by name and unit
+  const zorblatin = { key: 'unknown:zorblatinindex', name: 'Zorblatin index', unit: 'U', low: 1, high: 5 };
+  await seedAndOpenTrends(page, [
+    { date: '2024-03-01', values: [{ biomarker: zorblatin, value: 3 }] },
+    { date: '2024-04-01', values: [{ biomarker: zorblatin, value: 4 }] },
+    { date: '2024-05-01', values: [{ biomarker: zorblatin, value: 40, unit: 'mg/L' }] },
+  ]);
+
+  await selectBiomarker(page, 'Zorblatin index');
+  await expect(dataPoints(page)).toHaveCount(2);
+  await selectBiomarker(page, 'Zorblatin index in mg/L');
+  await expect(page.getByRole('main').getByText('Showing 1 data point', { exact: true })).toBeVisible();
 });

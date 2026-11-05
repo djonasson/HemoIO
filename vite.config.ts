@@ -1,4 +1,4 @@
-import { createLogger, defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
@@ -23,33 +23,6 @@ if (missingOcrFiles.length > 0) {
 
 /** Above this a JS chunk gets Vite's size warning (see build.chunkSizeWarningLimit) */
 const CHUNK_SIZE_WARNING_KB = 600;
-/** The LOINC catalog: data, 13 MB on purpose, loaded on its own after unlock */
-const CATALOG_CHUNK = /catalog\.generated-[^/]+\.js$/;
-
-/**
- * Vite's chunk size warning names no chunk, so it cannot leave one out. This
- * notes whether the catalog is the only chunk over the limit, and the logger
- * below drops the warning only then: any other large chunk still warns.
- */
-let onlyCatalogTooLarge = false;
-function catalogChunkSize(): Plugin {
-  return {
-    name: 'catalog-chunk-size',
-    apply: 'build',
-    generateBundle(_options, bundle) {
-      const large = Object.values(bundle).filter(
-        (file) => file.type === 'chunk' && Buffer.byteLength(file.code) / 1000 > CHUNK_SIZE_WARNING_KB
-      );
-      onlyCatalogTooLarge = large.length > 0 && large.every((file) => CATALOG_CHUNK.test(file.fileName));
-    },
-  };
-}
-const logger = createLogger();
-const warn = logger.warn.bind(logger);
-logger.warn = (message, options) => {
-  if (onlyCatalogTooLarge && message.includes('Some chunks are larger than')) return;
-  warn(message, options);
-};
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
@@ -57,14 +30,12 @@ export default defineConfig(({ command }) => {
 
   return {
     base,
-    customLogger: logger,
     define: {
       __OCR_CACHE_NAME__: JSON.stringify(OCR_CACHE_NAME),
     },
     plugins: [
       // Dev server only: a data-layer change reloads the page instead of hot-updating it
       dataLayerReload(),
-      catalogChunkSize(),
       react(),
       viteStaticCopy({
         // Flat into tesseract/…, without the node_modules path
@@ -137,7 +108,7 @@ export default defineConfig(({ command }) => {
           {
             // The LOINC catalog (13 MB) is loaded after unlock, then offline;
             // its file name changes with its content, so old ones expire
-            urlPattern: /\/assets\/catalog\.generated-[^/]+\.js$/,
+            urlPattern: /\/assets\/catalog\.generated-[^/]+\.json$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'loinc-catalog',
@@ -157,7 +128,7 @@ export default defineConfig(({ command }) => {
         clientsClaim: true,
         // Pre-cache app shell; OCR files and the LOINC catalog are cached on first use
         globPatterns: [...OCR_PRECACHE_GLOBS],
-        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`, 'assets/catalog.generated-*.js'],
+        globIgnores: [...OCR_PRECACHE_IGNORES, `${ONNX_ASSET_DIR}/**`, 'assets/catalog.generated-*.json'],
       },
       devOptions: {
         enabled: false, // Disable in dev to avoid caching issues
@@ -172,7 +143,7 @@ export default defineConfig(({ command }) => {
   build: {
     // transformers.js (~580 kB) is one library, loaded only when the matching
     // model is first needed; every chunk the app starts with stays under 500 kB.
-    // The LOINC catalog alone is let through (catalogChunkSize above).
+    // The LOINC catalog is a JSON file of its own, not a chunk.
     chunkSizeWarningLimit: CHUNK_SIZE_WARNING_KB,
     rollupOptions: {
       output: {
@@ -182,6 +153,8 @@ export default defineConfig(({ command }) => {
           if (!pkg) return undefined;
           if (/^(react|react-dom|scheduler)$/.test(pkg)) return 'vendor-react';
           if (/^(@mantine|@floating-ui|@tabler)\//.test(pkg)) return 'vendor-mantine';
+          // UCUM's unit tables (~280 kB): one library, kept apart so the app's own chunk stays small
+          if (pkg === '@lhncbc/ucum-lhc') return 'vendor-ucum';
           // Recharts and the libraries it is built on
           const charts =
             /^(recharts|@reduxjs\/toolkit|react-redux|immer|es-toolkit|d3-.+|decimal\.js-light|victory-vendor)$/;

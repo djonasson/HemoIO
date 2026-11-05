@@ -10,25 +10,25 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { openFromMenu } from './app.steps';
 
 /**
- * Built-in dictionary entries used by the tests. IDs are 1-indexed positions
- * in BIOMARKER_DEFINITIONS (src/data/biomarkers/dictionary.ts).
+ * Tests used by the scenarios, by LOINC code, with the names HemoIO shows
+ * for them (their add-on short names)
  */
 export const BIOMARKERS = {
-  WHITE_BLOOD_CELLS: { id: 1, name: 'White Blood Cell Count', unit: '10^9/L' },
-  RED_BLOOD_CELLS: { id: 2, name: 'Red Blood Cell Count', unit: '10^12/L' },
-  HEMOGLOBIN: { id: 3, name: 'Hemoglobin', unit: 'g/dL' },
-  HEMATOCRIT: { id: 4, name: 'Hematocrit', unit: '%' },
-  PLATELETS: { id: 5, name: 'Platelet Count', unit: '10^9/L' },
-  MCV: { id: 6, name: 'Mean Corpuscular Volume', unit: 'fL' },
-  MCH: { id: 7, name: 'Mean Corpuscular Hemoglobin', unit: 'pg' },
-  MCHC: { id: 8, name: 'Mean Corpuscular Hemoglobin Concentration', unit: 'g/dL' },
-  GLUCOSE: { id: 22, name: 'Glucose', unit: 'mg/dL' },
-  CREATININE: { id: 23, name: 'Creatinine', unit: 'mg/dL' },
+  WHITE_BLOOD_CELLS: { key: '6690-2', name: 'White Blood Cell Count', unit: '10^9/L' },
+  RED_BLOOD_CELLS: { key: '789-8', name: 'Red Blood Cell Count', unit: '10^12/L' },
+  HEMOGLOBIN: { key: '718-7', name: 'Hemoglobin', unit: 'g/dL' },
+  HEMATOCRIT: { key: '4544-3', name: 'Hematocrit', unit: '%' },
+  PLATELETS: { key: '777-3', name: 'Platelet Count', unit: '10^9/L' },
+  MCV: { key: '787-2', name: 'Mean Corpuscular Volume', unit: 'fL' },
+  MCH: { key: '785-6', name: 'Mean Corpuscular Hemoglobin', unit: 'pg' },
+  MCHC: { key: '786-4', name: 'Mean Corpuscular Hemoglobin Concentration', unit: 'g/dL' },
+  GLUCOSE: { key: '2345-7', name: 'Glucose', unit: 'mg/dL' },
+  CREATININE: { key: '2160-0', name: 'Creatinine', unit: 'mg/dL' },
 } as const;
 
 type Biomarker = (typeof BIOMARKERS)[keyof typeof BIOMARKERS];
 
-/** Biomarkers in dictionary order, for generating results with N values */
+/** A blood panel, for generating results with N values */
 const PANEL: Biomarker[] = [
   BIOMARKERS.WHITE_BLOOD_CELLS,
   BIOMARKERS.RED_BLOOD_CELLS,
@@ -63,7 +63,7 @@ export function labResult(id: number, day: string, labName: string): LabResultSe
 export interface TestValueSeed {
   id: number;
   labResultId: number;
-  biomarkerId: number;
+  biomarkerKey: string;
   rawText: string;
   value: number;
   unit: string;
@@ -93,7 +93,7 @@ export function testValues(
   return values.map((v, i) => ({
     id: firstId + i,
     labResultId: result.id,
-    biomarkerId: v.biomarker.id,
+    biomarkerKey: v.biomarker.key,
     rawText: v.biomarker.name,
     value: v.value,
     unit: v.unit ?? v.biomarker.unit,

@@ -351,6 +351,33 @@ test.describe('Timeline with Data', () => {
     await expect(page.getByRole('tooltip')).toContainText('Blood sugar level');
   });
 
+  // Scenario: Test names come from LOINC
+  test('names each test as LOINC and HemoIO do, and a value that is not a LOINC test as printed', async ({
+    page,
+  }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    const at = result.createdAt;
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: [
+        ...testValues(result, [{ biomarker: BIOMARKERS.GLUCOSE, value: 90, low: 70, high: 100 }], 1),
+        // Glucose in blood: a LOINC test HemoIO has no name for
+        { id: 2, labResultId: 1, biomarkerKey: '2339-0', rawText: 'Glicemia capillare', value: 92, unit: 'mg/dL', confidence: 0.95, createdAt: at, updatedAt: at },
+        { id: 3, labResultId: 1, biomarkerKey: 'unknown:zorblatin', rawText: 'Zorblatin', value: 3, unit: 'U/L', confidence: 0.95, createdAt: at, updatedAt: at },
+      ],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    await expect(card.getByRole('row', { name: /^Glucose: 90 mg\/dL,/ })).toBeVisible();
+    await expect(card.getByRole('row', { name: /^Glucose Bld-mCnc: 92 mg\/dL,/ })).toBeVisible();
+    await expect(card.getByRole('row', { name: /^Zorblatin: 3 U\/L,/ })).toBeVisible();
+    await expect(card.getByText('Glicemia capillare')).toHaveCount(0);
+
+    await trendLink(card, 'Glucose Bld-mCnc').hover();
+    await expect(page.getByRole('tooltip')).toContainText('LOINC 2339-0: Glucose [Mass/volume] in Blood');
+  });
+
   // Scenario: Open a test's trend with the keyboard
   test("opens a test's trend with the keyboard", async ({ page }) => {
     const result = labResult(1, '2024-01-15', 'Quest Diagnostics');

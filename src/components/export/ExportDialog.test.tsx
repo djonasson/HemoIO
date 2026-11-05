@@ -121,6 +121,28 @@ describe('ExportDialog', () => {
       expect(screen.getByText(/1 lab result/)).toBeInTheDocument();
     });
 
+    it('includes the values of every code of a chosen test', async () => {
+      const [result] = defaultProps.labResultsData;
+      const glucose = { ...result.testValues[0], biomarkerKey: '2345-7' };
+      const molar = { ...glucose, id: 2, biomarkerKey: '14749-6', value: 5, unit: 'mmol/L' };
+      const hemoglobin = { ...glucose, id: 3, biomarkerKey: '718-7', value: 14, unit: 'g/dL' };
+      renderWithProviders(
+        <ExportDialog
+          {...defaultProps}
+          labResultsData={[{ ...result, testValues: [glucose, molar, hemoglobin] }]}
+          biomarkerOptions={[
+            { value: '2345-7', label: 'Glucose', keys: ['2345-7', '14749-6'] },
+            { value: '718-7', label: 'Hemoglobin', keys: ['718-7'] },
+          ]}
+        />
+      );
+
+      await userEvent.click(screen.getByRole('textbox', { name: 'Select biomarkers to include' }));
+      await userEvent.click(await screen.findByRole('option', { name: 'Glucose' }));
+
+      expect(await screen.findByText(/2 test values/)).toBeInTheDocument();
+    });
+
     it('should show export and cancel buttons', () => {
       renderWithProviders(<ExportDialog {...defaultProps} />);
 

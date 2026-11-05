@@ -1,10 +1,9 @@
 /**
  * Step definitions for features/trend-charts.feature (also used by alerts)
  *
- * Builds scenario-specific lab data for seedLabData(). Biomarker IDs refer to
- * the built-in dictionary (1-indexed position in BIOMARKER_DEFINITIONS), or
- * above 10000 to a test outside it (a legacy hash ID); the
- * display name is resolved from rawText, as it is for imported values.
+ * Builds scenario-specific lab data for seedLabData(). A test is keyed by its
+ * LOINC code, or by an "unknown:" key for a value saved as not a LOINC test,
+ * which is named by its rawText as imported values are.
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
@@ -12,20 +11,21 @@ import { openFromMenu } from './app.steps';
 import { seedLabData } from './data.steps';
 
 export interface BiomarkerFixture {
-  id: number;
+  /** LOINC code, or an "unknown:" key */
+  key: string;
   name: string;
   unit: string;
   low: number;
   high: number;
 }
 
-export const HEMOGLOBIN: BiomarkerFixture = { id: 3, name: 'Hemoglobin', unit: 'g/dL', low: 12, high: 17.5 };
-export const GLUCOSE: BiomarkerFixture = { id: 22, name: 'Glucose', unit: 'mg/dL', low: 70, high: 100 };
-export const LDL: BiomarkerFixture = { id: 33, name: 'LDL Cholesterol', unit: 'mg/dL', low: 0, high: 100 };
-export const HDL: BiomarkerFixture = { id: 34, name: 'HDL Cholesterol', unit: 'mg/dL', low: 40, high: 60 };
+export const HEMOGLOBIN: BiomarkerFixture = { key: '718-7', name: 'Hemoglobin', unit: 'g/dL', low: 12, high: 17.5 };
+export const GLUCOSE: BiomarkerFixture = { key: '2345-7', name: 'Glucose', unit: 'mg/dL', low: 70, high: 100 };
+export const LDL: BiomarkerFixture = { key: '13457-7', name: 'LDL Cholesterol', unit: 'mg/dL', low: 0, high: 100 };
+export const HDL: BiomarkerFixture = { key: '2085-9', name: 'HDL Cholesterol', unit: 'mg/dL', low: 40, high: 60 };
 /** One unit only, so its chart offers no unit choice */
-export const RDW: BiomarkerFixture = { id: 9, name: 'Red Cell Distribution Width', unit: '%', low: 11.5, high: 14.5 };
-export const VITAMIN_D: BiomarkerFixture = { id: 50, name: 'Vitamin D', unit: 'ng/mL', low: 30, high: 100 };
+export const RDW: BiomarkerFixture = { key: '788-0', name: 'Red Cell Distribution Width', unit: '%', low: 11.5, high: 14.5 };
+export const VITAMIN_D: BiomarkerFixture = { key: '62292-8', name: 'Vitamin D', unit: 'ng/mL', low: 30, high: 100 };
 
 /** One lab visit: its date, lab and the values measured on it */
 export interface LabVisit {
@@ -58,7 +58,7 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
       testValues.push({
         id: testValues.length + 1,
         labResultId,
-        biomarkerId: biomarker.id,
+        biomarkerKey: biomarker.key,
         rawText: biomarker.name,
         value,
         unit: unit ?? biomarker.unit,

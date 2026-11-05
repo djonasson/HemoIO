@@ -13,6 +13,8 @@ import type { Page } from '@playwright/test';
 import * as fs from 'fs';
 import { openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
+import { goToDictionary, viewDetail } from './steps/dictionary.steps';
+import { GLUCOSE, seedMeasurements } from './steps/unitConversion.steps';
 import {
   configureAnthropic,
   mockAnthropicApi,
@@ -319,6 +321,58 @@ test.describe('Settings Page', () => {
       const glucoseRow = glucoseTargetRow(page);
       await expect(glucoseRow.getByText('Using standard')).toBeVisible();
       await expect(glucoseRow.getByText('80 - 95')).toHaveCount(0);
+    });
+  });
+
+  test.describe('Personal targets on LOINC codes', () => {
+    const preferences = (personalTargets: Record<string, { low?: number; high?: number }>) => ({
+      userPreferences: { unitPreferences: {}, personalTargets, theme: 'system', dateFormat: 'MM/DD/YYYY' },
+    });
+
+    test('applies a personal target to every LOINC code of the test', async ({ page }) => {
+      // Scenario: A personal target applies to every LOINC code of the test
+      await page.goto('/');
+      await setupOrUnlock(page);
+      await seedMeasurements(
+        page,
+        [
+          { day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL' },
+          { day: '2024-02-20', biomarker: { key: '14749-6', name: 'Glucose' }, value: 6, unit: 'mmol/L' },
+        ],
+        preferences({ '2345-7': { low: 70, high: 90 } })
+      );
+
+      await goToDictionary(page);
+      const detail = await viewDetail(page, 'Glucose');
+      const target = detail.getByRole('region', { name: 'Personal target' });
+      await expect(target.getByText('70 - 90 mg/dL', { exact: true })).toBeVisible();
+      await expect(detail.getByText('2 results', { exact: true })).toBeVisible();
+
+      await openSettingsTab(page, 'Personal Targets');
+      await page.getByRole('textbox', { name: 'Search biomarkers' }).fill('Glucose');
+      await expect(
+        page.getByRole('button', { name: 'Clear personal target for Glucose', exact: true })
+      ).toHaveCount(1);
+    });
+
+    test('names each test as the rest of the app does', async ({ page }) => {
+      // Scenario: Personal targets name tests as the rest of the app does
+      await page.goto('/');
+      await setupOrUnlock(page);
+      // Glucose in blood (2339-0) has no name of HemoIO's: LOINC's short name
+      await seedMeasurements(
+        page,
+        [{ day: '2024-01-15', biomarker: GLUCOSE, value: 95, unit: 'mg/dL' }],
+        preferences({ '2339-0': { high: 120 } })
+      );
+
+      await openSettingsTab(page, 'Personal Targets');
+      await expect(
+        page.getByRole('button', { name: 'Set personal target for White Blood Cell Count', exact: true })
+      ).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Clear personal target for Glucose Bld-mCnc', exact: true })
+      ).toBeVisible();
     });
   });
 
