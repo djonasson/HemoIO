@@ -274,6 +274,18 @@ describe('useFilesystemSync', () => {
       expect(writeFolderCopy).not.toHaveBeenCalled();
     });
 
+    it('writes nothing when the set-aside count cannot be read', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockCountSetAside.mockRejectedValue(new Error('Quest Diagnostics glucose 99'));
+
+      const { result } = renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(result.current.issue).toBe('failed'));
+      expect(writeFolderCopy).not.toHaveBeenCalled();
+      expect(logged).toHaveBeenCalledWith('Failed to sync to the folder');
+      expect(JSON.stringify(logged.mock.calls)).not.toContain('Quest');
+    });
+
     it('a failed sync logs no error detail', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(writeFolderCopy).mockRejectedValueOnce(new Error('Quest Diagnostics glucose 99'));

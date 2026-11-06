@@ -19,6 +19,7 @@ import {
   failedSyncNotice,
   loseBrowserData,
   skippedSyncNotice,
+  syncAttempts,
   storeDataInFolder,
   useTestFolder,
 } from './steps/folderSync.steps';
@@ -231,8 +232,12 @@ test.describe('Folder Sync Safety', () => {
     await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
     await expect(setAsideBanner(page)).toContainText('Folder sync is paused');
 
+    const attempts = await syncAttempts(page);
+
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
 
+    // The sync the added result starts has run, and held back
+    await expect.poll(() => syncAttempts(page)).toBeGreaterThan(attempts);
     await expect(skippedSyncNotice(page)).toBeVisible();
     await expect(skippedSyncNotice(page)).toContainText("Some stored records can't be opened");
     expect(await folder.read(FOLDER_COPY)).toBe(synced);

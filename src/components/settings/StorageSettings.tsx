@@ -175,10 +175,10 @@ export function StorageSettings({
       if (pendingProvider !== 'filesystem') {
         setDirectoryName(null);
         setPermissionState(null);
-      } else {
-        // Only now, with the choice saved: sync reads it when told
-        notifyFolderAccessChanged();
       }
+      // Only now, with the choice saved: sync and the banner read it when told,
+      // on or off
+      notifyFolderAccessChanged();
 
       setShowConfirmModal(false);
       setPendingProvider(null);

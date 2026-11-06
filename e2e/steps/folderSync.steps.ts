@@ -37,6 +37,14 @@ export async function useTestFolder(page: Page): Promise<void> {
       handle.queryPermission = async () => 'granted';
       handle.requestPermission = async () => 'granted';
     }
+    // Every folder sync starts by asking: a count of the syncs that began
+    const counter = window as unknown as { __e2eSyncAttempts: number };
+    counter.__e2eSyncAttempts = 0;
+    const query = handle.queryPermission as () => Promise<string>;
+    handle.queryPermission = function (this: unknown, ...args: unknown[]) {
+      counter.__e2eSyncAttempts += 1;
+      return (query as (...a: unknown[]) => Promise<string>).apply(this, args);
+    };
     },
     { defaultName: TEST_FOLDER_NAME, nextFolderKey: NEXT_FOLDER_KEY }
   );
@@ -125,6 +133,11 @@ export async function loseBrowserData(page: Page): Promise<void> {
       })
   );
   await page.reload();
+}
+
+/** How many folder syncs have begun in this page */
+export function syncAttempts(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __e2eSyncAttempts: number }).__e2eSyncAttempts);
 }
 
 /** The notice shown while the folder sync holds back to protect the folder copy */

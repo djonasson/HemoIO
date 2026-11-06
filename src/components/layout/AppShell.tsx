@@ -43,6 +43,7 @@ import {
   useSaveImport,
   useNavigation,
   useSetAsideRecords,
+  useFolderStorageOn,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -53,7 +54,6 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { FolderRestoreModal, SetAsideBanner } from '@components/storage';
-import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
@@ -142,6 +142,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     enabled: exportDialogOpen,
   });
   const setAsideRecords = useSetAsideRecords();
+  const folderStorageOn = useFolderStorageOn();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
@@ -415,7 +416,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           <SetAsideBanner
             total={setAsideRecords.summary.total}
             unsaved={setAsideRecords.summary.unsaved}
-            folderStorageOn={isFolderStorageOn()}
+            folderStorageOn={folderStorageOn}
             onDownload={setAsideRecords.download}
             onConfirmSaved={setAsideRecords.confirmSaved}
             onSnapshot={setAsideRecords.snapshot}

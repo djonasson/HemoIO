@@ -104,11 +104,4 @@ Feature: Unreadable Records
     And its buttons should be reachable with the keyboard
     And pressing Escape on the delete confirmation should keep the records
 
-  Scenario: Folder sync waits until unreadable records are saved or deleted
-    Given my data is stored in a local folder
-    And the records HemoIO cannot open are kept aside and not yet saved
-    When the folder sync runs
-    Then my folder copy should not be overwritten
-    And I should be told that the sync waits until I download or delete those records
-    When I download them as a sealed file
-    Then the folder sync should start again
+  # Folder sync pauses while unreadable records are unsaved: see folder-sync-safety.feature
