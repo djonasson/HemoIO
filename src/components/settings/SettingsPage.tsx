@@ -350,7 +350,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         <Tabs.Panel value="security" pt="md">
           <Stack gap="xl">
             <ChangePassword />
-            <StartOver onExportBackup={openDataTab} />
+            <StartOver onExportBackup={openDataTab} setAsideCount={setAside.total} />
           </Stack>
         </Tabs.Panel>
 

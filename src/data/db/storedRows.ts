@@ -1,7 +1,8 @@
 /**
  * The rows this browser holds, counted and cleared without the data key:
  * setup uses them to find data an earlier setup left behind, and Start over
- * clears them with the rest of what HemoIO keeps in this browser
+ * clears them with the rest of what HemoIO keeps in this browser, except the
+ * rows set aside: those may open again with a key recovered from a folder
  */
 
 import { clearFolderHandleStore } from '@data/storage/FileSystemStorageProvider';
@@ -19,13 +20,26 @@ export async function countStoredRows(database: HemoIODatabase = defaultDb): Pro
   return counts.reduce((total, count) => total + count, 0);
 }
 
-/** Empties every table, settings included, in one transaction: all or nothing */
-export async function clearStoredData(database: HemoIODatabase = defaultDb): Promise<void> {
+/** Empties the tables in one transaction: all or nothing */
+async function clearTables(database: HemoIODatabase, tables: HemoIODatabase['tables']): Promise<void> {
   // Each clear() is an IndexedDB request, so the transaction stays open
   // until the last one completes
-  await database.transaction('rw', database.tables, () =>
-    Promise.all(database.tables.map((table) => table.clear()))
-  );
+  await database.transaction('rw', tables, () => Promise.all(tables.map((table) => table.clear())));
+}
+
+/** Empties every table, settings included, in one transaction: all or nothing */
+export async function clearStoredData(database: HemoIODatabase = defaultDb): Promise<void> {
+  await clearTables(database, database.tables);
+}
+
+/**
+ * Start over: empties every table but the rows set aside, in one transaction.
+ * Those are records no key this browser held could open; a key recovered
+ * from a folder copy may open them, so setup offers to recover, keep or
+ * clear them, and nothing is deleted unasked.
+ */
+export async function clearStoredDataButSetAside(database: HemoIODatabase = defaultDb): Promise<void> {
+  await clearTables(database, database.tables.filter((table) => table.name !== 'setAside'));
 }
 
 /**

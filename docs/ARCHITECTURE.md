@@ -503,9 +503,13 @@ copy. The password stays the same.
 **Start over** (Settings > Security, after an offer to export and a typed
 confirmation) drops the session key at once, so no sync or decryption
 starts, then takes `hemoio-setup` and, nested in it, `hemoio-folder-sync`,
-waiting for any sync in flight. It empties every table and removes every
-`hemoio_` key in localStorage and the stored folder handle. The folder and
-its files are never touched. The page then reloads, whatever the outcome,
+waiting for any sync in flight. It empties every table but `setAside` and
+removes every `hemoio_` key in localStorage and the stored folder handle.
+The set-aside rows stay because a key recovered from a folder copy may
+open them: the dialog says how many stay, and after the reload setup's
+existing-data step offers recovery from the folder (which returns the rows
+that key opens), keeping them aside, or clearing them. The folder and its
+files are never touched. The page then reloads, whatever the outcome,
 so no state of the old setup (API key caches, AI choices, preferences)
 stays in memory. Removing the credentials sends other tabs back to setup,
 and a tab that held the old setup, locked or unlocked, reloads too.

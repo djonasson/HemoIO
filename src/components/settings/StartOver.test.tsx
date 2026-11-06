@@ -18,10 +18,10 @@ const BODY =
 
 const onExportBackup = vi.fn();
 
-function renderStartOver() {
+function renderStartOver(setAsideCount?: number) {
   return render(
     <MantineProvider env="test">
-      <StartOver onExportBackup={onExportBackup} />
+      <StartOver onExportBackup={onExportBackup} setAsideCount={setAsideCount} />
     </MantineProvider>
   );
 }
@@ -60,6 +60,35 @@ describe('StartOver', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Export a backup' }));
     expect(onExportBackup).toHaveBeenCalledTimes(2);
     expect(mockStartOver).not.toHaveBeenCalled();
+  });
+
+  it('says how many records it cannot open stay aside for setup', async () => {
+    const user = userEvent.setup();
+    renderStartOver(3);
+
+    const dialog = await openConfirmation(user);
+
+    expect(dialog).toHaveTextContent(
+      '3 records HemoIO could not open stay aside; setup will offer to clear them.'
+    );
+  });
+
+  it('names one record kept aside in the singular', async () => {
+    const user = userEvent.setup();
+    renderStartOver(1);
+
+    const dialog = await openConfirmation(user);
+
+    expect(dialog).toHaveTextContent('1 record HemoIO could not open stays aside; setup will offer to clear it.');
+  });
+
+  it('says nothing of records kept aside when there are none', async () => {
+    const user = userEvent.setup();
+    renderStartOver(0);
+
+    const dialog = await openConfirmation(user);
+
+    expect(dialog).not.toHaveTextContent(/stay(s)? aside/);
   });
 
   it('start over needs the typed confirmation word', async () => {

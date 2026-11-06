@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from './storedRows';
+import {
+  clearLocalHemoIOStorage,
+  clearStoredData,
+  clearStoredDataButSetAside,
+  countStoredRows,
+} from './storedRows';
 import { openTestDb } from './testDb';
 
 const at = new Date('2024-01-15T10:00:00Z');
@@ -48,6 +53,29 @@ describe('storedRows', () => {
       ['labResults', 'setAside', 'settings', 'testValues', 'userNotes', 'userPreferences'].sort()
     );
     expect(counts).toEqual(database.tables.map(() => 0));
+  });
+
+  it('clear for Start over keeps the rows set aside, and empties every other table', async () => {
+    const { db, database } = await openTestDb();
+    await db.addLabResultsWithValues([
+      {
+        labResult: { date: at, labName: 'Lab', createdAt: at, updatedAt: at },
+        testValues: [{ biomarkerKey: '2345-7', value: 95, unit: 'mg/dL', createdAt: at, updatedAt: at }],
+      },
+    ]);
+    await database.table('userNotes').add({ id: 7, labResultId: 1, encrypted: 'x' });
+    await database.table('userPreferences').add({ id: 1, encrypted: 'x' });
+    await database.settings.add(settings);
+    await database.setAside.add({ table: 'labResults', row: { id: 900 }, savedToFile: 0 });
+    await database.setAside.add({ table: 'testValues', row: { id: 901 }, savedToFile: 1 });
+
+    await clearStoredDataButSetAside(database);
+
+    for (const table of database.tables) {
+      expect(await table.count()).toBe(table.name === 'setAside' ? 2 : 0);
+    }
+    // Setup counts them, and offers to recover, keep or clear them
+    expect(await countStoredRows(database)).toBe(2);
   });
 
   it('clearLocalHemoIOStorage removes only hemoio_ keys and the handle store', async () => {

@@ -17,7 +17,7 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
-import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage, clearStoredData, clearStoredDataButSetAside } from '@data/db/storedRows';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { withWebLock } from '@/utils/withWebLock';
@@ -36,6 +36,7 @@ vi.mock('@data/db', () => ({
 // here only when, and under which locks, it is called
 vi.mock('@data/db/storedRows', () => ({
   clearStoredData: vi.fn(),
+  clearStoredDataButSetAside: vi.fn(),
   clearLocalHemoIOStorage: vi.fn(),
 }));
 
@@ -122,7 +123,8 @@ describe('AuthContext', () => {
     settleUnreadable.mockResolvedValue({ returned: 0, setAside: 0 });
     vi.mocked(reloadPage).mockReset();
     vi.mocked(clearStoredData).mockReset();
-    vi.mocked(clearStoredData).mockResolvedValue();
+    vi.mocked(clearStoredDataButSetAside).mockReset();
+    vi.mocked(clearStoredDataButSetAside).mockResolvedValue();
     vi.mocked(clearLocalHemoIOStorage).mockReset();
     vi.mocked(clearLocalHemoIOStorage).mockImplementation(async () => {
       localStorage.removeItem(CREDENTIALS_KEY);
@@ -968,7 +970,7 @@ describe('AuthContext', () => {
       );
     });
 
-    it('startOver clears every local store and never touches the folder', async () => {
+    it('startOver clears every local store but the rows set aside, and never touches the folder', async () => {
       const folderWrites = [
         vi.spyOn(FileSystemStorageProvider.prototype, 'save'),
         vi.spyOn(FileSystemStorageProvider.prototype, 'saveBackup'),
@@ -978,9 +980,11 @@ describe('AuthContext', () => {
 
       await startOver();
 
-      expect(clearStoredData).toHaveBeenCalledTimes(1);
+      expect(clearStoredDataButSetAside).toHaveBeenCalledTimes(1);
+      // Rows no key here opened may open with a folder's key: setup offers them
+      expect(clearStoredData).not.toHaveBeenCalled();
       expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(clearStoredData).mock.invocationCallOrder[0]).toBeLessThan(
+      expect(vi.mocked(clearStoredDataButSetAside).mock.invocationCallOrder[0]).toBeLessThan(
         vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]
       );
       for (const write of folderWrites) expect(write).not.toHaveBeenCalled();
@@ -1001,7 +1005,7 @@ describe('AuthContext', () => {
         const record = (what: string) => async () => {
           seen.push(`${what} holding ${locks.heldNames().join(' + ')}`);
         };
-        vi.mocked(clearStoredData).mockImplementation(record('clearStoredData'));
+        vi.mocked(clearStoredDataButSetAside).mockImplementation(record('clearStoredDataButSetAside'));
         vi.mocked(clearLocalHemoIOStorage).mockImplementation(record('clearLocalHemoIOStorage'));
 
         let pending: Promise<void> = Promise.resolve();
@@ -1023,7 +1027,7 @@ describe('AuthContext', () => {
 
         expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup', 'hemoio-folder-sync']);
         expect(seen).toEqual([
-          'clearStoredData holding hemoio-setup + hemoio-folder-sync',
+          'clearStoredDataButSetAside holding hemoio-setup + hemoio-folder-sync',
           'clearLocalHemoIOStorage holding hemoio-setup + hemoio-folder-sync',
         ]);
       } finally {
@@ -1036,7 +1040,7 @@ describe('AuthContext', () => {
       try {
         await setUp();
         const seen: string[] = [];
-        vi.mocked(clearStoredData).mockImplementation(async () => {
+        vi.mocked(clearStoredDataButSetAside).mockImplementation(async () => {
           seen.push('cleared');
         });
         let finishSync = (): void => {};
@@ -1053,7 +1057,7 @@ describe('AuthContext', () => {
         });
         // The key is gone at once, but nothing is cleared while the sync runs
         expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
-        expect(clearStoredData).not.toHaveBeenCalled();
+        expect(clearStoredDataButSetAside).not.toHaveBeenCalled();
 
         await act(async () => {
           finishSync();
@@ -1070,7 +1074,7 @@ describe('AuthContext', () => {
     it('a failed clear logs a fixed message, stays in setup and still reloads', async () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       await setUp();
-      vi.mocked(clearStoredData).mockRejectedValue(new Error('labResults row 7 secret'));
+      vi.mocked(clearStoredDataButSetAside).mockRejectedValue(new Error('labResults row 7 secret'));
 
       let failed = false;
       await act(async () => {

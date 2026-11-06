@@ -28,7 +28,7 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
-import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage, clearStoredDataButSetAside } from '@data/db/storedRows';
 import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import { reloadPage } from '@/utils/reloadPage';
 import {
@@ -93,7 +93,9 @@ export interface AuthContextValue {
   /**
    * Deletes this browser's HemoIO data and returns to first run: the key
    * leaves memory at once, then, once any folder sync in flight is done,
-   * every table and every HemoIO key in localStorage are cleared. Never
+   * every table but the rows set aside, and every HemoIO key in
+   * localStorage, are cleared. The rows set aside stay for setup, which
+   * offers to recover, keep or clear them. Never
    * touches the folder. Then the page reloads, whatever the outcome, so no
    * state of the old setup stays in memory; a failure is logged first, and
    * setup finds what is left.
@@ -393,7 +395,9 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         withWebLock(FOLDER_SYNC_LOCK, async (): Promise<boolean> => {
           let ok = true;
           try {
-            await clearStoredData();
+            // The rows set aside stay: no key here opened them, but one
+            // recovered from a folder copy may, and setup offers them
+            await clearStoredDataButSetAside();
           } catch {
             ok = false;
           }

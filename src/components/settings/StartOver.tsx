@@ -3,7 +3,9 @@
  *
  * Settings → Security: deletes this browser's HemoIO data and returns to
  * first run, after offering to export a backup and asking for the typed
- * confirmation word. The folder copy and folder backups are never touched.
+ * confirmation word. The folder copy and folder backups are never touched,
+ * nor are the records HemoIO could not open: a key recovered from a folder
+ * copy may open them, so setup offers to recover, keep or clear them.
  */
 
 import { useState } from 'react';
@@ -17,12 +19,21 @@ const BODY =
 /** What the user types to confirm */
 const CONFIRMATION_WORD = 'START OVER';
 
+/** The records kept aside stay for setup; told with their count, as every restore confirmation does */
+function setAsideNote(count: number): string {
+  return count === 1
+    ? '1 record HemoIO could not open stays aside; setup will offer to clear it.'
+    : `${count} records HemoIO could not open stay aside; setup will offer to clear them.`;
+}
+
 export interface StartOverProps {
   /** Opens Settings > Data, where a backup is exported */
   onExportBackup: () => void;
+  /** Records HemoIO cannot open: Start over keeps them aside for setup */
+  setAsideCount?: number;
 }
 
-export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
+export function StartOver({ onExportBackup, setAsideCount = 0 }: StartOverProps): React.ReactNode {
   const { startOver } = useAuth();
   const [opened, setOpened] = useState(false);
   const [typed, setTyped] = useState('');
@@ -91,6 +102,7 @@ export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
         >
           <Stack gap="md">
             <Text size="sm">{BODY}</Text>
+            {setAsideCount > 0 && <Text size="sm">{setAsideNote(setAsideCount)}</Text>}
             {exportLink}
             <TextInput
               label={`Type ${CONFIRMATION_WORD} to confirm`}

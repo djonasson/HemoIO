@@ -6,6 +6,9 @@ Feature: Start Over
   Start over removes everything HemoIO keeps in this browser: lab results,
   notes, settings, the password lock and the folder choice. It never touches
   the folder: the folder copy and the folder's dated backups stay as they are.
+  Records HemoIO could not open stay aside: the key of a folder copy may open
+  them, so setup offers to recover them from the folder, keep them aside, or
+  clear them.
   Every open tab of HemoIO reloads, so nothing of the old setup stays in memory.
   To use a folder made by another setup, start over, then choose "I already
   have a folder copy".
@@ -57,6 +60,17 @@ Feature: Start Over
     Then I should see the first-run setup
     And my folder copy should not have changed
     And my folder's dated backups should not have changed
+
+  Scenario: Records HemoIO could not open stay aside, and come back from my folder copy
+    Given my data is stored in a local folder
+    And a later setup in this browser kept my records aside, because its key could not open them
+    When I choose "Start over" on the Security tab of Settings
+    Then I should be told how many records HemoIO could not open stay aside
+    And that setup will offer to clear them
+    When I start over
+    Then setup should tell me this browser already holds HemoIO data
+    When I set HemoIO up from my folder copy with the password my records were saved with
+    Then my lab results should be back on the timeline
 
   Scenario: Another open tab returns to setup
     Given HemoIO is open in a second tab

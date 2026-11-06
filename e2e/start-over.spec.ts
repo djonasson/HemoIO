@@ -3,7 +3,7 @@
  */
 
 import { test, expect, type Page } from '@playwright/test';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, completeSetup, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import {
   FOLDER_NAME,
@@ -15,6 +15,8 @@ import {
 } from './steps/folderRestore.steps';
 import { loseBrowserData } from './steps/folderSync.steps';
 import { folderBackupNames } from './steps/otherComputer.steps';
+import { existingDataStep, keepExistingDataAside } from './steps/setup.steps';
+import { forgetHemoIO, recoverFromFolder } from './steps/setupFromFolder.steps';
 import {
   CONFIRMATION_WORD,
   StartOverPage,
@@ -24,6 +26,7 @@ import {
   storedFolderHandles,
 } from './steps/startOver.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
+import { setAsideBanner } from './steps/unreadableRecords.steps';
 
 const BACKUP_NAME = 'hemoio-backup-20261105T093000000Z.encrypted';
 
@@ -164,6 +167,30 @@ test.describe('Start over with a folder', () => {
     expect(await storedFolderHandles(page)).toBe(0);
     expect(await folderCopyHash(page)).toBe(hash);
     expect(await folderBackupNames(page, FOLDER_NAME)).toEqual(backups);
+  });
+
+  test('records HemoIO could not open stay aside, and come back from my folder copy', async ({ page }) => {
+    // Scenario: Records HemoIO could not open stay aside, and come back from my folder copy
+    // The lock is lost, and a new setup keeps my records aside
+    await forgetHemoIO(page, { keepDatabase: true });
+    await keepExistingDataAside(page);
+    await completeSetup(page, 'Other-Passw0rd1!');
+    await expect(setAsideBanner(page)).toBeVisible();
+
+    const startOver = new StartOverPage(page);
+    await startOver.open();
+    await startOver.openConfirmation();
+    await expect(startOver.dialog).toContainText(
+      /\d+ records HemoIO could not open stay aside; setup will offer to clear them\./
+    );
+    await startOver.word.fill(CONFIRMATION_WORD);
+    const reloaded = page.waitForEvent('load');
+    await startOver.confirm.click();
+    await reloaded;
+
+    await expect(existingDataStep(page)).toBeVisible();
+    await recoverFromFolder(page, TEST_PASSWORD);
+    await expectLabResultsKept(page);
   });
 
   test('the "another setup" message points to Start over', async ({ page }) => {
