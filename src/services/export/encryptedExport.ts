@@ -18,15 +18,7 @@ import {
   ENCRYPTED_BACKUP_EXTENSION,
 } from '@/types/backup';
 import { encryptForBackup } from '@data/encryption/backupEncryption';
-import { BACKUP_SCHEMA_VERSION, sanitizeSettings, type ExportDataSources } from './jsonExport';
-
-/**
- * Serialize date to ISO string; an invalid date (toISOString would throw)
- * is written as null, which a restore reads back as an invalid date
- */
-function serializeDate(date: Date): string | null {
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
+import { BACKUP_SCHEMA_VERSION, sanitizeSettings, serializeDate, type ExportDataSources } from './jsonExport';
 
 /**
  * Get current application version

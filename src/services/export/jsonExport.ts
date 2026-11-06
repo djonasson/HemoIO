@@ -84,7 +84,7 @@ export function sanitizeSettings(settings: Settings | null): Partial<Settings> |
  * date (toISOString would throw) is written as null, which a restore reads
  * back as an invalid date.
  */
-function serializeDate(date: Date): string | null {
+export function serializeDate(date: Date): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 

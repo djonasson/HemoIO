@@ -149,7 +149,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
       const resultsData: LabResultForExport[] = labResults
         .filter((labResult) => !Number.isNaN(labResult.date.getTime()))
         .map((labResult) => ({
-        labResult,
+          labResult,
           testValues: testValuesByLabResult.get(labResult.id!) || [],
           biomarkerNames,
         }));
