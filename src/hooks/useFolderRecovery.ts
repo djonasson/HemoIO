@@ -55,6 +55,7 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
 
       const { lock, key, copy, revision } = opened;
       let restored = true;
+      let folderKept = true;
       // Kept as soon as the lock is saved, before the sweep and the restore:
       // a reload then still finds folder storage on, and the first sync
       // offers the copy. Not before: another tab may have set up meanwhile.
@@ -63,7 +64,7 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
           localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
           await folder.persistDirectory();
         } catch {
-          restored = false;
+          folderKept = false;
           // Fixed text: the error could name the folder's path
           console.error('Could not keep the folder choice');
         }
@@ -93,6 +94,16 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
           message:
             'HemoIO is unlocked with your password, but your folder copy could not be loaded into ' +
             "this browser. If HemoIO doesn't offer it again, choose your folder in Settings > Data.",
+          color: 'yellow',
+          autoClose: false,
+        });
+      } else if (!folderKept) {
+        notifications.show({
+          id: 'folder-recovery-folder-not-kept',
+          title: 'Folder not remembered',
+          message:
+            'HemoIO is unlocked and your folder copy is loaded, but HemoIO could not remember ' +
+            'your folder. Choose it again in Settings > Data so your data keeps syncing to it.',
           color: 'yellow',
           autoClose: false,
         });

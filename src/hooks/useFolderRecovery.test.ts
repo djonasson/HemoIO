@@ -175,6 +175,29 @@ describe('useFolderRecovery', () => {
     error.mockRestore();
   });
 
+  it('a failed save of the folder choice says only that, when the copy is restored', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    persistDirectory.mockRejectedValueOnce(new Error('/home/someone/Lab Folder'));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(restoreBackup).toHaveBeenCalled();
+    expect(notifications.show).toHaveBeenCalledTimes(1);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Folder not remembered',
+        message: expect.stringContaining('your folder copy is loaded'),
+        autoClose: false,
+      })
+    );
+    expect(notifications.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Folder copy not restored' })
+    );
+    expect(JSON.stringify(error.mock.calls)).not.toContain('someone');
+    error.mockRestore();
+  });
+
   it('leaves browser data for the conflict check', async () => {
     hasLabData.mockResolvedValue(true);
     const hook = await chosen();

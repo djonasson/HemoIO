@@ -84,6 +84,15 @@ Feature: Set Up From a Folder Copy
     Then the folder copy's lab results should be on the timeline
     And I should be told how many stored records can't be opened
 
+  # Unit-tested (useFolderRecovery): a browser cannot be made to fail these
+  # steps on cue
+  Scenario: A copy that could not be loaded, or a folder not remembered, is told apart
+    Given I set HemoIO up from my folder copy with my password
+    When the copy cannot be loaded into this browser
+    Then I should be told HemoIO is unlocked but the folder copy was not restored
+    When instead only my folder choice cannot be saved
+    Then I should be told my folder copy is loaded, but to choose the folder again in Settings
+
   Scenario: If another tab finishes setup first, I am asked to unlock
     Given I am restoring from my folder copy
     And another tab finishes setting HemoIO up first

@@ -11,6 +11,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ReactNode,
@@ -181,9 +182,11 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
   const [credentials, setCredentials] = useState<object | null>(storedCreds);
   const [startingOver, setStartingOver] = useState(false);
-  // Read by the storage listener, which is registered once
+  // Read by the storage listener, which is registered once. Updated as the
+  // status is committed, not after paint: a storage event handled in between
+  // would otherwise see the status before
   const statusRef = useRef(status);
-  useEffect(() => {
+  useLayoutEffect(() => {
     statusRef.current = status;
   }, [status]);
 

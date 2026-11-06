@@ -84,6 +84,19 @@ describe('StartOver', () => {
     await waitFor(() => expect(mockStartOver).toHaveBeenCalledTimes(1));
   });
 
+  it('stops working once start over has run, should the reload not come', async () => {
+    const user = userEvent.setup();
+    mockStartOver.mockRejectedValue(new Error('blocked'));
+    renderStartOver();
+    const dialog = await openConfirmation(user);
+    await user.type(within(dialog).getByLabelText('Type START OVER to confirm'), 'START OVER');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Start over' }));
+
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled());
+    expect(within(dialog).getByRole('button', { name: 'Start over' })).not.toHaveAttribute('data-loading');
+  });
+
   it('focuses Cancel', async () => {
     const user = userEvent.setup();
     renderStartOver();

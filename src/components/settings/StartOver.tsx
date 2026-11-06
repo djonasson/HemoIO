@@ -45,8 +45,15 @@ export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
   const confirm = async (): Promise<void> => {
     if (typed !== CONFIRMATION_WORD || isWorking) return;
     setIsWorking(true);
-    // The page reloads when it is done, failed or not; AuthContext logs a failure
-    await startOver().catch(() => undefined);
+    try {
+      // The page reloads when it is done, failed or not; AuthContext logs a failure
+      await startOver();
+    } catch {
+      // Logged by AuthContext
+    } finally {
+      // Should the reload not come, the dialog is not left spinning with Cancel off
+      setIsWorking(false);
+    }
   };
 
   const exportLink = (
