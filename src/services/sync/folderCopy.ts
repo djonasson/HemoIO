@@ -172,7 +172,9 @@ async function* earlierCopies(
  * without credentials does.
  *
  * The lock is the current copy's, when its header can be read, else the
- * lock file's (folderLockFile.ts). Unwrapped with the password, its key is
+ * lock file's (folderLockFile.ts); when the header's lock refuses the
+ * password, the lock file's is tried too, as it may be ahead of the copy.
+ * Unwrapped with the password, its key is
  * tried on the current copy, then the previous copy, then the dated
  * backups, newest first. The first body that opens under it, with its
  * header as additional data, proves the key: AES-GCM authenticates it, so a
@@ -195,14 +197,37 @@ export async function unlockFolderCopy(
     return { ok: false, problem: 'read-failed' };
   }
   const header = current === null ? null : readEnvelopeHeader(current);
-  let lock = header && header !== 'damaged' ? header.lock : null;
-  if (lock === null) {
-    lock = readLockFile(await source.loadLock().catch(() => null));
-    if (lock === null) {
+  const headerLock = header && header !== 'damaged' ? header.lock : null;
+  // Read only when needed: with no lock in the header, or one that refuses the password
+  const lockFromFile = async (): Promise<StoredCredentialsV2 | null> =>
+    readLockFile(await source.loadLock().catch(() => null));
+
+  if (headerLock === null) {
+    const fileLock = await lockFromFile();
+    if (fileLock === null) {
       if (current === null) return { ok: false, problem: 'no-copy' };
       return { ok: false, problem: header === 'damaged' ? 'not-a-copy' : 'no-lock' };
     }
+    return unlockWithLock(source, current, password, fileLock);
   }
+  const result = await unlockWithLock(source, current, password, headerLock);
+  if (result.ok || result.problem !== 'wrong-password') return result;
+  // The lock file may be ahead of the copy: a password change writes it
+  // first, and the copy write may have failed. Its lock counts only if a
+  // body opens under its key; otherwise the password stays wrong.
+  const fileLock = await lockFromFile();
+  if (fileLock === null || isSameLock(fileLock, headerLock)) return result;
+  const viaFile = await unlockWithLock(source, current, password, fileLock);
+  return viaFile.ok ? viaFile : result;
+}
+
+/** Unwrap this lock with the password, then open the first body its key opens */
+async function unlockWithLock(
+  source: FolderRecoverySource,
+  current: ArrayBuffer | null,
+  password: string,
+  lock: StoredCredentialsV2
+): Promise<FolderUnlockResult> {
   // Checked again here: this lock is about to become the stored credentials
   if (!isCredentialsV2(lock)) return { ok: false, problem: 'not-a-copy' };
 

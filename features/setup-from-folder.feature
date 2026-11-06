@@ -72,6 +72,15 @@ Feature: Set Up From a Folder Copy
     And syncing should go on without a warning
     And the password I used should unlock HemoIO
 
+  # Unit-tested: folderCopy.test.ts
+  Scenario: My new password works when the folder copy still carries the old lock
+    Given I changed my password, and the new lock reached the lock file in my folder
+    But the folder copy could not be saved with it
+    And this browser has forgotten HemoIO
+    When I set HemoIO up from my folder copy with my new password
+    Then HemoIO should open with my data
+    And my new password should be the one that unlocks HemoIO
+
   # Unit-tested: useFolderRecovery.test.ts
   Scenario: A good copy that arrives during recovery is not replaced
     Given my folder copy is damaged and recovery restores the previous copy

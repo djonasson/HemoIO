@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { decrypt, encrypt } from '@data/encryption';
-import { createCredentialsV2 } from '@data/encryption/keyWrapping';
+import { createCredentialsV2, rewrapCredentials } from '@data/encryption/keyWrapping';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import {
   assessFolderCopy,
@@ -518,6 +518,33 @@ describe('unlockFolderCopy, from an earlier copy', () => {
     );
 
     expect(result).toEqual({ ok: false, problem: 'cannot-decrypt' });
+  });
+
+  it('a lock file ahead of the copy opens it with the new password, when the header lock refuses it', async () => {
+    // The password change wrote the lock file, then the copy write failed
+    const old = await createCredentialsV2('Old-Passw0rd!', 1000);
+    const current = await seal(old.key, old.credentials, 'r2');
+    const changed = (await rewrapCredentials('Old-Passw0rd!', PASSWORD, old.credentials))!.credentials;
+
+    const result = await unlockFolderCopy(folderOf({ current, lockFile: lockFile(changed) }), PASSWORD);
+
+    expect(result).toMatchObject({ ok: true, lock: changed, revision: 'r2', from: { file: 'current' } });
+    // The old password still opens it with the header's lock
+    expect(await unlockFolderCopy(folderOf({ current, lockFile: lockFile(changed) }), 'Old-Passw0rd!')).toMatchObject({
+      ok: true,
+      lock: old.credentials,
+    });
+  });
+
+  it('a planted lock file the password opens proves nothing when the header lock refuses it', async () => {
+    const real = await createCredentialsV2('Real-Passw0rd!', 1000);
+    const planted = await createCredentialsV2(PASSWORD, 1000);
+    const current = await seal(real.key, real.credentials, 'r2');
+
+    expect(await unlockFolderCopy(folderOf({ current, lockFile: lockFile(planted.credentials) }), PASSWORD)).toEqual({
+      ok: false,
+      problem: 'wrong-password',
+    });
   });
 
   it('a missing current copy and no lock file is no-copy', async () => {
