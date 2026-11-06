@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { notifySetAsideChanged } from '@data/db/setAsideEvents';
 import { writeFolderCopy, type FolderSyncOutcome } from '@services/sync';
 import { useFilesystemSync } from './useFilesystemSync';
 
@@ -46,7 +47,8 @@ const mockExportAllData = vi.fn().mockResolvedValue({
 });
 
 // The same db and key on every render, as the providers give them
-const mockDb = { exportAllData: mockExportAllData };
+const mockCountSetAside = vi.fn();
+const mockDb = { exportAllData: mockExportAllData, countSetAside: mockCountSetAside };
 const mockKey = {} as CryptoKey;
 
 vi.mock('./useEncryptedDb', () => ({
@@ -65,6 +67,7 @@ describe('useFilesystemSync', () => {
     localStorage.clear();
     vi.mocked(writeFolderCopy).mockResolvedValue(WRITTEN);
     mockGetPermissionState.mockResolvedValue('granted');
+    mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
   });
 
   afterEach(() => {
@@ -239,7 +242,50 @@ describe('useFilesystemSync', () => {
       expect(result.current.issue).toBeNull();
     });
 
-    it.each(['empty', 'unreadable'] as const)(
+    it('passes the unsaved set-aside count', async () => {
+      mockCountSetAside.mockResolvedValue({ total: 3, unsaved: 2 });
+
+      renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toEqual({ setAsideUnsaved: 2 });
+    });
+
+    it('a set-aside change syncs at once', async () => {
+      const { unmount } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      act(() => notifySetAsideChanged());
+
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(2));
+      unmount();
+      act(() => notifySetAsideChanged());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(writeFolderCopy).toHaveBeenCalledTimes(2);
+    });
+
+    it('a set-aside change does not sync when folder storage is off', async () => {
+      localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
+      renderHook(() => useFilesystemSync());
+
+      act(() => notifySetAsideChanged());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(writeFolderCopy).not.toHaveBeenCalled();
+    });
+
+    it('a failed sync logs no error detail', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(writeFolderCopy).mockRejectedValueOnce(new Error('Quest Diagnostics glucose 99'));
+
+      const { result } = renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(result.current.issue).toBe('failed'));
+      expect(logged).toHaveBeenCalledWith('Failed to sync to the folder');
+      expect(JSON.stringify(logged.mock.calls)).not.toContain('Quest');
+    });
+
+    it.each(['empty', 'unreadable', 'set-aside'] as const)(
       'reports why a sync held back (%s)',
       async (reason) => {
         vi.mocked(writeFolderCopy).mockResolvedValue({ status: 'protected', reason });

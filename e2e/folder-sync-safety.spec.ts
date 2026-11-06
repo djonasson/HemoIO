@@ -23,6 +23,12 @@ import {
   useTestFolder,
 } from './steps/folderSync.steps';
 import { FolderRestoreDialog } from './steps/folderRestore.steps';
+import {
+  seedUnreadableRecords,
+  setAsideBanner,
+  setAsideSavedFlags,
+  withSavePicker,
+} from './steps/unreadableRecords.steps';
 
 const MORE_LAB_RESULTS = [
   ...SEED_LAB_RESULTS,
@@ -213,5 +219,28 @@ test.describe('Folder Sync Safety', () => {
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(first);
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBeNull();
     await expect(skippedSyncNotice(page)).toHaveCount(0);
+  });
+
+  test('records that cannot be opened pause the folder sync', async ({ page }) => {
+    // Scenario: Records that cannot be opened pause the folder sync
+    // A save picker, so the download counts as saved without a question
+    await withSavePicker(page, 'save');
+    await page.reload();
+    await unlockApp(page);
+    const synced = await syncResults(page);
+    await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
+    await expect(setAsideBanner(page)).toContainText('Folder sync is paused');
+
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+
+    await expect(skippedSyncNotice(page)).toBeVisible();
+    await expect(skippedSyncNotice(page)).toContainText("Some stored records can't be opened");
+    expect(await folder.read(FOLDER_COPY)).toBe(synced);
+
+    await setAsideBanner(page).getByRole('button', { name: 'Download sealed file' }).click();
+
+    await expect.poll(() => setAsideSavedFlags(page)).toEqual([1, 1, 1]);
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
   });
 });

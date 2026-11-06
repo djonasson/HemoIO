@@ -10,6 +10,7 @@ import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
+import { onSetAsideChanged } from '@data/db/setAsideEvents';
 import { writeFolderCopy } from '@services/sync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderCopyStore, FolderProtectionReason } from '@services/sync';
@@ -81,6 +82,7 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
       }
 
       const data = await session.db.exportAllData();
+      const { unsaved } = await session.db.countSetAside();
       // The hold may begin while this sync is under way: checked here, so a
       // held sync does not decrypt the folder copy, and again at the save
       if (!enabledRef.current) return;
@@ -90,11 +92,14 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
         save: (bytes, previous) =>
           enabledRef.current ? provider.save(bytes, previous) : Promise.reject(new SyncHeld()),
       };
-      const outcome = await writeFolderCopy(store, data, session.key);
+      const outcome = await writeFolderCopy(store, data, session.key, {
+        setAsideUnsaved: unsaved,
+      });
       setIssue(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       if (error instanceof SyncHeld) return;
-      console.error('Failed to sync to filesystem:', error);
+      // Fixed text: the error could name stored data
+      console.error('Failed to sync to the folder');
       setIssue('failed');
       throw error;
     }
@@ -127,8 +132,14 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
     };
     syncInBackground();
     const intervalId = setInterval(syncInBackground, 30000);
+    // A download or delete of unreadable records ends the pause: sync at
+    // once, not at the next tick. syncNow shares a sync already waiting.
+    const stopListening = onSetAsideChanged(() => {
+      if (isFolderStorageOn()) syncInBackground();
+    });
 
     return () => {
+      stopListening();
       sessionRef.current = null;
       clearInterval(intervalId);
     };

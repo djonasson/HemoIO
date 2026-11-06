@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { decrypt, encrypt } from '@data/encryption';
 import {
   FOLDER_SYNC_FILE_VERSION,
@@ -80,6 +80,25 @@ describe('writeFolderCopy', () => {
     expect(copy.version).toBe(4);
     expect(copy.data.labResults).toHaveLength(1);
     expect(typeof copy.exportedAt).toBe('string');
+  });
+
+  it('unsaved set-aside records protect the folder copy without reading it', async () => {
+    await writeFolderCopy(store, withResults(), key);
+    const before = store.copy;
+    const loadCurrent = vi.spyOn(store, 'loadCurrent');
+
+    const outcome = await writeFolderCopy(store, withResults(2), key, { setAsideUnsaved: 2 });
+
+    expect(outcome).toEqual({ status: 'protected', reason: 'set-aside' });
+    expect(loadCurrent).not.toHaveBeenCalled();
+    expect(store.copy).toBe(before);
+    expect(store.saves).toBe(1);
+  });
+
+  it('writes again once no set-aside record is unsaved', async () => {
+    expect(await writeFolderCopy(store, withResults(), key, { setAsideUnsaved: 0 })).toEqual({
+      status: 'written',
+    });
   });
 
   it('writes nothing readable without the key', async () => {

@@ -17,6 +17,10 @@ import type { SealedDownload } from '@hooks/useSetAsideRecords';
 export interface SetAsideBannerProps {
   /** How many records are kept aside; the banner shows only when there are some */
   total: number;
+  /** How many of them are not saved to a file yet */
+  unsaved: number;
+  /** Whether the data is synced to a folder, which waits for the unsaved ones */
+  folderStorageOn: boolean;
   onDownload: () => Promise<SealedDownload>;
   /** The user says a plain download saved: the rows of that file */
   onConfirmSaved: (ids: number[]) => Promise<void>;
@@ -38,6 +42,8 @@ function focusMainContent(main: HTMLElement | null): void {
 
 export function SetAsideBanner({
   total,
+  unsaved,
+  folderStorageOn,
   onDownload,
   onConfirmSaved,
   onSnapshot,
@@ -135,6 +141,9 @@ export function SetAsideBanner({
             <Text size="sm">
               They were saved with a different key, or are damaged. HemoIO keeps them aside and
               does not delete them. You can download them as a sealed file or delete them.
+              {folderStorageOn && unsaved > 0 && (
+                <> Folder sync is paused until you download or delete them.</>
+              )}
             </Text>
             <Group gap="sm">
               <Button

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetAsideBanner, type SetAsideBannerProps } from './SetAsideBanner';
@@ -16,6 +16,8 @@ vi.mock('@mantine/notifications', () => ({
 function renderBanner(total: number, overrides: Partial<SetAsideBannerProps> = {}) {
   const props = {
     total,
+    unsaved: total,
+    folderStorageOn: false,
     onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'saved' }),
     onConfirmSaved: vi.fn<(ids: number[]) => Promise<void>>().mockResolvedValue(undefined),
     onSnapshot: vi
@@ -40,6 +42,20 @@ describe('SetAsideBanner', () => {
     renderBanner(0);
 
     expect(screen.queryByRole('region', { name: 'Unreadable records' })).not.toBeInTheDocument();
+  });
+
+  it('says sync is paused only with folder storage and unsaved rows', () => {
+    const paused = 'Folder sync is paused until you download or delete them.';
+    renderBanner(2, { folderStorageOn: true, unsaved: 2 });
+    expect(screen.getByText(new RegExp(paused))).toBeInTheDocument();
+    cleanup();
+
+    renderBanner(2, { folderStorageOn: true, unsaved: 0 });
+    expect(screen.queryByText(new RegExp(paused))).not.toBeInTheDocument();
+    cleanup();
+
+    renderBanner(2, { folderStorageOn: false, unsaved: 2 });
+    expect(screen.queryByText(new RegExp(paused))).not.toBeInTheDocument();
   });
 
   it('says how many records are kept aside, and offers both ways to settle them', async () => {

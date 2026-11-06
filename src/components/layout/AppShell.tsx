@@ -53,6 +53,7 @@ import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
 import { FolderRestoreModal, SetAsideBanner } from '@components/storage';
+import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
@@ -413,6 +414,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         <MantineAppShell.Main>
           <SetAsideBanner
             total={setAsideRecords.summary.total}
+            unsaved={setAsideRecords.summary.unsaved}
+            folderStorageOn={isFolderStorageOn()}
             onDownload={setAsideRecords.download}
             onConfirmSaved={setAsideRecords.confirmSaved}
             onSnapshot={setAsideRecords.snapshot}

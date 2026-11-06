@@ -76,3 +76,12 @@ Feature: Folder Sync Safety
     Then my folder should hold a copy of my lab results
     And there should be no previous copy yet
     And no message about a skipped folder sync should be shown
+
+  Scenario: Records that cannot be opened pause the folder sync
+    Given the records HemoIO cannot open are kept aside and not yet saved
+    When I add lab results
+    Then my folder copy should be left as it was
+    And I should see that the folder sync was skipped because some records cannot be opened
+    When I download the unreadable records as a sealed file
+    Then the message about the skipped folder sync should go away
+    And my folder copy should be updated

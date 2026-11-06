@@ -39,6 +39,12 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
       'so it cannot be restored, and HemoIO left it as it is. ' +
       'To keep syncing, choose a different folder in Settings > Data.',
   },
+  'set-aside': {
+    title: SKIPPED,
+    message:
+      "Some stored records can't be opened, and your folder copy may still hold them. " +
+      'HemoIO left it as it is. Download or delete the unreadable records to sync again.',
+  },
   failed: {
     title: 'Folder sync failed',
     message:

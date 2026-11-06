@@ -47,9 +47,16 @@ export interface FolderCopyStore {
  * so what it holds is unknown (`unreadable`); a newer HemoIO wrote it, in a
  * format this one would lose parts of (`newer`); or an earlier HemoIO wrote
  * it before tests were identified by LOINC, so it cannot be restored and may
- * be the only copy of that history (`before-loinc`)
+ * be the only copy of that history (`before-loinc`); or stored records that
+ * cannot be opened are set aside and not yet saved, and the folder copy may
+ * still hold them (`set-aside`)
  */
-export type FolderProtectionReason = 'empty' | 'unreadable' | 'newer' | 'before-loinc';
+export type FolderProtectionReason =
+  | 'empty'
+  | 'unreadable'
+  | 'newer'
+  | 'before-loinc'
+  | 'set-aside';
 
 export type FolderSyncOutcome =
   | { status: 'written' }
@@ -84,7 +91,7 @@ function isSyncFile(value: unknown): value is FolderSyncFile {
 async function open(
   encrypted: ArrayBuffer | null,
   key: CryptoKey
-): Promise<FolderSyncFile | null | Exclude<FolderProtectionReason, 'empty'>> {
+): Promise<FolderSyncFile | null | Exclude<FolderProtectionReason, 'empty' | 'set-aside'>> {
   // An interrupted first write can leave an empty file; there is nothing to lose
   if (!encrypted || encrypted.byteLength === 0) return null;
 
@@ -127,12 +134,20 @@ async function keepsAsPrevious(
  * Write the data to the folder copy, unless that could lose data there.
  * A copy with the same data is not rewritten, so the previous copy stays the
  * one from before the last real change.
+ *
+ * While records that cannot be opened are set aside and unsaved, the folder
+ * copy may be the only place that still holds them, and the export leaves
+ * them out: it is left as it is, and not even read.
  */
 export async function writeFolderCopy(
   store: FolderCopyStore,
   data: FolderSyncData,
-  key: CryptoKey
+  key: CryptoKey,
+  options: { setAsideUnsaved?: number } = {}
 ): Promise<FolderSyncOutcome> {
+  if ((options.setAsideUnsaved ?? 0) > 0) {
+    return { status: 'protected', reason: 'set-aside' };
+  }
   const encrypted = await store.loadCurrent();
   const existing = await open(encrypted, key);
   // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
