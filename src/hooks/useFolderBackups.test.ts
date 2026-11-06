@@ -10,6 +10,7 @@ const listBackups = vi.fn<() => Promise<string[]>>();
 const loadBackup = vi.fn<(name: string) => Promise<ArrayBuffer>>();
 const loadCurrent = vi.fn<() => Promise<ArrayBuffer | null>>();
 const saveBackup = vi.fn<(name: string, bytes: ArrayBuffer) => Promise<void>>();
+const deleteBackup = vi.fn<(name: string) => Promise<void>>();
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
@@ -17,6 +18,7 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
     loadBackup = loadBackup;
     loadCurrent = loadCurrent;
     saveBackup = saveBackup;
+    deleteBackup = deleteBackup;
   },
 }));
 
@@ -41,6 +43,8 @@ describe('useFolderBackups', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    saveBackup.mockResolvedValue(undefined);
+    deleteBackup.mockResolvedValue(undefined);
     listBackups.mockResolvedValue([OLDER, 'notes.txt', AUTO, NEWER, 'hemoio-backup-bad.encrypted']);
   });
 
@@ -122,5 +126,28 @@ describe('useFolderBackups', () => {
     await waitFor(() => expect(result.current.backups).toHaveLength(3));
 
     await expect(result.current.keepCurrentCopy()).rejects.toThrow();
+  });
+
+  it('keepCurrentCopy never prunes the backup it is told to protect', async () => {
+    const { bytes } = await sealFolderCopy({ labResults: [], testValues: [], userNotes: [], settings: undefined, preferences: undefined }, KEY, null);
+    loadCurrent.mockResolvedValue(bytes);
+    const names = Array.from({ length: 10 }, (_, i) => `hemoio-backup-202001${String(i + 1).padStart(2, '0')}T090000000Z.encrypted`);
+    listBackups.mockResolvedValue(names);
+    const { result } = renderHook(() => useFolderBackups());
+    await waitFor(() => expect(result.current.backups).toHaveLength(10));
+    await result.current.keepCurrentCopy([names[0]]);
+
+    expect(deleteBackup).not.toHaveBeenCalled();
+  });
+
+  it('says whether the current copy can be kept', async () => {
+    const { bytes } = await sealFolderCopy({ labResults: [], testValues: [], userNotes: [], settings: undefined, preferences: undefined }, KEY, null);
+    const { result } = renderHook(() => useFolderBackups());
+    await waitFor(() => expect(result.current.backups).toHaveLength(3));
+
+    loadCurrent.mockResolvedValue(bytes);
+    await expect(result.current.canKeepCurrentCopy()).resolves.toBe(true);
+    loadCurrent.mockResolvedValue(null);
+    await expect(result.current.canKeepCurrentCopy()).resolves.toBe(false);
   });
 });

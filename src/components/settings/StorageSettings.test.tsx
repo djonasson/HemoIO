@@ -132,6 +132,25 @@ describe('StorageSettings folder backups', () => {
     expect(await screen.findByRole('region', { name: 'Folder backups' })).toBeInTheDocument();
   });
 
+  it('hides them until access is granted, then lists them', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn().mockResolvedValue('Health');
+        getPermissionState = vi.fn().mockResolvedValue('prompt');
+        requestPermission = vi.fn().mockResolvedValue('granted');
+      } as unknown as typeof FileSystemStorageProvider
+    );
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    const grant = await screen.findByRole('button', { name: 'Grant Access' });
+    expect(screen.queryByRole('region', { name: 'Folder backups' })).not.toBeInTheDocument();
+    await userEvent.click(grant);
+
+    expect(await screen.findByRole('region', { name: 'Folder backups' })).toBeInTheDocument();
+  });
+
   it('does not list them with local storage', () => {
     folderProvider('granted');
     renderWithProviders(<StorageSettings onRestore={vi.fn()} />);

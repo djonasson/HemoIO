@@ -65,17 +65,19 @@ export interface KeepFolderBackupOptions {
   kind: FolderBackupKind;
   /** When the backup is made; now by default */
   at?: Date;
+  /** Backups never to delete, such as the one about to be restored */
+  protect?: string[];
 }
 
 /**
  * Saves the bytes as a dated backup of its kind, then deletes the oldest
  * others of that kind, so that MAX_FOLDER_BACKUPS are left, the new one
- * among them. A failed save deletes nothing. Returns the name.
+ * among them (protected ones are not deleted, so a few more may be left). A failed save deletes nothing. Returns the name.
  */
 export async function keepFolderBackup(
   store: FolderBackupStore,
   bytes: ArrayBuffer,
-  { kind, at = new Date() }: KeepFolderBackupOptions
+  { kind, at = new Date(), protect = [] }: KeepFolderBackupOptions
 ): Promise<string> {
   const existing = new Set(await store.listBackups());
   let time = at.getTime();
@@ -91,6 +93,7 @@ export async function keepFolderBackup(
     .map((backup) => ({ backup, date: backupDate(backup)! }))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   for (const { backup } of othersNewestFirst.slice(MAX_FOLDER_BACKUPS - 1)) {
+    if (protect.includes(backup)) continue;
     try {
       await store.deleteBackup(backup);
     } catch {

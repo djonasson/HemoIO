@@ -6,11 +6,10 @@
  * that a restore can itself be undone.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, List, Button, Modal, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useFolderBackups, type FolderBackupEntry } from '@hooks/useFolderBackups';
-import { folderCopyProblemMessage } from '@components/storage/folderCopyProblemMessage';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { ParsedBackupData } from '@services/import';
 import { RestoreConfirmation } from './RestoreConfirmation';
@@ -27,11 +26,23 @@ const KIND_LABEL: Record<FolderBackupEntry['kind'], string> = {
   'before-load': 'kept before loading from the folder',
 };
 
+const KEPT_NOTE = 'Your current folder copy is kept as a dated backup first.';
+const LEFT_AS_IS_NOTE = "Your current folder copy can't be opened, so HemoIO leaves it as it is.";
+const UNREADABLE_MESSAGE = "This backup is damaged or was made with a different key, and can't be opened.";
+const KEEP_FAILED_MESSAGE = 'Nothing was changed: the current folder copy could not be kept as a backup.';
+
 const HEADING_ID = 'folder-backups-heading';
 
 export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsProps): React.ReactNode {
-  const { backups, read, keepCurrentCopy } = useFolderBackups();
-  const [pending, setPending] = useState<{ data: ParsedBackupData } | null>(null);
+  const { backups, read, canKeepCurrentCopy, keepCurrentCopy } = useFolderBackups();
+  const [pending, setPending] = useState<{
+    name: string;
+    data: ParsedBackupData;
+    /** Whether the current folder copy can be kept first */
+    keepsCurrent: boolean;
+    /** Whether it has been kept for this confirmation: a retry must not keep again */
+    kept: boolean;
+  } | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -39,6 +50,12 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
   // Mantine returns focus to the opener of a modal; the read happens before it
   // opens, so name the opener for it
   const opener = useRef<HTMLElement | null>(null);
+  const failureAlert = useRef<HTMLDivElement>(null);
+
+  // A screen reader user is at the buttons: take them to what went wrong
+  useEffect(() => {
+    if (failure) failureAlert.current?.focus();
+  }, [failure]);
 
   const open = async (entry: FolderBackupEntry, button: HTMLElement): Promise<void> => {
     opener.current = button;
@@ -48,10 +65,21 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
     try {
       const reading = await read(entry.name);
       if (reading.status === 'unreadable') {
-        setProblem(folderCopyProblemMessage(reading.reason, 'your folder'));
+        // A backup is sealed with the session key and has no lock, so the
+        // reason matters less than that it can't be opened
+        setProblem(UNREADABLE_MESSAGE);
         return;
       }
-      setPending({ data: reading.data });
+      let keepsCurrent: boolean;
+      try {
+        keepsCurrent = await canKeepCurrentCopy();
+      } catch {
+        // Fixed message: the reason could name stored data
+        console.error('Could not look at the current folder copy');
+        setProblem(KEEP_FAILED_MESSAGE);
+        return;
+      }
+      setPending({ name: entry.name, data: reading.data, keepsCurrent, kept: false });
     } finally {
       setOpening(null);
     }
@@ -69,13 +97,17 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
     setIsRestoring(true);
     setFailure(null);
     try {
-      try {
-        await keepCurrentCopy();
-      } catch {
-        // Fixed message: the reason could name stored data
-        console.error('Could not keep the current folder copy as a backup');
-        setFailure('Nothing was changed: the current folder copy could not be kept as a backup.');
-        return;
+      if (pending.keepsCurrent && !pending.kept) {
+        try {
+          // The backup being restored is not pruned to make room
+          await keepCurrentCopy([pending.name]);
+          setPending({ ...pending, kept: true });
+        } catch {
+          // Fixed message: the reason could name stored data
+          console.error('Could not keep the current folder copy as a backup');
+          setFailure(KEEP_FAILED_MESSAGE);
+          return;
+        }
       }
       try {
         await onRestore(pending.data, { restoreAISettings: false });
@@ -146,13 +178,20 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
                 noteCount: pending.data.userNotes.length,
               }}
               setAsideCount={setAsideCount}
-              notes={['Your current folder copy is kept as a dated backup first.']}
+              notes={[pending.keepsCurrent ? KEPT_NOTE : LEFT_AS_IS_NOTE]}
               onConfirm={() => void confirm()}
               onCancel={close}
               isRestoring={isRestoring}
             />
             {failure && (
-              <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              <Alert
+                ref={failureAlert}
+                tabIndex={-1}
+                role="alert"
+                color="red"
+                variant="light"
+                icon={<IconAlertTriangle size={16} />}
+              >
                 {failure}
               </Alert>
             )}

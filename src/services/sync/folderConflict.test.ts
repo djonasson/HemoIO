@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
-import { backupKind, type FolderBackupStore } from './folderBackups';
-import { keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
+import { backupFileName, backupKind, type FolderBackupStore } from './folderBackups';
+import { canKeepFolderCopy, keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
 import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
 import { digestFolderData, folderDataJson, sealFolderCopy, type FolderSyncData } from './folderSync';
 
@@ -102,5 +102,31 @@ describe('keeping the side about to be replaced', () => {
     expect(backups.files.size).toBe(0);
     expect(await keepCurrentFolderCopy({ key, backups, folder: { loadCurrent: async () => bytes } })).toBe(bytes);
     expect(readEnvelopeHeader(only())).toMatchObject({ lock: null });
+  });
+
+  it('does not prune a protected backup when keeping the current copy', async () => {
+    const { bytes } = await sealFolderCopy(DATA, key, LOCK);
+    for (let minute = 1; minute <= 10; minute++) {
+      backups.files.set(backupFileName(new Date(Date.UTC(2020, 0, 1, 9, minute))), new ArrayBuffer(1));
+    }
+    const oldest = backupFileName(new Date(Date.UTC(2020, 0, 1, 9, 1)));
+
+    await keepCurrentFolderCopy({ key, backups, folder: { loadCurrent: async () => bytes }, protect: [oldest] });
+
+    expect(backups.files.has(oldest)).toBe(true);
+  });
+
+  it('can keep the current copy only when there is one that the key opens', async () => {
+    const { bytes } = await sealFolderCopy(DATA, key, LOCK);
+    const otherKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const foreign = (await sealFolderCopy(DATA, otherKey, null)).bytes;
+
+    expect(await canKeepFolderCopy({ key, folder: { loadCurrent: async () => bytes } })).toBe(true);
+    expect(await canKeepFolderCopy({ key, folder: { loadCurrent: async () => null } })).toBe(false);
+    expect(await canKeepFolderCopy({ key, folder: { loadCurrent: async () => foreign } })).toBe(false);
+    expect(await canKeepFolderCopy({ key, folder: { loadCurrent: async () => new ArrayBuffer(8) } })).toBe(false);
+    await expect(
+      canKeepFolderCopy({ key, folder: { loadCurrent: async () => Promise.reject(new Error('gone')) } })
+    ).rejects.toThrow();
   });
 });

@@ -36,10 +36,11 @@ const DATA = {
 
 const read = vi.fn();
 const keepCurrentCopy = vi.fn();
+const canKeepCurrentCopy = vi.fn();
 const onRestore = vi.fn();
 
 function renderBackups(backups: FolderBackupEntry[] = [NEWER, OLDER]) {
-  useFolderBackups.mockReturnValue({ backups, read, keepCurrentCopy });
+  useFolderBackups.mockReturnValue({ backups, read, keepCurrentCopy, canKeepCurrentCopy });
   return render(
     <MantineProvider env="test">
       <FolderBackups onRestore={onRestore} />
@@ -63,6 +64,7 @@ describe('FolderBackups', () => {
     vi.clearAllMocks();
     read.mockResolvedValue({ status: 'readable', data: DATA, revision: null, lock: null });
     keepCurrentCopy.mockResolvedValue(undefined);
+    canKeepCurrentCopy.mockResolvedValue(true);
     onRestore.mockResolvedValue(undefined);
   });
 
@@ -175,12 +177,14 @@ describe('FolderBackups', () => {
 
   it('explains an unreadable backup, and changes nothing', async () => {
     const user = userEvent.setup();
-    read.mockResolvedValue({ status: 'unreadable', reason: 'not-a-copy' });
+    read.mockResolvedValue({ status: 'unreadable', reason: 'cannot-decrypt' });
     renderBackups();
 
     await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent("isn't a folder copy HemoIO can read");
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "This backup is damaged or was made with a different key, and can't be opened."
+    );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(keepCurrentCopy).not.toHaveBeenCalled();
     expect(onRestore).not.toHaveBeenCalled();
@@ -196,5 +200,76 @@ describe('FolderBackups', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
 
     expect(await alertWith(dialog, 'The restore did not complete')).toBeInTheDocument();
+  });
+
+  it('keeps the current copy once per confirmation: a retry after a failed restore does not keep again', async () => {
+    const user = userEvent.setup();
+    onRestore.mockRejectedValueOnce(new Error('x'));
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+    await alertWith(dialog, 'The restore did not complete');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledTimes(2));
+    expect(keepCurrentCopy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed keep retryable', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    keepCurrentCopy.mockRejectedValueOnce(new Error('x'));
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+    await alertWith(dialog, 'Nothing was changed');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledTimes(1));
+    expect(keepCurrentCopy).toHaveBeenCalledTimes(2);
+  });
+
+  it('protects the backup being restored from the keep', async () => {
+    const user = userEvent.setup();
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[1]);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(keepCurrentCopy).toHaveBeenCalledWith([OLDER.name]));
+  });
+
+  it('when the current copy cannot be opened, says it is left as it is, keeps nothing and restores', async () => {
+    const user = userEvent.setup();
+    canKeepCurrentCopy.mockResolvedValue(false);
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent("Your current folder copy can't be opened, so HemoIO leaves it as it is.");
+    expect(dialog).not.toHaveTextContent('kept as a dated backup first');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledWith(DATA, { restoreAISettings: false }));
+    expect(keepCurrentCopy).not.toHaveBeenCalled();
+  });
+
+  it('moves focus to the failure alert when it appears', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    keepCurrentCopy.mockRejectedValue(new Error('x'));
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
+
+    const alert = await alertWith(dialog, 'Nothing was changed');
+    await waitFor(() => expect(alert).toHaveFocus());
   });
 });

@@ -13,6 +13,7 @@ import { onFolderAccessChanged, onFolderBackupsChanged } from '@data/storage/fol
 import {
   backupDate,
   backupKind,
+  canKeepFolderCopy,
   keepCurrentFolderCopy,
   readFolderCopy,
   type FolderBackupKind,
@@ -33,8 +34,17 @@ export interface UseFolderBackupsResult {
   backups: FolderBackupEntry[];
   /** Never rejects: a backup that cannot be read says why */
   read: (name: string) => Promise<FolderBackupReading>;
-  /** Keeps the current folder copy as a dated backup; rejects when it cannot */
-  keepCurrentCopy: () => Promise<void>;
+  /**
+   * Whether the folder holds a copy that can be kept as a backup; false when
+   * there is none or the session key can't open it. Rejects when the folder
+   * cannot be read.
+   */
+  canKeepCurrentCopy: () => Promise<boolean>;
+  /**
+   * Keeps the current folder copy as a dated backup, without deleting the
+   * `protect`ed backups; rejects when it cannot
+   */
+  keepCurrentCopy: (protect?: string[]) => Promise<void>;
 }
 
 export function useFolderBackups(): UseFolderBackupsResult {
@@ -93,10 +103,18 @@ export function useFolderBackups(): UseFolderBackupsResult {
     [folder, encryptionKey]
   );
 
-  const keepCurrentCopy = useCallback(async (): Promise<void> => {
-    if (!encryptionKey) throw new Error('No key');
-    await keepCurrentFolderCopy({ key: encryptionKey, backups: folder, folder });
+  const canKeepCurrentCopy = useCallback(async (): Promise<boolean> => {
+    if (!encryptionKey) return false;
+    return canKeepFolderCopy({ key: encryptionKey, folder });
   }, [folder, encryptionKey]);
 
-  return { backups, read, keepCurrentCopy };
+  const keepCurrentCopy = useCallback(
+    async (protect?: string[]): Promise<void> => {
+      if (!encryptionKey) throw new Error('No key');
+      await keepCurrentFolderCopy({ key: encryptionKey, backups: folder, folder, protect });
+    },
+    [folder, encryptionKey]
+  );
+
+  return { backups, read, canKeepCurrentCopy, keepCurrentCopy };
 }

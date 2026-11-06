@@ -440,10 +440,38 @@ test.describe('Two computers on one folder', () => {
       .getByRole('button', { name: /^Restore the backup saved / })
       .click();
 
-    await expect(page.getByRole('alert').filter({ hasText: "can't be opened with your password" })).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: "This backup is damaged or was made with a different key, and can't be opened." })).toBeVisible();
     expect(await folderBackupNames(page)).toEqual([name]);
     expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
     await openFromMenu(page, 'Timeline');
     await expect(page.getByText('This Computer Clinic').first()).toBeVisible();
+  });
+
+  test("a current folder copy that can't be opened is left as it is", async ({ page }) => {
+    // Scenario: A current folder copy that can't be opened is left as it is
+    await askedWhichToKeep(page);
+    await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
+    await expect.poll(() => folderBackupNames(page)).toHaveLength(1);
+    const [name] = await folderBackupNames(page);
+    // Damaged after this computer last saw it
+    await folder.write(FOLDER_COPY, 'not a folder copy');
+    const folderCopy = await folderCopyHash(page, TEST_FOLDER_NAME);
+
+    await openSettingsTab(page, 'Data');
+    await page
+      .getByRole('region', { name: 'Folder backups' })
+      .getByRole('button', { name: /^Restore the backup saved / })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Restore folder backup' });
+    await expect(dialog).toContainText("Your current folder copy can't be opened, so HemoIO leaves it as it is.");
+    await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
+
+    await expect(dialog).toHaveCount(0);
+    await openFromMenu(page, 'Timeline');
+    await expect(page.getByText('Other Computer Clinic')).toBeVisible();
+    await periodicSync(page);
+    await periodicSync(page);
+    expect(await folderBackupNames(page)).toEqual([name]);
+    expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
   });
 });

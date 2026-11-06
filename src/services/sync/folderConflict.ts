@@ -45,10 +45,10 @@ export async function keepBrowserData(
  * or the backup cannot be saved.
  */
 export async function keepFolderCopy(
-  { key, backups }: { key: CryptoKey; backups: FolderBackupStore },
+  { key, backups, protect }: { key: CryptoKey; backups: FolderBackupStore; protect?: string[] },
   bytes: ArrayBuffer
 ): Promise<void> {
-  await keepFolderBackup(backups, await sealedForBackup(bytes, key), { kind: 'conflict' });
+  await keepFolderBackup(backups, await sealedForBackup(bytes, key), { kind: 'conflict', protect });
 }
 
 /**
@@ -59,13 +59,38 @@ export async function keepCurrentFolderCopy({
   key,
   backups,
   folder,
+  protect,
 }: {
   key: CryptoKey;
   backups: FolderBackupStore;
   folder: FolderCopySource;
+  /** Backups that keeping must not prune */
+  protect?: string[];
 }): Promise<ArrayBuffer | null> {
   const bytes = await folder.loadCurrent();
   if (bytes === null || bytes.byteLength === 0) return null;
-  await keepFolderCopy({ key, backups }, bytes);
+  await keepFolderCopy({ key, backups, protect }, bytes);
   return bytes;
+}
+
+/**
+ * Whether the folder holds a copy that the key opens, and so can be kept as
+ * a backup. False when there is none or it cannot be opened (damaged, or
+ * another setup's); rejects when the folder cannot be read.
+ */
+export async function canKeepFolderCopy({
+  key,
+  folder,
+}: {
+  key: CryptoKey;
+  folder: FolderCopySource;
+}): Promise<boolean> {
+  const bytes = await folder.loadCurrent();
+  if (bytes === null || bytes.byteLength === 0) return false;
+  try {
+    await sealedForBackup(bytes, key);
+    return true;
+  } catch {
+    return false;
+  }
 }
