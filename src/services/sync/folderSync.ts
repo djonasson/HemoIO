@@ -9,7 +9,7 @@
  */
 
 import { arrayBufferToBase64 } from '@data/encryption';
-import { isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { isLaterLock, isSameLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { saveFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
@@ -193,7 +193,11 @@ export function isFolderSyncFile(value: unknown): value is FolderSyncFile {
  * A copy's content and lock: `null` for no copy or an empty file, or why it
  * cannot be read as a current copy
  */
-async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<OpenedCopy | null | CopyProblem> {
+async function open(
+  encrypted: ArrayBuffer | null,
+  key: CryptoKey,
+  ownLock: StoredCredentialsV2 | null = null
+): Promise<OpenedCopy | null | CopyProblem> {
   // An interrupted first write can leave an empty file; there is nothing to lose
   if (!encrypted || encrypted.byteLength === 0) return null;
 
@@ -204,8 +208,10 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
   try {
     ({ plain } = await openEnvelope(encrypted, key));
   } catch {
-    // Another key, a damaged file, or an edited lock. Not logged: a log would add nothing
-    return header?.lock ? 'another-setup' : 'unreadable';
+    // Another key, a damaged file, or an edited lock. Not logged: a log would add nothing.
+    // This browser's own lock beside a body that does not open: the file is damaged.
+    if (!header?.lock || (ownLock !== null && isSameLock(ownLock, header.lock))) return 'unreadable';
+    return 'another-setup';
   }
 
   try {
@@ -526,7 +532,7 @@ async function syncFolderCopy(
     return { status: 'protected', reason: 'set-aside' };
   }
   const encrypted = await store.loadCurrent();
-  const existing = await open(encrypted, key);
+  const existing = await open(encrypted, key, context.lock);
   if (typeof existing === 'string') {
     return { status: 'protected', reason: existing };
   }

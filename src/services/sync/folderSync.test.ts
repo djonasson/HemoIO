@@ -20,6 +20,12 @@ import {
   type FolderWriteContext,
 } from './folderSync';
 
+/** Change one character of a base64 string, keeping it base64 */
+function oneCharChanged(text: string): string {
+  const i = Math.floor(text.length / 2);
+  return text.slice(0, i) + (text[i] === 'A' ? 'B' : 'A') + text.slice(i + 1);
+}
+
 const newKey = (): Promise<CryptoKey> =>
   crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 
@@ -122,9 +128,12 @@ async function write(store: FolderCopyStore, data: FolderSyncData, key: CryptoKe
 }
 
 let LOCK: StoredCredentialsV2;
+/** Another setup's lock, which wraps another data key */
+let OTHER_LOCK: StoredCredentialsV2;
 
 beforeAll(async () => {
   LOCK = (await createCredentialsV2('Old-Passw0rd!', 1000)).credentials;
+  OTHER_LOCK = (await createCredentialsV2('Other-Passw0rd!', 1000)).credentials;
 });
 
 const dated = (changedAt: string | undefined): StoredCredentialsV2 => ({ ...LOCK, changedAt });
@@ -253,7 +262,7 @@ describe('writeFolderCopy', () => {
   });
 
   it("never replaces another setup's copy, one with a lock the key cannot open", async () => {
-    await write(store, withResults(), await newKey(), context);
+    await write(store, withResults(), await newKey(), { ...context, lock: OTHER_LOCK });
     const foreign = store.copy;
 
     const outcome = await write(store, withResults(), key, context);
@@ -528,6 +537,17 @@ describe('writeFolderCopy', () => {
     });
   });
 
+  it("a damaged copy carrying this browser's own lock is unreadable, not another setup's", async () => {
+    await write(store, withResults(2), key, context);
+    const file = JSON.parse(new TextDecoder().decode(store.copy!));
+    file.sealed = oneCharChanged(file.sealed);
+    store.copy = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+    const damaged = store.copy;
+
+    expect(await write(store, withResults(1), key, context)).toEqual({ status: 'protected', reason: 'unreadable' });
+    expect(store.copy).toBe(damaged);
+  });
+
   describe('a password change while the data are left as they are (P42)', () => {
     /** A copy written with the earlier lock, then a password change here */
     async function writtenThenPasswordChanged(data = withResults(2)) {
@@ -587,7 +607,7 @@ describe('writeFolderCopy', () => {
     });
 
     it('writes nothing to a copy the key does not open', async () => {
-      store.copy = await sealFolderCopy(withResults(2), await newKey(), dated(EARLIER)).then((s) => s.bytes);
+      store.copy = await sealFolderCopy(withResults(2), await newKey(), OTHER_LOCK).then((s) => s.bytes);
       const bytes = store.copy;
 
       const outcome = await write(store, withResults(1), key, { ...context, lock: dated(LATER) });

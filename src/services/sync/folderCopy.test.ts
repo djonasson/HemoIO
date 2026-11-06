@@ -110,6 +110,23 @@ describe('readFolderCopy', () => {
     });
   });
 
+  it("a copy carrying this browser's own lock that does not open is damaged, not another setup's", async () => {
+    const own = await createCredentialsV2('Own-Passw0rd!', 1000);
+    const body = { version: SYNC_FILE_VERSION, exportedAt: EXPORTED_AT, revision: 'rev-1', data: STORED };
+    const bytes = await sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), own.key, own.credentials);
+    const file = JSON.parse(new TextDecoder().decode(bytes));
+    // One character of the sealed part changed: a half-synced or damaged file
+    const i = Math.floor(file.sealed.length / 2);
+    file.sealed = file.sealed.slice(0, i) + (file.sealed[i] === 'A' ? 'B' : 'A') + file.sealed.slice(i + 1);
+    const damaged = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+
+    // The same lock, though changedAt may differ: another browser's password change
+    expect(await readFolderCopy(damaged, own.key, { ...own.credentials, changedAt: undefined })).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
+  });
+
   it('reports a copy whose header is damaged as not a copy', async () => {
     const bytes = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer;
 

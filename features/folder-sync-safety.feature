@@ -59,7 +59,15 @@ Feature: Folder Sync Safety
     Given my folder holds a copy that my current password cannot open
     When I add lab results
     Then I should see that the folder sync was skipped because the folder copy cannot be read
-    And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
+    And I should be told to choose a different folder in Settings > Data
+    And the copy in my folder should be left as it was
+
+  # Unit-tested (folderSync, folderCopy): a half-synced cloud file
+  Scenario: A damaged folder copy that carries my own lock is called damaged
+    Given my folder copy carries my password lock but its data is damaged
+    When the folder sync runs
+    Then I should be told the folder copy cannot be read: saved by a different setup, or damaged
+    And I should not be told it belongs to another HemoIO setup
     And the copy in my folder should be left as it was
 
   Scenario: Choosing a different folder lets the sync start again

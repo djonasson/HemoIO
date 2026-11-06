@@ -11,7 +11,7 @@ import { backupDate } from './folderBackups';
 import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
 import { readLockFile } from './folderLockFile';
 import { FOLDER_SYNC_FILE_VERSION, isFolderSyncFile, parseFolderCopyData } from './folderSync';
-import { isCredentialsV2, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { isCredentialsV2, isSameLock, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 export type FolderCopyProblem =
   /** A copy without a lock, under another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
@@ -39,9 +39,14 @@ export type FolderCopyReading =
 
 /**
  * Decrypt and parse the folder copy with the session key. Never throws, and
- * logs nothing: the content is health data.
+ * logs nothing: the content is health data. `ownLock`: this browser's lock;
+ * a copy carrying it that does not open is damaged, not another setup's.
  */
-export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promise<FolderCopyReading> {
+export async function readFolderCopy(
+  bytes: ArrayBuffer,
+  key: CryptoKey,
+  ownLock: StoredCredentialsV2 | null = null
+): Promise<FolderCopyReading> {
   const read = readEnvelopeHeader(bytes);
   // 'not-a-copy' here and 'unreadable' in the sync: both name a damaged header
   if (read === 'damaged') return { status: 'unreadable', reason: 'not-a-copy' };
@@ -51,7 +56,10 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   try {
     plain = (await openEnvelope(bytes, key)).plain;
   } catch {
-    return { status: 'unreadable', reason: header?.lock ? 'another-setup' : 'cannot-decrypt' };
+    if (!header?.lock) return { status: 'unreadable', reason: 'cannot-decrypt' };
+    // This browser's own lock beside a body that does not open: the file is damaged
+    if (ownLock !== null && isSameLock(ownLock, header.lock)) return { status: 'unreadable', reason: 'not-a-copy' };
+    return { status: 'unreadable', reason: 'another-setup' };
   }
 
   let envelope: unknown;
@@ -246,7 +254,8 @@ export type FolderCopyAssessment =
  */
 export async function assessFolderCopy(
   folder: FolderCopySource,
-  key: CryptoKey
+  key: CryptoKey,
+  ownLock: StoredCredentialsV2 | null = null
 ): Promise<FolderCopyAssessment> {
   let bytes: ArrayBuffer | null;
   try {
@@ -256,7 +265,7 @@ export async function assessFolderCopy(
   }
   if (bytes === null) return { kind: 'sync' };
 
-  const reading = await readFolderCopy(bytes, key);
+  const reading = await readFolderCopy(bytes, key, ownLock);
   if (reading.status === 'unreadable') {
     return { kind: 'unreadable', reason: reading.reason };
   }

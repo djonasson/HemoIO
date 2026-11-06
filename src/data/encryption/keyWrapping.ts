@@ -89,6 +89,21 @@ export function isCredentialsV2(creds: unknown): creds is StoredCredentialsV2 {
 }
 
 /**
+ * Whether two locks wrap the data key the same way: the same salt,
+ * iterations, IV and wrapped key. Their changedAt may differ (a lock copied
+ * to another browser keeps its fields).
+ */
+export function isSameLock(a: StoredCredentialsV2, b: StoredCredentialsV2 | null): boolean {
+  return (
+    b !== null &&
+    a.kekSalt === b.kekSalt &&
+    a.iterations === b.iterations &&
+    a.wrapIv === b.wrapIv &&
+    a.wrappedKey === b.wrappedKey
+  );
+}
+
+/**
  * Whether lock `a` was made after `than`. A missing changedAt is oldest; any
  * lock is later than `null` (a legacy copy without one).
  */

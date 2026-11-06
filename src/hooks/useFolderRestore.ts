@@ -8,7 +8,7 @@
  * first. Folder access granted again or another folder chosen starts over.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '@contexts';
 import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
 import { currentFolder } from '@data/storage/StorageProviderFactory';
@@ -59,7 +59,12 @@ type Status = 'checking' | 'sync' | 'held' | FolderRestorePrompt;
 
 export function useFolderRestore(): UseFolderRestoreResult {
   const { db, isReady } = useEncryptedDb();
-  const { encryptionKey } = useAuth();
+  const { encryptionKey, storedLock } = useAuth();
+  // Read when a check starts: a password change needs no new check
+  const lockRef = useRef(storedLock);
+  useLayoutEffect(() => {
+    lockRef.current = storedLock;
+  }, [storedLock]);
   const [status, setStatus] = useState<Status>('checking');
   // Bumped when folder access changes, to check the folder again
   const [generation, setGeneration] = useState(0);
@@ -106,7 +111,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
       try {
         // Without access nothing can be written either: wait to be told it was granted
         if ((await folder.getPermissionState()) !== 'granted') return;
-        assessment = await assessFolderCopy(folder, key);
+        assessment = await assessFolderCopy(folder, key, lockRef.current);
         if (assessment.kind !== 'sync') folderName = await folder.getDirectoryName();
       } catch {
         assessment = { kind: 'unreadable', reason: 'read-failed' };

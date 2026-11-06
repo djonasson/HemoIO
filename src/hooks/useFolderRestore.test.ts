@@ -81,7 +81,7 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(false);
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
     expect(result.current.prompt).toBeNull();
-    expect(assessFolderCopy).toHaveBeenCalledWith(expect.anything(), KEY);
+    expect(assessFolderCopy).toHaveBeenCalledWith(expect.anything(), KEY, undefined);
   });
 
   it('allows sync without reading the folder when the browser has data', async () => {
