@@ -243,6 +243,10 @@ test.describe('Unreadable records: the banner', () => {
 
     await expect(setAsideBanner(page)).toHaveCount(0);
     expect(await setAsideRowCount(page)).toBe(0);
+    // Said politely, as the banner and dialog go away
+    await expect(page.getByRole('status').filter({ hasText: 'Unreadable records deleted' })).toContainText(
+      '3 records deleted.'
+    );
     // The banner is gone: focus goes to the main content, not to the page itself
     await expect(page.getByRole('main')).toBeFocused();
     await goToTimeline(page);

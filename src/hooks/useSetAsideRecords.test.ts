@@ -49,7 +49,10 @@ describe('useSetAsideRecords', () => {
     mockDb.countSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
     mockDb.markSetAsideSaved.mockResolvedValue(undefined);
     mockDb.deleteSetAside.mockResolvedValue(0);
-    vi.mocked(saveSealedFile).mockResolvedValue('written');
+    // As the save picker does: the content is gathered once a file was chosen
+    vi.mocked(saveSealedFile).mockImplementation(async (_fileName, content) =>
+      (await content()) === null ? 'nothing' : 'written'
+    );
   });
 
   it('refreshes when set-aside rows change', async () => {
@@ -74,10 +77,26 @@ describe('useSetAsideRecords', () => {
 
     expect(await act(() => result.current.download())).toEqual({ outcome: 'saved' });
 
-    const [content, fileName] = vi.mocked(saveSealedFile).mock.calls[0];
-    expect(JSON.parse(content).records).toHaveLength(2);
+    const [fileName, content] = vi.mocked(saveSealedFile).mock.calls[0];
+    expect(JSON.parse((await content())!).records).toHaveLength(2);
     expect(fileName).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}\.json$/);
     expect(mockDb.markSetAsideSaved).toHaveBeenCalledWith([4, 5]);
+  });
+
+  it('says when the file was written but its rows could not be marked saved', async () => {
+    mockDb.exportSetAside.mockResolvedValue(rows);
+    mockDb.markSetAsideSaved.mockRejectedValue(new Error('write failed'));
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    expect(await act(() => result.current.download())).toEqual({ outcome: 'unrecorded' });
+  });
+
+  it('saves nothing when no rows are set aside by the time the file is chosen', async () => {
+    mockDb.exportSetAside.mockResolvedValue([]);
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    expect(await act(() => result.current.download())).toEqual({ outcome: 'nothing' });
+    expect(mockDb.markSetAsideSaved).not.toHaveBeenCalled();
   });
 
   it('a cancelled save picker leaves the rows unsaved', async () => {
@@ -91,7 +110,10 @@ describe('useSetAsideRecords', () => {
 
   it('a plain download marks the rows saved only once I confirm', async () => {
     mockDb.exportSetAside.mockResolvedValue(rows);
-    vi.mocked(saveSealedFile).mockResolvedValue('downloaded');
+    vi.mocked(saveSealedFile).mockImplementation(async (_fileName, content) => {
+      await content();
+      return 'downloaded';
+    });
     const { result } = renderHook(() => useSetAsideRecords());
 
     expect(await act(() => result.current.download())).toEqual({ outcome: 'unconfirmed', ids: [4, 5] });

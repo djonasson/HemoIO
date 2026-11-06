@@ -63,6 +63,15 @@ Feature: Unreadable Records
     # A browser with a save picker says when the file is written; after a plain
     # download HemoIO asks "Did the file save?"
 
+  # Unit-tested (SetAsideBanner, useSetAsideRecords): a real browser cannot be
+  # made to fail that one write on cue
+  Scenario: I am told when the file saved but HemoIO could not record it
+    Given the records HemoIO cannot open are kept aside
+    When I save them as a sealed file through the save picker
+    But HemoIO cannot record that they were saved
+    Then I should be told the file was saved but not recorded, and to download them again
+    And I should not be told the file could not be downloaded
+
   Scenario: The downloaded file cannot be restored as a backup
     Given I downloaded the unreadable records as a sealed file
     When I try to restore that file as a backup
@@ -76,6 +85,7 @@ Feature: Unreadable Records
     And the confirmation should count the records kept aside when it opened
     When I confirm the delete
     Then the records it counted should be gone
+    And I should be told how many records were deleted
     And a record set aside after it opened should still be kept aside
     And my other records should be unchanged
 

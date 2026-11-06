@@ -61,7 +61,7 @@ describe('setAsideExport', () => {
       const picker = vi.fn(async () => ({ createWritable: async () => writable }));
       window.showSaveFilePicker = picker as unknown as Window['showSaveFilePicker'];
 
-      expect(await saveSealedFile('{"sealed":true}', 'hemoio-unreadable-records-2026-11-06.json')).toBe('written');
+      expect(await saveSealedFile('hemoio-unreadable-records-2026-11-06.json', async () => '{"sealed":true}')).toBe('written');
 
       expect(picker).toHaveBeenCalledWith(
         expect.objectContaining({ suggestedName: 'hemoio-unreadable-records-2026-11-06.json' })
@@ -76,13 +76,60 @@ describe('setAsideExport', () => {
         throw new DOMException('The user aborted a request.', 'AbortError');
       }) as unknown as Window['showSaveFilePicker'];
 
-      expect(await saveSealedFile('{}', 'f.json')).toBe('cancelled');
+      expect(await saveSealedFile('f.json', async () => '{}')).toBe('cancelled');
       expect(downloadJson).not.toHaveBeenCalled();
     });
 
     it('downloads the file where there is no save picker', async () => {
-      expect(await saveSealedFile('{}', 'f.json')).toBe('downloaded');
+      expect(await saveSealedFile('f.json', async () => '{}')).toBe('downloaded');
       expect(downloadJson).toHaveBeenCalledWith('{}', 'f.json');
+    });
+
+    it('opens the save picker before gathering the content, while the click still counts', async () => {
+      const order: string[] = [];
+      const writable = { write: vi.fn(async () => undefined), close: vi.fn(async () => undefined) };
+      window.showSaveFilePicker = vi.fn(async () => {
+        order.push('picker');
+        return { createWritable: async () => writable };
+      }) as unknown as Window['showSaveFilePicker'];
+
+      await saveSealedFile('f.json', async () => {
+        order.push('content');
+        return '{}';
+      });
+
+      expect(order).toEqual(['picker', 'content']);
+    });
+
+    it('downloads the file when the save picker refuses for lack of a recent click', async () => {
+      window.showSaveFilePicker = vi.fn(async () => {
+        throw new DOMException('Must be handling a user gesture.', 'SecurityError');
+      }) as unknown as Window['showSaveFilePicker'];
+
+      expect(await saveSealedFile('f.json', async () => '{}')).toBe('downloaded');
+      expect(downloadJson).toHaveBeenCalledWith('{}', 'f.json');
+    });
+
+    it('aborts a failed write, so no empty or partial file is left', async () => {
+      const writable = {
+        write: vi.fn(async () => {
+          throw new DOMException('Disk full', 'QuotaExceededError');
+        }),
+        close: vi.fn(async () => undefined),
+        abort: vi.fn(async () => undefined),
+      };
+      window.showSaveFilePicker = vi.fn(async () => ({
+        createWritable: async () => writable,
+      })) as unknown as Window['showSaveFilePicker'];
+
+      await expect(saveSealedFile('f.json', async () => '{}')).rejects.toThrow('Disk full');
+      expect(writable.abort).toHaveBeenCalled();
+      expect(writable.close).not.toHaveBeenCalled();
+    });
+
+    it('saves nothing when there is nothing to save', async () => {
+      expect(await saveSealedFile('f.json', async () => null)).toBe('nothing');
+      expect(downloadJson).not.toHaveBeenCalled();
     });
   });
 });

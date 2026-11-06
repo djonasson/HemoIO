@@ -2,10 +2,11 @@
  * Tests for SetAsideBanner
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { SetAsideBanner, type SetAsideBannerProps } from './SetAsideBanner';
 import type { SealedDownload } from '@hooks/useSetAsideRecords';
 
@@ -38,6 +39,10 @@ function renderBanner(total: number, overrides: Partial<SetAsideBannerProps> = {
 }
 
 describe('SetAsideBanner', () => {
+  beforeEach(() => {
+    vi.mocked(notifications.show).mockClear();
+  });
+
   it('hidden when nothing is set aside', () => {
     renderBanner(0);
 
@@ -150,5 +155,39 @@ describe('SetAsideBanner', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('says so politely once the records are deleted', async () => {
+    renderBanner(2);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete unreadable records?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete 2 records' }));
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Unreadable records deleted', message: '2 records deleted.', role: 'status' })
+      )
+    );
+  });
+
+  it('says the file was saved when only recording it failed', async () => {
+    renderBanner(2, {
+      onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'unrecorded' }),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download sealed file' }));
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Sealed file saved, but not recorded',
+          message: expect.stringContaining('The sealed file was saved, but HemoIO could not record that'),
+        })
+      )
+    );
+    expect(notifications.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('could not be downloaded') })
+    );
   });
 });

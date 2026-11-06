@@ -19,6 +19,8 @@ import type { SetAsideSummary } from '@/types';
  */
 export type SealedDownload =
   | { outcome: 'saved' }
+  /** The picker wrote the file, but marking its rows saved failed */
+  | { outcome: 'unrecorded' }
   | { outcome: 'cancelled' }
   | { outcome: 'unconfirmed'; ids: number[] }
   | { outcome: 'nothing' };
@@ -136,15 +138,23 @@ export function useSetAsideRecords(): UseSetAsideRecordsResult {
 
   const download = useCallback(async (): Promise<SealedDownload> => {
     if (!db) return { outcome: 'nothing' };
-    const rows = await db.exportSetAside();
-    if (rows.length === 0) return { outcome: 'nothing' };
     const savedAt = new Date();
-    const ids = rows.map((row) => row.id!);
-    const saved = await saveSealedFile(buildSetAsideFile(rows, savedAt), setAsideFileName(savedAt));
+    let ids: number[] = [];
+    // The rows are read once the save picker has opened, which needs the click
+    const saved = await saveSealedFile(setAsideFileName(savedAt), async () => {
+      const rows = await db.exportSetAside();
+      ids = rows.map((row) => row.id!);
+      return rows.length > 0 ? buildSetAsideFile(rows, savedAt) : null;
+    });
+    if (saved === 'nothing') return { outcome: 'nothing' };
     if (saved === 'cancelled') return { outcome: 'cancelled' };
     if (saved === 'downloaded') return { outcome: 'unconfirmed', ids };
-    // Only the rows in the file: one set aside meanwhile is not saved
-    await db.markSetAsideSaved(ids);
+    try {
+      // Only the rows in the file: one set aside meanwhile is not saved
+      await db.markSetAsideSaved(ids);
+    } catch {
+      return { outcome: 'unrecorded' };
+    }
     return { outcome: 'saved' };
   }, [db]);
 

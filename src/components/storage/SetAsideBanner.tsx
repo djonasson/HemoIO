@@ -71,6 +71,15 @@ export function SetAsideBanner({
     try {
       const result = await onDownload();
       setUnconfirmedIds(result.outcome === 'unconfirmed' ? result.ids : null);
+      if (result.outcome === 'unrecorded') {
+        notifications.show({
+          title: 'Sealed file saved, but not recorded',
+          message:
+            'The sealed file was saved, but HemoIO could not record that, so it still counts ' +
+            'these records as not saved. Download them again.',
+          color: 'yellow',
+        });
+      }
     } catch {
       // Fixed text: the error could name stored data
       notifications.show({
@@ -108,6 +117,12 @@ export function SetAsideBanner({
     setIsDeleting(true);
     try {
       await onDelete(deleteIds);
+      // The banner and the dialog go away: say what was done, politely
+      notifications.show({
+        title: 'Unreadable records deleted',
+        message: `${recordCount(deleteIds.length)} deleted.`,
+        role: 'status',
+      });
       setUnconfirmedIds(null);
       setJustDeleted(true);
       setDeleteIds(null);

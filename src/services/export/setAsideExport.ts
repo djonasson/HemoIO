@@ -47,17 +47,33 @@ export function setAsideFileName(savedAt: Date): string {
 
 /**
  * How saving the file went: written through the save picker, cancelled in
- * it, or handed to the browser as a download, which says nothing of whether
- * the file was kept
+ * it, handed to the browser as a download, which says nothing of whether
+ * the file was kept, or nothing to save once the content was gathered
  */
-export type SealedFileSave = 'written' | 'cancelled' | 'downloaded';
+export type SealedFileSave = 'written' | 'cancelled' | 'downloaded' | 'nothing';
 
-/** Save the sealed file, through the save picker where the browser has one */
-export async function saveSealedFile(content: string, fileName: string): Promise<SealedFileSave> {
-  if (typeof window.showSaveFilePicker !== 'function') {
-    downloadJson(content, fileName);
+/**
+ * Save the sealed file, through the save picker where the browser has one.
+ *
+ * The picker opens first and the content is gathered after: gathering can
+ * take long enough for the click's user activation to expire, and the picker
+ * needs it. Should the picker still refuse for that reason (SecurityError),
+ * the file is downloaded instead. A write that fails is aborted, so no empty
+ * or partial file is left where the user chose.
+ *
+ * @param content - The file's content, or null when there is nothing to save
+ */
+export async function saveSealedFile(
+  fileName: string,
+  content: () => Promise<string | null>
+): Promise<SealedFileSave> {
+  const download = async (): Promise<SealedFileSave> => {
+    const text = await content();
+    if (text === null) return 'nothing';
+    downloadJson(text, fileName);
     return 'downloaded';
-  }
+  };
+  if (typeof window.showSaveFilePicker !== 'function') return download();
   let handle: FileSystemFileHandle;
   try {
     handle = await window.showSaveFilePicker({
@@ -66,10 +82,19 @@ export async function saveSealedFile(content: string, fileName: string): Promise
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+    if (err instanceof DOMException && err.name === 'SecurityError') return download();
     throw err;
   }
+  const text = await content();
+  if (text === null) return 'nothing';
   const writable = await handle.createWritable();
-  await writable.write(content);
-  await writable.close();
+  try {
+    await writable.write(text);
+    await writable.close();
+  } catch (err) {
+    // Fails too if the stream is already closed; the write's error is the one to report
+    await writable.abort().catch(() => undefined);
+    throw err;
+  }
   return 'written';
 }
