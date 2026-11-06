@@ -37,9 +37,8 @@ import {
   useFolderRestore,
   useAISettings,
   useAlerts,
-  useAlertState,
-  useLabResults,
-  usePreferences,
+  useAfterRestore,
+  useApplyFolderCopy,
   useSaveImport,
   useNavigation,
   useSetAsideRecords,
@@ -59,14 +58,7 @@ import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@compon
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
-import {
-  afterRestoreAdvice,
-  restoreAISettings,
-  restoreBackup,
-  restoreBackupIfUnchanged,
-  runAfterRestore,
-  type AfterRestoreStep,
-} from '@services/import';
+import { failedStepsMessage, restoreAISettings, restoreBackup } from '@services/import';
 import { HEADER_HEIGHT } from './headerHeight';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
@@ -151,59 +143,24 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
-  const { refresh: refreshLabResults } = useLabResults();
-  const { reload: reloadPreferences } = usePreferences();
-  const { reload: reloadAlertState } = useAlertState();
 
-  // A folder copy saved on another computer replaces this browser's data. It
-  // runs inside a folder sync, so it never starts one (that would wait for
-  // this one to end) and leaves telling the user to the sync. Given a stamp,
-  // only while the data is as stamped: false, loading nothing, otherwise.
-  const applyFolderCopy = useCallback(
-    async (data: ParsedBackupData, unchangedSince?: string): Promise<boolean> => {
-      if (!db || !isReady) {
-        throw new Error('Database not available');
-      }
-      if (unchangedSince === undefined) await restoreBackup(db, data);
-      else if ((await restoreBackupIfUnchanged(db, data, unchangedSince)) === null) return false;
-      announceDataReplaced();
-      const steps: AfterRestoreStep[] = [
-        { name: 'loading your preferences', run: reloadPreferences },
-        { name: 'loading your alert acknowledgements', run: reloadAlertState },
-        { name: 'showing the updated results', run: refreshLabResults },
-      ];
-      const failed = await runAfterRestore(steps);
-      if (failed.length > 0) {
-        notifications.show({
-          title: 'Updated From the Folder, With Problems',
-          message: `Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
-          color: 'yellow',
-        });
-      }
-      return true;
-    },
-    [db, isReady, reloadPreferences, reloadAlertState, refreshLabResults]
-  );
+  const afterRestore = useAfterRestore();
+  const applyFolderCopy = useApplyFolderCopy();
 
   // Another tab of this browser replaced the data (a folder copy loaded, a
   // restore), under new IDs: reload what this tab shows, as a restore here
   // does, so no edit or note goes to an old ID
   useDataReplacedElsewhere(
     useCallback(() => {
-      const steps: AfterRestoreStep[] = [
-        { name: 'loading your preferences', run: reloadPreferences },
-        { name: 'loading your alert acknowledgements', run: reloadAlertState },
-        { name: 'showing the updated results', run: refreshLabResults },
-      ];
-      void runAfterRestore(steps).then((failed) => {
+      void afterRestore('showing the updated results').then(({ steps, failed }) => {
         if (failed.length === 0) return;
         notifications.show({
           title: 'Updated in Another Tab, With Problems',
-          message: `Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
+          message: failedStepsMessage(steps, failed),
           color: 'yellow',
         });
       });
-    }, [reloadPreferences, reloadAlertState, refreshLabResults])
+    }, [afterRestore])
   );
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
@@ -275,11 +232,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         announceDataReplaced();
 
         // The data is replaced: from here on a failure is not a failed restore
-        const steps: AfterRestoreStep[] = [
-          // A backup can bring unit preferences, personal targets and acknowledgements
-          { name: 'loading your preferences', run: reloadPreferences },
-          { name: 'loading your alert acknowledgements', run: reloadAlertState },
-          ...(options.restoreAISettings
+        const { steps, failed } = await afterRestore(
+          'showing the restored results',
+          options.restoreAISettings
             ? [
                 {
                   name: 'applying the AI configuration',
@@ -296,10 +251,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
                     }),
                 },
               ]
-            : []),
-          { name: 'showing the restored results', run: refreshLabResults },
-        ];
-        const failed = await runAfterRestore(steps);
+            : []
+        );
         // The folder sync tells of its own failure, as it does for every sync
         void syncNow().catch(() => undefined);
 
@@ -317,7 +270,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               }
             : {
                 title: 'Data Restored, With Problems',
-                message: `${summary} Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
+                message: `${summary} ${failedStepsMessage(steps, failed)}`,
                 color: 'yellow',
               }
         );
@@ -334,9 +287,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [
       db,
       isReady,
-      reloadPreferences,
-      reloadAlertState,
-      refreshLabResults,
+      afterRestore,
       syncNow,
       folderSyncHeld,
       setAiProvider,
