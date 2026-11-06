@@ -36,14 +36,23 @@ import {
 } from '@data/storage/FileSystemStorageProvider';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import type { ParsedBackupData } from '@services/import';
+import { FolderBackups } from './FolderBackups';
+import type { RestoreOptions } from './BackupRestore';
 
 export interface StorageSettingsProps {
   /** Whether the settings are being saved */
   isSaving?: boolean;
+  /** Restores a dated folder backup's data; rejects when the restore failed */
+  onRestore: (data: ParsedBackupData, options: RestoreOptions) => Promise<void>;
+  /** Records HemoIO cannot open: a restore keeps them aside */
+  setAsideCount?: number;
 }
 
 export function StorageSettings({
   isSaving = false,
+  onRestore,
+  setAsideCount = 0,
 }: StorageSettingsProps): React.ReactNode {
   const [storageProvider, setStorageProvider] = useState<StorageProviderType>('local');
   const [directoryName, setDirectoryName] = useState<string | null>(null);
@@ -385,6 +394,10 @@ export function StorageSettings({
             Your browser requires permission to access the selected folder. Click
             "Grant Access" to continue using your data.
           </Alert>
+        )}
+
+        {storageProvider === 'filesystem' && fileSystemSupported && permissionState === 'granted' && (
+          <FolderBackups onRestore={onRestore} setAsideCount={setAsideCount} />
         )}
 
         {!fileSystemSupported && (

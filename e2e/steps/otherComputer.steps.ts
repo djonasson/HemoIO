@@ -378,6 +378,20 @@ export function folderBackupNames(page: Page, folderName: string = TEST_FOLDER_N
   );
 }
 
+/** Given a backup in the folder is damaged — its file now holds bytes that are no folder copy */
+export function corruptFolderBackup(page: Page, name: string, folderName: string = TEST_FOLDER_NAME): Promise<void> {
+  return page.evaluate(
+    async ({ folderName, backups, name }) => {
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      const dir = await folder.getDirectoryHandle(backups);
+      const writable = await (await dir.getFileHandle(name)).createWritable();
+      await writable.write(new Uint8Array([7, 7, 7, 7, 7, 7, 7, 7]));
+      await writable.close();
+    },
+    { folderName, backups: FOLDER_BACKUPS, name }
+  );
+}
+
 /** Given my folder already holds these backups — files of the given names, as HemoIO names them */
 export function putFolderBackups(page: Page, names: string[], folderName: string = TEST_FOLDER_NAME): Promise<void> {
   return page.evaluate(

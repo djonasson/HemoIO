@@ -323,7 +323,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
         <Tabs.Panel value="data" pt="md">
           <Stack gap="lg">
-            <StorageSettings />
+            <StorageSettings onRestore={onRestore} setAsideCount={setAside.total} />
             <BackupRestore
               dataSources={dataSources}
               loadDataSources={loadDataSources}

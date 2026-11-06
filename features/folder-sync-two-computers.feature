@@ -117,3 +117,18 @@ Feature: Two computers on one folder
     And "Decide later" should have keyboard focus
     And pressing Escape should decide later
     And when the backup cannot be saved to my folder, I should be told that nothing was changed
+
+  # Settings > Data lists the dated backups, newest first, each marked as kept
+  # from a choice or kept before loading from the folder
+  Scenario: I can restore a dated folder backup from Settings, after confirming, and the current folder copy is kept as a backup first
+    Given I was asked which data to keep, and chose to keep this computer's data
+    When I open Settings, on the Data tab, and choose to restore the dated backup
+    Then I should be told that my current folder copy is kept as a dated backup first
+    And when I confirm, the other computer's lab results should replace this computer's
+    And my folder should hold one more dated backup
+
+  Scenario: A backup that can't be read is explained, and nothing changes
+    Given my folder holds a dated backup that is damaged
+    When I open Settings, on the Data tab, and choose to restore that backup
+    Then I should be told the backup can't be opened with my password
+    And nothing in my folder or on this computer should change

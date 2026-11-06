@@ -9,7 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { TEST_PASSWORD, openFromMenu, setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { lockApp } from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
@@ -24,6 +24,7 @@ import { folderCopyHash } from './steps/folderRestore.steps';
 import {
   FOLDER_BACKUPS,
   ancestryOfFolderCopy,
+  corruptFolderBackup,
   currentFolderData,
   folderBackupNames,
   folderFileBody,
@@ -397,5 +398,52 @@ test.describe('Two computers on one folder', () => {
     await expect(dialog).toBeVisible();
     expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
     await expect(page.getByText('Other Computer Clinic')).toHaveCount(0);
+  });
+
+  test('I can restore a dated folder backup from Settings', async ({ page }) => {
+    // Scenario: I can restore a dated folder backup from Settings, after confirming, and the current folder copy is kept as a backup first
+    await askedWhichToKeep(page);
+    await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
+    await expect(conflictDialog(page)).toHaveCount(0);
+    await expect.poll(() => folderBackupNames(page)).toHaveLength(1);
+
+    await openSettingsTab(page, 'Data');
+    const section = page.getByRole('region', { name: 'Folder backups' });
+    await expect(section.getByRole('listitem')).toHaveCount(1);
+    await expect(section.getByRole('listitem')).toContainText('kept from a choice');
+    const restore = section.getByRole('button', { name: /^Restore the backup saved .*, kept from a choice$/ });
+    await restore.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Restore folder backup' });
+    await expect(dialog).toContainText('Your current folder copy is kept as a dated backup first.');
+    await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => folderBackupNames(page)).toHaveLength(2);
+    await openFromMenu(page, 'Timeline');
+    await expect(page.getByText('Other Computer Clinic')).toBeVisible();
+    await expect(page.getByText('This Computer Clinic')).toHaveCount(0);
+  });
+
+  test("a backup that can't be read is explained, and nothing changes", async ({ page }) => {
+    // Scenario: A backup that can't be read is explained, and nothing changes
+    await askedWhichToKeep(page);
+    await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
+    await expect.poll(() => folderBackupNames(page)).toHaveLength(1);
+    const [name] = await folderBackupNames(page);
+    await corruptFolderBackup(page, name);
+    const folderCopy = await folderCopyHash(page, TEST_FOLDER_NAME);
+
+    await openSettingsTab(page, 'Data');
+    await page
+      .getByRole('region', { name: 'Folder backups' })
+      .getByRole('button', { name: /^Restore the backup saved / })
+      .click();
+
+    await expect(page.getByRole('alert').filter({ hasText: "can't be opened with your password" })).toBeVisible();
+    expect(await folderBackupNames(page)).toEqual([name]);
+    expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
+    await openFromMenu(page, 'Timeline');
+    await expect(page.getByText('This Computer Clinic').first()).toBeVisible();
   });
 });
