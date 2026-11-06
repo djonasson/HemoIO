@@ -863,15 +863,20 @@ describe('useFilesystemSync', () => {
 
       it('the question stays until the copy is loaded', async () => {
         const { result } = await inConflict();
-        let conflictWhileLoading: unknown = 'not loaded';
-        applyFolderCopy.mockImplementationOnce(async () => {
-          conflictWhileLoading = result.current.conflict;
-          return 'loaded-stamp';
+        let finishLoad: (stamp: string) => void = () => {};
+        applyFolderCopy.mockImplementationOnce(() => new Promise((resolve) => (finishLoad = resolve)));
+
+        let resolving: Promise<void> = Promise.resolve();
+        act(() => {
+          resolving = result.current.resolveConflict('folder');
         });
+        await waitFor(() => expect(applyFolderCopy).toHaveBeenCalled());
 
-        await act(() => result.current.resolveConflict('folder'));
-
-        expect(conflictWhileLoading).not.toBeNull();
+        expect(result.current.conflict).not.toBeNull();
+        await act(async () => {
+          finishLoad('loaded-stamp');
+          await resolving;
+        });
         expect(result.current.conflict).toBeNull();
       });
 
