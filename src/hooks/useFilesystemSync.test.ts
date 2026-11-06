@@ -23,6 +23,8 @@ import { sealLockIntoFolderCopy } from '@services/sync/folderSync';
 import { pushLockToFolder } from '@services/sync/folderLockPush';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { markUnsavedEdit } from '@/utils/unsavedEdits';
+import { installFakeWebLocks } from '@/test/fakeWebLocks';
+import { withWebLock } from '@/utils/withWebLock';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { ParsedBackupData } from '@services/import';
@@ -249,6 +251,72 @@ describe('useFilesystemSync', () => {
       await act(() => syncNow());
 
       expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+    });
+
+    describe('a sync that waited for another tab', () => {
+      /** Another tab holds the folder-sync lock until released */
+      async function anotherTabSyncing(): Promise<{ release: () => Promise<void>; uninstall: () => void; requests: () => string[] }> {
+        const locks = installFakeWebLocks();
+        let finish = (): void => {};
+        const held = withWebLock('hemoio-folder-sync', () => new Promise<void>((resolve) => (finish = resolve)));
+        await waitFor(() => expect(locks.held()).toBe('hemoio-folder-sync'));
+        return {
+          release: async () => {
+            finish();
+            await held;
+          },
+          uninstall: locks.uninstall,
+          requests: () => locks.requests.map((r) => r.name),
+        };
+      }
+
+      it('writes nothing once the session has ended meanwhile', async () => {
+        const { result, rerender } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        const other = await anotherTabSyncing();
+        try {
+          let waiting: Promise<void> = Promise.resolve();
+          act(() => {
+            waiting = result.current.syncNow();
+          });
+
+          // Waiting for the lock, past the checks made before it
+          await waitFor(() => expect(other.requests()).toHaveLength(2));
+          auth.encryptionKey = null;
+          rerender();
+          await act(async () => {
+            await other.release();
+            await waiting;
+          });
+
+          expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+        } finally {
+          other.uninstall();
+        }
+      });
+
+      it('writes nothing once folder storage was switched off meanwhile', async () => {
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        const other = await anotherTabSyncing();
+        try {
+          let waiting: Promise<void> = Promise.resolve();
+          act(() => {
+            waiting = result.current.syncNow();
+          });
+
+          await waitFor(() => expect(other.requests()).toHaveLength(2));
+          localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
+          await act(async () => {
+            await other.release();
+            await waiting;
+          });
+
+          expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+        } finally {
+          other.uninstall();
+        }
+      });
     });
 
     it('does not write when the hold begins while the data is exported', async () => {

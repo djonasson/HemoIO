@@ -296,8 +296,16 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     if (!session || !enabledRef.current) return;
     // Waiting for the user's choice, or held after "Decide later": nothing
     // is written, but a password change made here still reaches the folder
+    // Checked again holding the lock: while this sync waited for another
+    // tab's, this session may have ended, or folder storage been switched off
+    const stillWanted = (): boolean =>
+      sessionRef.current === session && enabledRef.current && isFolderStorageOn();
     if (heldForRef.current === session.key) {
-      if (lockBehindRef.current) await withWebLock(FOLDER_SYNC_LOCK, () => putLockInFolder(session));
+      if (lockBehindRef.current) {
+        await withWebLock(FOLDER_SYNC_LOCK, async () => {
+          if (stillWanted()) await putLockInFolder(session);
+        });
+      }
       return;
     }
     // Nothing is held back when nothing is synced, so no notice either
@@ -305,7 +313,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
       setIssue(null);
       return;
     }
-    await withWebLock(FOLDER_SYNC_LOCK, () => syncOnce(session));
+    await withWebLock(FOLDER_SYNC_LOCK, async () => {
+      if (stillWanted()) await syncOnce(session);
+    });
   }, [syncOnce, putLockInFolder]);
 
   /** Runs `task` after everything already queued; its failure is its caller's, and the next still runs */

@@ -122,6 +122,13 @@ Feature: Folder Sync Safety
     Then my folder copy should hold the password lock from this computer's later change
     And my password from this computer should still unlock HemoIO
 
+  # Unit-tested: useFilesystemSync.test.ts
+  Scenario: A sync that waited for another tab writes nothing once it is no longer wanted
+    Given another tab of this browser is syncing my folder
+    And a sync on this tab is waiting for it to finish
+    When I lock HemoIO or switch folder storage off on this tab meanwhile
+    Then this tab should not write to my folder once the other tab is done
+
   Scenario: A folder from another setup is explained
     Given my folder holds a copy made by another HemoIO setup, with a different key
     When I add lab results
