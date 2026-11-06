@@ -14,7 +14,7 @@ import { saveFolderSyncState, type FolderSyncState } from '@data/storage/folderS
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, resealWithoutLock, sealEnvelope } from './folderEnvelope';
-import { keepLockFile, type FolderLockStore } from './folderLockFile';
+import { keepLockFile, readLockFile, type FolderLockStore } from './folderLockFile';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
 /**
@@ -57,6 +57,12 @@ export interface FolderWriteContext {
   lastSeen: FolderSyncState | null;
   /** The revision the user chose to replace ("keep this computer's data") */
   replaces?: string | null;
+  /**
+   * False once the folder is known to hold `lock`: a sync that leaves the
+   * data as they are then does not read the copy to put the lock in it
+   * (sealLockIntoFolderCopy). Unknown counts as true.
+   */
+  lockMayBeBehind?: boolean;
 }
 
 /** One side of a conflict, as the user is shown it: counts and a date, never values */
@@ -395,6 +401,66 @@ function sideOf(
   };
 }
 
+/** What sealLockIntoFolderCopy did, and the lock the copy carries after it */
+export interface LockReseal {
+  /**
+   * 'current': the folder holds this lock or a later one already, or no copy
+   * (or a copy without a lock) holds an older one; 'resealed': the copy was sealed again with this
+   * lock, its content untouched; 'not-opened': the copy does not open under
+   * the key, and nothing was written
+   */
+  status: 'current' | 'resealed' | 'not-opened';
+  /** The lock the copy carries now, once it opened under the key; null otherwise */
+  folderLock: StoredCredentialsV2 | null;
+}
+
+/**
+ * A password change reaches the folder whatever keeps the data from being
+ * written (records set aside, an empty browser, a question to the user, a
+ * hold): when this browser's lock is later than the one the copy carries,
+ * the copy's own plaintext is sealed again with it, so the same revision,
+ * ancestors and data, and the lock file brought up to date. The data are
+ * never touched, so nothing a protection guards is at risk; and an old
+ * password no longer opens the key that opens the copy. The previous copy
+ * is left as it is: it carries no lock. Rejects when the folder cannot be
+ * read or written.
+ *
+ * `encrypted`: the copy's bytes, when already read.
+ */
+export async function sealLockIntoFolderCopy(
+  store: FolderCopyStore,
+  key: CryptoKey,
+  lock: StoredCredentialsV2,
+  encrypted?: ArrayBuffer | null
+): Promise<LockReseal> {
+  // No lock in the copy for an old password to open: only a lock file
+  // holding an older lock is put right; the next write of the data adds one
+  const putRightLockFile = async (): Promise<LockReseal> => {
+    const fileLock = readLockFile(await store.loadLock().catch(() => null));
+    if (fileLock !== null && isLaterLock(lock, fileLock)) await keepLockFile(store, lock);
+    return { status: 'current', folderLock: null };
+  };
+  const bytes = encrypted === undefined ? await store.loadCurrent() : encrypted;
+  if (!bytes || bytes.byteLength === 0) return putRightLockFile();
+  // Opened first, whatever the header says: its lock counts only once the
+  // copy opens under the key, as AES-GCM then proves the header unedited
+  let opened: Awaited<ReturnType<typeof openEnvelope>>;
+  try {
+    opened = await openEnvelope(bytes, key);
+  } catch {
+    return { status: 'not-opened', folderLock: null };
+  }
+  const { header, plain } = opened;
+  const folderLock = header?.lock ?? null;
+  if (folderLock === null) return putRightLockFile();
+  if (!isLaterLock(lock, folderLock)) return { status: 'current', folderLock };
+  const sealed = await sealEnvelope(new Uint8Array(plain), key, lock);
+  // The lock file first, as for every write of a copy with a lock
+  await keepLockFile(store, lock);
+  await store.save(sealed);
+  return { status: 'resealed', folderLock: lock };
+}
+
 /**
  * Write the data to the folder copy, unless that could lose data there.
  * A copy with the same data is not rewritten, so the previous copy stays the
@@ -427,6 +493,15 @@ export async function writeFolderCopy(
   // key, even when the copy is left as it is: a lock adopted from another
   // computer, or a lock file lost, is put right by the next sync
   if (outcome.status === 'unchanged' && outcome.folderLock) await keepLockFile(store, outcome.folderLock);
+  // The data are left as they are, but a password change made here still
+  // reaches the folder (P42). Only after the data's own decision: records
+  // set aside keep the copy from being read for that, never for this.
+  const dataLeft = outcome.status === 'protected' || outcome.status === 'changed-elsewhere';
+  if (dataLeft && context.lock !== null && context.lockMayBeBehind !== false) {
+    const bytes = outcome.status === 'changed-elsewhere' ? outcome.bytes : undefined;
+    const reseal = await sealLockIntoFolderCopy(store, key, context.lock, bytes);
+    if (reseal.folderLock !== null) return { ...outcome, folderLock: reseal.folderLock };
+  }
   return outcome;
 }
 

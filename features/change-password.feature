@@ -84,6 +84,22 @@ Feature: Change password
     Then the password lock in my folder copy should be the new one
     And my data in the folder should still be readable with the new password
 
+  # Unit-tested: folderSync.test.ts, useFilesystemSync.test.ts, ChangePassword.test.tsx
+  Scenario: The new lock reaches my folder even while folder sync is paused
+    Given I am logged into the application
+    And my data is stored in a local folder
+    And folder sync is paused, waiting for me to save or delete unreadable records
+    When I change my password
+    Then the password lock in my folder copy should be the new one
+    And the data in my folder copy should be unchanged
+
+  # Unit-tested: ChangePassword.test.tsx
+  Scenario: The folder cannot take the new lock yet
+    Given I am logged into the application
+    And my data is stored in a local folder that HemoIO cannot write to
+    When I change my password
+    Then I should see "Password changed. HemoIO could not update the lock in your folder yet; it will try again at the next sync."
+
   Scenario: Backups are not affected
     Given I am logged into the application
     When I am on the Security tab of Settings

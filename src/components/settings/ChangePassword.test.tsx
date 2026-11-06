@@ -11,6 +11,9 @@ const mockChangePassword = vi.hoisted(() =>
 vi.mock('@contexts', () => ({
   useAuth: () => ({ changePassword: mockChangePassword }),
 }));
+const folder = vi.hoisted(() => ({ on: false, push: vi.fn<() => Promise<boolean>>() }));
+vi.mock('@data/storage/storageChoice', () => ({ isFolderStorageOn: () => folder.on }));
+vi.mock('@services/sync/folderLockPush', () => ({ pushLockToFolder: folder.push }));
 
 const CURRENT = 'Old-Passw0rd!';
 const NEXT = 'New-Passw0rd!';
@@ -37,6 +40,8 @@ async function fill(user: ReturnType<typeof userEvent.setup>, c = CURRENT, n = N
 describe('ChangePassword', () => {
   beforeEach(() => {
     mockChangePassword.mockReset();
+    folder.on = false;
+    folder.push.mockReset();
   });
 
   it('explains that data stays encrypted and backups keep their own password', () => {
@@ -125,6 +130,51 @@ describe('ChangePassword', () => {
     expect(current()).toHaveValue('');
     expect(next()).toHaveValue('');
     expect(confirm()).toHaveValue('');
+  });
+
+  it('puts the new lock into the folder at once, with folder storage on', async () => {
+    const user = userEvent.setup();
+    folder.on = true;
+    folder.push.mockResolvedValue(true);
+    mockChangePassword.mockResolvedValue({ ok: true });
+    renderForm();
+    await fill(user);
+
+    await user.click(submit());
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Password changed. Use your new password next time you unlock HemoIO.'
+    );
+    expect(folder.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('says when the folder could not take the new lock yet', async () => {
+    const user = userEvent.setup();
+    folder.on = true;
+    folder.push.mockResolvedValue(false);
+    mockChangePassword.mockResolvedValue({ ok: true });
+    renderForm();
+    await fill(user);
+
+    await user.click(submit());
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Password changed. HemoIO could not update the lock in your folder yet; it will try again at the next sync.'
+    );
+    expect(current()).toHaveValue('');
+  });
+
+  it('asks nothing of the folder when the password was not changed', async () => {
+    const user = userEvent.setup();
+    folder.on = true;
+    mockChangePassword.mockResolvedValue({ ok: false, reason: 'wrong_password' });
+    renderForm();
+    await fill(user);
+
+    await user.click(submit());
+
+    await waitFor(() => expect(current()).toHaveFocus());
+    expect(folder.push).not.toHaveBeenCalled();
   });
 
   it('submits with Enter', async () => {

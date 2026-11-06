@@ -31,6 +31,10 @@ import {
   runFolderSync,
   type SyncSession,
 } from '@services/sync/folderSyncRun';
+import { sealLockIntoFolderCopy, type FolderSyncOutcome } from '@services/sync/folderSync';
+import { setFolderLockPush } from '@services/sync/folderLockPush';
+import { loadStoredCredentials } from '@contexts/credentialsStorage';
+import { isCredentialsV2, isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { FOLDER_SYNC_LOCK } from '@/utils/locks';
 import { withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
@@ -151,6 +155,11 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   // The copy the user chose to replace from the restore question, for the
   // next sync of the session it was chosen in
   const replaceNextRef = useRef<{ key: CryptoKey; id: string } | null>(null);
+  // Whether the folder may not hold this browser's lock yet: unknown at
+  // first, and after every password change, until a sync finds it there.
+  // While it may not, a sync that leaves the data as they are, or a held
+  // one, reads the copy to put the lock in it (P42).
+  const lockBehindRef = useRef(true);
   // Held, the folder is looked at again: what the last sync found no longer applies
   if (!enabled && issue !== null) setIssue(null);
   // A ref, so a sync asked for before the hold began is held too. Set before
@@ -185,9 +194,11 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             return replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
           },
           isEnabled: () => enabledRef.current,
+          lockMayBeBehind: lockBehindRef.current,
         });
         if (!run) return;
         const { outcome, lastSeen } = run;
+        if (holdsLock(outcome, lockRef.current)) lockBehindRef.current = false;
         // A password changed on another computer: adopted when later than this
         // one's, and only for the session whose key opened the copy
         if (outcome.folderLock && sessionRef.current === session && adoptRef.current(outcome.folderLock)) {
@@ -255,18 +266,40 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     [holdFor]
   );
 
+  /**
+   * Put this browser's lock into the folder copy, leaving its data as they
+   * are; run holding the folder-sync lock. True when the folder holds it,
+   * or folder storage is off. Reads the lock as stored: a password change
+   * asks for this before the new lock reaches React's state.
+   */
+  const putLockInFolder = useCallback(async (session: SyncSession): Promise<boolean> => {
+    if (!isFolderStorageOn()) return true;
+    const stored = loadStoredCredentials();
+    if (!isCredentialsV2(stored)) return true;
+    const provider = currentFolder();
+    if ((await provider.getPermissionState()) !== 'granted') return false;
+    const { status } = await sealLockIntoFolderCopy(provider, session.key, stored);
+    if (status === 'not-opened') return false;
+    if (lockRef.current?.kekSalt === stored.kekSalt) lockBehindRef.current = false;
+    return true;
+  }, []);
+
   const runSync = useCallback(async () => {
     const session = sessionRef.current;
     if (!session || !enabledRef.current) return;
-    // Waiting for the user's choice, or held after "Decide later"
-    if (heldForRef.current === session.key) return;
+    // Waiting for the user's choice, or held after "Decide later": nothing
+    // is written, but a password change made here still reaches the folder
+    if (heldForRef.current === session.key) {
+      if (lockBehindRef.current) await withWebLock(FOLDER_SYNC_LOCK, () => putLockInFolder(session));
+      return;
+    }
     // Nothing is held back when nothing is synced, so no notice either
     if (!isFolderStorageOn()) {
       setIssue(null);
       return;
     }
     await withWebLock(FOLDER_SYNC_LOCK, () => syncOnce(session));
-  }, [syncOnce]);
+  }, [syncOnce, putLockInFolder]);
 
   /** Runs `task` after everything already queued; its failure is its caller's, and the next still runs */
   const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
@@ -447,8 +480,22 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   useEffect(() => {
     if (syncedSaltRef.current === lockSalt) return;
     syncedSaltRef.current = lockSalt;
+    lockBehindRef.current = true;
     if (sessionRef.current && isFolderStorageOn()) syncNow().catch(() => undefined);
   }, [lockSalt, syncNow]);
+
+  // The password change puts the new lock into the folder at once, whatever
+  // holds the data (a restore question, a hold, records set aside), and says
+  // when it could not
+  useEffect(() => {
+    setFolderLockPush(() =>
+      afterSyncs(async () => {
+        const session = unlockedRef.current;
+        return session ? putLockInFolder(session) : false;
+      })
+    );
+    return () => setFolderLockPush(null);
+  }, [afterSyncs, putLockInFolder]);
 
   return {
     syncNow,
@@ -459,6 +506,14 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     acknowledgeFolderCopy,
     replaceFolderCopy,
   };
+}
+
+/** Whether, after this sync, the folder copy holds `lock` (or a later one) */
+function holdsLock(outcome: FolderSyncOutcome, lock: StoredCredentialsV2 | null): boolean {
+  if (lock === null) return true;
+  // A write carries the later of the two locks; a copy left unchanged had it already, or got it
+  if (outcome.status === 'written') return true;
+  return Boolean(outcome.folderLock) && !isLaterLock(lock, outcome.folderLock ?? null);
 }
 
 /**

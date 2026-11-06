@@ -12,6 +12,7 @@ import {
   folderDataJson,
   markFolderCopySeen,
   sealFolderCopy,
+  sealLockIntoFolderCopy,
   writeFolderCopy,
   type FolderCopyStore,
   type FolderSyncData,
@@ -158,7 +159,12 @@ describe('writeFolderCopy', () => {
     const before = store.copy;
     const loadCurrent = vi.spyOn(store, 'loadCurrent');
 
-    const outcome = await write(store, withResults(2), key, { ...context, setAsideUnsaved: 2 });
+    // Read only to put a changed lock in it, once the folder holds this one
+    const outcome = await write(store, withResults(2), key, {
+      ...context,
+      setAsideUnsaved: 2,
+      lockMayBeBehind: false,
+    });
 
     expect(outcome).toEqual({ status: 'protected', reason: 'set-aside' });
     expect(loadCurrent).not.toHaveBeenCalled();
@@ -519,6 +525,87 @@ describe('writeFolderCopy', () => {
     expect(await write(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'newer',
+    });
+  });
+
+  describe('a password change while the data are left as they are (P42)', () => {
+    /** A copy written with the earlier lock, then a password change here */
+    async function writtenThenPasswordChanged(data = withResults(2)) {
+      await write(store, data, key, { ...context, lock: dated(EARLIER) });
+      const before = await readCopy(store, key);
+      store.previous = null;
+      store.writes = [];
+      return { before, changed: { ...context, lock: dated(LATER) } };
+    }
+
+    it('puts the new lock into the copy while records set aside hold the data', async () => {
+      const { before, changed } = await writtenThenPasswordChanged();
+
+      const outcome = await write(store, withResults(1), key, { ...changed, setAsideUnsaved: 2 });
+
+      expect(outcome).toMatchObject({ status: 'protected', reason: 'set-aside' });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+      expect(readLockFile(store.lockFile)).toEqual(dated(LATER));
+      // The same revision, ancestors and data: only the lock changed
+      expect(await readCopy(store, key)).toEqual(before);
+      expect(store.writes).toEqual(['lock', 'copy']);
+      // The previous copy is left alone
+      expect(store.previous).toBeNull();
+    });
+
+    it('puts the new lock into the copy that an empty browser must not write over', async () => {
+      const { before, changed } = await writtenThenPasswordChanged();
+
+      const outcome = await write(store, empty(), key, changed);
+
+      expect(outcome).toMatchObject({ status: 'protected', reason: 'empty' });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+      expect(await readCopy(store, key)).toEqual(before);
+    });
+
+    it('puts the new lock into a copy written elsewhere, which stays the one to load or ask about', async () => {
+      const { changed } = await writtenThenPasswordChanged(withResults(1));
+      const lastSeen = seen.get(store)!;
+      // Another computer writes a newer copy with the earlier lock
+      await writeFolderCopy(store, withResults(3), key, { ...context, lock: dated(EARLIER), lastSeen });
+      const elsewhere = await readCopy(store, key);
+
+      const outcome = await write(store, withResults(1), key, { ...changed, lastSeen });
+
+      expect(outcome).toMatchObject({ status: 'changed-elsewhere', reason: 'newer', revision: elsewhere.revision });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+      expect(await readCopy(store, key)).toEqual(elsewhere);
+    });
+
+    it('does not read the copy for it once the folder is known to hold the lock', async () => {
+      await write(store, withResults(2), key, context);
+      const loadCurrent = vi.spyOn(store, 'loadCurrent');
+
+      await write(store, withResults(1), key, { ...context, setAsideUnsaved: 1, lockMayBeBehind: false });
+
+      expect(loadCurrent).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing to a copy the key does not open', async () => {
+      store.copy = await sealFolderCopy(withResults(2), await newKey(), dated(EARLIER)).then((s) => s.bytes);
+      const bytes = store.copy;
+
+      const outcome = await write(store, withResults(1), key, { ...context, lock: dated(LATER) });
+
+      expect(outcome).toMatchObject({ status: 'protected', reason: 'another-setup' });
+      expect(store.copy).toBe(bytes);
+      expect(store.lockFile).toBeNull();
+    });
+
+    it('with no copy, puts the new lock only into a lock file holding an older one', async () => {
+      store.lockFile = new TextEncoder().encode(
+        JSON.stringify({ format: 'hemoio-folder-lock', version: 1, lock: dated(EARLIER) })
+      ).buffer as ArrayBuffer;
+
+      expect(await sealLockIntoFolderCopy(store, key, dated(LATER))).toEqual({ status: 'current', folderLock: null });
+
+      expect(readLockFile(store.lockFile)).toEqual(dated(LATER));
+      expect(store.copy).toBeNull();
     });
   });
 
@@ -998,7 +1085,7 @@ describe('two computers on one folder', () => {
 
     expect(
       await writeFolderCopy(store, withResults(1), key, context(lastSeen, { setAsideUnsaved: 1 }))
-    ).toEqual({ status: 'protected', reason: 'set-aside' });
+    ).toMatchObject({ status: 'protected', reason: 'set-aside' });
   });
 
   it('sealFolderCopy seals without a lock when given none, under a new revision each time', async () => {

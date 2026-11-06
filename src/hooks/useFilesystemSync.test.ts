@@ -19,6 +19,8 @@ import {
   writeFolderCopy,
   type FolderSyncOutcome,
 } from '@services/sync';
+import { sealLockIntoFolderCopy } from '@services/sync/folderSync';
+import { pushLockToFolder } from '@services/sync/folderLockPush';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -37,6 +39,7 @@ vi.mock('@services/sync/folderSync', async (importOriginal) => ({
   writeFolderCopy: vi.fn(),
   markFolderCopySeen: vi.fn(),
   folderCopyId: vi.fn(),
+  sealLockIntoFolderCopy: vi.fn(),
 }));
 vi.mock('@services/sync/folderConflict', () => ({
   canKeepFolderCopy: vi.fn(),
@@ -332,7 +335,12 @@ describe('useFilesystemSync', () => {
       renderHook(() => useFilesystemSync({ applyFolderCopy }));
 
       await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toEqual({ lock: LOCK_A, setAsideUnsaved: 2, lastSeen: null });
+      expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toEqual({
+        lock: LOCK_A,
+        setAsideUnsaved: 2,
+        lastSeen: null,
+        lockMayBeBehind: true,
+      });
     });
 
     it('a password change syncs at once', async () => {
@@ -343,7 +351,70 @@ describe('useFilesystemSync', () => {
       rerender();
 
       await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(2));
-      expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toEqual({ lock: LOCK_B, setAsideUnsaved: 0, lastSeen: null });
+      // The first sync wrote LOCK_A; LOCK_B may not be in the folder yet
+      expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toEqual({
+        lock: LOCK_B,
+        setAsideUnsaved: 0,
+        lastSeen: null,
+        lockMayBeBehind: true,
+      });
+    });
+
+    it('reads the copy for the lock only until a sync finds the folder holding it (P42)', async () => {
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      await act(() => result.current.syncNow());
+
+      expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toMatchObject({ lockMayBeBehind: false });
+    });
+
+    describe('putting a changed lock into the folder whatever holds the data (P42)', () => {
+      beforeEach(() => {
+        // As stored by the password change
+        localStorage.setItem('hemoio_credentials', JSON.stringify(LOCK_A));
+        vi.mocked(sealLockIntoFolderCopy).mockResolvedValue({ status: 'resealed', folderLock: LOCK_A });
+      });
+
+      it('a held sync puts the lock in, while the folder may not hold it', async () => {
+        vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(true));
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(result.current.held).toBe(true));
+
+        await act(() => result.current.syncNow());
+        expect(sealLockIntoFolderCopy).toHaveBeenCalledWith(expect.anything(), mockKey, LOCK_A);
+        expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+
+        // Once there, a held sync reads nothing
+        await act(() => result.current.syncNow());
+        expect(sealLockIntoFolderCopy).toHaveBeenCalledTimes(1);
+      });
+
+      it('the password change puts the lock in at once, even while syncs are held', async () => {
+        renderHook(() => useFilesystemSync({ enabled: false, applyFolderCopy }));
+
+        expect(await pushLockToFolder()).toBe(true);
+
+        expect(sealLockIntoFolderCopy).toHaveBeenCalledWith(expect.anything(), mockKey, LOCK_A);
+        expect(writeFolderCopy).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['the copy does not open under the key', () => {
+          vi.mocked(sealLockIntoFolderCopy).mockResolvedValue({ status: 'not-opened', folderLock: null });
+        }],
+        ['the folder cannot be written', () => {
+          vi.mocked(sealLockIntoFolderCopy).mockRejectedValue(new Error('Disk full'));
+        }],
+        ['there is no folder access', () => {
+          mockGetPermissionState.mockResolvedValueOnce('prompt');
+        }],
+      ])('says the lock is not in the folder when %s', async (_label, arrange) => {
+        renderHook(() => useFilesystemSync({ enabled: false, applyFolderCopy }));
+        arrange();
+
+        expect(await pushLockToFolder()).toBe(false);
+      });
     });
 
     it('does not sync again for the same lock read afresh', async () => {

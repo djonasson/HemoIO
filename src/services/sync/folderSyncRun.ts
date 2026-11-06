@@ -42,6 +42,8 @@ export interface RunFolderSyncOptions {
   takeReplaces: () => string | null | undefined;
   /** False once the hold begins: checked before the folder copy is decrypted, and at the save */
   isEnabled: () => boolean;
+  /** False once the folder is known to hold `lock` (FolderWriteContext.lockMayBeBehind) */
+  lockMayBeBehind?: boolean;
 }
 
 /** Thrown by a save the hold stopped: the sync ends without a word, as one never started would */
@@ -55,7 +57,7 @@ class SyncHeld extends Error {}
 export async function runFolderSync(
   session: SyncSession,
   folder: FolderCopyStore,
-  { lock, takeReplaces, isEnabled }: RunFolderSyncOptions
+  { lock, takeReplaces, isEnabled, lockMayBeBehind }: RunFolderSyncOptions
 ): Promise<FolderSyncRun | null> {
   // Read together: none depends on another
   const [data, { unsaved }, lastSeen] = await Promise.all([
@@ -80,6 +82,7 @@ export async function runFolderSync(
       setAsideUnsaved: unsaved,
       lastSeen,
       ...(replaces !== undefined && { replaces }),
+      ...(lockMayBeBehind !== undefined && { lockMayBeBehind }),
     });
     return { outcome, lastSeen };
   } catch (error) {
