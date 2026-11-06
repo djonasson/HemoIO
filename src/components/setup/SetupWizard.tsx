@@ -43,6 +43,7 @@ import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
 import { saveStorageChoice } from '@data/storage/storageChoice';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 import { logFailure } from '@/utils/logFailure';
 import type { FolderUnlockProblem } from '@services/sync';
@@ -70,6 +71,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   });
 
   const [activeStep, setActiveStep] = useState(0);
+  // The provider that picks the folder keeps it to itself until setup
+  // completes: another tab may set up first, and its folder must stay
+  const [folder] = useState(() => currentFolder());
+  const selectFolder = useCallback(() => folder.selectDirectory({ persist: false }), [folder]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Guards against a second submit before React re-renders the loading button
   const submittingRef = useRef(false);
@@ -176,6 +181,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       // (API key, AI settings) start with them
       outcome = await whileSubmitting(() => setupPassword(password, async (encryptionKey) => {
         try {
+          if (storageProvider === 'filesystem') await folder.persistDirectory();
           saveStorageChoice(storageProvider);
 
           if (aiProvider) {
@@ -218,7 +224,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       notifySetupChoicesNotSaved(unsavedChoicesRef.current);
     }
     onComplete();
-  }, [password, setupPassword, whileSubmitting, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
+  }, [password, setupPassword, whileSubmitting, onComplete, storageProvider, folder, aiProvider, apiKey, ollamaModel]);
 
   const handleRecover = useCallback(
     async (folderPassword: string): Promise<FolderUnlockProblem | 'existing-locked' | null> => {
@@ -266,6 +272,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
             onStorageChange={setStorageProvider}
             selectedDirectoryName={selectedDirectoryName}
             onDirectorySelect={setSelectedDirectoryName}
+            selectDirectory={selectFolder}
           />
         );
       case 2:

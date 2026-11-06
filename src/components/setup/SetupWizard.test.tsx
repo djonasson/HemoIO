@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { SetupWizard } from './SetupWizard';
 import { AuthProvider } from '@contexts';
 import { AuthContext, type AuthContextValue } from '@contexts/AuthContext';
@@ -368,6 +369,40 @@ describe('SetupWizard', () => {
       );
       expect(JSON.stringify(show.mock.calls)).not.toContain('sk-ant-test-1234');
       show.mockRestore();
+    }, 15000);
+
+    it('keeps the chosen folder only once setup completes, as another tab may set up first', async () => {
+      const removeFolderSupport = withFolderSupport();
+      const select = vi
+        .spyOn(FileSystemStorageProvider.prototype, 'selectDirectory')
+        .mockResolvedValue({ name: 'Lab Folder' } as FileSystemDirectoryHandle);
+      const persist = vi.spyOn(FileSystemStorageProvider.prototype, 'persistDirectory').mockResolvedValue();
+      try {
+        const user = userEvent.setup();
+        renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+        await user.click(screen.getByRole('button', { name: 'Set up HemoIO' }));
+        await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+        await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+        await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+        await user.click(screen.getByText('Local Directory'));
+        await user.click(screen.getByRole('button', { name: 'Choose Folder' }));
+        await screen.findByText('Lab Folder');
+
+        expect(select).toHaveBeenCalledWith({ persist: false });
+        expect(persist).not.toHaveBeenCalled();
+
+        await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+        await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+        await user.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+        await waitFor(() => expect(mockOnComplete).toHaveBeenCalled());
+        expect(persist).toHaveBeenCalledTimes(1);
+        expect(localStorage.getItem('hemoio_storage_provider')).toBe('filesystem');
+      } finally {
+        removeFolderSupport();
+        select.mockRestore();
+        persist.mockRestore();
+      }
     }, 15000);
 
     it('says which choices were not saved when storing them fails', async () => {
