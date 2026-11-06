@@ -41,6 +41,17 @@ describe('useFolderSyncNotice', () => {
     expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
   });
 
+  it("explains a folder holding another setup's copy", () => {
+    renderHook(() => useFolderSyncNotice('another-setup'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.title).toBe('Folder sync skipped');
+    expect(notice.message).toBe(
+      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. Choose a different folder in Settings > Data to keep syncing."
+    );
+    expect(notice.autoClose).toBe(false);
+  });
+
   it('explains the set-aside pause', () => {
     renderHook(() => useFolderSyncNotice('set-aside'));
 

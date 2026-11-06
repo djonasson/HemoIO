@@ -76,6 +76,14 @@ Feature: Change password
     And I press Enter
     Then I should see "Password changed. Use your new password next time you unlock HemoIO."
 
+  Scenario: Changing the password updates the lock in my folder
+    Given I am logged into the application
+    And my data is stored in a local folder
+    And my lab results have been synced to my folder
+    When I change my password
+    Then the password lock in my folder copy should be the new one
+    And my data in the folder should still be readable with the new password
+
   Scenario: Backups are not affected
     Given I am logged into the application
     When I am on the Security tab of Settings

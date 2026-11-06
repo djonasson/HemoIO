@@ -9,6 +9,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { notifySetAsideChanged } from '@data/db/setAsideEvents';
 import { writeFolderCopy, type FolderSyncOutcome } from '@services/sync';
 import { useFilesystemSync } from './useFilesystemSync';
+import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 // Mock file system support
 vi.mock('@/utils/fileSystemSupport', () => ({
@@ -35,7 +36,7 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   },
 }));
 
-const WRITTEN: FolderSyncOutcome = { status: 'written' };
+const WRITTEN: FolderSyncOutcome = { status: 'written', folderLock: null };
 
 // Mock db
 const mockExportAllData = vi.fn().mockResolvedValue({
@@ -55,8 +56,16 @@ vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: () => ({ db: mockDb, isReady: true }),
 }));
 
+/** This browser's lock as the auth context gives it; a password change replaces it */
+const LOCK_A = { version: 2, kekSalt: 'c2FsdEE=', iterations: 1000, wrapIv: 'aXZB', wrappedKey: 'a2V5QQ==' } as const;
+const LOCK_B = { ...LOCK_A, kekSalt: 'c2FsdEI=', changedAt: '2026-11-06T09:00:00.000Z' };
+const auth: {
+  storedLock: StoredCredentialsV2 | null;
+  adoptFolderLock: (lock: StoredCredentialsV2) => boolean;
+} = { storedLock: LOCK_A, adoptFolderLock: () => false };
+
 vi.mock('@contexts', () => ({
-  useAuth: () => ({ encryptionKey: mockKey }),
+  useAuth: () => ({ encryptionKey: mockKey, ...auth }),
 }));
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
@@ -68,6 +77,8 @@ describe('useFilesystemSync', () => {
     vi.mocked(writeFolderCopy).mockResolvedValue(WRITTEN);
     mockGetPermissionState.mockResolvedValue('granted');
     mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
+    auth.storedLock = LOCK_A;
+    auth.adoptFolderLock = vi.fn(() => false);
   });
 
   afterEach(() => {
@@ -209,7 +220,7 @@ describe('useFilesystemSync', () => {
     });
 
     it('reports nothing about the folder copy while held', async () => {
-      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty', folderLock: null });
       const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled }), {
         initialProps: { enabled: true },
       });
@@ -248,7 +259,50 @@ describe('useFilesystemSync', () => {
       renderHook(() => useFilesystemSync());
 
       await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toEqual({ setAsideUnsaved: 2 });
+      expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toEqual({ lock: LOCK_A, setAsideUnsaved: 2 });
+    });
+
+    it('a password change syncs at once', async () => {
+      const { rerender } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      auth.storedLock = LOCK_B;
+      rerender();
+
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(2));
+      expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toEqual({ lock: LOCK_B, setAsideUnsaved: 0 });
+    });
+
+    it('does not sync again for the same lock read afresh', async () => {
+      const { rerender } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      // Unlocking reads the credentials again: an equal lock, a new object
+      auth.storedLock = { ...LOCK_A };
+      rerender();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+      expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+    });
+
+    it('adopts the lock the sync found', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'unchanged', folderLock: LOCK_B });
+
+      renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(auth.adoptFolderLock).toHaveBeenCalledWith(LOCK_B));
+    });
+
+    it('adopts nothing when the folder had no lock, or could not be opened', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'written', folderLock: null });
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'another-setup' });
+
+      await act(() => result.current.syncNow());
+
+      expect(auth.adoptFolderLock).not.toHaveBeenCalled();
+      expect(result.current.issue).toBe('another-setup');
     });
 
     it('a set-aside change syncs at once', async () => {
@@ -297,7 +351,7 @@ describe('useFilesystemSync', () => {
       expect(JSON.stringify(logged.mock.calls)).not.toContain('Quest');
     });
 
-    it.each(['empty', 'unreadable', 'set-aside'] as const)(
+    it.each(['empty', 'unreadable', 'set-aside', 'another-setup'] as const)(
       'reports why a sync held back (%s)',
       async (reason) => {
         vi.mocked(writeFolderCopy).mockResolvedValue({ status: 'protected', reason });
@@ -309,7 +363,7 @@ describe('useFilesystemSync', () => {
     );
 
     it('stops reporting once a sync writes again', async () => {
-      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty', folderLock: null });
       const { result } = renderHook(() => useFilesystemSync());
       await waitFor(() => expect(result.current.issue).toBe('empty'));
 
@@ -319,10 +373,10 @@ describe('useFilesystemSync', () => {
     });
 
     it('keeps reporting while nothing has changed', async () => {
-      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty', folderLock: null });
       const { result } = renderHook(() => useFilesystemSync());
       await waitFor(() => expect(result.current.issue).toBe('empty'));
-      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty' });
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'protected', reason: 'empty', folderLock: null });
 
       await act(() => result.current.syncNow());
 

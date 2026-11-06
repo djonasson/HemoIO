@@ -26,6 +26,12 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
       'or it is damaged. HemoIO left it as it is. ' +
       'To keep syncing, choose a different folder in Settings > Data.',
   },
+  'another-setup': {
+    title: SKIPPED,
+    message:
+      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. " +
+      'Choose a different folder in Settings > Data to keep syncing.',
+  },
   newer: {
     title: SKIPPED,
     message:

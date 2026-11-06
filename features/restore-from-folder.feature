@@ -38,13 +38,22 @@ Feature: Restore From the Folder Copy
     When I confirm
     Then HemoIO should save to the folder again
 
-  Scenario: Folder copy saved with another password
-    Given the folder copy was saved with a different password
+  Scenario: Folder copy from another setup
+    Given the folder copy was made by another HemoIO setup, with a different key
+    And this browser no longer has any of my lab data
+    When I unlock HemoIO
+    Then I should be told the folder copy belongs to another HemoIO setup
+    And I should be told that HemoIO must be set up again from that folder's copy to use it on this computer
+    And I should not be offered a restore
+    And I should not be offered to replace the folder copy, as HemoIO never writes over a copy it cannot read
+    And the folder copy should not have been changed
+
+  Scenario: Older folder copy saved with another key
+    Given the folder copy was saved, in the format from before it carried its password lock, with a different key
     And this browser no longer has any of my lab data
     When I unlock HemoIO
     Then I should be told the folder copy cannot be opened with my password
     And I should not be offered a restore
-    And I should not be offered to replace the folder copy, as HemoIO never writes over a copy it cannot read
     And I should be told to choose another folder to keep syncing
     And the folder copy should not have been changed
 

@@ -105,11 +105,13 @@ export async function deriveVerificationHash(
 
 /**
  * Encrypts data using AES-GCM
- * Returns the encrypted data with IV prepended
+ * Returns the encrypted data with IV prepended. `additionalData`, when given,
+ * is authenticated but not encrypted: decrypting needs the same bytes.
  */
 export async function encrypt(
   data: ArrayBuffer,
-  key: CryptoKey
+  key: CryptoKey,
+  additionalData?: Uint8Array
 ): Promise<ArrayBuffer> {
   const iv = generateIV();
 
@@ -117,6 +119,7 @@ export async function encrypt(
     {
       name: 'AES-GCM',
       iv: iv.buffer as ArrayBuffer,
+      ...(additionalData && { additionalData: additionalData as Uint8Array<ArrayBuffer> }),
     },
     key,
     data
@@ -145,11 +148,13 @@ export async function encryptString(
 
 /**
  * Decrypts data encrypted with AES-GCM
- * Expects IV to be prepended to the encrypted data
+ * Expects IV to be prepended to the encrypted data. Rejects unless
+ * `additionalData` is what it was encrypted with (none when none).
  */
 export async function decrypt(
   encryptedData: ArrayBuffer,
-  key: CryptoKey
+  key: CryptoKey,
+  additionalData?: Uint8Array
 ): Promise<ArrayBuffer> {
   const encryptedArray = new Uint8Array(encryptedData);
 
@@ -161,6 +166,7 @@ export async function decrypt(
     {
       name: 'AES-GCM',
       iv: iv.buffer as ArrayBuffer,
+      ...(additionalData && { additionalData: additionalData as Uint8Array<ArrayBuffer> }),
     },
     key,
     data

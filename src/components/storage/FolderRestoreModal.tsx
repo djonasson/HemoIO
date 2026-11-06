@@ -36,6 +36,13 @@ function problemMessage(reason: FolderCopyProblem, folder: string): string {
         `The copy in ${folder} can't be opened with your password. It was saved with a ` +
         'different password or by an earlier setup of HemoIO, or the file is damaged.'
       );
+    case 'another-setup':
+      // Task 9b adds where that setup is made
+      return (
+        `The copy in ${folder} belongs to another HemoIO setup, made with a different key. ` +
+        "HemoIO won't write over it. To use that folder on this computer, HemoIO must be " +
+        "set up again from that folder's copy."
+      );
     case 'not-a-copy':
       return `The file in ${folder} isn't a folder copy HemoIO can read, or it is damaged.`;
     case 'newer-version':
@@ -117,8 +124,11 @@ export function FolderRestoreModal({
         <>
           <Text size="sm">{problemMessage(shown.reason, folder)}</Text>
           <Text size="sm">
-            The file has not been changed, and HemoIO will not write over it. To keep syncing,
-            choose another folder in Settings, on the Data tab.
+            {/* The explanation of another setup's copy says already that it is not written over */}
+            {shown.reason === 'another-setup'
+              ? 'The file has not been changed.'
+              : 'The file has not been changed, and HemoIO will not write over it.'}{' '}
+            To keep syncing, choose another folder in Settings, on the Data tab.
           </Text>
           {/* The sync never writes over a copy it cannot read: there is no replacing it */}
           <Group justify="flex-end">

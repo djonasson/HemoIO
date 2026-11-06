@@ -110,18 +110,19 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(true);
   });
 
-  it('reports a copy it cannot read', async () => {
-    assessAs({ kind: 'unreadable', reason: 'cannot-decrypt' });
+  it.each(['cannot-decrypt', 'another-setup'] as const)('reports a copy it cannot read (%s)', async (reason) => {
+    assessAs({ kind: 'unreadable', reason });
 
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() =>
       expect(result.current.prompt).toEqual({
         kind: 'unreadable',
-        reason: 'cannot-decrypt',
+        reason,
         folderName: 'Health',
       })
     );
+    expect(result.current.syncAllowed).toBe(false);
   });
 
   it('"Not now" closes the prompt and keeps sync held', async () => {

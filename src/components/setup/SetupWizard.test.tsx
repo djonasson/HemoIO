@@ -188,6 +188,8 @@ describe('SetupWizard', () => {
       lock: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: () => false,
+      storedLock: null,
+      adoptFolderLock: () => false,
       // Unlocks once the setup step has run, as AuthProvider does
       setupPassword: vi.fn(async (_password: string, prepare?: (key: CryptoKey) => Promise<void>) => {
         const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
@@ -253,6 +255,8 @@ describe('SetupWizard', () => {
         lock: vi.fn(),
         changePassword: vi.fn(),
         isSetupComplete: () => false,
+        storedLock: null,
+        adoptFolderLock: () => false,
         setupPassword,
       } satisfies AuthContextValue;
       render(

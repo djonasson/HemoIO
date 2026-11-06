@@ -11,10 +11,13 @@ export {
   type FolderCopyStore,
   type FolderProtectionReason,
   type FolderSyncOutcome,
+  type FolderWriteContext,
 } from './folderSync';
 export {
   assessFolderCopy,
+  readFolderCopy,
   type FolderCopyProblem,
   type FolderCopySource,
   type FolderCopyAssessment,
+  type FolderCopyReading,
 } from './folderCopy';

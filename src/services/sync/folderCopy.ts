@@ -6,13 +6,16 @@
  * app checks whether it holds something worth restoring.
  */
 
-import { decrypt } from '@data/encryption';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
+import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
 import { FOLDER_SYNC_FILE_VERSION } from './folderSync';
+import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 export type FolderCopyProblem =
-  /** Another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
+  /** A copy without a lock, under another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
   | 'cannot-decrypt'
+  /** A copy whose lock the session key does not open: another setup's, made with another data key */
+  | 'another-setup'
   /** Decrypts, but is not a folder copy HemoIO can read */
   | 'not-a-copy'
   | 'newer-version'
@@ -22,12 +25,20 @@ export type FolderCopyProblem =
   | 'read-failed';
 
 export type FolderCopyReading =
-  | { status: 'readable'; data: ParsedBackupData }
+  | {
+      status: 'readable';
+      data: ParsedBackupData;
+      /** The write that made the copy; null for a copy from before the lock was kept beside it */
+      revision: string | null;
+      /** The lock beside the copy, null when it has none */
+      lock: StoredCredentialsV2 | null;
+    }
   | { status: 'unreadable'; reason: Exclude<FolderCopyProblem, 'read-failed'> };
 
 interface FolderCopyEnvelope {
   version: number;
   exportedAt: string;
+  revision?: unknown;
   data: {
     labResults?: unknown;
     testValues?: unknown;
@@ -54,11 +65,15 @@ function isEnvelope(value: unknown): value is FolderCopyEnvelope {
  * logs nothing: the content is health data.
  */
 export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promise<FolderCopyReading> {
+  const read = readEnvelopeHeader(bytes);
+  if (read === 'damaged') return { status: 'unreadable', reason: 'not-a-copy' };
+  const header: FolderEnvelopeHeader | null = read;
+
   let plain: ArrayBuffer;
   try {
-    plain = await decrypt(bytes, key);
+    plain = (await openEnvelope(bytes, key)).plain;
   } catch {
-    return { status: 'unreadable', reason: 'cannot-decrypt' };
+    return { status: 'unreadable', reason: header?.lock ? 'another-setup' : 'cannot-decrypt' };
   }
 
   let envelope: unknown;
@@ -93,7 +108,12 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
       // Storage and AI settings belong to this device, as with a backup
       settings: null,
     });
-    return { status: 'readable', data: parsed };
+    return {
+      status: 'readable',
+      data: parsed,
+      revision: header && typeof envelope.revision === 'string' ? envelope.revision : null,
+      lock: header?.lock ?? null,
+    };
   } catch {
     return { status: 'unreadable', reason: 'not-a-copy' };
   }

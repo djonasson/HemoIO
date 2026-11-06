@@ -8,6 +8,15 @@ import { seedLabData } from './steps/data.steps';
 import { goToNotes, noteCards, noteSeed, seedNotesData } from './steps/userNotes.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
 import {
+  FOLDER_COPY,
+  TestFolder,
+  loseBrowserData,
+  storeDataInFolder,
+  useTestFolder,
+} from './steps/folderSync.steps';
+import { FolderRestoreDialog } from './steps/folderRestore.steps';
+import { readFolderEnvelope, storedLockChangedAt } from './steps/otherComputer.steps';
+import {
   NEW_PASSWORD,
   SecuritySettingsPage,
   expectPasswordRejected,
@@ -151,6 +160,30 @@ test.describe('Change password', () => {
     await page.keyboard.press('Enter');
 
     await expect(security.success).toBeVisible();
+  });
+
+  test('changing the password updates the lock in my folder', async ({ page }) => {
+    // Scenario: Changing the password updates the lock in my folder
+    await useTestFolder(page);
+    const folder = new TestFolder(page);
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await storeDataInFolder(page);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBeNull();
+    const empty = await folder.read(FOLDER_COPY);
+    await seedLabData(page);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(empty);
+    const before = (await readFolderEnvelope(page)).header.lock?.changedAt;
+
+    await new SecuritySettingsPage(page).change(TEST_PASSWORD, NEW_PASSWORD);
+
+    const ours = await storedLockChangedAt(page);
+    expect(ours).not.toBe(before);
+    await expect.poll(async () => (await readFolderEnvelope(page)).header.lock?.changedAt).toBe(ours);
+    // The folder copy opens with the new password: an emptied browser is offered it
+    await loseBrowserData(page);
+    await unlockApp(page, NEW_PASSWORD);
+    await expect(new FolderRestoreDialog(page).offer()).toContainText('2 lab results');
   });
 
   test('backups are not affected', async ({ page }) => {

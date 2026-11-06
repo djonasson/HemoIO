@@ -44,7 +44,15 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
   issue: FolderSyncIssue | null;
 } {
   const { db, isReady } = useEncryptedDb();
-  const { encryptionKey } = useAuth();
+  const { encryptionKey, storedLock, adoptFolderLock } = useAuth();
+  // Read when a sync starts, as the session is: the lock it writes is the one
+  // stored then, and the folder's lock is adopted through the latest callback
+  const lockRef = useRef(storedLock);
+  const adoptRef = useRef(adoptFolderLock);
+  useLayoutEffect(() => {
+    lockRef.current = storedLock;
+    adoptRef.current = adoptFolderLock;
+  }, [storedLock, adoptFolderLock]);
   // Read when a sync starts, not when it was asked for: a sync waiting when
   // the app locks must find no key, rather than one kept from before
   const sessionRef = useRef<SyncSession | null>(null);
@@ -93,8 +101,11 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
           enabledRef.current ? provider.save(bytes, previous) : Promise.reject(new SyncHeld()),
       };
       const outcome = await writeFolderCopy(store, data, session.key, {
+        lock: lockRef.current,
         setAsideUnsaved: unsaved,
       });
+      // A password changed on another computer: adopted when later than this one's
+      if (outcome.folderLock) adoptRef.current(outcome.folderLock);
       setIssue(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       if (error instanceof SyncHeld) return;
@@ -144,6 +155,16 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
       clearInterval(intervalId);
     };
   }, [db, isReady, syncNow, encryptionKey, enabled]);
+
+  // A password change syncs at once, so the new lock reaches the folder. Keyed
+  // by the salt, new with every lock: unlocking reads the same lock afresh.
+  const lockSalt = storedLock?.kekSalt ?? null;
+  const syncedSaltRef = useRef(lockSalt);
+  useEffect(() => {
+    if (syncedSaltRef.current === lockSalt) return;
+    syncedSaltRef.current = lockSalt;
+    if (sessionRef.current && isFolderStorageOn()) syncNow().catch(() => undefined);
+  }, [lockSalt, syncNow]);
 
   return {
     syncNow,

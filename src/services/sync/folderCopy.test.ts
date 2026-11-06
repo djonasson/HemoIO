@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { encrypt } from '@data/encryption';
+import { createCredentialsV2 } from '@data/encryption/keyWrapping';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { assessFolderCopy, readFolderCopy, type FolderCopySource } from './folderCopy';
+import { sealEnvelope } from './folderEnvelope';
 import { FOLDER_SYNC_FILE_VERSION as SYNC_FILE_VERSION } from './folderSync';
 
 async function newKey(): Promise<CryptoKey> {
@@ -66,6 +68,48 @@ describe('readFolderCopy', () => {
     expect(reading.data.userPreferences?.theme).toBe('system');
     // Device settings (storage, AI) are this device's own
     expect(reading.data.settings).toBeNull();
+  });
+
+  it('opens a copy that carries its lock, with its revision and lock', async () => {
+    const { credentials: lock, key } = await createCredentialsV2('Old-Passw0rd!', 1000);
+    const body = { version: SYNC_FILE_VERSION, exportedAt: EXPORTED_AT, revision: 'rev-1', data: STORED };
+    const bytes = await sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), key, lock);
+
+    const reading = await readFolderCopy(bytes, key);
+
+    expect(reading).toMatchObject({ status: 'readable', revision: 'rev-1', lock });
+    if (reading.status !== 'readable') return;
+    expect(reading.data.labResults).toHaveLength(1);
+  });
+
+  it('gives a legacy copy no revision and no lock', async () => {
+    const key = await newKey();
+
+    expect(await readFolderCopy(await sealed(copy(), key), key)).toMatchObject({
+      status: 'readable',
+      revision: null,
+      lock: null,
+    });
+  });
+
+  it("a copy with a lock the key cannot open is another setup's", async () => {
+    const other = await createCredentialsV2('Other-Passw0rd!', 1000);
+    const body = { version: SYNC_FILE_VERSION, exportedAt: EXPORTED_AT, revision: 'rev-1', data: STORED };
+    const bytes = await sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), other.key, other.credentials);
+
+    expect(await readFolderCopy(bytes, await newKey())).toEqual({
+      status: 'unreadable',
+      reason: 'another-setup',
+    });
+  });
+
+  it('reports a copy whose header is damaged as not a copy', async () => {
+    const bytes = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer;
+
+    expect(await readFolderCopy(bytes, await newKey())).toEqual({
+      status: 'unreadable',
+      reason: 'not-a-copy',
+    });
   });
 
   it('reports a copy saved under another key as one it cannot decrypt', async () => {

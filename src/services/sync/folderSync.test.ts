@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { decrypt, encrypt } from '@data/encryption';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { encrypt } from '@data/encryption';
+import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
 import {
   FOLDER_SYNC_FILE_VERSION,
   writeFolderCopy,
   type FolderCopyStore,
   type FolderSyncData,
+  type FolderWriteContext,
 } from './folderSync';
 
 const newKey = (): Promise<CryptoKey> =>
@@ -57,23 +60,41 @@ const sealed = async (file: unknown, key: CryptoKey): Promise<ArrayBuffer> =>
   encrypt(new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer, key);
 
 async function readCopy(store: MemoryStore, key: CryptoKey) {
-  const plain = await decrypt(store.copy!, key);
+  const { plain } = await openEnvelope(store.copy!, key);
   return JSON.parse(new TextDecoder().decode(plain));
 }
+
+/** The lock the folder copy carries in its header */
+function folderLockOf(store: MemoryStore): StoredCredentialsV2 | null | undefined {
+  const header = readEnvelopeHeader(store.copy!);
+  return header && header !== 'damaged' ? header.lock : undefined;
+}
+
+let LOCK: StoredCredentialsV2;
+
+beforeAll(async () => {
+  LOCK = (await createCredentialsV2('Old-Passw0rd!', 1000)).credentials;
+});
+
+const dated = (changedAt: string | undefined): StoredCredentialsV2 => ({ ...LOCK, changedAt });
+const EARLIER = '2026-01-01T00:00:00.000Z';
+const LATER = '2026-06-01T00:00:00.000Z';
 
 describe('writeFolderCopy', () => {
   let key: CryptoKey;
   let store: MemoryStore;
+  let context: FolderWriteContext;
 
   beforeEach(async () => {
     key = await newKey();
     store = new MemoryStore();
+    context = { lock: LOCK, setAsideUnsaved: 0 };
   });
 
   it('writes an encrypted copy, in the current format, when the folder holds none', async () => {
-    const outcome = await writeFolderCopy(store, withResults(), key);
+    const outcome = await writeFolderCopy(store, withResults(), key, context);
 
-    expect(outcome).toEqual({ status: 'written' });
+    expect(outcome).toMatchObject({ status: 'written' });
     const copy = await readCopy(store, key);
     expect(copy.version).toBe(FOLDER_SYNC_FILE_VERSION);
     // The backup schema's version, so a restore accepts it
@@ -83,11 +104,11 @@ describe('writeFolderCopy', () => {
   });
 
   it('unsaved set-aside records protect the folder copy without reading it', async () => {
-    await writeFolderCopy(store, withResults(), key);
+    await writeFolderCopy(store, withResults(), key, context);
     const before = store.copy;
     const loadCurrent = vi.spyOn(store, 'loadCurrent');
 
-    const outcome = await writeFolderCopy(store, withResults(2), key, { setAsideUnsaved: 2 });
+    const outcome = await writeFolderCopy(store, withResults(2), key, { ...context, setAsideUnsaved: 2 });
 
     expect(outcome).toEqual({ status: 'protected', reason: 'set-aside' });
     expect(loadCurrent).not.toHaveBeenCalled();
@@ -96,28 +117,28 @@ describe('writeFolderCopy', () => {
   });
 
   it('writes again once no set-aside record is unsaved', async () => {
-    expect(await writeFolderCopy(store, withResults(), key, { setAsideUnsaved: 0 })).toEqual({
+    expect(await writeFolderCopy(store, withResults(), key, { ...context, setAsideUnsaved: 0 })).toMatchObject({
       status: 'written',
     });
   });
 
   it('writes nothing readable without the key', async () => {
-    await writeFolderCopy(store, withResults(), key);
+    await writeFolderCopy(store, withResults(), key, context);
 
     expect(new TextDecoder().decode(store.copy!)).not.toContain('Quest Diagnostics');
   });
 
   it('writes an empty state to a folder that holds no copy yet', async () => {
-    expect(await writeFolderCopy(store, empty(), key)).toEqual({ status: 'written' });
+    expect(await writeFolderCopy(store, empty(), key, context)).toMatchObject({ status: 'written' });
   });
 
   it('never replaces a copy holding lab results with one that has none', async () => {
-    await writeFolderCopy(store, withResults(), key);
+    await writeFolderCopy(store, withResults(), key, context);
     const before = store.copy;
 
-    const outcome = await writeFolderCopy(store, empty(), key);
+    const outcome = await writeFolderCopy(store, empty(), key, context);
 
-    expect(outcome).toEqual({ status: 'protected', reason: 'empty' });
+    expect(outcome).toEqual({ status: 'protected', reason: 'empty', folderLock: LOCK });
     expect(store.copy).toBe(before);
   });
 
@@ -125,9 +146,9 @@ describe('writeFolderCopy', () => {
     ['test values', { testValues: [{ id: 1 }] }],
     ['notes', { userNotes: [{ id: 1 }] }],
   ])('counts a copy holding only %s as holding data', async (_label, records) => {
-    await writeFolderCopy(store, { ...empty(), ...records } as FolderSyncData, key);
+    await writeFolderCopy(store, { ...empty(), ...records } as FolderSyncData, key, context);
 
-    expect(await writeFolderCopy(store, empty(), key)).toEqual({
+    expect(await writeFolderCopy(store, empty(), key, context)).toMatchObject({
       status: 'protected',
       reason: 'empty',
     });
@@ -135,22 +156,22 @@ describe('writeFolderCopy', () => {
 
   it('does not count settings and preferences alone as data', async () => {
     const preferencesOnly = { ...empty(), preferences: { id: 1 } } as FolderSyncData;
-    await writeFolderCopy(store, preferencesOnly, key);
+    await writeFolderCopy(store, preferencesOnly, key, context);
 
-    expect(await writeFolderCopy(store, empty(), key)).toEqual({ status: 'written' });
+    expect(await writeFolderCopy(store, empty(), key, context)).toMatchObject({ status: 'written' });
   });
 
   it('replaces a copy with lab results by one that also has lab results', async () => {
-    await writeFolderCopy(store, withResults(), key);
+    await writeFolderCopy(store, withResults(), key, context);
 
-    expect(await writeFolderCopy(store, withResults(2), key)).toEqual({ status: 'written' });
+    expect(await writeFolderCopy(store, withResults(2), key, context)).toMatchObject({ status: 'written' });
     expect((await readCopy(store, key)).data.labResults).toHaveLength(2);
   });
 
   it('does not write when nothing changed, so the previous copy is kept', async () => {
-    await writeFolderCopy(store, withResults(), key);
+    await writeFolderCopy(store, withResults(), key, context);
 
-    expect(await writeFolderCopy(store, withResults(), key)).toEqual({ status: 'unchanged' });
+    expect(await writeFolderCopy(store, withResults(), key, context)).toMatchObject({ status: 'unchanged' });
     expect(store.saves).toBe(1);
   });
 
@@ -158,7 +179,7 @@ describe('writeFolderCopy', () => {
     store.copy = await sealed({ version: 3, exportedAt: '2024-01-01', data: withResults() }, key);
     const before = store.copy;
 
-    expect(await writeFolderCopy(store, withResults(2), key)).toEqual({
+    expect(await writeFolderCopy(store, withResults(2), key, context)).toEqual({
       status: 'protected',
       reason: 'before-loinc',
     });
@@ -169,26 +190,150 @@ describe('writeFolderCopy', () => {
   it('never replaces a pre-LOINC copy, even one without health data', async () => {
     store.copy = await sealed({ version: 1, exportedAt: '2024-01-01', data: empty() }, key);
 
-    expect(await writeFolderCopy(store, withResults(), key)).toEqual({
+    expect(await writeFolderCopy(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'before-loinc',
     });
   });
 
-  it('never replaces a copy the key cannot open', async () => {
-    await writeFolderCopy(store, withResults(), await newKey());
+  it("never replaces another setup's copy, one with a lock the key cannot open", async () => {
+    await writeFolderCopy(store, withResults(), await newKey(), context);
     const foreign = store.copy;
 
-    const outcome = await writeFolderCopy(store, withResults(), key);
+    const outcome = await writeFolderCopy(store, withResults(), key, context);
+
+    expect(outcome).toEqual({ status: 'protected', reason: 'another-setup' });
+    expect(store.copy).toBe(foreign);
+  });
+
+  it('never replaces a legacy copy the key cannot open', async () => {
+    store.copy = await sealed({ version: 4, exportedAt: '2024-01-01', data: withResults() }, await newKey());
+    const foreign = store.copy;
+
+    const outcome = await writeFolderCopy(store, withResults(), key, context);
 
     expect(outcome).toEqual({ status: 'protected', reason: 'unreadable' });
     expect(store.copy).toBe(foreign);
   });
 
+  it('never replaces a copy whose header is damaged', async () => {
+    store.copy = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer as ArrayBuffer;
+
+    expect(await writeFolderCopy(store, withResults(), key, context)).toEqual({
+      status: 'protected',
+      reason: 'unreadable',
+    });
+  });
+
+  describe('the lock beside the copy', () => {
+    it('writes the lock beside the data, and a new revision each time', async () => {
+      await writeFolderCopy(store, withResults(1), key, context);
+      const first = await readCopy(store, key);
+      await writeFolderCopy(store, withResults(2), key, context);
+
+      expect(folderLockOf(store)).toEqual(LOCK);
+      const second = await readCopy(store, key);
+      expect(typeof first.revision).toBe('string');
+      expect(second.revision).not.toBe(first.revision);
+    });
+
+    it('returns the lock it found in the folder', async () => {
+      await writeFolderCopy(store, withResults(1), key, context);
+
+      expect(await writeFolderCopy(store, withResults(2), key, context)).toEqual({
+        status: 'written',
+        folderLock: LOCK,
+      });
+    });
+
+    it('a lock edited in the file is never adopted', async () => {
+      await writeFolderCopy(store, withResults(), key, context);
+      const file = JSON.parse(new TextDecoder().decode(store.copy!));
+      const i = Math.floor(file.lock.wrappedKey.length / 2);
+      file.lock.wrappedKey =
+        file.lock.wrappedKey.slice(0, i) + (file.lock.wrappedKey[i] === 'A' ? 'B' : 'A') + file.lock.wrappedKey.slice(i + 1);
+      store.copy = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+      const edited = store.copy;
+
+      const outcome = await writeFolderCopy(store, withResults(2), key, context);
+
+      expect(outcome).toEqual({ status: 'protected', reason: 'another-setup' });
+      expect('folderLock' in outcome).toBe(false);
+      expect(store.copy).toBe(edited);
+    });
+
+    it('rewrites an unchanged copy when this lock is later', async () => {
+      await writeFolderCopy(store, withResults(), key, { ...context, lock: dated(EARLIER) });
+
+      const outcome = await writeFolderCopy(store, withResults(), key, { ...context, lock: dated(LATER) });
+
+      expect(outcome).toEqual({ status: 'written', folderLock: dated(EARLIER) });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+    });
+
+    it('rewrites a legacy copy so that it carries the lock', async () => {
+      const data = withResults();
+      store.copy = await sealed({ version: FOLDER_SYNC_FILE_VERSION, exportedAt: '2024-01-01T00:00:00.000Z', data }, key);
+
+      const outcome = await writeFolderCopy(store, data, key, context);
+
+      expect(outcome).toEqual({ status: 'written', folderLock: null });
+      expect(folderLockOf(store)).toEqual(LOCK);
+    });
+
+    it('leaves an unchanged copy alone when the folder lock is later, and returns it', async () => {
+      await writeFolderCopy(store, withResults(), key, { ...context, lock: dated(LATER) });
+      const before = store.copy;
+
+      const outcome = await writeFolderCopy(store, withResults(), key, { ...context, lock: dated(EARLIER) });
+
+      expect(outcome).toEqual({ status: 'unchanged', folderLock: dated(LATER) });
+      expect(store.copy).toBe(before);
+    });
+
+    it('keeps the later folder lock when it writes new data', async () => {
+      await writeFolderCopy(store, withResults(1), key, { ...context, lock: dated(LATER) });
+
+      const outcome = await writeFolderCopy(store, withResults(2), key, { ...context, lock: dated(EARLIER) });
+
+      expect(outcome).toEqual({ status: 'written', folderLock: dated(LATER) });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+    });
+
+    it('writes a copy without a lock while this browser has none', async () => {
+      await writeFolderCopy(store, withResults(), key, { ...context, lock: null });
+
+      expect(folderLockOf(store)).toBeNull();
+      expect(await writeFolderCopy(store, withResults(), key, { ...context, lock: null })).toEqual({
+        status: 'unchanged',
+        folderLock: null,
+      });
+    });
+
+    it('a rewrite for the lock alone keeps the previous copy', async () => {
+      await writeFolderCopy(store, withResults(1), key, { ...context, lock: dated(EARLIER) });
+      await writeFolderCopy(store, withResults(2), key, { ...context, lock: dated(EARLIER) });
+      const previous = store.previous;
+
+      await writeFolderCopy(store, withResults(2), key, { ...context, lock: dated(LATER) });
+
+      expect(store.saves).toBe(3);
+      expect(store.previous).toBe(previous);
+    });
+
+    it('keeps the previous copy in the same format', async () => {
+      await writeFolderCopy(store, withResults(1), key, context);
+      await writeFolderCopy(store, withResults(2), key, context);
+
+      const header = readEnvelopeHeader(store.previous!);
+      expect(header && header !== 'damaged' && header.lock).toEqual(LOCK);
+    });
+  });
+
   it('never replaces a copy that is not a sync file', async () => {
     store.copy = await encrypt(new TextEncoder().encode('not json').buffer as ArrayBuffer, key);
 
-    expect(await writeFolderCopy(store, withResults(), key)).toEqual({
+    expect(await writeFolderCopy(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'unreadable',
     });
@@ -199,7 +344,7 @@ describe('writeFolderCopy', () => {
     store.copy = await sealed(newer, key);
     const before = store.copy;
 
-    expect(await writeFolderCopy(store, withResults(2), key)).toEqual({
+    expect(await writeFolderCopy(store, withResults(2), key, context)).toEqual({
       status: 'protected',
       reason: 'newer',
     });
@@ -212,7 +357,7 @@ describe('writeFolderCopy', () => {
       key
     );
 
-    expect(await writeFolderCopy(store, withResults(), key)).toEqual({
+    expect(await writeFolderCopy(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'newer',
     });
@@ -220,68 +365,68 @@ describe('writeFolderCopy', () => {
 
   describe('the previous copy', () => {
     it('is not kept when the folder held no copy', async () => {
-      await writeFolderCopy(store, withResults(), key);
+      await writeFolderCopy(store, withResults(), key, context);
 
       expect(store.previous).toBeNull();
     });
 
     it('is the copy a write replaced', async () => {
-      await writeFolderCopy(store, withResults(1), key);
+      await writeFolderCopy(store, withResults(1), key, context);
       const replaced = store.copy;
 
-      await writeFolderCopy(store, withResults(2), key);
+      await writeFolderCopy(store, withResults(2), key, context);
 
       expect(store.previous).toBe(replaced);
     });
 
     it('moves on as the data grows', async () => {
-      await writeFolderCopy(store, withResults(1), key);
-      await writeFolderCopy(store, withResults(2), key);
+      await writeFolderCopy(store, withResults(1), key, context);
+      await writeFolderCopy(store, withResults(2), key, context);
       const replaced = store.copy;
 
-      await writeFolderCopy(store, withResults(3), key);
+      await writeFolderCopy(store, withResults(3), key, context);
 
       expect(store.previous).toBe(replaced);
     });
 
     it('is not pushed out by a copy holding less', async () => {
       // A full history, then a browser that lost it writes one new result, then another
-      await writeFolderCopy(store, withResults(5), key);
-      await writeFolderCopy(store, withResults(6), key);
+      await writeFolderCopy(store, withResults(5), key, context);
+      await writeFolderCopy(store, withResults(6), key, context);
       const full = store.copy;
-      await writeFolderCopy(store, withResults(1), key);
+      await writeFolderCopy(store, withResults(1), key, context);
 
-      await writeFolderCopy(store, withResults(2), key);
+      await writeFolderCopy(store, withResults(2), key, context);
 
       expect(store.previous).toBe(full);
     });
 
     it('is not pushed out by a copy without health data', async () => {
-      await writeFolderCopy(store, { ...empty(), preferences: { id: 1 } } as FolderSyncData, key);
+      await writeFolderCopy(store, { ...empty(), preferences: { id: 1 } } as FolderSyncData, key, context);
       store.previous = await sealed({ version: 2, exportedAt: 'x', data: withResults() }, key);
       const previous = store.previous;
 
-      await writeFolderCopy(store, withResults(), key);
+      await writeFolderCopy(store, withResults(), key, context);
 
       expect(store.previous).toBe(previous);
     });
 
     it('is replaced when it cannot be read: it is no copy to undo to', async () => {
-      await writeFolderCopy(store, withResults(1), key);
+      await writeFolderCopy(store, withResults(1), key, context);
       const replaced = store.copy;
       store.previous = await sealed({ version: 2, exportedAt: 'x', data: withResults() }, await newKey());
 
-      await writeFolderCopy(store, withResults(2), key);
+      await writeFolderCopy(store, withResults(2), key, context);
 
       expect(store.previous).toBe(replaced);
     });
 
     it('moves on after a cleanup that keeps at least half of the records', async () => {
-      await writeFolderCopy(store, withResults(10), key);
-      await writeFolderCopy(store, withResults(8), key);
+      await writeFolderCopy(store, withResults(10), key, context);
+      await writeFolderCopy(store, withResults(8), key, context);
       const cleaned = store.copy;
 
-      await writeFolderCopy(store, withResults(9), key);
+      await writeFolderCopy(store, withResults(9), key, context);
 
       expect(store.previous).toBe(cleaned);
     });
@@ -290,6 +435,6 @@ describe('writeFolderCopy', () => {
   it('writes over an empty file', async () => {
     store.copy = new ArrayBuffer(0);
 
-    expect(await writeFolderCopy(store, empty(), key)).toEqual({ status: 'written' });
+    expect(await writeFolderCopy(store, empty(), key, context)).toMatchObject({ status: 'written' });
   });
 });

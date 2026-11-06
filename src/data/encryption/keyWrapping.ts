@@ -37,6 +37,8 @@ export interface StoredCredentialsV2 {
   wrapIv: string;
   /** base64 wrapped data key */
   wrappedKey: string;
+  /** ISO time this lock was made; the later of two locks for the same key wins */
+  changedAt?: string;
 }
 
 export type AnyStoredCredentials = StoredCredentials | StoredCredentialsV2;
@@ -54,8 +56,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/** The time of an ISO date string as `toISOString` writes it, or NaN */
+function isoTime(value: string): number {
+  const time = new Date(value).getTime();
+  return !Number.isNaN(time) && new Date(time).toISOString() === value ? time : NaN;
+}
+
 /**
- * Whether stored credentials are v2. Any other `version` is rejected.
+ * Whether stored credentials are v2. Any other `version` is rejected, and so
+ * is a `changedAt` that is there but not an ISO date.
  */
 export function isCredentialsV2(creds: unknown): creds is StoredCredentialsV2 {
   return (
@@ -65,8 +74,21 @@ export function isCredentialsV2(creds: unknown): creds is StoredCredentialsV2 {
     typeof creds.wrapIv === 'string' &&
     typeof creds.wrappedKey === 'string' &&
     Number.isInteger(creds.iterations) &&
-    (creds.iterations as number) > 0
+    (creds.iterations as number) > 0 &&
+    (creds.changedAt === undefined ||
+      (typeof creds.changedAt === 'string' && !Number.isNaN(isoTime(creds.changedAt))))
   );
+}
+
+/**
+ * Whether lock `a` was made after `than`. A missing changedAt is oldest; any
+ * lock is later than `null` (a legacy copy without one).
+ */
+export function isLaterLock(a: StoredCredentialsV2, than: StoredCredentialsV2 | null): boolean {
+  if (than === null) return true;
+  const time = (lock: StoredCredentialsV2): number =>
+    lock.changedAt === undefined ? -Infinity : isoTime(lock.changedAt);
+  return time(a) > time(than);
 }
 
 /**
@@ -121,6 +143,7 @@ async function wrapDataKey(
     iterations,
     wrapIv: uint8ArrayToBase64(wrapIv),
     wrappedKey: arrayBufferToBase64(wrapped),
+    changedAt: new Date().toISOString(),
   };
 }
 

@@ -85,3 +85,36 @@ Feature: Folder Sync Safety
     When I download the unreadable records as a sealed file
     Then the message about the skipped folder sync should go away
     And my folder copy should be updated
+
+  Scenario: The folder copy keeps the password lock beside the data
+    Given my lab results have been synced to my folder
+    Then my folder copy should hold my password lock beside the encrypted data
+    And nothing in the folder copy should show how many records it holds or the names of my tests
+
+  Scenario: A password change reaches the folder
+    Given my lab results have been synced to my folder
+    When I change my password in Settings
+    Then the password lock in my folder copy should be the new one
+
+  Scenario: A password changed on another computer is picked up at the next sync
+    Given my lab results have been synced to my folder
+    And I changed my password on another computer that syncs to the same folder
+    When I keep working on this computer
+    Then I should be able to keep working without unlocking again
+    And the next time I unlock, my old password should no longer work
+    And my new password should unlock HemoIO
+
+  Scenario: When both computers change the password, the later change wins
+    Given my lab results have been synced to my folder
+    And I changed my password on another computer
+    And later I changed my password on this computer
+    When the folder sync runs
+    Then my folder copy should hold the password lock from this computer's later change
+    And my password from this computer should still unlock HemoIO
+
+  Scenario: A folder from another setup is explained
+    Given my folder holds a copy made by another HemoIO setup, with a different key
+    When I add lab results
+    Then I should see that the folder sync was skipped because my folder holds another setup's copy
+    And I should be told to choose a different folder to keep syncing
+    And the copy in my folder should be left as it was

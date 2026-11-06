@@ -6,15 +6,17 @@
  * reads them (credentialsStorage.ts) to see whether another tab came first.
  */
 
-import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react';
-import { verifyPassword, getEncryptionKey } from '@data/encryption';
+import { createContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { verifyPassword, getEncryptionKey, type StoredCredentials } from '@data/encryption';
 import {
   createCredentialsV2,
   isCredentialsV1,
   isCredentialsV2,
+  isLaterLock,
   keyMatchesCredentials,
   rewrapCredentials,
   unlockV2,
+  type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
 import { withWebLock } from '@/utils/withWebLock';
@@ -54,6 +56,14 @@ export interface AuthContextValue {
   /** Re-wraps the data key under a new password; never throws */
   changePassword: (current: string, next: string) => Promise<ChangePasswordResult>;
   isSetupComplete: () => boolean;
+  /** This browser's stored credentials, the lock kept beside the folder copy; null unless v2 */
+  storedLock: StoredCredentialsV2 | null;
+  /**
+   * Saves a lock found beside the folder copy as the stored credentials when
+   * it is later than theirs (a password changed on another computer), keeping
+   * the session key: the next unlock needs that password. Whether it did.
+   */
+  adoptFolderLock: (lock: StoredCredentialsV2) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -84,6 +94,37 @@ async function settleStoredRecords(key: CryptoKey): Promise<void> {
   }
 }
 
+/**
+ * v1 credentials as v2, wrapping the same data key under the same password,
+ * saved unless another tab changed them meanwhile. Null when they were not
+ * saved: the v1 credentials stay, and still unlock.
+ */
+async function convertToV2(
+  password: string,
+  v1: StoredCredentials,
+  key: CryptoKey,
+  holdsSetupLock: boolean
+): Promise<StoredCredentialsV2 | null> {
+  try {
+    const rewrapped = await rewrapCredentials(password, password, v1);
+    // Never store credentials that would not unlock the key the data uses
+    if (!rewrapped || !(await keyMatchesCredentials(key, password, rewrapped.credentials))) {
+      return null;
+    }
+    const save = async (): Promise<StoredCredentialsV2 | null> => {
+      // Another tab may have converted them, or changed the password, meanwhile
+      if (JSON.stringify(loadStoredCredentials()) !== JSON.stringify(v1)) return null;
+      saveStoredCredentials(rewrapped.credentials);
+      return rewrapped.credentials;
+    };
+    return await (holdsSetupLock ? save() : withWebLock(SETUP_LOCK, save));
+  } catch {
+    // Fixed text: never the error, which could carry key material
+    console.error('Could not move the credentials to the current format');
+    return null;
+  }
+}
+
 /** The session key, or null for a wrong password or unreadable credentials */
 async function unlockCredentials(password: string, credentials: object): Promise<CryptoKey | null> {
   if (isCredentialsV2(credentials)) {
@@ -108,9 +149,13 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     return credentials !== null || loadStoredCredentials() !== null;
   }, [credentials]);
 
-  /** Unlocks with these credentials; false for a wrong password or unreadable credentials */
+  /**
+   * Unlocks with these credentials; false for a wrong password or unreadable
+   * credentials. v1 credentials are moved to v2 first, so the folder copy can
+   * carry a lock; `holdsSetupLock` when the caller holds it already.
+   */
   const unlockWith = useCallback(
-    async (password: string, storedCreds: object): Promise<boolean> => {
+    async (password: string, storedCreds: object, holdsSetupLock = false): Promise<boolean> => {
       let key: CryptoKey | null;
       try {
         key = await unlockCredentials(password, storedCreds);
@@ -122,9 +167,12 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         return false;
       }
 
+      const converted = isCredentialsV1(storedCreds)
+        ? await convertToV2(password, storedCreds, key, holdsSetupLock)
+        : null;
       await settleStoredRecords(key);
       setEncryptionKey(key);
-      setCredentials(storedCreds);
+      setCredentials(converted ?? storedCreds);
       setStatus('unlocked');
       return true;
     },
@@ -137,7 +185,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         // Read again under the lock: another tab may have finished setup meanwhile
         const existing = loadStoredCredentials();
         if (existing) {
-          if (await unlockWith(password, existing)) {
+          if (await unlockWith(password, existing, true)) {
             return 'unlocked-existing';
           }
           setCredentials(existing);
@@ -177,8 +225,9 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     [credentials, unlockWith]
   );
 
-  // Another tab's setup, or its Start over: the storage event fires only in
-  // the other tabs, never in the one that wrote
+  // Another tab's setup, its Start over, or its password change or adopted
+  // folder lock (kept as this tab's lock, with the session key unchanged):
+  // the storage event fires only in the other tabs, never in the one that wrote
   useEffect(() => {
     const handleStorage = (event: StorageEvent): void => {
       if (!mayChangeCredentials(event)) return;
@@ -201,6 +250,29 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   const lock = useCallback((): void => {
     setEncryptionKey(null);
     setStatus('locked');
+  }, []);
+
+  const storedLock = useMemo(
+    () => (isCredentialsV2(credentials) ? credentials : null),
+    [credentials]
+  );
+
+  const adoptFolderLock = useCallback((lock: StoredCredentialsV2): boolean => {
+    // Compared with storage, not state: another tab may have changed the
+    // password or adopted a lock since. Synchronous, so the read and the
+    // write leave another tab only the gap between two storage calls.
+    const stored = loadStoredCredentials();
+    // Removed in another tab (Start over): there is nothing to replace
+    if (!stored) return false;
+    if (!isLaterLock(lock, isCredentialsV2(stored) ? stored : null)) return false;
+    try {
+      saveStoredCredentials(lock);
+    } catch {
+      console.error('Could not save the password lock from the folder');
+      return false;
+    }
+    setCredentials(lock);
+    return true;
   }, []);
 
   const changePassword = useCallback(
@@ -243,6 +315,8 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     setupPassword,
     changePassword,
     isSetupComplete,
+    storedLock,
+    adoptFolderLock,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

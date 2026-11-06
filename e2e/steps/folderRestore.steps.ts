@@ -11,6 +11,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FOLDER_COPY } from './folderSync.steps';
 import { openSettingsTab } from './app.steps';
+import { writeEnvelopeCopy } from './otherComputer.steps';
 
 export const FOLDER_NAME = 'HemoIO Sync';
 const PERMISSION_KEY = 'e2e-folder-permission';
@@ -73,7 +74,7 @@ export function folderPermissionQueries(page: Page): Promise<number> {
 }
 
 /** A fingerprint of the folder copy, or null when there is none */
-export function folderCopyHash(page: Page): Promise<string | null> {
+export function folderCopyHash(page: Page, folderName: string = FOLDER_NAME): Promise<string | null> {
   return page.evaluate(
     async ({ folderName, fileName }) => {
       const root = await navigator.storage.getDirectory();
@@ -86,30 +87,40 @@ export function folderCopyHash(page: Page): Promise<string | null> {
         return null;
       }
     },
-    { folderName: FOLDER_NAME, fileName: FOLDER_COPY }
+    { folderName, fileName: FOLDER_COPY }
   );
 }
 
-/** Replace the folder copy with a file HemoIO did not write with this key */
+/**
+ * Replace the folder copy with a file HemoIO did not write with this key:
+ * another setup's copy, carrying its own lock (`another-setup`); a copy in the
+ * raw format from before the lock was kept beside it, under a key this user
+ * never had (`legacy-other-key`); random bytes; or an empty file
+ */
 export async function writeForeignFolderCopy(
   page: Page,
-  kind: 'other-password' | 'damaged' | 'empty'
+  kind: 'another-setup' | 'legacy-other-key' | 'damaged' | 'empty',
+  folderName: string = FOLDER_NAME
 ): Promise<void> {
+  if (kind === 'another-setup') {
+    await writeEnvelopeCopy(page, { kind: 'another-setup' }, {}, folderName);
+    return;
+  }
   await page.evaluate(
     async ({ folderName, fileName, kind }) => {
-      let bytes: Uint8Array;
+      let bytes: Uint8Array<ArrayBuffer>;
       if (kind === 'empty') {
         bytes = new Uint8Array(0);
       } else if (kind === 'damaged') {
         bytes = crypto.getRandomValues(new Uint8Array(64));
       } else {
-        // As HemoIO writes it (IV, then AES-GCM), under a key this user never had
+        // The raw format (IV, then AES-GCM), under a key this user never had
         const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
           'encrypt',
         ]);
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const plain = new TextEncoder().encode(
-          JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: {} })
+          JSON.stringify({ version: 4, exportedAt: new Date().toISOString(), data: {} })
         );
         const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain));
         bytes = new Uint8Array(iv.length + sealed.length);
@@ -123,7 +134,7 @@ export async function writeForeignFolderCopy(
       await writable.write(bytes);
       await writable.close();
     },
-    { folderName: FOLDER_NAME, fileName: FOLDER_COPY, kind }
+    { folderName, fileName: FOLDER_COPY, kind }
   );
 }
 

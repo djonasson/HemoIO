@@ -2,11 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { useContext, useEffect } from 'react';
 import { AuthProvider, AuthContext, type AuthContextValue } from './AuthContext';
-import { createStoredCredentials, decryptString, encryptString } from '@data/encryption';
+import {
+  createStoredCredentials,
+  decryptString,
+  encryptString,
+  getEncryptionKey,
+} from '@data/encryption';
 import {
   createCredentialsV2,
+  isCredentialsV1,
   isCredentialsV2,
+  keyMatchesCredentials,
   rewrapCredentials,
+  type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
@@ -23,7 +31,11 @@ vi.mock('@data/db', () => ({
 // Counted where two setups must make one data key; otherwise the real one
 vi.mock('@data/encryption/keyWrapping', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@data/encryption/keyWrapping')>();
-  return { ...actual, createCredentialsV2: vi.fn(actual.createCredentialsV2) };
+  return {
+    ...actual,
+    createCredentialsV2: vi.fn(actual.createCredentialsV2),
+    keyMatchesCredentials: vi.fn(actual.keyMatchesCredentials),
+  };
 });
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
@@ -434,6 +446,123 @@ describe('AuthContext', () => {
       lock();
 
       expect(await unlock(NEW)).toBe(true);
+    });
+  });
+
+  describe('v1 credentials at unlock', () => {
+    it('converts v1 credentials to v2 at unlock without changing the data key', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      // Saved by the earlier app, under the key PBKDF2 derives from the password
+      const ciphertext = await encryptString('Annual checkup', await getEncryptionKey(OLD, v1));
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      expect(auth.storedLock).toEqual(storedCredentials());
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+      lock();
+      expect(await unlock('Wrong-Passw0rd!')).toBe(false);
+      expect(await unlock(OLD)).toBe(true);
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+    });
+
+    it('a failed conversion leaves the v1 credentials and unlocks', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      vi.mocked(keyMatchesCredentials).mockResolvedValueOnce(false);
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(storedCredentials()).toEqual(v1);
+      expect(isCredentialsV1(storedCredentials())).toBe(true);
+      expect(auth.storedLock).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+  });
+
+  describe('the lock in the folder', () => {
+    /** The lock another computer made when it changed the password to NEW */
+    async function lockChangedTo(password: string, changedAt: string): Promise<StoredCredentialsV2> {
+      const rewrapped = await rewrapCredentials(OLD, password, storedCredentials() as never, 1000);
+      return { ...rewrapped!.credentials, changedAt };
+    }
+
+    it('adopts a later folder lock and needs the new password next unlock', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+      const later = await lockChangedTo(NEW, new Date(Date.now() + 60_000).toISOString());
+
+      let adopted = false;
+      act(() => {
+        adopted = auth.adoptFolderLock(later);
+      });
+
+      expect(adopted).toBe(true);
+      expect(storedCredentials()).toEqual(later);
+      expect(auth.storedLock).toEqual(later);
+      expect(auth.encryptionKey).toBe(key);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      lock();
+      expect(await unlock(OLD)).toBe(false);
+      expect(await unlock(NEW)).toBe(true);
+    });
+
+    it('ignores an earlier folder lock', async () => {
+      await setUp();
+      const ours = storedCredentials();
+      const earlier = await lockChangedTo(NEW, '2020-01-01T00:00:00.000Z');
+
+      let adopted = true;
+      act(() => {
+        adopted = auth.adoptFolderLock(earlier);
+      });
+
+      expect(adopted).toBe(false);
+      expect(storedCredentials()).toEqual(ours);
+      expect(auth.storedLock).toEqual(ours);
+      lock();
+      expect(await unlock(OLD)).toBe(true);
+    });
+
+    it('compares with the lock in storage, which another tab may have changed', async () => {
+      await setUp();
+      const theirs = await lockChangedTo(NEW, new Date(Date.now() + 120_000).toISOString());
+      const folder = await lockChangedTo('Folder-Passw0rd!', new Date(Date.now() + 60_000).toISOString());
+      store(theirs);
+
+      let adopted = true;
+      act(() => {
+        adopted = auth.adoptFolderLock(folder);
+      });
+
+      expect(adopted).toBe(false);
+      expect(storedCredentials()).toEqual(theirs);
+    });
+
+    it('a lock changed in another tab is the one this tab syncs with', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+      const theirs = await lockChangedTo(NEW, new Date(Date.now() + 60_000).toISOString());
+      store(theirs);
+
+      storageEventFromAnotherTab(JSON.stringify(theirs));
+
+      expect(auth.storedLock).toEqual(theirs);
+      expect(auth.encryptionKey).toBe(key);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+
+    it('a password change gives the new lock', async () => {
+      await setUp();
+
+      await act(async () => {
+        await auth.changePassword(OLD, NEW);
+      });
+
+      expect(auth.storedLock).toEqual(storedCredentials());
     });
   });
 

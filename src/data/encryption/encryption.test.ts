@@ -251,6 +251,22 @@ describe('Encryption utilities', () => {
       expect(decrypted).toBe('');
     });
 
+    it('additional data must match to decrypt', async () => {
+      const original = new TextEncoder().encode('Sealed with its header');
+      const header = new TextEncoder().encode('{"format":"hemoio-folder-copy"}');
+      const edited = new TextEncoder().encode('{"format":"hemoio-folder-copY"}');
+
+      const encrypted = await encrypt(original.buffer as ArrayBuffer, testKey, header);
+
+      const decrypted = await decrypt(encrypted, testKey, header);
+      expect(new TextDecoder().decode(decrypted)).toBe('Sealed with its header');
+      await expect(decrypt(encrypted, testKey, edited)).rejects.toThrow();
+      await expect(decrypt(encrypted, testKey)).rejects.toThrow();
+      // Sealed without it, it opens only without it
+      const plain = await encrypt(original.buffer as ArrayBuffer, testKey);
+      await expect(decrypt(plain, testKey, header)).rejects.toThrow();
+    });
+
     it('handles unicode strings', async () => {
       const original = '你好世界 🌍 مرحبا';
       const encrypted = await encryptString(original, testKey);
