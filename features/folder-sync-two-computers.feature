@@ -95,6 +95,15 @@ Feature: Two computers on one folder
     When the periodic folder sync runs twice
     Then my folder copy should still be the one my other computer saved
 
+  # Unit-tested (folderSyncRun, EncryptedDb.replaceLabDataIfUnchanged): a
+  # browser cannot be made to save at that exact moment on cue
+  Scenario: A change saved while a newer copy loads is never lost
+    Given my lab results have been synced to my folder
+    When my other computer saves a copy with another lab result
+    And I save a change on this computer while the periodic folder sync is loading that copy
+    Then my change should still be on this computer
+    And nothing should be loaded, and the next sync should ask me which data to keep
+
   # Dated backups (from a choice) and autobackups (from a copy loaded by
   # itself) are kept apart: each keeps its own 10 newest, and the backup just
   # saved is never the one removed
@@ -126,6 +135,12 @@ Feature: Two computers on one folder
     Then I should be told that my current folder copy is kept as a dated backup first
     And when I confirm, the other computer's lab results should replace this computer's
     And my folder should hold one more dated backup
+
+  # Unit-tested (folderBackups, FolderBackups)
+  Scenario: The backup I am about to restore is not removed while I confirm
+    Given I opened the confirmation to restore my oldest dated backup
+    When a sync keeps another backup before I confirm
+    Then the backup I am restoring should still be in my folder
 
   Scenario: A backup that can't be read is explained, and nothing changes
     Given my folder holds a dated backup that is damaged
