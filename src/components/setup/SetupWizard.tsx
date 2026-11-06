@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Container,
   Stepper,
@@ -14,7 +14,6 @@ import {
   Loader,
   useMatches,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import {
   IconLock,
   IconDatabase,
@@ -26,9 +25,11 @@ import {
 } from '@tabler/icons-react';
 import { PasswordStep } from './PasswordStep';
 import { ExistingDataStep } from './ExistingDataStep';
+import { notifySetUpElsewhere, notifySetUpElsewhereLocked, notifySetupFailed } from './setupNotices';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
+import { loadStoredCredentials, mayChangeCredentials } from '@contexts/credentialsStorage';
 import { useFormKeyboardSubmit } from '@hooks';
 import { useExistingBrowserData } from '@hooks/useExistingBrowserData';
 import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
@@ -73,6 +74,38 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const [aiProvider, setAiProvider] = useState<AIProviderType | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [ollamaModel, setOllamaModel] = useState<string | undefined>(undefined);
+
+  // What this tab chose, by name only: lost if another tab's setup comes first
+  const unsavedChoices: string[] = [
+    ...(storageProvider === 'filesystem' ? ['folder storage'] : []),
+    ...(aiProvider ? ['AI provider'] : []),
+    ...(aiProvider && apiKey ? ['API key'] : []),
+  ];
+  const unsavedChoicesRef = useRef(unsavedChoices);
+  unsavedChoicesRef.current = unsavedChoices;
+  // Whether the user has begun: past the first screen, anything typed, or a
+  // clear confirmed
+  const clearConfirmedRef = useRef(false);
+  const startedRef = useRef(false);
+  startedRef.current =
+    existingDataSettled ||
+    clearConfirmedRef.current ||
+    activeStep > 0 ||
+    password !== '' ||
+    confirmPassword !== '';
+
+  // Another tab finished setup while this one was on it: AuthContext moves
+  // to the login screen; say why, once the user had begun. A submit in
+  // progress says so itself, from its outcome.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent): void => {
+      if (!mayChangeCredentials(event) || !loadStoredCredentials()) return;
+      if (submittingRef.current || !startedRef.current) return;
+      notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const canProceed = useMemo((): boolean => {
     switch (activeStep) {
@@ -133,19 +166,18 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
 
       if (outcome === 'existing-locked') {
         // The login screen shows in place of the wizard
-        notifications.show({
-          title: 'Already set up',
-          message: 'HemoIO was set up in another tab. Unlock with that password.',
-          color: 'yellow',
-          autoClose: false,
-        });
+        notifySetUpElsewhereLocked();
         return;
+      }
+      if (outcome === 'unlocked-existing') {
+        notifySetUpElsewhere(unsavedChoicesRef.current);
       }
       onComplete();
     } catch {
-      // Fixed text: the error could name the credentials
+      // Fixed text: the error could name the credentials. The wizard stays,
+      // to be submitted again
       console.error('Setup failed');
-      // TODO: Show error to user
+      notifySetupFailed();
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -244,8 +276,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
             <ExistingDataStep
               onKeep={() => setExistingDataSettled(true)}
               onClear={async () => {
-                await existingData.clear();
-                setExistingDataSettled(true);
+                clearConfirmedRef.current = true;
+                startedRef.current = true;
+                // Not cleared when another tab finished setup meanwhile:
+                // that tab's storage event takes this one to the login screen
+                if (await existingData.clear()) setExistingDataSettled(true);
               }}
             />
           </Paper>

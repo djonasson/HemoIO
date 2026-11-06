@@ -17,11 +17,12 @@ import {
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
 import { withWebLock } from '@/utils/withWebLock';
-
-const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
-
-/** Held while a tab sets up, so two tabs never create two data keys */
-const SETUP_LOCK = 'hemoio-setup';
+import {
+  CREDENTIALS_STORAGE_KEY,
+  SETUP_LOCK,
+  loadStoredCredentials,
+  mayChangeCredentials,
+} from './credentialsStorage';
 
 export type AuthStatus = 'loading' | 'needs_setup' | 'locked' | 'unlocked';
 
@@ -63,21 +64,6 @@ interface AuthProviderProps {
 }
 
 const FAILED: ChangePasswordResult = { ok: false, reason: 'failed' };
-
-/**
- * Loads stored credentials from localStorage. The format (v1, v2 or unknown)
- * is checked where they are used.
- */
-function loadStoredCredentials(): object | null {
-  try {
-    const stored = localStorage.getItem(CREDENTIALS_STORAGE_KEY);
-    if (!stored) return null;
-    const parsed: unknown = JSON.parse(stored);
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 function saveStoredCredentials(credentials: object): void {
   localStorage.setItem(CREDENTIALS_STORAGE_KEY, JSON.stringify(credentials));
@@ -162,8 +148,16 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         const { credentials: newCredentials, key } = await createCredentialsV2(password);
         saveStoredCredentials(newCredentials);
         setCredentials(newCredentials);
-        await settleStoredRecords(key);
-        await prepare?.(key);
+        try {
+          await settleStoredRecords(key);
+          await prepare?.(key);
+        } catch (error) {
+          // Taken back while the lock is held, so a retry sets up anew
+          // instead of finding these credentials as if another tab saved them
+          localStorage.removeItem(CREDENTIALS_STORAGE_KEY);
+          setCredentials(null);
+          throw error;
+        }
 
         // Automatically unlock after setup
         setEncryptionKey(key);
@@ -186,8 +180,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   // the other tabs, never in the one that wrote
   useEffect(() => {
     const handleStorage = (event: StorageEvent): void => {
-      // A null key: that tab cleared all of localStorage
-      if (event.key !== CREDENTIALS_STORAGE_KEY && event.key !== null) return;
+      if (!mayChangeCredentials(event)) return;
 
       const stored = loadStoredCredentials();
       if (stored) {

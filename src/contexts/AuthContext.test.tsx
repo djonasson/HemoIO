@@ -83,9 +83,9 @@ function lock() {
 }
 
 /** What another tab's write of the credentials looks like to this one */
-function storageEventFromAnotherTab(newValue: string | null) {
+function storageEventFromAnotherTab(newValue: string | null, key: string | null = CREDENTIALS_KEY) {
   act(() => {
-    window.dispatchEvent(new StorageEvent('storage', { key: CREDENTIALS_KEY, newValue }));
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
   });
 }
 
@@ -225,6 +225,20 @@ describe('AuthContext', () => {
       expect(prepare).not.toHaveBeenCalled();
     });
 
+    it('a failed setup step takes the new credentials back', async () => {
+      renderAuth();
+
+      await act(async () => {
+        await expect(
+          auth.setupPassword(OLD, () => Promise.reject(new Error('quota')))
+        ).rejects.toThrow('quota');
+      });
+
+      expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+    });
+
     it('a new setup reports created', async () => {
       renderAuth();
 
@@ -286,6 +300,26 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
       expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
       expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('localStorage cleared in another tab returns to setup', async () => {
+      await setUp();
+      localStorage.clear();
+
+      // What clear() sends: no key
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('a storage event with no key while credentials remain leaves setup', async () => {
+      renderAuth();
+      store((await createCredentialsV2(OLD, 1000)).credentials);
+
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
     });
 
     it('storage events for other keys change nothing', async () => {

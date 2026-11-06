@@ -222,10 +222,19 @@ test.describe('First-run setup: tabs and existing data', () => {
     }
     const writes = [...(await storageKeysWritten(page)), ...(await storageKeysWritten(other))];
     expect(writes.filter((key) => key === 'hemoio_credentials')).toHaveLength(1);
+    // The tab that came second says its choices were not saved
+    const toldNotSaved = (tab: Page) =>
+      tab
+        .getByRole('alert')
+        .filter({ hasText: 'HemoIO was set up in another tab. The choices made here were not saved' })
+        .count();
+    await expect
+      .poll(async () => (await Promise.all([page, other].map(toldNotSaved))).sort())
+      .toEqual([0, 1]);
   });
 
   test('the tab whose password does not open the first setup is told to unlock', async ({ page, context }) => {
-    // Scenario: Setting up in two tabs makes one setup
+    // Scenario: The tab whose password does not open the first setup is told to unlock
     const other = await context.newPage();
     await other.goto('/');
     const tabs = [
@@ -263,13 +272,18 @@ test.describe('First-run setup: tabs and existing data', () => {
     // Scenario: A tab still on setup leaves it once another tab has finished
     const other = await context.newPage();
     await other.goto('/');
-    await expect(other.getByRole('heading', { name: 'Welcome to HemoIO' })).toBeVisible();
+    await other.getByPlaceholder(/enter your password/i).fill('OtherPassword456!');
 
     await completeSetup(page);
 
     // No reload: the other tab hears that the credentials were saved
     await expect(other.getByRole('textbox', { name: 'Password', exact: true })).toBeVisible();
     await expect(other.getByRole('heading', { name: 'Welcome to HemoIO' })).toHaveCount(0);
+    await expect(
+      other.getByRole('alert').filter({
+        hasText: 'HemoIO was set up in another tab. Unlock with that password. The choices made here were not saved',
+      })
+    ).toBeVisible();
   });
 
   test('setup tells me when this browser already holds data', async ({ page }) => {

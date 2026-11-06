@@ -5,12 +5,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { SETUP_LOCK, loadStoredCredentials } from '@contexts/credentialsStorage';
+import { withWebLock } from '@/utils/withWebLock';
 
 export interface UseExistingBrowserDataResult {
   /** How many rows are stored; null while they are being counted */
   rows: number | null;
-  /** Deletes them all, at the user's confirmed request; throws if it fails */
-  clear: () => Promise<void>;
+  /**
+   * Deletes them all, at the user's confirmed request; throws if it fails.
+   * False, with nothing deleted, when another tab has finished setup
+   * meanwhile: the data is that setup's now.
+   */
+  clear: () => Promise<boolean>;
 }
 
 export function useExistingBrowserData(): UseExistingBrowserDataResult {
@@ -34,9 +40,16 @@ export function useExistingBrowserData(): UseExistingBrowserDataResult {
     };
   }, []);
 
-  const clear = useCallback(async (): Promise<void> => {
-    await clearStoredData();
-    setRows(0);
+  const clear = useCallback(async (): Promise<boolean> => {
+    // Under the setup lock, so a setup in another tab cannot finish between
+    // the check and the clear
+    const cleared = await withWebLock(SETUP_LOCK, async () => {
+      if (loadStoredCredentials()) return false;
+      await clearStoredData();
+      return true;
+    });
+    if (cleared) setRows(0);
+    return cleared;
   }, []);
 
   return { rows, clear };

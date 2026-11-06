@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetupWizard } from './SetupWizard';
@@ -27,7 +27,7 @@ vi.mock('@data/db', async (importOriginal) => ({
 // What the browser holds before setup: counted in useExistingBrowserData.test.ts
 const existing = vi.hoisted(() => ({
   rows: 0 as number | null,
-  clear: vi.fn<() => Promise<void>>(),
+  clear: vi.fn<() => Promise<boolean>>(),
 }));
 vi.mock('@hooks/useExistingBrowserData', () => ({
   useExistingBrowserData: () => ({ rows: existing.rows, clear: existing.clear }),
@@ -48,7 +48,7 @@ describe('SetupWizard', () => {
     vi.clearAllMocks();
     localStorage.clear();
     existing.rows = 0;
-    existing.clear.mockResolvedValue(undefined);
+    existing.clear.mockResolvedValue(true);
   });
 
   describe('Form Structure', () => {
@@ -310,6 +310,111 @@ describe('SetupWizard', () => {
       expect(mockOnComplete).not.toHaveBeenCalled();
       show.mockRestore();
     }, 15000);
+
+    it('says which choices were not saved when another tab set up first', async () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      const user = userEvent.setup();
+      renderWithAuth(vi.fn().mockResolvedValue('unlocked-existing'));
+      await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+      await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('textbox', { name: 'AI Provider' }));
+      await user.click(await screen.findByRole('option', { name: 'Anthropic (Claude)' }));
+      await user.type(screen.getByLabelText('API Key'), 'sk-ant-test-1234');
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+
+      await user.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+      await waitFor(() => expect(mockOnComplete).toHaveBeenCalled());
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Already set up',
+          message:
+            'HemoIO was set up in another tab. The choices made here (AI provider and API key) ' +
+            'were not saved; set them in Settings.',
+          autoClose: false,
+        })
+      );
+      expect(JSON.stringify(show.mock.calls)).not.toContain('sk-ant-test-1234');
+      show.mockRestore();
+    }, 15000);
+
+    it('a failed setup says so, and can be submitted again', async () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const setupPassword = vi
+        .fn<AuthContextValue['setupPassword']>()
+        .mockRejectedValueOnce(new Error('detail that could name the credentials'))
+        .mockResolvedValueOnce('created');
+      renderWithAuth(setupPassword);
+      await goToCompletion();
+      const getStarted = screen.getByRole('button', { name: 'Complete setup and get started' });
+
+      await userEvent.click(getStarted);
+
+      await waitFor(() =>
+        expect(show).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Setup failed',
+            message: 'HemoIO could not be set up. Please try again.',
+          })
+        )
+      );
+      expect(JSON.stringify(show.mock.calls)).not.toContain('detail');
+      expect(error).toHaveBeenCalledWith('Setup failed');
+      expect(mockOnComplete).not.toHaveBeenCalled();
+
+      await waitFor(() => expect(getStarted).toBeEnabled());
+      await userEvent.click(getStarted);
+
+      await waitFor(() => expect(mockOnComplete).toHaveBeenCalledTimes(1));
+      expect(setupPassword).toHaveBeenCalledTimes(2);
+      show.mockRestore();
+      error.mockRestore();
+    }, 15000);
+  });
+
+  describe('another tab finishing setup', () => {
+    function otherTabSavesCredentials() {
+      localStorage.setItem('hemoio_credentials', JSON.stringify({ version: 2 }));
+      // AuthProvider leaves setup for the login screen
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', { key: 'hemoio_credentials', newValue: '{"version":2}' })
+        );
+      });
+    }
+
+    it('tells a tab I had begun why it leaves setup', async () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng');
+
+      otherTabSavesCredentials();
+
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Already set up',
+          message:
+            'HemoIO was set up in another tab. Unlock with that password. ' +
+            'The choices made here were not saved; set them in Settings.',
+          autoClose: false,
+        })
+      );
+      show.mockRestore();
+    });
+
+    it('says nothing to a tab where setup was not begun', () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      otherTabSavesCredentials();
+
+      expect(show).not.toHaveBeenCalled();
+      show.mockRestore();
+    });
   });
 
   describe('existing browser data', () => {
@@ -350,6 +455,7 @@ describe('SetupWizard', () => {
       existing.rows = 3;
       existing.clear.mockImplementation(async () => {
         existing.rows = 0;
+        return true;
       });
       const user = userEvent.setup();
       renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);

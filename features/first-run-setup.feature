@@ -90,16 +90,24 @@ Feature: First-Run Setup Wizard
 
   Scenario: Setting up in two tabs makes one setup
     Given I have opened HemoIO in two tabs of a new browser
-    When I finish setup in both tabs at the same time
+    When I finish setup in both tabs at the same time, with the same password
     Then only one password lock should be created
-    And the tab that finished second should use the lock the first one created
-    And if its password does not open that lock I should see the login screen
-    And I should be told "HemoIO was set up in another tab. Unlock with that password."
+    And both tabs should open HemoIO with that lock
+    And the tab that finished second should tell me the choices made in it were not saved
+
+  Scenario: The tab whose password does not open the first setup is told to unlock
+    Given I have opened HemoIO in two tabs of a new browser
+    When I finish setup in both tabs at the same time, with different passwords
+    Then only one password lock should be created
+    And the tab that finished second should show the login screen
+    And it should tell me "HemoIO was set up in another tab. Unlock with that password."
 
   Scenario: A tab still on setup leaves it once another tab has finished
     Given I have opened HemoIO in two tabs of a new browser
+    And I have begun setup in the second tab
     When I finish setup in the first tab
     Then the second tab should show the login screen without being reloaded
+    And it should tell me that HemoIO was set up in another tab, and that the choices made in it were not saved
 
   Scenario: Setup tells me when this browser already holds data
     Given this browser holds HemoIO data from an earlier setup
