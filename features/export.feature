@@ -86,6 +86,13 @@ Feature: Export Lab Results
     Then the exported file should contain only the lab result from "2024-02-20"
 
   # Export Dialog
+  # Unit-tested (ExportDialog): another tab cannot be made to save on cue
+  Scenario: Export includes changes saved while the dialog is open
+    Given the export dialog is open
+    When a change is saved in another tab of this browser
+    And I export my data
+    Then the export should include that change
+
   Scenario: Export dialog shows available options
     When I click the "Export" button
     Then I should see the export dialog

@@ -9,6 +9,7 @@ import { testDisplayName, testName, trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useSetAsideRecords } from './useSetAsideRecords';
+import { logFailure } from '@/utils/logFailure';
 import type { SetAsideSummary, TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
 
@@ -39,6 +40,8 @@ export interface UseExportDataResult {
   error: string | null;
   /** Reload from the database; resolves with what was loaded, null if nothing could be */
   refresh: () => Promise<ExportDataSources | null>;
+  /** Reload, for an export about to run: the CSV's results and the backup's records; null if nothing could be */
+  loadExportData: () => Promise<{ fullDataSources: ExportDataSources; labResultsData: LabResultForExport[] } | null>;
 }
 
 /**
@@ -89,7 +92,10 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Fetch all data from database
    */
-  const fetchData = useCallback(async (): Promise<ExportDataSources | null> => {
+  const fetchData = useCallback(async (): Promise<{
+    fullDataSources: ExportDataSources;
+    labResultsData: LabResultForExport[];
+  } | null> => {
     if (!db || !isReady) {
       setIsLoading(false);
       return null;
@@ -156,11 +162,12 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
       setLabResultsData(resultsData);
 
       setBiomarkerOptions([...tests.values()].sort((a, b) => a.label.localeCompare(b.label)));
-      return sources;
+      return { fullDataSources: sources, labResultsData: resultsData };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load export data';
       setError(message);
-      console.error('Error fetching export data:', err);
+      // Fixed text: the error could name stored data
+      logFailure('Could not load the data to export');
       return null;
     } finally {
       setIsLoading(false);
@@ -174,7 +181,10 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Refresh data from database
    */
-  const refresh = useCallback(() => fetchData(), [fetchData]);
+  const refresh = useCallback(
+    async (): Promise<ExportDataSources | null> => (await fetchData())?.fullDataSources ?? null,
+    [fetchData]
+  );
 
   return {
     dataSources,
@@ -184,5 +194,6 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     isLoading,
     error,
     refresh,
+    loadExportData: fetchData,
   };
 }

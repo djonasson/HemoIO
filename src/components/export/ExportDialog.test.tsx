@@ -351,6 +351,34 @@ describe('ExportDialog', () => {
       expect(downloadCsv).toHaveBeenCalledTimes(1);
     });
 
+    it('reads the data again when the export runs, so a change saved meanwhile is in it', async () => {
+      const current = createMockDataSources();
+      current.labResults[0].labName = 'Saved meanwhile';
+      const loadExportData = vi.fn(async () => ({
+        fullDataSources: current,
+        labResultsData: [createMockLabResultForExport()],
+      }));
+      renderWithProviders(<ExportDialog {...defaultProps} loadExportData={loadExportData} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      await waitFor(() => expect(downloadJson).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(downloadJson).mock.calls[0][0]).toContain('Saved meanwhile');
+    });
+
+    it('exports nothing when the data cannot be read again', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderWithProviders(<ExportDialog {...defaultProps} loadExportData={async () => null} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      await waitFor(() => expect(consoleError).toHaveBeenCalledWith('Export failed'));
+      expect(downloadJson).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
     it('a backup with nothing set aside exports at once', async () => {
       renderWithProviders(<ExportDialog {...defaultProps} />);
       await chooseJson();

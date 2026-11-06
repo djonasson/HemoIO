@@ -354,7 +354,7 @@ describe('useExportData', () => {
     });
 
     expect(result.current.error).toBe('Database error');
-    expect(consoleError).toHaveBeenCalledWith('Error fetching export data:', expect.any(Error));
+    expect(consoleError).toHaveBeenCalledWith('Could not load the data to export');
   });
 
   it('should refresh data when refresh is called', async () => {

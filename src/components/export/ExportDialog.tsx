@@ -37,11 +37,18 @@ import {
 } from '@services/export';
 import { setAsideLeftOutLine } from '@components/storage/setAsideCopy';
 import { isWithinDays, toLocalDay } from '@/utils/localDate';
+import { logFailure } from '@/utils/logFailure';
 
 /**
  * Export format options
  */
 export type ExportFormat = 'csv' | 'json';
+
+/** What an export holds: the CSV's results and the backup's records */
+export interface ExportData {
+  labResultsData: LabResultForExport[];
+  fullDataSources: ExportDataSources;
+}
 
 /**
  * Props for ExportDialog
@@ -61,6 +68,12 @@ export interface ExportDialogProps {
   isLoading?: boolean;
   /** Records HemoIO cannot open: no export holds them, and a backup asks first */
   setAsideCount?: number;
+  /**
+   * Reads the data again when the export runs, so a change saved while the
+   * dialog was open (in another tab, or by a folder sync) is in the file;
+   * null when it cannot be read. Without it, the data given is exported.
+   */
+  loadExportData?: () => Promise<ExportData | null>;
 }
 
 /**
@@ -99,6 +112,7 @@ export function ExportDialog({
   biomarkerOptions,
   isLoading = false,
   setAsideCount = 0,
+  loadExportData,
 }: ExportDialogProps): React.ReactNode {
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [dateRangePreset, setDateRangePreset] = useState('all');
@@ -173,8 +187,10 @@ export function ExportDialog({
     setIsExporting(true);
 
     try {
+      const fresh = loadExportData ? await loadExportData() : { labResultsData, fullDataSources };
+      if (!fresh) throw new Error('The data could not be read');
       if (format === 'csv') {
-        const csv = exportToCsv(labResultsData, {
+        const csv = exportToCsv(fresh.labResultsData, {
           startDate: effectiveDateRange.start ?? undefined,
           endDate: effectiveDateRange.end ?? undefined,
           biomarkerKeys: selectedKeys,
@@ -186,19 +202,21 @@ export function ExportDialog({
         });
         downloadCsv(csv, filename);
       } else {
-        const json = exportToJson(fullDataSources, { prettyPrint: true });
+        const json = exportToJson(fresh.fullDataSources, { prettyPrint: true });
         const filename = generateBackupFilename();
         downloadJson(json, filename);
       }
 
       onClose();
-    } catch (error) {
-      console.error('Export failed:', error);
+    } catch {
+      // Fixed text: the error could name stored data
+      logFailure('Export failed');
     } finally {
       setIsExporting(false);
     }
   }, [
     format,
+    loadExportData,
     labResultsData,
     fullDataSources,
     effectiveDateRange,

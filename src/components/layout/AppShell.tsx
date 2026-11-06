@@ -135,6 +135,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     labResultsData,
     biomarkerOptions,
     isLoading: isLoadingExportData,
+    loadExportData,
   } = useExportData({
     enabled: exportDialogOpen,
   });
@@ -503,6 +504,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         isLoading={isLoadingExportData}
         biomarkerOptions={biomarkerOptions}
         setAsideCount={setAsideRecords.summary.total}
+        loadExportData={loadExportData}
       />
     </>
   );
