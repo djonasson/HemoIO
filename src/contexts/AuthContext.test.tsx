@@ -225,18 +225,22 @@ describe('AuthContext', () => {
       expect(prepare).not.toHaveBeenCalled();
     });
 
-    it('a failed setup step takes the new credentials back', async () => {
+    it('a failed setup step keeps the credentials and unlocks', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
       renderAuth();
 
+      let outcome: string | undefined;
       await act(async () => {
-        await expect(
-          auth.setupPassword(OLD, () => Promise.reject(new Error('quota')))
-        ).rejects.toThrow('quota');
+        outcome = await auth.setupPassword(OLD, () => Promise.reject(new Error('quota')));
       });
 
-      expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
-      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
-      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      // Other tabs may already use them: once written, never taken back
+      expect(outcome).toBe('created');
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).not.toBeNull();
+      expect(error).toHaveBeenCalledWith('Could not store the setup choices');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('quota');
     });
 
     it('a new setup reports created', async () => {

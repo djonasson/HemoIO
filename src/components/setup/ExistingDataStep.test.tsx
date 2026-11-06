@@ -61,6 +61,16 @@ describe('ExistingDataStep', () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
+  it('closes the confirmation once the clear is done, cleared or not', async () => {
+    const user = userEvent.setup();
+    renderStep();
+
+    await user.click(screen.getByRole('button', { name: 'Clear it and set up anew…' }));
+    await user.click(await screen.findByRole('button', { name: 'Clear and set up anew' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('says so when the data could not be cleared, without the error', async () => {
     const user = userEvent.setup();
     renderStep(vi.fn().mockRejectedValue(new Error('detail that could name data')));

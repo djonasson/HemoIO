@@ -2,7 +2,8 @@
  * Authentication Context
  *
  * Manages user authentication, encryption key handling, password setup and
- * password changes. The only reader and writer of the stored credentials.
+ * password changes. The only writer of the stored credentials; setup also
+ * reads them (credentialsStorage.ts) to see whether another tab came first.
  */
 
 import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react';
@@ -148,15 +149,15 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         const { credentials: newCredentials, key } = await createCredentialsV2(password);
         saveStoredCredentials(newCredentials);
         setCredentials(newCredentials);
+        await settleStoredRecords(key);
         try {
-          await settleStoredRecords(key);
           await prepare?.(key);
-        } catch (error) {
-          // Taken back while the lock is held, so a retry sets up anew
-          // instead of finding these credentials as if another tab saved them
-          localStorage.removeItem(CREDENTIALS_STORAGE_KEY);
-          setCredentials(null);
-          throw error;
+        } catch {
+          // Once saved, the credentials are never taken back: another tab may
+          // already have unlocked with them and sealed records under this key.
+          // The setup choices are what is lost; the caller says so itself.
+          // Fixed text: the error could name what was being stored.
+          console.error('Could not store the setup choices');
         }
 
         // Automatically unlock after setup

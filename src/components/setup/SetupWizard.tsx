@@ -25,7 +25,7 @@ import {
 } from '@tabler/icons-react';
 import { PasswordStep } from './PasswordStep';
 import { ExistingDataStep } from './ExistingDataStep';
-import { notifySetUpElsewhere, notifySetUpElsewhereLocked, notifySetupFailed } from './setupNotices';
+import { notifySetUpElsewhere, notifySetupChoicesNotSaved, notifySetupFailed } from './setupNotices';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
@@ -144,36 +144,46 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setIsSubmitting(true);
+    // Set when the choices could not be stored after the password lock was
+    // saved: setup still finishes, and says what was not kept
+    let choicesFailed = false;
     try {
       // Stored before the app unlocks, so the providers that load at unlock
       // (API key, AI settings) start with them
       const outcome = await setupPassword(password, async (encryptionKey) => {
-        localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
+        try {
+          localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
 
-        if (aiProvider) {
-          localStorage.setItem('hemoio_ai_provider', aiProvider);
+          if (aiProvider) {
+            localStorage.setItem('hemoio_ai_provider', aiProvider);
 
-          if (apiKey) {
-            const encryptedApiKey = await encryptString(apiKey, encryptionKey);
-            localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+            if (apiKey) {
+              const encryptedApiKey = await encryptString(apiKey, encryptionKey);
+              localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+            }
+
+            if (aiProvider === 'ollama' && ollamaModel) {
+              localStorage.setItem('hemoio_ollama_model', ollamaModel);
+            }
           }
-
-          if (aiProvider === 'ollama' && ollamaModel) {
-            localStorage.setItem('hemoio_ollama_model', ollamaModel);
-          }
+        } catch {
+          choicesFailed = true;
         }
       });
 
       if (outcome === 'existing-locked') {
         // The login screen shows in place of the wizard
-        notifySetUpElsewhereLocked();
+        notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
         return;
       }
       if (outcome === 'unlocked-existing') {
         notifySetUpElsewhere(unsavedChoicesRef.current);
+      } else if (choicesFailed) {
+        notifySetupChoicesNotSaved(unsavedChoicesRef.current);
       }
       onComplete();
     } catch {
+      // Only before the password lock was saved, so nothing was set up.
       // Fixed text: the error could name the credentials. The wizard stays,
       // to be submitted again
       console.error('Setup failed');

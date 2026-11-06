@@ -302,7 +302,9 @@ describe('SetupWizard', () => {
       await waitFor(() =>
         expect(show).toHaveBeenCalledWith(
           expect.objectContaining({
-            message: 'HemoIO was set up in another tab. Unlock with that password.',
+            message:
+              'HemoIO was set up in another tab. Unlock with that password. ' +
+              'The choices made here were not saved; set them in Settings.',
             autoClose: false,
           })
         )
@@ -332,6 +334,37 @@ describe('SetupWizard', () => {
           title: 'Already set up',
           message:
             'HemoIO was set up in another tab. The choices made here (AI provider and API key) ' +
+            'were not saved; set them in Settings.',
+          autoClose: false,
+        })
+      );
+      expect(JSON.stringify(show.mock.calls)).not.toContain('sk-ant-test-1234');
+      show.mockRestore();
+    }, 15000);
+
+    it('says which choices were not saved when storing them fails', async () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      vi.mocked(encryptString).mockRejectedValueOnce(new Error('detail'));
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+      await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('textbox', { name: 'AI Provider' }));
+      await user.click(await screen.findByRole('option', { name: 'Anthropic (Claude)' }));
+      await user.type(screen.getByLabelText('API Key'), 'sk-ant-test-1234');
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+
+      await user.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+      // Set up all the same: the password lock is saved
+      await waitFor(() => expect(mockOnComplete).toHaveBeenCalled());
+      expect(localStorage.getItem('hemoio_credentials')).not.toBeNull();
+      expect(show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            'HemoIO is set up, but the choices made here (AI provider and API key) ' +
             'were not saved; set them in Settings.',
           autoClose: false,
         })

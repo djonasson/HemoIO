@@ -42,6 +42,11 @@ export function ExistingDataStep({ onKeep, onClear }: ExistingDataStepProps): Re
     setClearFailed(false);
     try {
       await onClear();
+      // Done either way: cleared, and setup goes on; or not, because another
+      // tab finished setup meanwhile and its storage event takes this tab to
+      // the login screen. Either way nothing is left to confirm.
+      setIsClearing(false);
+      setConfirming(false);
     } catch {
       // Fixed text: the error could name stored data
       setClearFailed(true);
