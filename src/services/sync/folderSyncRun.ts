@@ -94,6 +94,9 @@ export async function runFolderSync(
       ...(replaces !== undefined && { replaces }),
       ...(lockMayBeBehind !== undefined && { lockMayBeBehind }),
     });
+    // A write the hold stopped may have been one whose failure is passed
+    // over (the lock-only re-seal): nothing is reported while held
+    if (!isEnabled()) return null;
     return { outcome, lastSeen };
   } catch (error) {
     if (error instanceof SyncHeld) return null;

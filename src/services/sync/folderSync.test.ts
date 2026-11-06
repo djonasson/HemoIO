@@ -611,6 +611,18 @@ describe('writeFolderCopy', () => {
       expect(await readCopy(store, key)).toEqual(elsewhere);
     });
 
+    it('a lock that cannot be put into the folder still reports the protection, logging fixed text', async () => {
+      const { changed } = await writtenThenPasswordChanged();
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(store, 'saveLock').mockRejectedValue(new Error('/home/someone/Lab Folder is read-only'));
+
+      const outcome = await write(store, withResults(1), key, { ...changed, setAsideUnsaved: 2 });
+
+      expect(outcome).toMatchObject({ status: 'protected', reason: 'set-aside' });
+      expect(error.mock.calls).toEqual([['Could not put the new lock into the folder copy']]);
+      error.mockRestore();
+    });
+
     it('does not read the copy for it once the folder is known to hold the lock', async () => {
       await write(store, withResults(2), key, context);
       const loadCurrent = vi.spyOn(store, 'loadCurrent');

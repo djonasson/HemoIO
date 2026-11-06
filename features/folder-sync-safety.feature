@@ -144,6 +144,13 @@ Feature: Folder Sync Safety
     Then the question about the old folder should go away
     And the next sync should look at the new folder
 
+  # Unit-tested: folderSync.test.ts
+  Scenario: A new lock that cannot reach the folder does not hide why the sync was skipped
+    Given the records HemoIO cannot open are kept aside and not yet saved
+    And I changed my password, and my folder cannot be written to
+    When the folder sync runs
+    Then I should see that the folder sync was skipped because some records cannot be opened
+
   # Unit-tested: folderLockFile.test.ts
   Scenario: The lock file never goes back to an older password
     Given I changed my password on another computer

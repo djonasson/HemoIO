@@ -15,6 +15,7 @@ import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, resealWithoutLock, sealEnvelope } from './folderEnvelope';
 import { keepLockFile, readLockFile, type FolderLockStore } from './folderLockFile';
+import { logFailure } from '@/utils/logFailure';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
 /**
@@ -515,8 +516,14 @@ export async function writeFolderCopy(
   const dataLeft = outcome.status === 'protected' || outcome.status === 'changed-elsewhere';
   if (dataLeft && context.lock !== null && context.lockMayBeBehind !== false) {
     const bytes = outcome.status === 'changed-elsewhere' ? outcome.bytes : undefined;
-    const reseal = await sealLockIntoFolderCopy(store, key, context.lock, bytes);
-    if (reseal.folderLock !== null) return { ...outcome, folderLock: reseal.folderLock };
+    try {
+      const reseal = await sealLockIntoFolderCopy(store, key, context.lock, bytes);
+      if (reseal.folderLock !== null) return { ...outcome, folderLock: reseal.folderLock };
+    } catch {
+      // The data's own outcome is what the user needs to hear; the lock is
+      // tried again at the next sync. Fixed text: the error could name the folder.
+      logFailure('Could not put the new lock into the folder copy');
+    }
   }
   return outcome;
 }
