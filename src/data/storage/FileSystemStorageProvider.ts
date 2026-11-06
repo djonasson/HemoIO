@@ -147,15 +147,22 @@ export class FileSystemStorageProvider implements StorageProvider {
     await this.writeFile(await this.getGrantedHandle(), FOLDER_LOCK_FILE_NAME, bytes);
   }
 
-  /** The names of the files in the backups folder; none when there is no such folder */
+  /**
+   * The names of the files in the backups folder; none when there is no such
+   * folder. An empty file, or one that cannot be read, is left out: there is
+   * nothing in it to restore, and it must not count as one of the backups
+   * kept when the oldest are pruned.
+   */
   async listBackups(): Promise<string[]> {
     const backups = await this.getBackupsHandle(false);
     if (!backups) return [];
-    const names: string[] = [];
-    for await (const [name, entry] of backups.entries()) {
-      if (entry.kind === 'file') names.push(name);
+    const files: FileSystemFileHandle[] = [];
+    for await (const [, entry] of backups.entries()) {
+      if (entry.kind === 'file') files.push(entry as FileSystemFileHandle);
     }
-    return names;
+    // Only the sizes: no file's content is read
+    const sizes = await Promise.all(files.map((file) => file.getFile().then((f) => f.size, () => 0)));
+    return files.filter((_, i) => sizes[i] > 0).map((file) => file.name);
   }
 
   /** Write a backup into the backups folder, made when missing */
@@ -263,21 +270,31 @@ export class FileSystemStorageProvider implements StorageProvider {
 
   /**
    * The browser writes to a temporary file and swaps it in on close, so a
-   * failed write leaves the file as it was
+   * failed write leaves the file as it was. A file the write created is
+   * removed again: it would be left empty.
    */
   private async writeFile(
     handle: FileSystemDirectoryHandle,
     name: string,
     data: ArrayBuffer
   ): Promise<void> {
+    const existed = await handle.getFileHandle(name).then(
+      () => true,
+      () => false
+    );
     const fileHandle = await handle.getFileHandle(name, { create: true });
-    const writable = await fileHandle.createWritable();
     try {
-      await writable.write(data);
-      await writable.close();
+      const writable = await fileHandle.createWritable();
+      try {
+        await writable.write(data);
+        await writable.close();
+      } catch (error) {
+        // Abort can fail on a stream already closing; the write's error is the one to report
+        await writable.abort().catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
-      // Abort can fail on a stream already closing; the write's error is the one to report
-      await writable.abort().catch(() => undefined);
+      if (!existed) await handle.removeEntry(name).catch(() => undefined);
       throw error;
     }
   }

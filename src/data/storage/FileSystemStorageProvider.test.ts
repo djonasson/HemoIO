@@ -337,6 +337,26 @@ describe('FileSystemStorageProvider', () => {
       expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([9, 9]);
     });
 
+    it('a failed first write leaves no empty file behind', async () => {
+      const folder = createFakeFolder();
+      folder.failingWrites.add(FOLDER_DATA_FILE_NAME);
+      const store = await providerFor(folder);
+
+      await expect(store.save(bytes(1, 2))).rejects.toThrow('Disk full');
+
+      expect(folder.files.has(FOLDER_DATA_FILE_NAME)).toBe(false);
+    });
+
+    it('a failed write over a file leaves the file as it was', async () => {
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(7)]]));
+      folder.failingWrites.add(FOLDER_DATA_FILE_NAME);
+      const store = await providerFor(folder);
+
+      await expect(store.save(bytes(1, 2))).rejects.toThrow('Disk full');
+
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([7]);
+    });
+
     it('reads and writes the lock file beside the copy', async () => {
       expect(FOLDER_LOCK_FILE_NAME).toBe('hemoio-lock.json');
       const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9)]]));
@@ -396,6 +416,24 @@ describe('FileSystemStorageProvider', () => {
       const store = await providerFor(folder);
       await store.saveBackup('x', bytes(1));
       await store.deleteBackup('x');
+
+      expect(await store.listBackups()).toEqual(['hemoio-backup-a.encrypted']);
+    });
+
+    it('lists no empty file: there is nothing in it to restore, or to keep in place of a backup', async () => {
+      const folder = createFakeFolder(
+        new Map(),
+        new Map([
+          [
+            FOLDER_BACKUPS_DIR_NAME,
+            new Map([
+              ['hemoio-backup-a.encrypted', bytes(1)],
+              ['hemoio-backup-b.encrypted', new ArrayBuffer(0)],
+            ]),
+          ],
+        ])
+      );
+      const store = await providerFor(folder);
 
       expect(await store.listBackups()).toEqual(['hemoio-backup-a.encrypted']);
     });
