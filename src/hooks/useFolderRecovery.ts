@@ -15,8 +15,8 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '@contexts';
 import { showPersistentNotice } from '@components/common/showPersistentNotice';
-import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
-import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
+import { saveStorageChoice } from '@data/storage/storageChoice';
 import { recoverFromFolderCopy, type EarlierCopyRestored } from '@services/sync/folderRecovery';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { FolderUnlockProblem } from '@services/sync';
@@ -48,7 +48,7 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
   // The one provider that chose the folder. It keeps the handle to itself
   // until the copy has opened, then stores it where Settings does, so folder
   // sync uses this folder once HemoIO opens; a failed attempt changes nothing.
-  const [folder] = useState(() => new FileSystemStorageProvider());
+  const [folder] = useState(() => currentFolder());
   const [folderName, setFolderName] = useState<string | null>(null);
 
   const chooseFolder = useCallback(async (): Promise<void> => {
@@ -64,7 +64,7 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
         saveLock: recoverFromFolder,
         // So folder sync uses this folder once HemoIO opens
         keepFolder: async () => {
-          localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+          saveStorageChoice('filesystem');
           await folder.persistDirectory();
         },
       });

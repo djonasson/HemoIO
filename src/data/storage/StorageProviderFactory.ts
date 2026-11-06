@@ -12,6 +12,15 @@ import { FileSystemStorageProvider } from './FileSystemStorageProvider';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 
 /**
+ * The chosen folder, read afresh: a provider keeps the handle it first
+ * loaded, so each sync, restore or backup list takes a new one, and a folder
+ * just chosen in Settings is the one used
+ */
+export function currentFolder(): FileSystemStorageProvider {
+  return new FileSystemStorageProvider();
+}
+
+/**
  * Storage provider instances cache
  */
 const providerCache: Partial<Record<StorageProviderType, StorageProvider>> = {};

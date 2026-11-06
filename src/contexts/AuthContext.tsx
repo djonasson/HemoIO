@@ -28,7 +28,8 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
-import { clearLocalHemoIOStorage, clearStoredDataButSetAside } from '@data/db/storedRows';
+import { clearStoredDataButSetAside } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
 import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import { reloadPage } from '@/utils/reloadPage';
 import {

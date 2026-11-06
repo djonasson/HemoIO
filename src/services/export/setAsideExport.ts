@@ -6,6 +6,7 @@
  * browser's storage does, and it is not a backup: a restore refuses it.
  */
 
+import { toLocalDayString } from '@/utils/localDate';
 import { downloadJson } from './jsonExport';
 import type { SetAsideRow } from '@data/db';
 
@@ -42,9 +43,7 @@ export function buildSetAsideFile(rows: SetAsideRow[], savedAt: Date): string {
 
 /** 'hemoio-unreadable-records-YYYY-MM-DD.json', the day as the user sees it */
 export function setAsideFileName(savedAt: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  const day = `${savedAt.getFullYear()}-${pad(savedAt.getMonth() + 1)}-${pad(savedAt.getDate())}`;
-  return `${SET_ASIDE_FILE_FORMAT}-${day}.json`;
+  return `${SET_ASIDE_FILE_FORMAT}-${toLocalDayString(savedAt)}.json`;
 }
 
 /**

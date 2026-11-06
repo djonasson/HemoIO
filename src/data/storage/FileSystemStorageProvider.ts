@@ -66,22 +66,34 @@ function openHandleDatabase(): Promise<IDBDatabase> {
 }
 
 /**
- * Forgets which folder was chosen: empties the handle store. The folder and
- * its files are not touched. Rejects when the store cannot be emptied.
+ * One request on the handle store, in a transaction of its own: resolves
+ * with the request's result once the transaction is done, rejects when it
+ * fails. The database is closed either way.
  */
-export async function clearFolderHandleStore(): Promise<void> {
+export async function inHandleStore<T>(
+  mode: IDBTransactionMode,
+  request: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
   const db = await openHandleDatabase();
   try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
-      transaction.objectStore(HANDLE_STORE_NAME).clear();
-      transaction.oncomplete = () => resolve();
+    return await new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(HANDLE_STORE_NAME, mode);
+      const pending = request(transaction.objectStore(HANDLE_STORE_NAME));
+      transaction.oncomplete = () => resolve(pending.result);
       transaction.onerror = () => reject(transaction.error);
       transaction.onabort = () => reject(transaction.error);
     });
   } finally {
     db.close();
   }
+}
+
+/**
+ * Forgets which folder was chosen: empties the handle store. The folder and
+ * its files are not touched. Rejects when the store cannot be emptied.
+ */
+export async function clearFolderHandleStore(): Promise<void> {
+  await inHandleStore('readwrite', (store) => store.clear());
 }
 
 /**
@@ -386,17 +398,7 @@ export class FileSystemStorageProvider implements StorageProvider {
    * Persist the directory handle to IndexedDB
    */
   private async persistHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-    const db = await this.openIndexedDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
-      const store = transaction.objectStore(HANDLE_STORE_NAME);
-      const request = store.put(handle, HANDLE_STORAGE_KEY);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-
-      transaction.oncomplete = () => db.close();
-    });
+    await inHandleStore('readwrite', (store) => store.put(handle, HANDLE_STORAGE_KEY));
   }
 
   /**
@@ -404,19 +406,10 @@ export class FileSystemStorageProvider implements StorageProvider {
    */
   private async loadHandle(): Promise<FileSystemDirectoryHandle | null> {
     try {
-      const db = await this.openIndexedDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(HANDLE_STORE_NAME, 'readonly');
-        const store = transaction.objectStore(HANDLE_STORE_NAME);
-        const request = store.get(HANDLE_STORAGE_KEY);
-
-        request.onsuccess = () => {
-          resolve(request.result ?? null);
-        };
-        request.onerror = () => reject(request.error);
-
-        transaction.oncomplete = () => db.close();
-      });
+      const handle = await inHandleStore<FileSystemDirectoryHandle | undefined>('readonly', (store) =>
+        store.get(HANDLE_STORAGE_KEY)
+      );
+      return handle ?? null;
     } catch {
       return null;
     }
@@ -427,26 +420,9 @@ export class FileSystemStorageProvider implements StorageProvider {
    */
   private async deletePersistedHandle(): Promise<void> {
     try {
-      const db = await this.openIndexedDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(HANDLE_STORE_NAME);
-        const request = store.delete(HANDLE_STORAGE_KEY);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-
-        transaction.oncomplete = () => db.close();
-      });
+      await inHandleStore('readwrite', (store) => store.delete(HANDLE_STORAGE_KEY));
     } catch {
       // Ignore errors when deleting
     }
-  }
-
-  /**
-   * Open IndexedDB for handle storage
-   */
-  private openIndexedDB(): Promise<IDBDatabase> {
-    return openHandleDatabase();
   }
 }

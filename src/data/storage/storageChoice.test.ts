@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
-import { isFolderStorageOn, STORAGE_PROVIDER_KEY } from './storageChoice';
+import { onFolderAccessChanged } from './folderAccessEvents';
+import { isFolderStorageOn, saveStorageChoice, STORAGE_PROVIDER_KEY } from './storageChoice';
 
 vi.mock('@/utils/fileSystemSupport', () => ({
   isFileSystemAccessSupported: vi.fn(() => true),
@@ -26,5 +27,19 @@ describe('isFolderStorageOn', () => {
     localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
     vi.mocked(isFileSystemAccessSupported).mockReturnValue(false);
     expect(isFolderStorageOn()).toBe(false);
+  });
+});
+
+describe('saveStorageChoice', () => {
+  afterEach(() => localStorage.clear());
+
+  it('saves the choice, then tells those who read it', () => {
+    const seen: Array<string | null> = [];
+    const stop = onFolderAccessChanged(() => seen.push(localStorage.getItem(STORAGE_PROVIDER_KEY)));
+
+    saveStorageChoice('filesystem');
+
+    expect(seen).toEqual(['filesystem']);
+    stop();
   });
 });

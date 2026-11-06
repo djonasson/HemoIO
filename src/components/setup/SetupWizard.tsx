@@ -42,7 +42,7 @@ import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
-import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import { saveStorageChoice } from '@data/storage/storageChoice';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 import type { FolderUnlockProblem } from '@services/sync';
 
@@ -166,7 +166,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       // (API key, AI settings) start with them
       outcome = await setupPassword(password, async (encryptionKey) => {
         try {
-          localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
+          saveStorageChoice(storageProvider);
 
           if (aiProvider) {
             localStorage.setItem('hemoio_ai_provider', aiProvider);

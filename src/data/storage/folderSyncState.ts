@@ -31,7 +31,7 @@ export async function loadFolderSyncState(key: CryptoKey): Promise<FolderSyncSta
     const stored = localStorage.getItem(FOLDER_SYNC_STATE_KEY);
     if (!stored) return null;
     const parsed: unknown = JSON.parse(await decryptString(stored, key));
-    return isFolderSyncState(parsed) ? { revision: parsed.revision, digest: parsed.digest } : null;
+    return isFolderSyncState(parsed) ? parsed : null;
   } catch {
     // Another setup's key, or a damaged value: as if this browser never read the copy
     return null;
@@ -39,6 +39,6 @@ export async function loadFolderSyncState(key: CryptoKey): Promise<FolderSyncSta
 }
 
 export async function saveFolderSyncState(state: FolderSyncState, key: CryptoKey): Promise<void> {
-  const text = JSON.stringify({ revision: state.revision, digest: state.digest });
+  const text = JSON.stringify(state);
   localStorage.setItem(FOLDER_SYNC_STATE_KEY, await encryptString(text, key));
 }

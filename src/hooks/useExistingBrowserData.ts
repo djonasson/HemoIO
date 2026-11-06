@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
 import { SETUP_LOCK, loadStoredCredentials } from '@contexts/credentialsStorage';
 import { withWebLock } from '@/utils/withWebLock';
 

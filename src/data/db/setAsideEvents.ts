@@ -5,22 +5,19 @@
  * count again.
  */
 
+import { createWindowEvent } from '@/utils/createWindowEvent';
 import type { SealedTable } from './index';
-
-const SET_ASIDE_CHANGED = 'hemoio:set-aside-changed';
 
 export interface SetAsideChange {
   /** Tables a row was just moved aside from; [] for other changes */
   movedAside: SealedTable[];
 }
 
+const setAsideChanged = createWindowEvent<SetAsideChange>('hemoio:set-aside-changed');
+
 export function notifySetAsideChanged(change: SetAsideChange = { movedAside: [] }): void {
-  window.dispatchEvent(new CustomEvent<SetAsideChange>(SET_ASIDE_CHANGED, { detail: change }));
+  setAsideChanged.notify(change);
 }
 
 /** Listen for set-aside changes; returns the function that stops listening */
-export function onSetAsideChanged(listener: (change: SetAsideChange) => void): () => void {
-  const handle = (event: Event): void => listener((event as CustomEvent<SetAsideChange>).detail);
-  window.addEventListener(SET_ASIDE_CHANGED, handle);
-  return () => window.removeEventListener(SET_ASIDE_CHANGED, handle);
-}
+export const onSetAsideChanged = setAsideChanged.on;

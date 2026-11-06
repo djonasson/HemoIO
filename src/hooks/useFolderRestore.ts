@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@contexts';
 import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
-import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { assessFolderCopy, type FolderCopyAssessment, type FolderCopyProblem } from '@services/sync';
@@ -91,7 +91,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
         return;
       }
 
-      const folder = new FileSystemStorageProvider();
+      const folder = currentFolder();
       let assessment: FolderCopyAssessment;
       let folderName: string | null = null;
       try {

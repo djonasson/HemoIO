@@ -35,7 +35,7 @@ import {
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
-import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
 import type { ParsedBackupData } from '@services/import';
 import { FolderBackups } from './FolderBackups';
 import type { RestoreOptions } from './BackupRestore';
@@ -176,8 +176,8 @@ export function StorageSettings({
         }
       }
 
-      // Save the new provider
-      localStorage.setItem(STORAGE_PROVIDER_KEY, pendingProvider);
+      // Saved, then sync and the banner are told: they read it then, on or off
+      saveStorageChoice(pendingProvider);
       setStorageProvider(pendingProvider);
 
       // Clear filesystem state if switching away from it
@@ -185,9 +185,6 @@ export function StorageSettings({
         setDirectoryName(null);
         setPermissionState(null);
       }
-      // Only now, with the choice saved: sync and the banner read it when told,
-      // on or off
-      notifyFolderAccessChanged();
 
       setShowConfirmModal(false);
       setPendingProvider(null);

@@ -14,6 +14,12 @@ export function toLocalDay(value: string | Date | null | undefined): Date | null
   return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
 }
 
+/** The day `date` falls on where the user is, as "YYYY-MM-DD" */
+export function toLocalDayString(date: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function endOfDay(date: Date): Date {
   const end = new Date(date);
   end.setHours(23, 59, 59, 999);

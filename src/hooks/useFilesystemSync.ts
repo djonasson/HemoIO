@@ -14,7 +14,7 @@ import { showPersistentNotice } from '@components/common/showPersistentNotice';
 import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
-import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { onSetAsideChanged } from '@data/db/setAsideEvents';
@@ -160,8 +160,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   const syncOnce = useCallback(
     async (session: SyncSession, replaces?: string | null) => {
       try {
-        // Created afresh, so a folder just chosen in Settings is the one written
-        const provider = new FileSystemStorageProvider();
+        const provider = currentFolder();
         // Without permission only a user action can help; Settings asks for it
         if ((await provider.getPermissionState()) !== 'granted') {
           setIssue(null);
@@ -305,7 +304,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         // Locked, or unlocked afresh, while earlier syncs ran: the choice
         // belongs to a session that has ended, and nothing is saved or loaded
         if (sessionRef.current?.key !== session.key || pendingRef.current !== pending) return;
-        const provider = new FileSystemStorageProvider();
+        const provider = currentFolder();
         const backups = { db: session.db, key: session.key, backups: provider };
         if (choice === 'folder') {
           // Stamped before the backup's export, as for an automatic load: a
@@ -357,7 +356,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
       const session = unlockedRef.current;
       if (!session) throw new Error('HemoIO is locked');
       await afterSyncs(async () => {
-        const provider = new FileSystemStorageProvider();
+        const provider = currentFolder();
         const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
         const id = bytes && (await folderCopyId(bytes, revision));
         // Locked meanwhile: the choice was for a session that has ended

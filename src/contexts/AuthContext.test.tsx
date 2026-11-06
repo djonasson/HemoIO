@@ -17,7 +17,8 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
-import { clearLocalHemoIOStorage, clearStoredData, clearStoredDataButSetAside } from '@data/db/storedRows';
+import { clearStoredData, clearStoredDataButSetAside } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { withWebLock } from '@/utils/withWebLock';
@@ -32,11 +33,13 @@ vi.mock('@data/db', () => ({
   createEncryptedDb: vi.fn(() => ({ settleUnreadable })),
 }));
 
-// Start over clears the database and storage: tested in storedRows.test.ts,
-// here only when, and under which locks, it is called
+// Start over clears the database and storage: tested in storedRows.test.ts
+// and browserStorage.test.ts, here only when, and under which locks, it is called
 vi.mock('@data/db/storedRows', () => ({
   clearStoredData: vi.fn(),
   clearStoredDataButSetAside: vi.fn(),
+}));
+vi.mock('@data/storage/browserStorage', () => ({
   clearLocalHemoIOStorage: vi.fn(),
 }));
 

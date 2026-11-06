@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { useExistingBrowserData } from './useExistingBrowserData';
 
 vi.mock('@data/db/storedRows', () => ({
   countStoredRows: vi.fn(),
   clearStoredData: vi.fn(),
+}));
+vi.mock('@data/storage/browserStorage', () => ({
   clearLocalHemoIOStorage: vi.fn(),
 }));
 

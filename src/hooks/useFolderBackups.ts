@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@contexts';
-import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { onFolderAccessChanged, onFolderBackupsChanged } from '@data/storage/folderAccessEvents';
 import {
   backupDate,
@@ -57,15 +57,6 @@ export interface UseFolderBackupsResult {
   protectShown: (name: string) => () => void;
 }
 
-/**
- * A provider for the folder chosen now. Made for each call, as the sync's
- * is: a provider keeps the folder it first read, and "Change folder" in
- * Settings leaves this list mounted.
- */
-function chosenFolder(): FileSystemStorageProvider {
-  return new FileSystemStorageProvider();
-}
-
 export function useFolderBackups(): UseFolderBackupsResult {
   const { encryptionKey } = useAuth();
   const [backups, setBackups] = useState<FolderBackupEntry[]>([]);
@@ -73,7 +64,7 @@ export function useFolderBackups(): UseFolderBackupsResult {
   const refresh = useCallback(async (): Promise<FolderBackupEntry[]> => {
     let names: string[];
     try {
-      names = await chosenFolder().listBackups();
+      names = await currentFolder().listBackups();
     } catch {
       // No folder or no access yet: nothing to list
       return [];
@@ -112,7 +103,7 @@ export function useFolderBackups(): UseFolderBackupsResult {
       if (!encryptionKey) return { status: 'unreadable', reason: 'read-failed' };
       let bytes: ArrayBuffer;
       try {
-        bytes = await chosenFolder().loadBackup(name);
+        bytes = await currentFolder().loadBackup(name);
       } catch {
         return { status: 'unreadable', reason: 'read-failed' };
       }
@@ -123,13 +114,13 @@ export function useFolderBackups(): UseFolderBackupsResult {
 
   const canKeepCurrentCopy = useCallback(async (): Promise<boolean> => {
     if (!encryptionKey) return false;
-    return canKeepFolderCopy({ key: encryptionKey, folder: chosenFolder() });
+    return canKeepFolderCopy({ key: encryptionKey, folder: currentFolder() });
   }, [encryptionKey]);
 
   const keepCurrentCopy = useCallback(
     async (protect?: string[]): Promise<void> => {
       if (!encryptionKey) throw new Error('No key');
-      const folder = chosenFolder();
+      const folder = currentFolder();
       await keepCurrentFolderCopy({ key: encryptionKey, backups: folder, folder, protect });
     },
     [encryptionKey]
