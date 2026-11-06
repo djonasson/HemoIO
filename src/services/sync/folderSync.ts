@@ -13,7 +13,7 @@ import { isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapp
 import { saveFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
-import { openEnvelope, readEnvelopeHeader, sealEnvelope } from './folderEnvelope';
+import { openEnvelope, readEnvelopeHeader, resealWithoutLock, sealEnvelope } from './folderEnvelope';
 import { keepLockFile, type FolderLockStore } from './folderLockFile';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
@@ -144,8 +144,6 @@ type CopyProblem = Exclude<FolderProtectionReason, 'empty' | 'set-aside'>;
 interface OpenedCopy {
   file: FolderSyncFile;
   lock: StoredCredentialsV2 | null;
-  /** Its plaintext, sealed again without the lock when it becomes the previous copy */
-  plain: ArrayBuffer;
 }
 
 /**
@@ -188,7 +186,7 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
   if (header === 'damaged') return 'unreadable';
   let plain: ArrayBuffer;
   try {
-    plain = (await openEnvelope(encrypted, key)).plain;
+    ({ plain } = await openEnvelope(encrypted, key));
   } catch {
     // Another key, a damaged file, or an edited lock. Not logged: a log would add nothing
     return header?.lock ? 'another-setup' : 'unreadable';
@@ -200,7 +198,7 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
     const version = (parsed as { version?: unknown } | null)?.version;
     if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return 'newer';
     if (typeof version === 'number' && isPreLoincBackupVersion(version)) return 'before-loinc';
-    return isFolderSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null, plain } : 'unreadable';
+    return isFolderSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null } : 'unreadable';
   } catch {
     return 'unreadable';
   }
@@ -456,9 +454,10 @@ async function syncFolderCopy(
     const keep = replaced !== null && (await keepsAsPrevious(store, replaced.file, key));
     // Only the current copy carries the lock. A password change re-wraps the
     // same data key, so an older lock left in the previous copy would let an
-    // old password unwrap the key that opens the current copy too. Sealed
-    // before anything is saved: if this fails, both files stay as they are.
-    const previous = keep ? await sealEnvelope(new Uint8Array(replaced.plain), key, null) : undefined;
+    // old password unwrap the key that opens the current copy too. Opened
+    // again only now, rather than its plaintext kept through every sync, and
+    // sealed before anything is saved: if this fails, both files stay as they are.
+    const previous = keep ? await resealWithoutLock(encrypted as ArrayBuffer, key) : undefined;
     // The lock file first: if the copy then fails to save, the file holds
     // the lock this browser has, and the next sync writes the copy to match
     if (lock !== null) await keepLockFile(store, lock);
@@ -470,17 +469,21 @@ async function syncFolderCopy(
   // An interrupted first write, or none yet: there is nothing to lose
   if (!existing) return write(false);
   const copy = existing;
-  const copyJson = folderDataJson(copy.file.data);
-  const sameData = local === copyJson;
+  // Canonicalised only when needed: a copy this browser last saw, with its
+  // data unchanged here, needs neither (most syncs)
+  let copyJsonMemo: string | undefined;
+  const copyJson = (): string => (copyJsonMemo ??= folderDataJson(copy.file.data));
+  const sameData = (): boolean => local === copyJson();
 
   /** The rules for a copy this browser may write over: never with nothing, keeping the previous copy */
   const writeOver = (builtOn: string[] = ancestors): Promise<FolderSyncOutcome> | FolderSyncOutcome => {
-    if (sameData && !lockIsLater) return unchanged;
-    if (!sameData && healthRecords(copy.file.data) > 0 && healthRecords(data) === 0) {
+    const same = sameData();
+    if (same && !lockIsLater) return unchanged;
+    if (!same && healthRecords(copy.file.data) > 0 && healthRecords(data) === 0) {
       return { status: 'protected', reason: 'empty', folderLock };
     }
     // Only the lock changed: the previous copy stays the one from before the last change of data
-    return write(!sameData, builtOn);
+    return write(!same, builtOn);
   };
 
   /** The copy is to be loaded ('newer'), or the user is to choose */
@@ -520,17 +523,18 @@ async function syncFolderCopy(
   // the data this browser saw then, as a password change there rewrites it
   // for the lock alone: nothing in it is new to this browser. A missing
   // revision never matches a missing one.
+  const sameRevision = lastSeen !== null && revision !== null && revision === lastSeen.revision;
+  // Seen, and nothing changed on either side: the common case, settled before canonicalising the copy
+  if (sameRevision && digest === lastSeen.digest && !lockIsLater) return unchanged;
   const seenBefore =
-    lastSeen !== null &&
-    ((revision !== null && revision === lastSeen.revision) ||
-      (await digestFolderData(copyJson)) === lastSeen.digest);
+    lastSeen !== null && (sameRevision || (await digestFolderData(copyJson())) === lastSeen.digest);
   if (seenBefore) {
     if (digest === lastSeen.digest && !lockIsLater) return unchanged;
     return writeOver();
   }
 
   // Written elsewhere, or never read here
-  if (sameData) return lockIsLater ? write(false) : unchanged;
+  if (sameData()) return lockIsLater ? write(false) : unchanged;
   if (lastSeen === null) {
     if (healthRecords(copy.file.data) === 0) return write(true);
     // A browser that lost its data must not write its empty state over the copy

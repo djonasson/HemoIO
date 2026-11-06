@@ -8,7 +8,8 @@
  * be saved, the caller replaces nothing.
  */
 
-import { keepFolderBackup, sealedForBackup, type FolderBackupKind, type FolderBackupStore } from './folderBackups';
+import { keepFolderBackup, type FolderBackupKind, type FolderBackupStore } from './folderBackups';
+import { resealWithoutLock } from './folderEnvelope';
 import { digestFolderData, folderDataJson, sealFolderCopy } from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderCopySource } from './folderCopy';
@@ -48,7 +49,7 @@ export async function keepFolderCopy(
   { key, backups, protect }: { key: CryptoKey; backups: FolderBackupStore; protect?: string[] },
   bytes: ArrayBuffer
 ): Promise<void> {
-  await keepFolderBackup(backups, await sealedForBackup(bytes, key), { kind: 'conflict', protect });
+  await keepFolderBackup(backups, await resealWithoutLock(bytes, key), { kind: 'conflict', protect });
 }
 
 /**
@@ -88,7 +89,7 @@ export async function canKeepFolderCopy({
   const bytes = await folder.loadCurrent();
   if (bytes === null || bytes.byteLength === 0) return false;
   try {
-    await sealedForBackup(bytes, key);
+    await resealWithoutLock(bytes, key);
     return true;
   } catch {
     return false;

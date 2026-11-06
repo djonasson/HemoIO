@@ -9,7 +9,6 @@
  * backup would let an old password open the data key).
  */
 
-import { openEnvelope, sealEnvelope } from './folderEnvelope';
 
 export const MAX_FOLDER_BACKUPS = 10;
 
@@ -126,13 +125,4 @@ export async function keepFolderBackup(
     }
   }
   return name;
-}
-
-/**
- * The folder copy as a backup: its content sealed again, unchanged (the same
- * revision), without the lock it carries. Rejects when the key does not open it.
- */
-export async function sealedForBackup(folderBytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
-  const { plain } = await openEnvelope(folderBytes, key);
-  return sealEnvelope(new Uint8Array(plain), key, null);
 }

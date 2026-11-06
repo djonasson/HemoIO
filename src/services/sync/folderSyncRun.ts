@@ -57,12 +57,15 @@ export async function runFolderSync(
   folder: FolderCopyStore,
   { lock, takeReplaces, isEnabled }: RunFolderSyncOptions
 ): Promise<FolderSyncRun | null> {
-  const data = await session.db.exportAllData();
-  const { unsaved } = await session.db.countSetAside();
+  // Read together: none depends on another
+  const [data, { unsaved }, lastSeen] = await Promise.all([
+    session.db.exportAllData(),
+    session.db.countSetAside(),
+    loadFolderSyncState(session.key),
+  ]);
   // The hold may begin while this sync is under way: checked here, so a
   // held sync does not decrypt the folder copy, and again at the save
   if (!isEnabled()) return null;
-  const lastSeen = await loadFolderSyncState(session.key);
   const store: FolderCopyStore = {
     loadCurrent: () => folder.loadCurrent(),
     loadPrevious: () => folder.loadPrevious(),

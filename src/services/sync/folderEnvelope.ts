@@ -128,3 +128,14 @@ export async function openEnvelope(
     plain: await decrypt(base64ToArrayBuffer(sealed), key, envelopeAad(header)),
   };
 }
+
+/**
+ * A file's content sealed again, unchanged (the same revision), without the
+ * lock it carries: only the current copy carries a lock, so a backup or the
+ * previous copy never lets an old password unwrap the data key. Rejects
+ * when the key does not open it.
+ */
+export async function resealWithoutLock(bytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
+  const { plain } = await openEnvelope(bytes, key);
+  return sealEnvelope(new Uint8Array(plain), key, null);
+}

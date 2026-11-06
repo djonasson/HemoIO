@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { readEnvelopeHeader, openEnvelope, sealEnvelope } from './folderEnvelope';
+import { readEnvelopeHeader, openEnvelope, resealWithoutLock, sealEnvelope } from './folderEnvelope';
 import {
   MAX_FOLDER_BACKUPS,
   backupDate,
@@ -7,7 +7,6 @@ import {
   backupKind,
   keepFolderBackup,
   protectFolderBackup,
-  sealedForBackup,
   type FolderBackupStore,
 } from './folderBackups';
 import { createCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -220,7 +219,7 @@ describe('folder backups', () => {
     const plain = new TextEncoder().encode('{"version":4,"revision":"r1","data":{}}');
     const folderBytes = await sealEnvelope(plain, key, lock);
 
-    const backup = await sealedForBackup(folderBytes, key);
+    const backup = await resealWithoutLock(folderBytes, key);
 
     expect(readEnvelopeHeader(backup)).toMatchObject({ lock: null });
     expect(new TextDecoder().decode(backup)).not.toContain(lock.wrappedKey);

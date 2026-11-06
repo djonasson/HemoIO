@@ -27,7 +27,6 @@ export {
   backupKind,
   keepFolderBackup,
   protectFolderBackup,
-  sealedForBackup,
   type FolderBackupKind,
   type FolderBackupStore,
   type KeepFolderBackupOptions,
