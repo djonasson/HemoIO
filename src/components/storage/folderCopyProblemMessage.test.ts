@@ -10,6 +10,7 @@ describe('folderCopyProblemMessage', () => {
     'not-a-copy',
     'newer-version',
     'before-loinc',
+    'damaged-copy',
     'read-failed',
   ];
 

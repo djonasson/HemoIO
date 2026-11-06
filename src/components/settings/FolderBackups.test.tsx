@@ -195,6 +195,10 @@ describe('FolderBackups', () => {
   it.each([
     ['newer-version', 'This backup was saved by a newer version of HemoIO. Update HemoIO on this device to restore it.'],
     [
+      'damaged-copy',
+      "This backup holds a folder copy that was already damaged when HemoIO kept it. It is kept so nothing is lost, but it can't be restored.",
+    ],
+    [
       'before-loinc',
       'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.',
     ],

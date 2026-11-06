@@ -8,7 +8,7 @@
 
 import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import';
 import { backupDate } from './folderBackups';
-import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
+import { isDamagedCopy, openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
 import { readLockFile } from './folderLockFile';
 import { FOLDER_SYNC_FILE_VERSION, isFolderSyncFile, parseFolderCopyData } from './folderSync';
 import { isCredentialsV2, isSameLock, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -23,6 +23,8 @@ export type FolderCopyProblem =
   | 'newer-version'
   /** Saved before tests were identified by LOINC: its values cannot be restored */
   | 'before-loinc'
+  /** A folder copy that was already damaged when HemoIO kept it as a backup: kept so nothing is lost, never restored */
+  | 'damaged-copy'
   /** The file could not be read from the folder */
   | 'read-failed';
 
@@ -47,6 +49,7 @@ export async function readFolderCopy(
   key: CryptoKey,
   ownLock: StoredCredentialsV2 | null = null
 ): Promise<FolderCopyReading> {
+  if (isDamagedCopy(bytes)) return { status: 'unreadable', reason: 'damaged-copy' };
   const read = readEnvelopeHeader(bytes);
   // 'not-a-copy' here and 'unreadable' in the sync: both name a damaged header
   if (read === 'damaged') return { status: 'unreadable', reason: 'not-a-copy' };
@@ -137,8 +140,10 @@ export interface FolderRecoverySource {
  * no folder copy: damaged, so the earlier files are tried. Any other
  * reading opened, and is told.
  */
-function didNotOpen(reason: FolderCopyProblem): reason is 'cannot-decrypt' | 'another-setup' | 'not-a-copy' {
-  return reason === 'cannot-decrypt' || reason === 'another-setup' || reason === 'not-a-copy';
+function didNotOpen(
+  reason: FolderCopyProblem
+): reason is 'cannot-decrypt' | 'another-setup' | 'not-a-copy' | 'damaged-copy' {
+  return reason === 'cannot-decrypt' || reason === 'another-setup' || reason === 'not-a-copy' || reason === 'damaged-copy';
 }
 
 /**

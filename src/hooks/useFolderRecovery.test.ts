@@ -5,7 +5,7 @@ import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/
 import { FOLDER_SYNC_FILE_VERSION, readFolderCopy, sealFolderCopy, type FolderUnlockProblem } from '@services/sync';
 import { markFolderCopySeen } from '@services/sync/folderSync';
 import { backupKind } from '@services/sync/folderBackups';
-import { readEnvelopeHeader, sealEnvelope } from '@services/sync/folderEnvelope';
+import { openDamagedCopy, readEnvelopeHeader, sealEnvelope } from '@services/sync/folderEnvelope';
 import { readLockFile } from '@services/sync/folderLockFile';
 import { restoreBackup } from '@services/import';
 import { notifications } from '@mantine/notifications';
@@ -234,7 +234,7 @@ describe('useFolderRecovery', () => {
     );
   });
 
-  it('keeps the damaged copy as a raw conflict backup before writing the new copy', async () => {
+  it('keeps the damaged copy, sealed under the key, as a conflict backup before writing the new copy', async () => {
     const damagedCopy = damaged(COPY);
     loadCurrent.mockResolvedValue(damagedCopy);
     loadPrevious.mockResolvedValue(await withoutLock(DATA_KEY));
@@ -245,9 +245,36 @@ describe('useFolderRecovery', () => {
     expect(saveBackup).toHaveBeenCalledTimes(1);
     const [name, kept] = saveBackup.mock.calls[0];
     expect(backupKind(name)).toBe('conflict');
-    // As it lay in the folder: it cannot be sealed again
-    expect(new Uint8Array(kept)).toEqual(new Uint8Array(damagedCopy));
     expect(saveBackup.mock.invocationCallOrder[0]).toBeLessThan(save.mock.invocationCallOrder[0]);
+    // Nothing of it is lost: the key gives back its bytes as they lay in the folder
+    const key = recoverFromFolder.mock.calls[0][1];
+    expect(new Uint8Array(await openDamagedCopy(kept, key))).toEqual(new Uint8Array(damagedCopy));
+    // Shown in Settings as a damaged copy, never restored
+    expect(await readFolderCopy(kept, key)).toEqual({ status: 'unreadable', reason: 'damaged-copy' });
+  });
+
+  it('no backup it keeps holds a lock in plain text, even when the damaged copy did', async () => {
+    // Damaged in two ways that leave the lock readable: the body, and a cut-off file
+    const cut = COPY.slice(0, Math.floor(COPY.byteLength / 2));
+    for (const damagedCopy of [damaged(COPY), cut]) {
+      vi.clearAllMocks();
+      loadCurrent.mockResolvedValue(damagedCopy);
+      loadPrevious.mockResolvedValue(await withoutLock(DATA_KEY));
+      loadLock.mockResolvedValue(
+        new TextEncoder().encode(JSON.stringify({ format: 'hemoio-folder-lock', version: 1, lock: LOCK })).buffer as ArrayBuffer
+      );
+      const hook = await chosen();
+
+      expect(await recover(hook)).toBeNull();
+
+      expect(saveBackup).toHaveBeenCalledTimes(1);
+      for (const [, bytes] of saveBackup.mock.calls) {
+        const text = new TextDecoder().decode(bytes);
+        expect(text).not.toContain(LOCK.wrappedKey);
+        expect(text).not.toContain(LOCK.kekSalt);
+      }
+      hook.unmount();
+    }
   });
 
   it('a damaged copy that cannot be kept as a backup is not written over', async () => {

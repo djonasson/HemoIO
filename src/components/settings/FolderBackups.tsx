@@ -32,6 +32,8 @@ const KIND_LABEL: Record<FolderBackupEntry['kind'], string> = {
 const KEPT_NOTE = 'Your current folder copy is kept as a dated backup first.';
 const LEFT_AS_IS_NOTE = "Your current folder copy can't be opened, so HemoIO leaves it as it is.";
 const UNREADABLE_MESSAGE = "This backup is damaged or was made with a different key, and can't be opened.";
+const DAMAGED_COPY_MESSAGE =
+  "This backup holds a folder copy that was already damaged when HemoIO kept it. It is kept so nothing is lost, but it can't be restored.";
 const NEWER_VERSION_MESSAGE =
   'This backup was saved by a newer version of HemoIO. Update HemoIO on this device to restore it.';
 
@@ -43,6 +45,7 @@ const NEWER_VERSION_MESSAGE =
  */
 function unreadableMessage(reason: Extract<FolderBackupReading, { status: 'unreadable' }>['reason']): string {
   if (reason === 'newer-version') return NEWER_VERSION_MESSAGE;
+  if (reason === 'damaged-copy') return DAMAGED_COPY_MESSAGE;
   if (reason === 'before-loinc') return folderCopyProblemMessage(reason, 'this backup');
   return UNREADABLE_MESSAGE;
 }

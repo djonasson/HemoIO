@@ -145,3 +145,41 @@ export async function resealWithoutLock(bytes: ArrayBuffer, key: CryptoKey): Pro
   const { plain } = await openEnvelope(bytes, key);
   return sealEnvelope(new Uint8Array(plain), key, null);
 }
+
+export const DAMAGED_COPY_FORMAT = 'hemoio-damaged-copy';
+
+/** The additional data a damaged copy is sealed with: its fixed header */
+const DAMAGED_COPY_AAD = new TextEncoder().encode(
+  JSON.stringify({ format: DAMAGED_COPY_FORMAT, version: 1, lock: null })
+);
+
+/**
+ * A damaged folder copy's bytes, as they lay in the folder, sealed under the
+ * session key without a lock (P41): a lock its header still showed would
+ * let an old password unwrap the data key, so no backup ever holds one in
+ * plain text. File: JSON { format: 'hemoio-damaged-copy', version, lock: null, sealed }.
+ */
+export async function sealDamagedCopy(bytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
+  const sealed = await encrypt(bytes.slice(0), key, DAMAGED_COPY_AAD);
+  const file = JSON.stringify({ format: DAMAGED_COPY_FORMAT, version: 1, lock: null, sealed: arrayBufferToBase64(sealed) });
+  return new TextEncoder().encode(file).buffer as ArrayBuffer;
+}
+
+/** Whether the file is a damaged copy kept by sealDamagedCopy */
+export function isDamagedCopy(bytes: ArrayBuffer): boolean {
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return typeof parsed === 'object' && parsed !== null && (parsed as { format?: unknown }).format === DAMAGED_COPY_FORMAT;
+  } catch {
+    return false;
+  }
+}
+
+/** The bytes a damaged copy kept; rejects when the key does not open it */
+export async function openDamagedCopy(bytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
+  const file = JSON.parse(new TextDecoder().decode(bytes)) as { format?: unknown; sealed?: unknown };
+  if (file.format !== DAMAGED_COPY_FORMAT || typeof file.sealed !== 'string' || !isBase64(file.sealed)) {
+    throw new Error('Not a damaged copy');
+  }
+  return decrypt(base64ToArrayBuffer(file.sealed), key, DAMAGED_COPY_AAD);
+}

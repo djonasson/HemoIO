@@ -3,8 +3,11 @@ import { arrayBufferToBase64, base64ToArrayBuffer, encrypt } from '@data/encrypt
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import {
   FOLDER_ENVELOPE_FORMAT,
+  isDamagedCopy,
+  openDamagedCopy,
   openEnvelope,
   readEnvelopeHeader,
+  sealDamagedCopy,
   sealEnvelope,
 } from './folderEnvelope';
 
@@ -190,5 +193,30 @@ describe('folderEnvelope', () => {
 
     expect(first).not.toBe(second);
     expect(arrayBufferToBase64(base64ToArrayBuffer(first))).toBe(first);
+  });
+
+  describe('a damaged copy kept as a backup (P41)', () => {
+    it('is sealed whole under the key, with no lock, and gives its bytes back', async () => {
+      const { key, lock } = await newSetup();
+      const damaged = fileOf(textOf(await sealEnvelope(encode(PLAIN), key, lock)).slice(0, 200));
+
+      const kept = await sealDamagedCopy(damaged, key);
+
+      expect(JSON.parse(textOf(kept))).toMatchObject({ format: 'hemoio-damaged-copy', version: 1, lock: null });
+      expect(textOf(kept)).not.toContain(lock.kekSalt);
+      expect(isDamagedCopy(kept)).toBe(true);
+      expect(isDamagedCopy(damaged)).toBe(false);
+      expect(textOf(await openDamagedCopy(kept, key))).toBe(textOf(damaged));
+    });
+
+    it('does not open under another key, nor with its header changed', async () => {
+      const { key } = await newSetup();
+      const other = await newSetup();
+      const kept = await sealDamagedCopy(fileOf('{"format":"hemoio-folder-copy"'), key);
+      const file = JSON.parse(textOf(kept)) as Record<string, unknown>;
+
+      await expect(openDamagedCopy(kept, other.key)).rejects.toThrow();
+      await expect(openDamagedCopy(fileOf(JSON.stringify({ ...file, format: 'other' })), key)).rejects.toThrow();
+    });
   });
 });

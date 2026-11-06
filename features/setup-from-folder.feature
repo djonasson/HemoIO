@@ -66,10 +66,18 @@ Feature: Set Up From a Folder Copy
     When I set HemoIO up from my folder copy with my password
     Then HemoIO should open with the previous copy's two lab results on the timeline
     And I should be told the previous copy was restored, and when it was saved
-    And the damaged copy should be kept, as it was, as a dated backup in my folder
+    And the damaged copy should be kept whole as a dated backup in my folder, sealed with my data key
+    And that backup should hold no password lock in plain text
     And the folder copy should open again, with my password lock in it and beside it
     And syncing should go on without a warning
     And the password I used should unlock HemoIO
+
+  # Unit-tested: FolderBackups.test.tsx, useFolderRecovery.test.ts
+  Scenario: The kept damaged copy is listed but cannot be restored
+    Given a damaged folder copy was kept as a dated backup when I set HemoIO up from my folder
+    When I choose to restore that backup in Settings
+    Then I should be told "This backup holds a folder copy that was already damaged when HemoIO kept it. It is kept so nothing is lost, but it can't be restored."
+    And nothing should be changed
 
   # Unit-tested (unlockFolderCopy, useFolderRecovery): a folder holding dated
   # backups but no current or previous copy cannot be set up on cue

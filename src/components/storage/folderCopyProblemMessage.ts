@@ -29,6 +29,11 @@ export function folderCopyProblemMessage(reason: FolderCopyProblem, folder: stri
       );
     case 'before-loinc':
       return PRE_LOINC_BACKUP_MESSAGE;
+    case 'damaged-copy':
+      return (
+        `The file in ${folder} is a folder copy that was already damaged when HemoIO kept it. ` +
+        "It is kept so nothing is lost, but it can't be restored."
+      );
     case 'read-failed':
       return `HemoIO couldn't read the file in ${folder}. Check that the folder is available.`;
   }

@@ -20,6 +20,7 @@ import { withWebLock } from '@/utils/withWebLock';
 import { logFailure } from '@/utils/logFailure';
 import { keepFolderBackup, type FolderBackupStore } from './folderBackups';
 import { unlockFolderCopy, type FolderCopyOrigin, type FolderRecoverySource, type FolderUnlockProblem } from './folderCopy';
+import { sealDamagedCopy } from './folderEnvelope';
 import { keepLockFile, type FolderLockStore } from './folderLockFile';
 import { markFolderCopySeen, sealFolderCopy } from './folderSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -78,8 +79,9 @@ export interface RecoverFromFolderCopyOptions {
 
 /**
  * The current copy is missing or damaged, and the proven key does not open
- * it: keep its bytes, if any, as a dated backup, raw, as they cannot be
- * sealed again (a half-synced cloud file is never lost); then write the data
+ * it: keep its bytes, if any, as a dated backup, sealed whole under the key
+ * with no lock (sealDamagedCopy: a half-synced cloud file is never lost,
+ * and no old lock is kept in plain text); then write the data
  * just restored as the copy, carrying the lock, built on the one restored.
  * The backup restored from is never pruned to make room. Returns the new
  * copy's revision, or null when nothing was written: a failed backup writes
@@ -96,7 +98,7 @@ async function replaceDamagedCopy(
   try {
     const damaged = await folder.loadCurrent();
     if (damaged !== null) {
-      await keepFolderBackup(folder, damaged, {
+      await keepFolderBackup(folder, await sealDamagedCopy(damaged, key), {
         kind: 'conflict',
         protect: from.file === 'backup' ? [from.name] : [],
       });

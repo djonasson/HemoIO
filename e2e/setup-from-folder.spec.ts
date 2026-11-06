@@ -189,10 +189,14 @@ test.describe('Set up from a folder copy', () => {
     await expectBothResults(page);
     await expect(page.getByText('Restored from an earlier copy')).toBeVisible();
     await expect(page.getByText(/HemoIO restored the previous copy saved on/)).toBeVisible();
-    // The damaged copy is kept, as it was, as a dated backup
+    // The damaged copy is kept as a dated backup, sealed whole under the key, with no lock in plain text
     const backups = await folderBackupNames(page, FOLDER_NAME);
     expect(backups).toHaveLength(1);
-    expect(await folderFileText(page, `${FOLDER_BACKUPS}/${backups[0]}`)).toBe(damagedCopy);
+    const kept = (await folderFileText(page, `${FOLDER_BACKUPS}/${backups[0]}`))!;
+    expect(JSON.parse(kept)).toMatchObject({ format: 'hemoio-damaged-copy', version: 1, lock: null });
+    const damagedLock = (JSON.parse(damagedCopy) as { lock: { wrappedKey: string; kekSalt: string } }).lock;
+    expect(kept).not.toContain(damagedLock.wrappedKey);
+    expect(kept).not.toContain(damagedLock.kekSalt);
     await settledSync(page);
     await expect(skippedSyncNotice(page)).toHaveCount(0);
     // The folder copy opens again, with my lock in it and beside it
