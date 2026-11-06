@@ -56,6 +56,11 @@ export function SetAsideBanner({
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [justDeleted, setJustDeleted] = useState(false);
+  // False from a delete until the confirmation opens again. Kept apart from
+  // justDeleted, which the focus effect resets at once: the dialog hands
+  // focus back as its close transition ends, later, and must not then
+  // take it from the main content to a button that is gone
+  const [returnFocus, setReturnFocus] = useState(true);
   const bannerRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -106,7 +111,10 @@ export function SetAsideBanner({
     mainRef.current = bannerRef.current?.closest('main') ?? null;
     try {
       const ids = await onSnapshot();
-      if (ids.length > 0) setDeleteIds(ids);
+      if (ids.length > 0) {
+        setReturnFocus(true);
+        setDeleteIds(ids);
+      }
     } catch {
       console.error('Could not list the records kept aside');
     }
@@ -125,6 +133,7 @@ export function SetAsideBanner({
       });
       setUnconfirmedIds(null);
       setJustDeleted(true);
+      setReturnFocus(false);
       setDeleteIds(null);
     } catch (err) {
       notifySaveFailed('Unreadable records not deleted', err, 'They are still kept aside.');
@@ -205,7 +214,7 @@ export function SetAsideBanner({
         }}
         title="Delete unreadable records?"
         // After a delete, focus goes to the main content instead
-        returnFocus={!justDeleted}
+        returnFocus={returnFocus}
         centered
       >
         <Stack gap="md">
