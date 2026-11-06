@@ -25,7 +25,13 @@ export interface FolderEnvelopeHeader {
   lock: StoredCredentialsV2 | null;
 }
 
-const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+// A simple character class and a length check: a grouped repetition
+// recurses once per group in V8, and overflows on a copy of a few megabytes
+const BASE64_CHARS = /^[A-Za-z0-9+/]*={0,2}$/;
+
+function isBase64(text: string): boolean {
+  return text.length % 4 === 0 && BASE64_CHARS.test(text);
+}
 
 /** The lock with only the fields HemoIO knows, in a fixed order */
 export function cleanLock(lock: StoredCredentialsV2): StoredCredentialsV2 {
@@ -96,7 +102,7 @@ function parseEnvelope(
   const { version, lock, sealed } = file;
   if (version !== 1) return 'damaged';
   if (lock !== null && !isCredentialsV2(lock)) return 'damaged';
-  if (typeof sealed !== 'string' || !BASE64.test(sealed)) return 'damaged';
+  if (typeof sealed !== 'string' || !isBase64(sealed)) return 'damaged';
   return {
     header: { format: FOLDER_ENVELOPE_FORMAT, version: 1, lock: lock && cleanLock(lock) },
     sealed,

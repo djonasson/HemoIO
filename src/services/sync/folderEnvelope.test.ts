@@ -150,6 +150,27 @@ describe('folderEnvelope', () => {
       await expect(openEnvelope(fileOf(JSON.stringify(edited)), key)).rejects.toThrow();
     });
 
+    it('reads the header of a large copy, without a regular expression overflow', async () => {
+      const { key, lock } = await newSetup();
+      // About 6 MB once sealed and base64-encoded
+      const big = encode(JSON.stringify({ data: 'x'.repeat(4_500_000) }));
+      const bytes = await sealEnvelope(big, key, lock);
+
+      expect(readEnvelopeHeader(bytes)).toEqual({ format: FOLDER_ENVELOPE_FORMAT, version: 1, lock });
+      expect((await openEnvelope(bytes, key)).plain.byteLength).toBe(big.length);
+    });
+
+    it.each([
+      ['padding in the middle', 'AA==AAAA'],
+      ['a length not a multiple of four', 'AAAAA'],
+      ['three padding characters', 'A==='],
+    ])('reports a sealed part with %s as damaged', async (_label, sealed) => {
+      const { key, lock } = await newSetup();
+      const file = JSON.parse(textOf(await sealEnvelope(encode(PLAIN), key, lock)));
+
+      expect(readEnvelopeHeader(fileOf(JSON.stringify({ ...file, sealed })))).toBe('damaged');
+    });
+
     it('keeps only the lock fields it knows', async () => {
       const { key, lock } = await newSetup();
       const file = JSON.parse(textOf(await sealEnvelope(encode(PLAIN), key, lock)));
