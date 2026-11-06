@@ -28,7 +28,7 @@ export interface FolderEnvelopeHeader {
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 /** The lock with only the fields HemoIO knows, in a fixed order */
-function cleanLock(lock: StoredCredentialsV2): StoredCredentialsV2 {
+export function cleanLock(lock: StoredCredentialsV2): StoredCredentialsV2 {
   const { version, kekSalt, iterations, wrapIv, wrappedKey, changedAt } = lock;
   return {
     version,

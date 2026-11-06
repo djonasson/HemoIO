@@ -11,6 +11,9 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { FOLDER_NAME } from './folderRestore.steps';
 import { FOLDER_COPY } from './folderSync.steps';
 
+/** The lock file HemoIO keeps beside the folder copy */
+export const LOCK_FILE = 'hemoio-lock.json';
+
 /** The step that restores from a folder copy */
 export function folderRecoveryStep(page: Page): Locator {
   return page.getByRole('region', { name: 'Restore from your folder copy' });
@@ -73,6 +76,21 @@ export async function recoverFromFolder(page: Page, password: string): Promise<v
 /** The stored password lock, or null */
 export function storedCredentials(page: Page): Promise<string | null> {
   return page.evaluate(() => localStorage.getItem('hemoio_credentials'));
+}
+
+/** A file in the folder, as text; null when the folder does not hold it */
+export function folderFileText(page: Page, fileName: string): Promise<string | null> {
+  return page.evaluate(
+    async ({ folderName, fileName }) => {
+      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      try {
+        return await (await dir.getFileHandle(fileName)).getFile().then((file) => file.text());
+      } catch {
+        return null;
+      }
+    },
+    { folderName: FOLDER_NAME, fileName }
+  );
 }
 
 /** The folder copy's file, as text */

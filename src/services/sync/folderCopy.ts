@@ -7,7 +7,9 @@
  */
 
 import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import';
+import { backupDate } from './folderBackups';
 import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
+import { readLockFile } from './folderLockFile';
 import { FOLDER_SYNC_FILE_VERSION, parseFolderCopyData } from './folderSync';
 import { isCredentialsV2, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
@@ -110,13 +112,21 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
 
 /** Why a folder copy could not be opened with a password alone */
 export type FolderUnlockProblem =
-  /** The folder holds no copy */
+  /** The folder holds no copy, and no lock file */
   | 'no-copy'
   /** A copy without the lock saved in it: only a browser with its key can open it */
   | 'no-lock'
   | 'wrong-password'
   // With the password a lock opens, the copy is this setup's: never another's
   | Exclude<FolderCopyProblem, 'another-setup'>;
+
+/** Which file in the folder a recovery restored */
+export type FolderCopyOrigin =
+  | { file: 'current' }
+  /** The current copy was missing or damaged: the previous copy opened */
+  | { file: 'previous' }
+  /** The current and previous copies were missing or damaged: this dated backup opened */
+  | { file: 'backup'; name: string };
 
 export type FolderUnlockResult =
   | {
@@ -126,25 +136,86 @@ export type FolderUnlockResult =
       lock: StoredCredentialsV2;
       copy: ParsedBackupData;
       revision: string | null;
+      from: FolderCopyOrigin;
     }
   | { ok: false; problem: FolderUnlockProblem };
 
+/** The folder, as recovery reads it: the copy, the previous copy, the backups and the lock file */
+export interface FolderRecoverySource {
+  /** The file, or null when there is none; throws when it cannot tell */
+  loadCurrent(): Promise<ArrayBuffer | null>;
+  loadPrevious(): Promise<ArrayBuffer | null>;
+  listBackups(): Promise<string[]>;
+  loadBackup(name: string): Promise<ArrayBuffer>;
+  loadLock(): Promise<ArrayBuffer | null>;
+}
+
 /**
- * Open a folder copy with the password that made the lock saved in it, as a
- * browser without credentials does. It succeeds only when the body opens with
- * the unwrapped key and the header as additional data, so a lock swapped into
- * the file is never accepted. Stores nothing, and never throws or logs: the
- * password, the key and the content stay out of errors.
+ * A current copy whose body did not open, or opened to something that is
+ * no folder copy: damaged, so the earlier files are tried. Any other
+ * reading opened, and is told.
+ */
+function didNotOpen(reason: FolderCopyProblem): reason is 'cannot-decrypt' | 'another-setup' | 'not-a-copy' {
+  return reason === 'cannot-decrypt' || reason === 'another-setup' || reason === 'not-a-copy';
+}
+
+/**
+ * The earlier files to try, in order: the previous copy, then the dated
+ * backups of both kinds, newest first. Loaded one at a time, as they are
+ * tried; one that cannot be loaded is skipped.
+ */
+async function* earlierCopies(
+  source: FolderRecoverySource
+): AsyncGenerator<{ bytes: ArrayBuffer; from: FolderCopyOrigin }> {
+  const previous = await source.loadPrevious().catch(() => null);
+  if (previous) yield { bytes: previous, from: { file: 'previous' } };
+  const names = await source.listBackups().catch((): string[] => []);
+  const newestFirst = names
+    .map((name) => ({ name, date: backupDate(name) }))
+    .filter((entry): entry is { name: string; date: Date } => entry.date !== null)
+    .sort((a, b) => b.date.getTime() - a.date.getTime());
+  for (const { name } of newestFirst) {
+    const bytes = await source.loadBackup(name).catch(() => null);
+    if (bytes) yield { bytes, from: { file: 'backup', name } };
+  }
+}
+
+/**
+ * Open the folder with the password that made its lock, as a browser
+ * without credentials does.
+ *
+ * The lock is the current copy's, when its header can be read, else the
+ * lock file's (folderLockFile.ts). Unwrapped with the password, its key is
+ * tried on the current copy, then the previous copy, then the dated
+ * backups, newest first. The first body that opens under it, with its
+ * header as additional data, proves the key: AES-GCM authenticates it, so a
+ * lock swapped into the copy or planted as the lock file is never accepted
+ * unless a body in the folder opens under its key. A current copy that
+ * opens but cannot be restored (a newer HemoIO's, or one from before LOINC)
+ * is told as such, never passed over for an older one.
+ *
+ * Stores nothing, and never throws or logs: the password, the key and the
+ * content stay out of errors.
  */
 export async function unlockFolderCopy(
-  bytes: ArrayBuffer | null,
+  source: FolderRecoverySource,
   password: string
 ): Promise<FolderUnlockResult> {
-  if (bytes === null) return { ok: false, problem: 'no-copy' };
-  const header = readEnvelopeHeader(bytes);
-  if (header === 'damaged') return { ok: false, problem: 'not-a-copy' };
-  const lock = header?.lock ?? null;
-  if (lock === null) return { ok: false, problem: 'no-lock' };
+  let current: ArrayBuffer | null;
+  try {
+    current = await source.loadCurrent();
+  } catch {
+    return { ok: false, problem: 'read-failed' };
+  }
+  const header = current === null ? null : readEnvelopeHeader(current);
+  let lock = header && header !== 'damaged' ? header.lock : null;
+  if (lock === null) {
+    lock = readLockFile(await source.loadLock().catch(() => null));
+    if (lock === null) {
+      if (current === null) return { ok: false, problem: 'no-copy' };
+      return { ok: false, problem: header === 'damaged' ? 'not-a-copy' : 'no-lock' };
+    }
+  }
   // Checked again here: this lock is about to become the stored credentials
   if (!isCredentialsV2(lock)) return { ok: false, problem: 'not-a-copy' };
 
@@ -157,12 +228,23 @@ export async function unlockFolderCopy(
   }
   if (!key) return { ok: false, problem: 'wrong-password' };
 
-  const reading = await readFolderCopy(bytes, key);
-  if (reading.status === 'unreadable') {
-    // The lock opened, but the body did not open with it: damaged, or a lock put beside another body
-    return { ok: false, problem: reading.reason === 'another-setup' ? 'cannot-decrypt' : reading.reason };
+  const unlocked = { ok: true as const, key, lock };
+  const opened = (
+    reading: Extract<FolderCopyReading, { status: 'readable' }>,
+    from: FolderCopyOrigin
+  ): FolderUnlockResult => ({ ...unlocked, copy: reading.data, revision: reading.revision, from });
+
+  if (current !== null) {
+    const reading = await readFolderCopy(current, key);
+    if (reading.status === 'readable') return opened(reading, { file: 'current' });
+    if (!didNotOpen(reading.reason)) return { ok: false, problem: reading.reason };
   }
-  return { ok: true, key, lock, copy: reading.data, revision: reading.revision };
+  for await (const earlier of earlierCopies(source)) {
+    const reading = await readFolderCopy(earlier.bytes, key);
+    if (reading.status === 'readable') return opened(reading, earlier.from);
+  }
+  // The lock opened, but no body opened with it: damaged, or a lock put beside another body
+  return { ok: false, problem: 'cannot-decrypt' };
 }
 
 /** The folder file, as the folder storage provider reads it */

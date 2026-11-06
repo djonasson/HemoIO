@@ -324,8 +324,11 @@ With folder storage on (File System Access API, Chromium only), the
 database is copied to a folder the user chose, which a sync service such as
 Dropbox or OneDrive may share with their other computers. The folder holds:
 
-- `hemoio-data.encrypted`: the folder copy, the only file that carries the
-  lock;
+- `hemoio-data.encrypted`: the folder copy, the only sealed file that
+  carries the lock;
+- `hemoio-lock.json`: the current lock again, as plain JSON
+  `{ format: "hemoio-folder-lock", version: 1, lock }`, so a password can
+  still unwrap the DEK when the copy is missing or its header is damaged;
 - `hemoio-data.previous.encrypted`: the copy a write replaced, to undo a
   bad write from. A replaced copy becomes the previous copy only when it
   holds at least half the records of the one already there, so a browser
@@ -349,12 +352,17 @@ as it reads a backup. `revision` is a new UUID with every write, and
 `ancestors` lists the revisions the copy was built on, newest first (the
 copy it replaced, then that copy's ancestors), up to 200.
 
-**Only the current copy carries the lock.** The previous copy and every
-dated backup are sealed with `lock: null`. A password change re-wraps the
-same DEK, so an older lock left in an older file would let an old password
-unwrap the key that opens the current copy too. Restoring the previous copy
-or a backup therefore needs the session key, which an unlocked session
-always has.
+**Only the current lock is kept.** The previous copy and every dated
+backup are sealed with `lock: null`. A password change re-wraps the same
+DEK, so an older lock left in an older file would let an old password
+unwrap the key that opens the current copy too. The lock file holds the
+same lock as the copy: a sync writes it, when it differs, before every
+copy that carries a lock (setup, a password change), and brings it up to
+date when it leaves the copy unchanged (a lock adopted from another
+computer); recovery writes it too. Restoring the previous copy or a backup
+from Settings uses the session key, which an unlocked session always has.
+The DEK never rotates, so the lock file and the copy cannot disagree on
+the key, only on the password.
 
 **A password change on another computer.** A sync writes the later of this
 browser's lock and the folder's (by `changedAt`, sealed in the additional
@@ -490,15 +498,27 @@ are never taken back by setup: another tab may already have sealed records
 under them.
 
 **Recovery from the folder.** At first run, "I already have a folder copy"
-asks for the folder and the password used there. The lock beside the copy
-must be a valid v2 lock, the password must unwrap it, and the body must
-open under the unwrapped key with the header as additional data; until all
-three hold, nothing is stored. Then, under `hemoio-setup`, the lock is
-saved, folder storage is chosen and the folder kept, the unlock sweep runs
-(returning set-aside rows the recovered key opens), and the copy is
-restored when this browser holds no readable lab data. Data still in the
-browser is left for the first sync, which asks when it differs from the
-copy. The password stays the same.
+asks for the folder and the password used there. The lock is the current
+copy's when its header can be read, else the lock file's; it must be a
+valid v2 lock and the password must unwrap it. The unwrapped key is then
+tried on the current copy, the previous copy, and the dated backups,
+newest first: the first body that opens under it, with its header as
+additional data, proves the key (AES-GCM authenticates it), and that file
+is the one restored. A lock planted in the copy or as the lock file proves
+nothing unless a body opens under its key; until one does, nothing is
+stored. A current copy that opens but cannot be restored (a newer HemoIO's,
+or one from before LOINC) is reported, never passed over for an older one.
+Then, under `hemoio-setup`, the lock is saved, folder storage is chosen and
+the folder kept, the unlock sweep runs (returning set-aside rows the
+recovered key opens), and the file is restored when this browser holds no
+readable lab data, its revision marked seen, and the lock file written.
+When the file restored was the previous copy or a backup, the current copy
+was missing or damaged: the restored data is written as the new copy
+(with the lock, built on the restored revision, under
+`hemoio-folder-sync`), so syncing goes on, and the user is told which file
+was restored and when it was saved. Data still in the browser is left for
+the first sync, which asks when it differs from the copy. The password
+stays the same.
 
 **Start over** (Settings > Security, after an offer to export and a typed
 confirmation) drops the session key at once, so no sync or decryption

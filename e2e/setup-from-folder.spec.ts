@@ -18,8 +18,10 @@ import {
 } from './steps/folderRestore.steps';
 import { existingDataStep, keepExistingDataAside } from './steps/setup.steps';
 import {
+  LOCK_FILE,
   damageFolderCopy,
   folderCopyText,
+  folderFileText,
   folderRecoveryStep,
   forgetHemoIO,
   openFolderRecovery,
@@ -29,6 +31,7 @@ import {
   storedCredentials,
 } from './steps/setupFromFolder.steps';
 import { setAsideBanner, writeUnreadableRecords } from './steps/unreadableRecords.steps';
+import { PREVIOUS_FOLDER_COPY, skippedSyncNotice } from './steps/folderSync.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
 
 const LATER_RESULT = {
@@ -162,8 +165,42 @@ test.describe('Set up from a folder copy', () => {
     );
   });
 
-  test('a damaged copy stores nothing', async ({ page }) => {
-    // Scenario: A damaged copy stores nothing
+  test('a damaged folder copy is recovered from its previous copy', async ({ page }) => {
+    // Scenario: A damaged folder copy is recovered from its previous copy
+    await folderWithCopy(page);
+    const twoResults = await folderCopyText(page);
+    // The lock is kept beside the copy too
+    expect((JSON.parse((await folderFileText(page, LOCK_FILE))!) as { lock: unknown }).lock).toEqual(
+      (JSON.parse(twoResults) as { lock: unknown }).lock
+    );
+    await seedLabData(page, {
+      labResults: [...SEED_LAB_RESULTS, LATER_RESULT],
+      testValues: SEED_TEST_VALUES,
+    });
+    await expect.poll(() => folderFileText(page, PREVIOUS_FOLDER_COPY)).not.toBeNull();
+    await expect.poll(() => folderCopyText(page)).not.toBe(twoResults);
+    await damageFolderCopy(page);
+    await forgetHemoIO(page, { keepDatabase: false });
+
+    await recoverFromFolder(page, TEST_PASSWORD);
+
+    // The previous copy held the two results from before the third
+    await expectBothResults(page);
+    await expect(page.getByText('Restored from an earlier copy')).toBeVisible();
+    await expect(page.getByText(/HemoIO restored the previous copy saved on/)).toBeVisible();
+    await settledSync(page);
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    // The folder copy opens again, with my lock in it and beside it
+    const lock = JSON.parse((await storedCredentials(page))!) as unknown;
+    expect((JSON.parse(await folderCopyText(page)) as { lock: unknown }).lock).toEqual(lock);
+    expect((JSON.parse((await folderFileText(page, LOCK_FILE))!) as { lock: unknown }).lock).toEqual(lock);
+    await lockApp(page);
+    await unlockApp(page, TEST_PASSWORD);
+    await expectBothResults(page);
+  });
+
+  test('a damaged copy with nothing earlier to restore stores nothing', async ({ page }) => {
+    // Scenario: A damaged copy with nothing earlier to restore stores nothing
     await folderWithCopy(page);
     await damageFolderCopy(page);
     await forgetHemoIO(page, { keepDatabase: false });

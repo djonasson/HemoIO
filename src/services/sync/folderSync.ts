@@ -14,6 +14,7 @@ import { saveFolderSyncState, type FolderSyncState } from '@data/storage/folderS
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
 import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, sealEnvelope } from './folderEnvelope';
+import { keepLockFile, type FolderLockStore } from './folderLockFile';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
 /**
@@ -66,8 +67,8 @@ export interface FolderSide {
   savedAt: Date | null;
 }
 
-/** The folder, as the sync reads and writes it */
-export interface FolderCopyStore {
+/** The folder, as the sync reads and writes it: the copy, the previous copy and the lock file */
+export interface FolderCopyStore extends FolderLockStore {
   /** The folder copy's bytes, or null when there is none */
   loadCurrent(): Promise<ArrayBuffer | null>;
   /** The previous copy's bytes, or null when there is none */
@@ -391,8 +392,27 @@ function sideOf(
  * copy may be the only place that still holds them, and the export leaves
  * them out: it is left as it is, and not even read. Nor is a newer copy
  * loaded over them.
+ *
+ * The lock file beside the copy (folderLockFile.ts) is kept holding the
+ * lock the copy carries: written before any copy with a lock, and brought
+ * up to date when the copy is left unchanged.
  */
 export async function writeFolderCopy(
+  store: FolderCopyStore,
+  data: FolderSyncData,
+  key: CryptoKey,
+  context: FolderWriteContext
+): Promise<FolderSyncOutcome> {
+  const outcome = await syncFolderCopy(store, data, key, context);
+  // The lock file follows the copy's lock, which opened under the session
+  // key, even when the copy is left as it is: a lock adopted from another
+  // computer, or a lock file lost, is put right by the next sync
+  if (outcome.status === 'unchanged' && outcome.folderLock) await keepLockFile(store, outcome.folderLock);
+  return outcome;
+}
+
+/** writeFolderCopy, but for the lock file of a copy left unchanged */
+async function syncFolderCopy(
   store: FolderCopyStore,
   data: FolderSyncData,
   key: CryptoKey,
@@ -429,6 +449,9 @@ export async function writeFolderCopy(
     // old password unwrap the key that opens the current copy too. Sealed
     // before anything is saved: if this fails, both files stay as they are.
     const previous = keep ? await sealEnvelope(new Uint8Array(replaced.plain), key, null) : undefined;
+    // The lock file first: if the copy then fails to save, the file holds
+    // the lock this browser has, and the next sync writes the copy to match
+    if (lock !== null) await keepLockFile(store, lock);
     await store.save(sealed.bytes, previous);
     return { status: 'written', state: { revision: sealed.revision, digest }, folderLock };
   };

@@ -3,6 +3,7 @@ import { encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { loadFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
 import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
+import { readLockFile } from './folderLockFile';
 import {
   FOLDER_SYNC_FILE_VERSION,
   MAX_FOLDER_ANCESTORS,
@@ -25,9 +26,23 @@ const newKey = (): Promise<CryptoKey> =>
 class MemoryStore implements FolderCopyStore {
   copy: ArrayBuffer | null = null;
   previous: ArrayBuffer | null = null;
+  lockFile: ArrayBuffer | null = null;
   saves = 0;
   /** How many saves also wrote the previous copy */
   previousSaves = 0;
+  lockSaves = 0;
+  /** Each write, in order: 'lock' or 'copy' */
+  writes: string[] = [];
+
+  async loadLock(): Promise<ArrayBuffer | null> {
+    return this.lockFile;
+  }
+
+  async saveLock(bytes: ArrayBuffer): Promise<void> {
+    this.lockFile = bytes;
+    this.lockSaves++;
+    this.writes.push('lock');
+  }
 
   async loadCurrent(): Promise<ArrayBuffer | null> {
     return this.copy;
@@ -44,6 +59,7 @@ class MemoryStore implements FolderCopyStore {
     }
     this.copy = data;
     this.saves++;
+    this.writes.push('copy');
   }
 }
 
@@ -269,6 +285,57 @@ describe('writeFolderCopy', () => {
       const second = await readCopy(store, key);
       expect(typeof first.revision).toBe('string');
       expect(second.revision).not.toBe(first.revision);
+    });
+
+    it('keeps the lock file holding the lock the copy carries, written before the copy', async () => {
+      await write(store, withResults(), key, { ...context, lock: dated(EARLIER) });
+      expect(readLockFile(store.lockFile)).toEqual(dated(EARLIER));
+      expect(store.writes).toEqual(['lock', 'copy']);
+
+      await write(store, withResults(), key, { ...context, lock: dated(LATER) });
+
+      // Only the current lock: the earlier one is gone from the folder
+      expect(readLockFile(store.lockFile)).toEqual(dated(LATER));
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+    });
+
+    it('rewrites the lock file only when it holds another lock', async () => {
+      await write(store, withResults(1), key, context);
+      await write(store, withResults(2), key, context);
+
+      expect(store.lockSaves).toBe(1);
+      expect(store.saves).toBe(2);
+    });
+
+    it('an unchanged copy brings a missing or stale lock file up to date', async () => {
+      await write(store, withResults(), key, { ...context, lock: dated(LATER) });
+      store.lockFile = null;
+
+      // Adopted from the folder: this browser's lock is the earlier one
+      const outcome = await write(store, withResults(), key, { ...context, lock: dated(EARLIER) });
+
+      expect(outcome).toMatchObject({ status: 'unchanged', folderLock: dated(LATER) });
+      expect(readLockFile(store.lockFile)).toEqual(dated(LATER));
+      expect(store.saves).toBe(1);
+    });
+
+    it('writes no lock file while there is no lock', async () => {
+      await write(store, withResults(), key, { ...context, lock: null });
+      await write(store, withResults(), key, { ...context, lock: null });
+
+      expect(store.lockFile).toBeNull();
+    });
+
+    it('a lock file that cannot be written leaves the copy as it was', async () => {
+      await write(store, withResults(1), key, { ...context, lock: dated(EARLIER) });
+      const before = store.copy;
+      store.saveLock = async () => {
+        throw new Error('read-only');
+      };
+
+      await expect(write(store, withResults(2), key, { ...context, lock: dated(LATER) })).rejects.toThrow();
+
+      expect(store.copy).toBe(before);
     });
 
     it('returns the lock it found in the folder', async () => {

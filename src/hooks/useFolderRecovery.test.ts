@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { act, renderHook } from '@testing-library/react';
 import { encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
-import { markFolderCopySeen, sealFolderCopy, type FolderUnlockProblem } from '@services/sync';
+import {
+  FOLDER_SYNC_FILE_VERSION,
+  markFolderCopySeen,
+  readFolderCopy,
+  sealFolderCopy,
+  type FolderUnlockProblem,
+} from '@services/sync';
+import { readEnvelopeHeader, sealEnvelope } from '@services/sync/folderEnvelope';
+import { readLockFile } from '@services/sync/folderLockFile';
 import { restoreBackup } from '@services/import';
 import { notifications } from '@mantine/notifications';
 import { useFolderRecovery } from './useFolderRecovery';
@@ -10,11 +18,23 @@ import type { SetupOutcome } from '@contexts/AuthContext';
 
 const selectDirectory = vi.fn<(options?: { persist?: boolean }) => Promise<{ name: string } | null>>();
 const loadCurrent = vi.fn<() => Promise<ArrayBuffer | null>>();
+const loadPrevious = vi.fn<() => Promise<ArrayBuffer | null>>();
+const listBackups = vi.fn<() => Promise<string[]>>();
+const loadBackup = vi.fn<(name: string) => Promise<ArrayBuffer>>();
+const loadLock = vi.fn<() => Promise<ArrayBuffer | null>>();
+const saveLock = vi.fn<(bytes: ArrayBuffer) => Promise<void>>();
+const save = vi.fn<(bytes: ArrayBuffer, previous?: ArrayBuffer) => Promise<void>>();
 const persistDirectory = vi.fn<() => Promise<void>>();
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
     selectDirectory = selectDirectory;
     loadCurrent = loadCurrent;
+    loadPrevious = loadPrevious;
+    listBackups = listBackups;
+    loadBackup = loadBackup;
+    loadLock = loadLock;
+    saveLock = saveLock;
+    save = save;
     persistDirectory = persistDirectory;
   },
 }));
@@ -37,7 +57,8 @@ vi.mock('@contexts', () => ({
 }));
 
 const hasLabData = vi.fn<() => Promise<boolean>>();
-const db = { hasLabData };
+const exportAllData = vi.fn();
+const db = { hasLabData, exportAllData };
 vi.mock('@data/db', () => ({
   createEncryptedDb: vi.fn(() => db),
 }));
@@ -75,6 +96,20 @@ let providerAtSweep: string | null = null;
 let persistedAtSweep = false;
 let COPY: ArrayBuffer;
 let REVISION: string;
+let DATA_KEY: CryptoKey;
+
+/** The copy with its lock intact and its sealed body damaged */
+function damaged(bytes: ArrayBuffer): ArrayBuffer {
+  const file = JSON.parse(new TextDecoder().decode(bytes)) as { sealed: string };
+  return new TextEncoder().encode(JSON.stringify({ ...file, sealed: `${file.sealed[0] === 'A' ? 'B' : 'A'}${file.sealed.slice(1)}` }))
+    .buffer as ArrayBuffer;
+}
+
+/** An earlier copy of the same data, as sync keeps the previous copy and backups: without the lock */
+async function withoutLock(key: CryptoKey, exportedAt = '2026-11-02T09:30:00.000Z'): Promise<ArrayBuffer> {
+  const body = { version: FOLDER_SYNC_FILE_VERSION, exportedAt, revision: 'earlier-rev', ancestors: [], data: FOLDER_DATA };
+  return sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), key, null);
+}
 
 /** The hook, with the folder chosen */
 async function chosen() {
@@ -100,6 +135,7 @@ describe('useFolderRecovery', () => {
     const sealed = await sealFolderCopy(FOLDER_DATA as never, key, credentials);
     COPY = sealed.bytes;
     REVISION = sealed.revision;
+    DATA_KEY = key;
   });
 
   beforeEach(() => {
@@ -107,6 +143,12 @@ describe('useFolderRecovery', () => {
     localStorage.clear();
     selectDirectory.mockResolvedValue({ name: 'Lab Folder' });
     loadCurrent.mockResolvedValue(COPY);
+    loadPrevious.mockResolvedValue(null);
+    listBackups.mockResolvedValue([]);
+    loadLock.mockResolvedValue(null);
+    saveLock.mockResolvedValue(undefined);
+    save.mockResolvedValue(undefined);
+    exportAllData.mockResolvedValue(FOLDER_DATA);
     hasLabData.mockResolvedValue(false);
     persistDirectory.mockResolvedValue(undefined);
     // As AuthContext does: save, onSaved, sweep, prepare with the key, then unlock
@@ -146,6 +188,101 @@ describe('useFolderRecovery', () => {
     expect(vi.mocked(restoreBackup).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(markFolderCopySeen).mock.invocationCallOrder[0]
     );
+  });
+
+  it('keeps the lock file beside the copy, and leaves the copy as it is', async () => {
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(saveLock).toHaveBeenCalledTimes(1);
+    expect(readLockFile(saveLock.mock.calls[0][0])).toEqual(LOCK);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('a damaged copy is recovered from the previous copy: lock stored, data restored, a new copy written and seen', async () => {
+    loadCurrent.mockResolvedValue(damaged(COPY));
+    loadPrevious.mockResolvedValue(await withoutLock(DATA_KEY));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(recoverFromFolder).toHaveBeenCalledWith(LOCK, expect.any(Object), expect.any(Function), expect.any(Function));
+    const key = recoverFromFolder.mock.calls[0][1];
+    expect(restoreBackup).toHaveBeenCalledWith(db, expect.objectContaining({ labResults: [expect.objectContaining({ labName: 'Quest Diagnostics' })] }));
+    // The damaged copy is replaced by this browser's data, carrying the lock, built on the copy restored
+    expect(save).toHaveBeenCalledTimes(1);
+    const [written, previous] = save.mock.calls[0];
+    expect(previous).toBeUndefined();
+    expect(readEnvelopeHeader(written)).toMatchObject({ lock: LOCK });
+    const reading = await readFolderCopy(written, key);
+    expect(reading).toMatchObject({ status: 'readable' });
+    const revision = reading.status === 'readable' ? reading.revision : null;
+    expect(revision).not.toBe('earlier-rev');
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, key, revision);
+    expect(readLockFile(saveLock.mock.calls[0][0])).toEqual(LOCK);
+    expect(vi.mocked(saveLock).mock.invocationCallOrder[0]).toBeLessThan(save.mock.invocationCallOrder[0]);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Restored from an earlier copy',
+        message: expect.stringMatching(/previous copy saved on Nov 2, 2026.*It is now your folder copy\./),
+      })
+    );
+  });
+
+  it('a missing copy is recovered from a backup with the lock file, and the notice names the backup', async () => {
+    loadCurrent.mockResolvedValue(null);
+    loadLock.mockResolvedValue(new TextEncoder().encode(JSON.stringify({ format: 'hemoio-folder-lock', version: 1, lock: LOCK })).buffer as ArrayBuffer);
+    listBackups.mockResolvedValue(['hemoio-backup-20261103T090000000Z.encrypted']);
+    loadBackup.mockResolvedValue(await withoutLock(DATA_KEY, '2026-11-03T09:00:00.000Z'));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(recoverFromFolder).toHaveBeenCalledWith(LOCK, expect.any(Object), expect.any(Function), expect.any(Function));
+    expect(restoreBackup).toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/backup saved on Nov 3, 2026/) })
+    );
+  });
+
+  it('a planted lock file whose key opens nothing stores nothing', async () => {
+    const planted = await createCredentialsV2(PASSWORD, 1000);
+    loadCurrent.mockResolvedValue(null);
+    loadLock.mockResolvedValue(
+      new TextEncoder().encode(JSON.stringify({ format: 'hemoio-folder-lock', version: 1, lock: planted.credentials })).buffer as ArrayBuffer
+    );
+    listBackups.mockResolvedValue(['hemoio-backup-20261103T090000000Z.encrypted']);
+    loadBackup.mockResolvedValue(await withoutLock(DATA_KEY));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBe('cannot-decrypt');
+
+    expect(recoverFromFolder).not.toHaveBeenCalled();
+    expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
+    expect(localStorage.getItem('hemoio_storage_provider')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+    expect(saveLock).not.toHaveBeenCalled();
+  });
+
+  it('a failed write of the new copy still leaves the data restored and seen as the copy restored', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    loadCurrent.mockResolvedValue(damaged(COPY));
+    loadPrevious.mockResolvedValue(await withoutLock(DATA_KEY));
+    save.mockRejectedValueOnce(new Error('/home/someone/Lab Folder is read-only'));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(restoreBackup).toHaveBeenCalled();
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev');
+    expect(notifications.show).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Folder copy not restored' }));
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.not.stringContaining('It is now your folder copy') })
+    );
+    expect(JSON.stringify(error.mock.calls)).not.toContain('someone');
+    error.mockRestore();
   });
 
   it('chooses folder storage and keeps the folder before the sweep, once the copy has opened', async () => {

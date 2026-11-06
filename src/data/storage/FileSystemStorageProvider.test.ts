@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   FOLDER_BACKUPS_DIR_NAME,
   FOLDER_DATA_FILE_NAME,
+  FOLDER_LOCK_FILE_NAME,
   FOLDER_PREVIOUS_FILE_NAME,
   FileSystemStorageProvider,
 } from './FileSystemStorageProvider';
@@ -334,6 +335,19 @@ describe('FileSystemStorageProvider', () => {
       await expect((await providerFor(folder)).save(bytes(1), bytes(9, 9))).rejects.toThrow();
 
       expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([9, 9]);
+    });
+
+    it('reads and writes the lock file beside the copy', async () => {
+      expect(FOLDER_LOCK_FILE_NAME).toBe('hemoio-lock.json');
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9)]]));
+      const store = await providerFor(folder);
+      expect(await store.loadLock()).toBeNull();
+
+      await store.saveLock(bytes(4, 5));
+
+      expect(read((await store.loadLock())!)).toEqual([4, 5]);
+      expect(read(folder.files.get(FOLDER_LOCK_FILE_NAME))).toEqual([4, 5]);
+      expect(read(folder.files.get(FOLDER_DATA_FILE_NAME))).toEqual([9]);
     });
 
     it('reads nothing without folder access', async () => {

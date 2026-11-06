@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { openTestDb } from '@data/db/testDb';
+import { createCredentialsV2 } from '@data/encryption/keyWrapping';
 import { loadFolderSyncState } from '@data/storage/folderSyncState';
 import { restoreBackup, restoreBackupIfUnchanged, type ParsedBackupData } from '@services/import';
 import { exportDigest } from './folderSync';
@@ -108,8 +109,14 @@ describe('loadNewerFolderCopy', () => {
 describe('runFolderSync', () => {
   beforeEach(() => localStorage.clear());
 
-  function folder(): FolderCopyStore & { save: ReturnType<typeof vi.fn> } {
-    return { loadCurrent: async () => null, loadPrevious: async () => null, save: vi.fn(async () => undefined) };
+  function folder(): FolderCopyStore & { save: ReturnType<typeof vi.fn>; saveLock: ReturnType<typeof vi.fn> } {
+    return {
+      loadCurrent: async () => null,
+      loadPrevious: async () => null,
+      loadLock: async () => null,
+      save: vi.fn(async () => undefined),
+      saveLock: vi.fn(async () => undefined),
+    };
   }
 
   it('uses up the choice to replace a copy only once past the hold check', async () => {
@@ -134,6 +141,22 @@ describe('runFolderSync', () => {
     });
 
     expect(await runFolderSync({ db, key }, store, { lock: null, takeReplaces, isEnabled: () => enabled })).toBeNull();
+    expect(store.save).not.toHaveBeenCalled();
+  });
+
+  it('writes neither the lock file nor the copy once the hold has begun', async () => {
+    const { db, key } = await openTestDb();
+    await db.addLabResult(result('Here'));
+    const { credentials: lock } = await createCredentialsV2('Passw0rd!', 1000);
+    const store = folder();
+    let enabled = true;
+    const takeReplaces = vi.fn(() => {
+      enabled = false;
+      return undefined;
+    });
+
+    expect(await runFolderSync({ db, key }, store, { lock, takeReplaces, isEnabled: () => enabled })).toBeNull();
+    expect(store.saveLock).not.toHaveBeenCalled();
     expect(store.save).not.toHaveBeenCalled();
   });
 });

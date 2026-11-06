@@ -66,7 +66,9 @@ export async function runFolderSync(
   const store: FolderCopyStore = {
     loadCurrent: () => folder.loadCurrent(),
     loadPrevious: () => folder.loadPrevious(),
+    loadLock: () => folder.loadLock(),
     save: (bytes, previous) => (isEnabled() ? folder.save(bytes, previous) : Promise.reject(new SyncHeld())),
+    saveLock: (bytes) => (isEnabled() ? folder.saveLock(bytes) : Promise.reject(new SyncHeld())),
   };
   const replaces = takeReplaces();
   try {

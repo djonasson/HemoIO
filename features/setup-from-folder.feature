@@ -3,9 +3,13 @@ Feature: Set Up From a Folder Copy
   I want to set HemoIO up from that folder with the password I used
   So that I get my data back after this browser forgot HemoIO, or on another computer
 
-  The folder copy carries its password lock saved in it: the folder and the
-  password are all HemoIO needs to open it. Folders need the File System
-  Access API, so this is offered only where the browser supports it.
+  The folder copy carries its password lock saved in it, and the same lock
+  is kept beside it in a lock file: the folder and the password are all
+  HemoIO needs to open it. When the folder copy is missing or damaged, the
+  previous copy or the newest dated backup that opens is restored instead.
+  A lock opens nothing by itself: HemoIO trusts it only once a copy in the
+  folder opens with it. Folders need the File System Access API, so this is
+  offered only where the browser supports it.
 
   Background:
     Given the browser supports the File System Access API
@@ -54,8 +58,38 @@ Feature: Set Up From a Folder Copy
     Then I should be told that only the browser that saved it can restore it
     And nothing should have been stored
 
-  Scenario: A damaged copy stores nothing
+  Scenario: A damaged folder copy is recovered from its previous copy
+    Given my folder keeps my password lock beside the copy
+    And I added a third lab result, so the folder's previous copy holds the first two
+    And the folder copy is then damaged
+    And this browser has forgotten HemoIO
+    When I set HemoIO up from my folder copy with my password
+    Then HemoIO should open with the previous copy's two lab results on the timeline
+    And I should be told the previous copy was restored, and when it was saved
+    And the folder copy should open again, with my password lock in it and beside it
+    And syncing should go on without a warning
+    And the password I used should unlock HemoIO
+
+  # Unit-tested (unlockFolderCopy, useFolderRecovery): a folder holding dated
+  # backups but no current or previous copy cannot be set up on cue
+  Scenario: A missing folder copy is recovered from the newest backup, with the lock file
+    Given my folder holds dated backups and the lock file, but no folder copy
+    When I set HemoIO up from my folder with my password
+    Then HemoIO should open with the newest backup that opens with my password
+    And I should be told which backup was restored, and when it was saved
+    And a new folder copy should be written from it
+
+  # Unit-tested (unlockFolderCopy, useFolderRecovery): a planted lock file is
+  # a file anyone with access to the folder could write
+  Scenario: A lock file that opens no copy is refused
+    Given my folder holds a lock file that someone else made, and no copy opens with its key
+    When I set HemoIO up from my folder with my password
+    Then I should be told the password doesn't open the copy, or the copy can't be opened
+    And nothing should have been stored
+
+  Scenario: A damaged copy with nothing earlier to restore stores nothing
     Given I am restoring from a folder whose copy is damaged
+    And the folder holds no previous copy and no dated backups
     When I enter my password and choose "Unlock and restore"
     Then I should be told the copy can't be opened, or the file is damaged
     And nothing should have been stored

@@ -29,6 +29,13 @@ export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
 export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
 
 /**
+ * The current password lock, beside the copy, as plain JSON (see
+ * `services/sync/folderLockFile.ts`): rewritten whenever the copy's lock is,
+ * so recovery can unwrap the data key when the copy itself is gone or damaged
+ */
+export const FOLDER_LOCK_FILE_NAME = 'hemoio-lock.json';
+
+/**
  * The folder's dated backups, in a folder of their own beside the copy: the
  * side of a conflict the user did not choose, and this computer's data kept
  * before a newer copy was loaded, sealed like the copy but without the lock
@@ -116,6 +123,16 @@ export class FileSystemStorageProvider implements StorageProvider {
   /** The previous copy's bytes, or null when the folder holds none */
   async loadPrevious(): Promise<ArrayBuffer | null> {
     return this.readFile(await this.getGrantedHandle(), FOLDER_PREVIOUS_FILE_NAME);
+  }
+
+  /** The lock file's bytes, or null when the folder holds none */
+  async loadLock(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_LOCK_FILE_NAME);
+  }
+
+  /** Write the lock file */
+  async saveLock(bytes: ArrayBuffer): Promise<void> {
+    await this.writeFile(await this.getGrantedHandle(), FOLDER_LOCK_FILE_NAME, bytes);
   }
 
   /** The names of the files in the backups folder; none when there is no such folder */

@@ -2,8 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { decrypt, encrypt } from '@data/encryption';
 import { createCredentialsV2 } from '@data/encryption/keyWrapping';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
-import { assessFolderCopy, readFolderCopy, unlockFolderCopy, type FolderCopySource } from './folderCopy';
+import {
+  assessFolderCopy,
+  readFolderCopy,
+  unlockFolderCopy,
+  type FolderCopySource,
+  type FolderRecoverySource,
+} from './folderCopy';
 import { sealEnvelope } from './folderEnvelope';
+import { FOLDER_LOCK_FORMAT } from './folderLockFile';
 import { FOLDER_SYNC_FILE_VERSION as SYNC_FILE_VERSION } from './folderSync';
 
 async function newKey(): Promise<CryptoKey> {
@@ -284,6 +291,32 @@ describe('assessFolderCopy', () => {
   });
 });
 
+interface FolderFiles {
+  current?: ArrayBuffer | null;
+  previous?: ArrayBuffer | null;
+  backups?: Record<string, ArrayBuffer>;
+  lockFile?: ArrayBuffer | null;
+}
+
+/** A folder as the storage provider reads it, holding these files */
+function folderOf({ current = null, previous = null, backups = {}, lockFile = null }: FolderFiles): FolderRecoverySource {
+  return {
+    loadCurrent: async () => current,
+    loadPrevious: async () => previous,
+    listBackups: async () => Object.keys(backups),
+    loadBackup: async (name) => {
+      if (!(name in backups)) throw new Error('No such backup');
+      return backups[name];
+    },
+    loadLock: async () => lockFile,
+  };
+}
+
+/** A folder holding only the current copy, or nothing */
+function onlyCurrent(current: ArrayBuffer | null): FolderRecoverySource {
+  return folderOf({ current });
+}
+
 describe('unlockFolderCopy', () => {
   const PASSWORD = 'Folder-Passw0rd!';
 
@@ -301,12 +334,13 @@ describe('unlockFolderCopy', () => {
   it('unlocks a copy with the password that made its lock', async () => {
     const { bytes, credentials, key } = await lockedCopy();
 
-    const result = await unlockFolderCopy(bytes, PASSWORD);
+    const result = await unlockFolderCopy(onlyCurrent(bytes), PASSWORD);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.lock).toEqual(credentials);
     expect(result.revision).toBe('r9');
+    expect(result.from).toEqual({ file: 'current' });
     expect(result.copy.labResults).toHaveLength(1);
     expect(result.key.extractable).toBe(false);
     // The key the copy's records were sealed with
@@ -317,19 +351,19 @@ describe('unlockFolderCopy', () => {
   it('a wrong password is wrong-password', async () => {
     const { bytes } = await lockedCopy();
 
-    expect(await unlockFolderCopy(bytes, 'Not-The-Passw0rd!')).toEqual({ ok: false, problem: 'wrong-password' });
+    expect(await unlockFolderCopy(onlyCurrent(bytes), 'Not-The-Passw0rd!')).toEqual({ ok: false, problem: 'wrong-password' });
   });
 
   it('a legacy copy is no-lock', async () => {
     const legacy = await sealed(copy(), await newKey());
     const lockless = await sealEnvelope(new TextEncoder().encode(JSON.stringify(copy())), await newKey(), null);
 
-    expect(await unlockFolderCopy(legacy, PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
-    expect(await unlockFolderCopy(lockless, PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
+    expect(await unlockFolderCopy(onlyCurrent(legacy), PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
+    expect(await unlockFolderCopy(onlyCurrent(lockless), PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
   });
 
   it('no bytes is no-copy', async () => {
-    expect(await unlockFolderCopy(null, PASSWORD)).toEqual({ ok: false, problem: 'no-copy' });
+    expect(await unlockFolderCopy(onlyCurrent(null), PASSWORD)).toEqual({ ok: false, problem: 'no-copy' });
   });
 
   it('a damaged body under a valid lock is cannot-decrypt', async () => {
@@ -340,7 +374,7 @@ describe('unlockFolderCopy', () => {
     const swapped = { ...file, sealed: btoa(String.fromCharCode(...new Uint8Array(other))) };
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(swapped)).buffer as ArrayBuffer, PASSWORD);
+    const result = await unlockFolderCopy(onlyCurrent(new TextEncoder().encode(JSON.stringify(swapped)).buffer as ArrayBuffer), PASSWORD);
 
     expect(result).toEqual({ ok: false, problem: 'cannot-decrypt' });
     expect(error).not.toHaveBeenCalled();
@@ -353,7 +387,7 @@ describe('unlockFolderCopy', () => {
     const planted = { ...file, lock: { ...file.lock, iterations: 1e10 } };
     const unwrap = vi.spyOn(crypto.subtle, 'deriveKey');
 
-    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(planted)).buffer as ArrayBuffer, PASSWORD);
+    const result = await unlockFolderCopy(onlyCurrent(new TextEncoder().encode(JSON.stringify(planted)).buffer as ArrayBuffer), PASSWORD);
 
     expect(result).toEqual({ ok: false, problem: 'not-a-copy' });
     expect(unwrap).not.toHaveBeenCalled();
@@ -365,8 +399,142 @@ describe('unlockFolderCopy', () => {
     const file = JSON.parse(new TextDecoder().decode(bytes)) as { lock: object };
     const badLock = { ...file, lock: { ...file.lock, version: 3 } };
 
-    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(badLock)).buffer as ArrayBuffer, PASSWORD);
+    const result = await unlockFolderCopy(onlyCurrent(new TextEncoder().encode(JSON.stringify(badLock)).buffer as ArrayBuffer), PASSWORD);
 
     expect(result).toEqual({ ok: false, problem: 'not-a-copy' });
+  });
+});
+
+describe('unlockFolderCopy, from an earlier copy', () => {
+  const PASSWORD = 'Folder-Passw0rd!';
+  const OLDER_BACKUP = 'hemoio-backup-20261101T090000000Z.encrypted';
+  const NEWER_BACKUP = 'hemoio-autobackup-20261104T090000000Z.encrypted';
+  const NEWEST_BACKUP = 'hemoio-backup-20261105T090000000Z.encrypted';
+
+  /** A body sealed as sync writes it: with the lock for the current copy, without for the others */
+  function seal(key: CryptoKey, lock: object | null, revision: string, data: unknown = STORED): Promise<ArrayBuffer> {
+    const body = { version: SYNC_FILE_VERSION, exportedAt: EXPORTED_AT, revision, data };
+    return sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), key, lock as never);
+  }
+
+  /** The current copy with its lock intact and its sealed body damaged */
+  function damaged(bytes: ArrayBuffer): ArrayBuffer {
+    const file = JSON.parse(new TextDecoder().decode(bytes)) as { sealed: string };
+    const i = Math.floor(file.sealed.length / 2);
+    file.sealed = `${file.sealed.slice(0, i)}${file.sealed[i] === 'A' ? 'B' : 'A'}${file.sealed.slice(i + 1)}`;
+    return new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
+  }
+
+  function lockFile(lock: object): ArrayBuffer {
+    return new TextEncoder().encode(JSON.stringify({ format: FOLDER_LOCK_FORMAT, version: 1, lock }))
+      .buffer as ArrayBuffer;
+  }
+
+  it('recovers from the previous copy when the current copy is damaged, with the lock it carries', async () => {
+    const { credentials, key } = await createCredentialsV2(PASSWORD, 1000);
+    const current = damaged(await seal(key, credentials, 'r2'));
+    const previous = await seal(key, null, 'r1');
+
+    const result = await unlockFolderCopy(folderOf({ current, previous }), PASSWORD);
+
+    expect(result).toMatchObject({ ok: true, lock: credentials, revision: 'r1', from: { file: 'previous' } });
+    if (result.ok) expect(result.copy.labResults).toHaveLength(1);
+  });
+
+  it('recovers from the newest backup that opens when the current copy is missing, with the lock file', async () => {
+    const { credentials, key } = await createCredentialsV2(PASSWORD, 1000);
+    const backups = {
+      [OLDER_BACKUP]: await seal(key, null, 'r1'),
+      [NEWEST_BACKUP]: new Uint8Array([1, 2, 3]).buffer as ArrayBuffer,
+      [NEWER_BACKUP]: await seal(key, null, 'r3'),
+      'notes.txt': await seal(key, null, 'r9'),
+    };
+
+    const result = await unlockFolderCopy(folderOf({ backups, lockFile: lockFile(credentials) }), PASSWORD);
+
+    expect(result).toMatchObject({
+      ok: true,
+      lock: credentials,
+      revision: 'r3',
+      from: { file: 'backup', name: NEWER_BACKUP },
+    });
+  });
+
+  it('recovers with the lock file when the current header is damaged', async () => {
+    const { credentials, key } = await createCredentialsV2(PASSWORD, 1000);
+    const current = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1,').buffer as ArrayBuffer;
+
+    const result = await unlockFolderCopy(
+      folderOf({ current, previous: await seal(key, null, 'r1'), lockFile: lockFile(credentials) }),
+      PASSWORD
+    );
+
+    expect(result).toMatchObject({ ok: true, lock: credentials, from: { file: 'previous' } });
+  });
+
+  it('a planted lock file whose key opens nothing stores nothing: wrong-password or cannot-decrypt', async () => {
+    const real = await createCredentialsV2(PASSWORD, 1000);
+    const backups = { [OLDER_BACKUP]: await seal(real.key, null, 'r1') };
+    const plantedSamePassword = await createCredentialsV2(PASSWORD, 1000);
+    const plantedOtherPassword = await createCredentialsV2('Planted-Passw0rd!', 1000);
+
+    expect(
+      await unlockFolderCopy(folderOf({ backups, lockFile: lockFile(plantedSamePassword.credentials) }), PASSWORD)
+    ).toEqual({ ok: false, problem: 'cannot-decrypt' });
+    expect(
+      await unlockFolderCopy(folderOf({ backups, lockFile: lockFile(plantedOtherPassword.credentials) }), PASSWORD)
+    ).toEqual({ ok: false, problem: 'wrong-password' });
+  });
+
+  it("a readable header's lock is the one tried: a lock file planted beside it is never used", async () => {
+    const real = await createCredentialsV2(PASSWORD, 1000);
+    const planted = await createCredentialsV2(PASSWORD, 1000);
+    const current = damaged(await seal(real.key, real.credentials, 'r2'));
+    // The planted key opens a planted previous copy, but the header's lock is tried, not the file's
+    const previous = await seal(planted.key, null, 'planted');
+
+    const result = await unlockFolderCopy(
+      folderOf({ current, previous, lockFile: lockFile(planted.credentials) }),
+      PASSWORD
+    );
+
+    expect(result).toEqual({ ok: false, problem: 'cannot-decrypt' });
+  });
+
+  it('a missing current copy and no lock file is no-copy', async () => {
+    const { key } = await createCredentialsV2(PASSWORD, 1000);
+
+    expect(await unlockFolderCopy(folderOf({ previous: await seal(key, null, 'r1') }), PASSWORD)).toEqual({
+      ok: false,
+      problem: 'no-copy',
+    });
+  });
+
+  it('a current copy from a newer HemoIO is told as such, never replaced by an older one', async () => {
+    const { credentials, key } = await createCredentialsV2(PASSWORD, 1000);
+    const body = { version: SYNC_FILE_VERSION + 1, exportedAt: EXPORTED_AT, revision: 'r2', data: STORED };
+    const current = await sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), key, credentials);
+
+    const result = await unlockFolderCopy(folderOf({ current, previous: await seal(key, null, 'r1') }), PASSWORD);
+
+    expect(result).toEqual({ ok: false, problem: 'newer-version' });
+  });
+
+  it('skips an earlier copy that cannot be loaded, and tells why nothing opened', async () => {
+    const { credentials, key } = await createCredentialsV2(PASSWORD, 1000);
+    const current = damaged(await seal(key, credentials, 'r2'));
+    const source = folderOf({ current, backups: { [OLDER_BACKUP]: await seal(key, null, 'r1') } });
+    source.loadPrevious = async () => {
+      throw new Error('unreadable');
+    };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(await unlockFolderCopy(source, PASSWORD)).toMatchObject({ ok: true, from: { file: 'backup' } });
+    source.loadBackup = async () => {
+      throw new Error('unreadable');
+    };
+    expect(await unlockFolderCopy(source, PASSWORD)).toEqual({ ok: false, problem: 'cannot-decrypt' });
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 });
