@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetupWizard } from './SetupWizard';
 import { AuthProvider } from '@contexts';
 import { AuthContext, type AuthContextValue } from '@contexts/AuthContext';
+import { notifications } from '@mantine/notifications';
 import { encryptString } from '@data/encryption';
+import type { SetupOutcome } from '@contexts/AuthContext';
 
 // Mock the encryption module
 vi.mock('@data/encryption', async (importOriginal) => ({
@@ -22,6 +24,15 @@ vi.mock('@data/db', async (importOriginal) => ({
   }),
 }));
 
+// What the browser holds before setup: counted in useExistingBrowserData.test.ts
+const existing = vi.hoisted(() => ({
+  rows: 0 as number | null,
+  clear: vi.fn<() => Promise<void>>(),
+}));
+vi.mock('@hooks/useExistingBrowserData', () => ({
+  useExistingBrowserData: () => ({ rows: existing.rows, clear: existing.clear }),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">
@@ -36,6 +47,8 @@ describe('SetupWizard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    existing.rows = 0;
+    existing.clear.mockResolvedValue(undefined);
   });
 
   describe('Form Structure', () => {
@@ -183,6 +196,7 @@ describe('SetupWizard', () => {
         ]);
         await prepare?.(key);
         storedBeforeUnlock = localStorage.getItem('hemoio_ai_api_key_encrypted') !== null;
+        return 'created' as const;
       }),
     } satisfies AuthContextValue;
     render(
@@ -230,4 +244,122 @@ describe('SetupWizard', () => {
     );
     expect(localStorage.getItem('hemoio_ai_api_key_encrypted')).toBe('encrypted');
   }, 15000);
+  describe('submitting', () => {
+    function renderWithAuth(setupPassword: AuthContextValue['setupPassword']) {
+      const auth = {
+        status: 'needs_setup',
+        encryptionKey: null,
+        unlock: vi.fn(),
+        lock: vi.fn(),
+        changePassword: vi.fn(),
+        isSetupComplete: () => false,
+        setupPassword,
+      } satisfies AuthContextValue;
+      render(
+        <MantineProvider env="test">
+          <AuthContext.Provider value={auth}>
+            <SetupWizard onComplete={mockOnComplete} />
+          </AuthContext.Provider>
+        </MantineProvider>
+      );
+    }
+
+    async function goToCompletion() {
+      const user = userEvent.setup();
+      await user.type(screen.getByPlaceholderText('Enter your password'), 'Str0ng-Passw0rd!');
+      await user.type(screen.getByPlaceholderText('Confirm your password'), 'Str0ng-Passw0rd!');
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await user.click(screen.getByRole('button', { name: 'Go to next step' }));
+      await screen.findByRole('heading', { name: "You're all set!" });
+    }
+
+    it('a second submit while the first runs is ignored', async () => {
+      let finish!: (outcome: SetupOutcome) => void;
+      const setupPassword = vi.fn(
+        () => new Promise<SetupOutcome>((resolve) => (finish = resolve))
+      );
+      renderWithAuth(setupPassword);
+      await goToCompletion();
+
+      // Both before React re-renders the loading button
+      const form = document.querySelector('form')!;
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      finish('created');
+
+      await waitFor(() => expect(mockOnComplete).toHaveBeenCalledTimes(1));
+      expect(setupPassword).toHaveBeenCalledTimes(1);
+    }, 15000);
+
+    it('tells me to unlock when another tab set up with another password', async () => {
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      renderWithAuth(vi.fn().mockResolvedValue('existing-locked'));
+      await goToCompletion();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Complete setup and get started' }));
+
+      await waitFor(() =>
+        expect(show).toHaveBeenCalledWith(
+          expect.objectContaining({
+            message: 'HemoIO was set up in another tab. Unlock with that password.',
+            autoClose: false,
+          })
+        )
+      );
+      expect(mockOnComplete).not.toHaveBeenCalled();
+      show.mockRestore();
+    }, 15000);
+  });
+
+  describe('existing browser data', () => {
+    const TITLE = 'This browser already holds HemoIO data';
+
+    it('shows the existing-data step when rows exist', async () => {
+      existing.rows = 3;
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      expect(screen.getByRole('region', { name: TITLE })).toBeInTheDocument();
+      // Before anything else
+      expect(screen.queryByPlaceholderText('Enter your password')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Keep it aside and set up anew' }));
+
+      expect(screen.queryByRole('region', { name: TITLE })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
+      expect(existing.clear).not.toHaveBeenCalled();
+    });
+
+    it('starts on the password step when the browser holds nothing', () => {
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      expect(screen.queryByRole('region', { name: TITLE })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
+    });
+
+    it('shows neither while the browser data is being counted', () => {
+      existing.rows = null;
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      expect(screen.queryByRole('region', { name: TITLE })).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Enter your password')).not.toBeInTheDocument();
+    });
+
+    it('clearing asks first', async () => {
+      existing.rows = 3;
+      existing.clear.mockImplementation(async () => {
+        existing.rows = 0;
+      });
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      await user.click(screen.getByRole('button', { name: 'Clear it and set up anew…' }));
+      expect(existing.clear).not.toHaveBeenCalled();
+      await user.click(await screen.findByRole('button', { name: 'Clear and set up anew' }));
+
+      expect(existing.clear).toHaveBeenCalledTimes(1);
+      expect(await screen.findByPlaceholderText('Enter your password')).toBeInTheDocument();
+    });
+  });
 });

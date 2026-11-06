@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import { completeSetup, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { createBackupData, seedLabData, SEED_TEST_VALUES, writeBackupFile } from './steps/data.steps';
+import { keepExistingDataAside } from './steps/setup.steps';
 import { removeTempFile } from './steps/tempFiles';
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
@@ -130,6 +131,7 @@ test.describe('Unreadable records: coming back', () => {
     // Set up again with a new key: the first setup's records go aside
     await forgetCredentials(page);
     await page.reload();
+    await keepExistingDataAside(page);
     await completeSetup(page);
     expect((await setAsideTables(page)).filter((table) => table !== 'userPreferences')).toHaveLength(5);
     await goToTimeline(page);

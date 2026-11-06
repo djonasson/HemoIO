@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   Container,
   Stepper,
@@ -10,8 +10,11 @@ import {
   Stack,
   ThemeIcon,
   Alert,
+  Center,
+  Loader,
   useMatches,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   IconLock,
   IconDatabase,
@@ -21,11 +24,13 @@ import {
   IconArrowRight,
   IconRocket,
 } from '@tabler/icons-react';
-import { PasswordStep} from './PasswordStep';
+import { PasswordStep } from './PasswordStep';
+import { ExistingDataStep } from './ExistingDataStep';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
 import { useFormKeyboardSubmit } from '@hooks';
+import { useExistingBrowserData } from '@hooks/useExistingBrowserData';
 import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
 import type { StorageProviderType, AIProviderType } from '@/types';
 import { isAIConfigured } from './aiConfigUtils';
@@ -40,6 +45,9 @@ interface SetupWizardProps {
 
 export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const { setupPassword } = useAuth();
+  const existingData = useExistingBrowserData();
+  // Kept aside or cleared: the wizard goes on to its first step
+  const [existingDataSettled, setExistingDataSettled] = useState(false);
 
   // Responsive stepper orientation - vertical on small screens
   const stepperOrientation = useMatches({
@@ -49,6 +57,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
 
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Guards against a second submit before React re-renders the loading button
+  const submittingRef = useRef(false);
 
   // Step 1: Password
   const [password, setPassword] = useState('');
@@ -98,11 +108,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   }, [activeStep]);
 
   const handleComplete = useCallback(async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       // Stored before the app unlocks, so the providers that load at unlock
       // (API key, AI settings) start with them
-      await setupPassword(password, async (encryptionKey) => {
+      const outcome = await setupPassword(password, async (encryptionKey) => {
         localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
 
         if (aiProvider) {
@@ -119,11 +131,23 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
         }
       });
 
+      if (outcome === 'existing-locked') {
+        // The login screen shows in place of the wizard
+        notifications.show({
+          title: 'Already set up',
+          message: 'HemoIO was set up in another tab. Unlock with that password.',
+          color: 'yellow',
+          autoClose: false,
+        });
+        return;
+      }
       onComplete();
-    } catch (error) {
-      console.error('Setup failed:', error);
+    } catch {
+      // Fixed text: the error could name the credentials
+      console.error('Setup failed');
       // TODO: Show error to user
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
@@ -186,17 +210,54 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     }
   };
 
+  const welcome = (
+    <div>
+      <Title order={1} ta="center">
+        Welcome to HemoIO
+      </Title>
+      <Text c="dimmed" ta="center" mt="sm">
+        Let's set up your secure lab results tracker
+      </Text>
+    </div>
+  );
+
+  // Never set up over stored data without saying so: counted first
+  if (existingData.rows === null) {
+    return (
+      <Container size="sm" py="xl">
+        <Stack gap="xl">
+          {welcome}
+          <Center>
+            <Loader type="dots" aria-label="Checking this browser for HemoIO data" />
+          </Center>
+        </Stack>
+      </Container>
+    );
+  }
+
+  if (existingData.rows > 0 && !existingDataSettled) {
+    return (
+      <Container size="sm" py="xl">
+        <Stack gap="xl">
+          {welcome}
+          <Paper withBorder shadow="sm" p="xl" radius="md">
+            <ExistingDataStep
+              onKeep={() => setExistingDataSettled(true)}
+              onClear={async () => {
+                await existingData.clear();
+                setExistingDataSettled(true);
+              }}
+            />
+          </Paper>
+        </Stack>
+      </Container>
+    );
+  }
+
   return (
     <Container size="sm" py="xl">
       <Stack gap="xl">
-        <div>
-          <Title order={1} ta="center">
-            Welcome to HemoIO
-          </Title>
-          <Text c="dimmed" ta="center" mt="sm">
-            Let's set up your secure lab results tracker
-          </Text>
-        </div>
+        {welcome}
 
         <Stepper
           active={activeStep}

@@ -20,4 +20,5 @@ export { usePreferences, type PreferencesState, type PersonalTargetRange } from 
 export { useSaveImport } from './useSaveImport';
 export { useFolderRestore, type UseFolderRestoreResult, type FolderRestorePrompt, type FolderRestoreDecision } from './useFolderRestore';
 export { useSetAsideRecords, type UseSetAsideRecordsResult, type SealedDownload } from './useSetAsideRecords';
+export { useExistingBrowserData, type UseExistingBrowserDataResult } from './useExistingBrowserData';
 export { useNavigation, type UseNavigationResult, type AppView, type ViewFocus, type Destination } from './useNavigation';

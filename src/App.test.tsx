@@ -19,6 +19,11 @@ vi.mock('./services/analysis', () => ({
   analyzeLabReport: vi.fn(),
 }));
 
+// jsdom has no IndexedDB: the browser holds no earlier data
+vi.mock('@hooks/useExistingBrowserData', () => ({
+  useExistingBrowserData: () => ({ rows: 0, clear: vi.fn() }),
+}));
+
 import App from './App';
 
 // Mock localStorage

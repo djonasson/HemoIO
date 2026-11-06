@@ -5,7 +5,7 @@
  * password changes. The only reader and writer of the stored credentials.
  */
 
-import { createContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import { verifyPassword, getEncryptionKey } from '@data/encryption';
 import {
   createCredentialsV2,
@@ -16,10 +16,20 @@ import {
   unlockV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
+import { withWebLock } from '@/utils/withWebLock';
 
 const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
 
+/** Held while a tab sets up, so two tabs never create two data keys */
+const SETUP_LOCK = 'hemoio-setup';
+
 export type AuthStatus = 'loading' | 'needs_setup' | 'locked' | 'unlocked';
+
+/**
+ * How a setup ended: new credentials, or those another tab saved first,
+ * which this password opened or did not
+ */
+export type SetupOutcome = 'created' | 'unlocked-existing' | 'existing-locked';
 
 export type ChangePasswordResult =
   { ok: true } | { ok: false; reason: 'wrong_password' | 'same_password' | 'failed' };
@@ -31,9 +41,14 @@ export interface AuthContextValue {
   lock: () => void;
   /**
    * Creates credentials, runs `prepare` with the session key (to store what
-   * setup collected, encrypted), then unlocks: the app starts with it all
+   * setup collected, encrypted), then unlocks: the app starts with it all.
+   * If another tab saved credentials first, tries this password on those
+   * instead and never runs `prepare`: that tab's setup stored its choices.
    */
-  setupPassword: (password: string, prepare?: (key: CryptoKey) => Promise<void>) => Promise<void>;
+  setupPassword: (
+    password: string,
+    prepare?: (key: CryptoKey) => Promise<void>
+  ) => Promise<SetupOutcome>;
   /** Re-wraps the data key under a new password; never throws */
   changePassword: (current: string, next: string) => Promise<ChangePasswordResult>;
   isSetupComplete: () => boolean;
@@ -106,29 +121,9 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     return credentials !== null || loadStoredCredentials() !== null;
   }, [credentials]);
 
-  const setupPassword = useCallback(
-    async (password: string, prepare?: (key: CryptoKey) => Promise<void>): Promise<void> => {
-      const { credentials: newCredentials, key } = await createCredentialsV2(password);
-      saveStoredCredentials(newCredentials);
-      setCredentials(newCredentials);
-      await settleStoredRecords(key);
-      await prepare?.(key);
-
-      // Automatically unlock after setup
-      setEncryptionKey(key);
-      setStatus('unlocked');
-    },
-    []
-  );
-
-  const unlock = useCallback(
-    async (password: string): Promise<boolean> => {
-      // Storage first: another tab may have changed the password since this one loaded
-      const storedCreds = loadStoredCredentials() ?? credentials;
-      if (!storedCreds) {
-        return false;
-      }
-
+  /** Unlocks with these credentials; false for a wrong password or unreadable credentials */
+  const unlockWith = useCallback(
+    async (password: string, storedCreds: object): Promise<boolean> => {
       let key: CryptoKey | null;
       try {
         key = await unlockCredentials(password, storedCreds);
@@ -146,8 +141,68 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
       setStatus('unlocked');
       return true;
     },
-    [credentials]
+    []
   );
+
+  const setupPassword = useCallback(
+    (password: string, prepare?: (key: CryptoKey) => Promise<void>): Promise<SetupOutcome> =>
+      withWebLock(SETUP_LOCK, async (): Promise<SetupOutcome> => {
+        // Read again under the lock: another tab may have finished setup meanwhile
+        const existing = loadStoredCredentials();
+        if (existing) {
+          if (await unlockWith(password, existing)) {
+            return 'unlocked-existing';
+          }
+          setCredentials(existing);
+          setEncryptionKey(null);
+          setStatus('locked');
+          return 'existing-locked';
+        }
+
+        const { credentials: newCredentials, key } = await createCredentialsV2(password);
+        saveStoredCredentials(newCredentials);
+        setCredentials(newCredentials);
+        await settleStoredRecords(key);
+        await prepare?.(key);
+
+        // Automatically unlock after setup
+        setEncryptionKey(key);
+        setStatus('unlocked');
+        return 'created';
+      }),
+    [unlockWith]
+  );
+
+  const unlock = useCallback(
+    async (password: string): Promise<boolean> => {
+      // Storage first: another tab may have changed the password since this one loaded
+      const storedCreds = loadStoredCredentials() ?? credentials;
+      return storedCreds ? unlockWith(password, storedCreds) : false;
+    },
+    [credentials, unlockWith]
+  );
+
+  // Another tab's setup, or its Start over: the storage event fires only in
+  // the other tabs, never in the one that wrote
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent): void => {
+      // A null key: that tab cleared all of localStorage
+      if (event.key !== CREDENTIALS_STORAGE_KEY && event.key !== null) return;
+
+      const stored = loadStoredCredentials();
+      if (stored) {
+        setCredentials(stored);
+        setStatus((current) => (current === 'needs_setup' ? 'locked' : current));
+      } else {
+        // The key leaves memory; the data layer closes as on any lock
+        setCredentials(null);
+        setEncryptionKey(null);
+        setStatus('needs_setup');
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const lock = useCallback((): void => {
     setEncryptionKey(null);

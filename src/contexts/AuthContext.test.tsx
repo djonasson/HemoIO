@@ -9,6 +9,7 @@ import {
   rewrapCredentials,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
+import { installFakeWebLocks } from '@/test/fakeWebLocks';
 
 // The sweep that sets unreadable records aside reads the database: tested in
 // encryptedDb.setAside.test.ts, here only when and how it is called
@@ -18,6 +19,12 @@ const { settleUnreadable } = vi.hoisted(() => ({
 vi.mock('@data/db', () => ({
   createEncryptedDb: vi.fn(() => ({ settleUnreadable })),
 }));
+
+// Counted where two setups must make one data key; otherwise the real one
+vi.mock('@data/encryption/keyWrapping', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@data/encryption/keyWrapping')>();
+  return { ...actual, createCredentialsV2: vi.fn(actual.createCredentialsV2) };
+});
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
 const OLD = 'Old-Passw0rd!';
@@ -73,6 +80,13 @@ async function unlock(password: string): Promise<boolean> {
 
 function lock() {
   act(() => auth.lock());
+}
+
+/** What another tab's write of the credentials looks like to this one */
+function storageEventFromAnotherTab(newValue: string | null) {
+  act(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key: CREDENTIALS_KEY, newValue }));
+  });
 }
 
 describe('AuthContext', () => {
@@ -159,6 +173,130 @@ describe('AuthContext', () => {
       expect(statusDuringSweep).toBe('needs_setup');
       expect(createEncryptedDb).toHaveBeenLastCalledWith(auth.encryptionKey);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+  });
+
+  describe('setup across tabs', () => {
+    it('setup over credentials another tab saved unlocks with them', async () => {
+      renderAuth();
+      // Saved by another tab after this one loaded; its storage event not yet seen
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      store(theirs);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(OLD);
+      });
+
+      expect(outcome).toBe('unlocked-existing');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).not.toBeNull();
+    });
+
+    it('setup with a password that does not open them goes to locked', async () => {
+      renderAuth();
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      store(theirs);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(NEW);
+      });
+
+      expect(outcome).toBe('existing-locked');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('setup over existing credentials does not run prepare', async () => {
+      renderAuth();
+      store((await createCredentialsV2(OLD, 1000)).credentials);
+      const prepare = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await auth.setupPassword(OLD, prepare);
+      });
+      await act(async () => {
+        await auth.setupPassword(NEW, prepare);
+      });
+
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('a new setup reports created', async () => {
+      renderAuth();
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(OLD);
+      });
+
+      expect(outcome).toBe('created');
+    });
+
+    it('two setups at once create one data key', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        renderAuth();
+        vi.mocked(createCredentialsV2).mockClear();
+
+        let outcomes: string[] = [];
+        await act(async () => {
+          outcomes = await Promise.all([auth.setupPassword(OLD), auth.setupPassword(OLD)]);
+        });
+
+        expect(createCredentialsV2).toHaveBeenCalledTimes(1);
+        expect(outcomes).toEqual(['created', 'unlocked-existing']);
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup', 'hemoio-setup']);
+        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('credentials appearing in storage leave setup', async () => {
+      renderAuth();
+      const theirs = JSON.stringify((await createCredentialsV2(OLD, 1000)).credentials);
+      localStorage.setItem(CREDENTIALS_KEY, theirs);
+
+      storageEventFromAnotherTab(theirs);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(await unlock(OLD)).toBe(true);
+    });
+
+    it('credentials appearing in storage leave an unlocked tab as it is', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+
+      storageEventFromAnotherTab(localStorage.getItem(CREDENTIALS_KEY));
+
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).toBe(key);
+    });
+
+    it('credentials removed in another tab return to setup', async () => {
+      await setUp();
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      storageEventFromAnotherTab(null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('storage events for other keys change nothing', async () => {
+      renderAuth();
+      localStorage.setItem('hemoio_ai_provider', 'openai');
+
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'hemoio_ai_provider', newValue: 'openai' }));
+      });
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
     });
   });
 
