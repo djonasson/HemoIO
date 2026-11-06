@@ -80,7 +80,7 @@ function reportAISave<T>(save: (value: T) => Promise<void>): (value: T) => Promi
  * Settings page with tabbed sections
  */
 export function SettingsPage({ onRestore, isRestoring = false }: SettingsPageProps): React.ReactNode {
-  const { dataSources, isLoading, refresh: loadDataSources } = useExportData();
+  const { dataSources, setAside, isLoading, refresh: loadDataSources } = useExportData();
   const { db, isReady } = useEncryptedDb();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const {
@@ -333,6 +333,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
               // Ollama runs locally and needs no key, but is still a setup to keep
               hasAIConfiguration={hasApiKey || aiProvider === 'ollama'}
               isProcessing={isRestoring || isLoading}
+              setAsideCount={setAside.total}
             />
           </Stack>
         </Tabs.Panel>

@@ -85,11 +85,19 @@ Feature: Unreadable Records
     When I choose a backup to restore
     Then the confirmation should say how many records are kept aside and will not be deleted
 
+  Scenario: I am told once when my earlier preferences are kept aside
+    Given my stored preferences cannot be opened with my key
+    When I change the theme
+    Then I should be told my earlier preferences were kept aside and my change was saved
+    When I change the theme again
+    Then I should not be told again
+
   Scenario: The banner is accessible
     Given the records HemoIO cannot open are kept aside
     Then the notice should be a labelled region with an icon and a title
     And its meaning should not rely on color alone
     And its buttons should be reachable with the keyboard
+    And pressing Escape on the delete confirmation should keep the records
 
   Scenario: Folder sync waits until unreadable records are saved or deleted
     Given my data is stored in a local folder

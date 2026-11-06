@@ -231,6 +231,25 @@ describe('useLabResults', () => {
     expect(result.current.results.map((r) => r.id)).toEqual([3, 2]);
   });
 
+  it('counts the undated results a date filter hides', async () => {
+    const mockDb = createMockDb();
+    const undated = { id: 9, date: new Date('garbage'), labName: 'Undated Lab', createdAt: new Date(), updatedAt: new Date() };
+    mockDb.getUndatedLabResults.mockResolvedValue([undated]);
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
+    await waitFor(() => expect(result.current.undatedResults).toHaveLength(1));
+    expect(result.current.hiddenUndatedCount).toBe(0);
+
+    act(() => result.current.setFilters({ startDate: new Date('2024-03-01') }));
+
+    expect(result.current.undatedResults).toEqual([]);
+    expect(result.current.hiddenUndatedCount).toBe(1);
+
+    // One the search leaves out is not hidden by the date filter
+    act(() => result.current.setFilters({ startDate: new Date('2024-03-01'), searchTerm: 'Quest' }));
+    expect(result.current.hiddenUndatedCount).toBe(0);
+  });
+
   it('includes results from the whole of the end day', async () => {
     const mockDb = createMockDb();
     vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });

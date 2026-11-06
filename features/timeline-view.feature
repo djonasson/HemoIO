@@ -198,3 +198,10 @@ Feature: Timeline View
     And a "No date" heading should follow them
     And the result without a date should be listed under that heading
     And its card should show "No date" in place of the date
+
+  Scenario: A date filter says it hides the results without a date
+    Given I have lab results, one of which has no valid date
+    When I navigate to the Timeline view
+    And I filter the timeline by a date range
+    Then the result without a date should not be listed
+    And I should be told that results without a date are hidden while a date range is set

@@ -7,13 +7,14 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { BackupRestore } from './BackupRestore';
-import { exportToEncryptedJson, type ExportDataSources } from '@services/export';
+import { downloadJson, exportToEncryptedJson, type ExportDataSources } from '@services/export';
 import type { Settings } from '@/types';
 
 vi.mock('@services/export', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@services/export')>()),
   exportToEncryptedJson: vi.fn().mockResolvedValue('{}'),
   downloadEncryptedBackup: vi.fn(),
+  downloadJson: vi.fn(),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -296,6 +297,75 @@ describe('BackupRestore', () => {
       await waitFor(() =>
         expect(onRestore).toHaveBeenCalledWith(expect.anything(), { restoreAISettings: false })
       );
+    });
+  });
+
+  describe('records kept aside', () => {
+    const LEFT_OUT =
+      "2 records that can't be opened are not in this backup. Download them from the banner to keep them.";
+
+    it('a backup with set-aside records asks before exporting', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BackupRestore {...defaultProps} setAsideCount={2} />);
+
+      await user.click(screen.getByRole('button', { name: 'Create Backup' }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(LEFT_OUT)).toBeInTheDocument();
+      await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus());
+      expect(downloadJson).not.toHaveBeenCalled();
+
+      await user.click(within(dialog).getByRole('button', { name: 'Export anyway' }));
+      await waitFor(() => expect(downloadJson).toHaveBeenCalledTimes(1));
+    });
+
+    it('an encrypted backup asks before the password', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BackupRestore {...defaultProps} setAsideCount={2} />);
+
+      await user.click(screen.getByText('Encrypted', { exact: true }));
+      await user.click(screen.getByRole('button', { name: 'Create Encrypted Backup' }));
+      const step = await screen.findByRole('dialog');
+      expect(within(step).getByText(LEFT_OUT)).toBeInTheDocument();
+      await user.click(within(step).getByRole('button', { name: 'Export anyway' }));
+
+      expect(await screen.findByRole('dialog', { name: 'Set Backup Password' })).toBeInTheDocument();
+    });
+
+    it('cancelling downloads nothing', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BackupRestore {...defaultProps} setAsideCount={2} />);
+
+      await user.click(screen.getByRole('button', { name: 'Create Backup' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(downloadJson).not.toHaveBeenCalled();
+    });
+
+    it('the restore confirmation names the set-aside count', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<BackupRestore {...defaultProps} setAsideCount={2} />);
+      const backup = {
+        schemaVersion: 4,
+        exportedAt: '2024-03-01T00:00:00.000Z',
+        appVersion: '1.0.0',
+        labResults: [],
+        testValues: [],
+        userNotes: [],
+        userPreferences: null,
+        settings: null,
+      };
+      await user.upload(
+        document.querySelector('input[type="file"]') as HTMLInputElement,
+        new File([JSON.stringify(backup)], 'backup.json', { type: 'application/json' })
+      );
+
+      const dialog = await screen.findByRole('dialog', { name: 'Restore from Backup' });
+      expect(
+        within(dialog).getByText("2 records that can't be opened are kept aside and are not affected.")
+      ).toBeInTheDocument();
     });
   });
 });

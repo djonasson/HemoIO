@@ -24,6 +24,8 @@ export {
   type ExportDataSources,
 } from './jsonExport';
 
+export { buildSetAsideFile, setAsideFileName, SET_ASIDE_FILE_FORMAT } from './setAsideExport';
+
 export {
   exportToEncryptedJson,
   generateEncryptedBackupFilename,

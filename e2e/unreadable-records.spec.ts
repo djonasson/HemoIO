@@ -5,8 +5,10 @@
  */
 
 import { test, expect } from '@playwright/test';
+import * as fs from 'fs';
 import { completeSetup, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
-import { seedLabData } from './steps/data.steps';
+import { createBackupData, seedLabData, SEED_TEST_VALUES, writeBackupFile } from './steps/data.steps';
+import { removeTempFile } from './steps/tempFiles';
 import { readStoredRows } from './steps/dataAtRest.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
 import {
@@ -14,6 +16,9 @@ import {
   restoreCredentials,
   saveCredentials,
   seedUnreadableRecords,
+  downloadSealedFile,
+  openDeleteConfirmation,
+  setAsideBanner,
   setAsideRowCount,
   setAsideTables,
   storeUndecryptableApiKey,
@@ -136,5 +141,184 @@ test.describe('Unreadable records: coming back', () => {
     expect(stored.labResults).toHaveLength(2);
     expect(stored.testValues).toHaveLength(3);
     expect(await setAsideRowCount(page)).toBe(0);
+  });
+});
+
+test.describe('Unreadable records: the banner', () => {
+  const TITLE = "3 stored records can't be opened";
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page);
+    await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
+  });
+
+  test('says how many stored records cannot be opened, and nothing they hold', async ({ page }) => {
+    // Scenario: I am told how many records are kept aside
+    const banner = setAsideBanner(page);
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveText(
+      TITLE +
+        'They were saved with a different key, or are damaged. HemoIO keeps them aside and does not delete them. You can download them as a sealed file or delete them.' +
+        'Download sealed file' +
+        'Delete…'
+    );
+    // Still stored, still sealed
+    const stored = await readStoredRows(page);
+    expect(stored.setAside).toHaveLength(3);
+    for (const entry of stored.setAside) {
+      expect((entry.row as { encrypted?: unknown }).encrypted).toEqual(expect.any(String));
+    }
+  });
+
+  test('downloads the records as a sealed file named by the date only', async ({ page }) => {
+    // Scenario: I can download the unreadable records as a sealed file
+    const download = await downloadSealedFile(page);
+
+    expect(download.suggestedFilename()).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}\.json$/);
+    const content = fs.readFileSync(await download.path(), 'utf-8');
+    const file = JSON.parse(content);
+    expect(file.format).toBe('hemoio-unreadable-records');
+    expect(file.records).toHaveLength(3);
+    // Exactly as stored: the ciphertext of each row
+    const stored = await readStoredRows(page);
+    expect(file.records.map((record: { row: unknown }) => record.row)).toEqual(
+      expect.arrayContaining(stored.setAside.map((entry) => entry.row))
+    );
+    for (const name of new Set(SEED_TEST_VALUES.map((value) => value.rawText))) {
+      expect(content).not.toContain(name);
+    }
+    // Saved: the banner stays, as the records are still kept aside
+    await expect(setAsideBanner(page)).toBeVisible();
+  });
+
+  test('a sealed file cannot be restored as a backup', async ({ page }) => {
+    // Scenario: The downloaded file cannot be restored as a backup
+    const download = await downloadSealedFile(page);
+    const filePath = await download.path();
+
+    await openSettingsTab(page, 'Data');
+    await page.locator('input[type="file"]').setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: 'application/json',
+      buffer: fs.readFileSync(filePath),
+    });
+
+    await expect(page.getByText('Unrecognized backup file format')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Restore from Backup' })).toHaveCount(0);
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(2);
+    expect(await setAsideRowCount(page)).toBe(3);
+  });
+
+  test('deletes the records only after I confirm', async ({ page }) => {
+    // Scenario: I can delete the unreadable records after confirming
+    let dialog = await openDeleteConfirmation(page);
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(setAsideBanner(page)).toBeVisible();
+    expect(await setAsideRowCount(page)).toBe(3);
+
+    dialog = await openDeleteConfirmation(page);
+    await dialog.getByRole('button', { name: 'Delete 3 records' }).click();
+
+    await expect(setAsideBanner(page)).toHaveCount(0);
+    expect(await setAsideRowCount(page)).toBe(0);
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(2);
+  });
+
+  test('a backup export says what it leaves out, and saves nothing unless I confirm', async ({ page }) => {
+    // Scenario: A backup export tells me what it leaves out and asks first
+    await page.getByRole('button', { name: 'Export data' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Export Data' });
+    await dialog.getByRole('textbox', { name: 'Select export format' }).click();
+    await page.getByRole('option', { name: 'JSON (Full Backup)' }).click();
+    let downloads = 0;
+    page.on('download', () => downloads++);
+
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+    const leftOut =
+      "3 records that can't be opened are not in this backup. Download them from the banner to keep them.";
+    await expect(dialog.getByText(leftOut)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog.getByText(leftOut)).toBeHidden();
+    expect(downloads).toBe(0);
+
+    await dialog.getByRole('button', { name: 'Export', exact: true }).click();
+    const downloadPromise = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: 'Export anyway' }).click();
+    const backup = JSON.parse(fs.readFileSync(await (await downloadPromise).path(), 'utf-8'));
+    expect(backup.labResults).toHaveLength(2);
+  });
+
+  test('the restore confirmation says the records kept aside are not affected', async ({ page }) => {
+    // Scenario: The restore confirmation says how many records are kept aside
+    const backupPath = writeBackupFile(createBackupData());
+    try {
+      await openSettingsTab(page, 'Data');
+      await page.locator('input[type="file"]').setInputFiles(backupPath);
+
+      const dialog = page.getByRole('dialog', { name: 'Restore from Backup' });
+      await expect(
+        dialog.getByText("3 records that can't be opened are kept aside and are not affected.")
+      ).toBeVisible();
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+    } finally {
+      removeTempFile(backupPath);
+    }
+  });
+
+  test('the banner is a labelled region whose buttons the keyboard reaches', async ({ page }) => {
+    // Scenario: The banner is accessible
+    const banner = setAsideBanner(page);
+    await expect(banner.getByText(TITLE)).toBeVisible();
+    // An icon beside the words, so the meaning is not in the color alone
+    await expect(banner.locator('svg').first()).toBeVisible();
+
+    // Clicking plain text sets the sequential focus navigation starting point
+    await banner.getByText(TITLE).click();
+    await page.keyboard.press('Tab');
+    await expect(banner.getByRole('button', { name: 'Download sealed file' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(banner.getByRole('button', { name: 'Delete…' })).toBeFocused();
+
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Delete unreadable records?' });
+    await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(banner).toBeVisible();
+    expect(await setAsideRowCount(page)).toBe(3);
+  });
+});
+
+test.describe('Unreadable records: preferences', () => {
+  test('tells once a session that earlier preferences were kept aside', async ({ page }) => {
+    // Scenario: I am told once when my earlier preferences are kept aside
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await writeUnreadableRecords(page, { labResults: 0, testValues: 0, preferences: true });
+
+    await openSettingsTab(page, 'Display');
+    const themes = page.locator('.mantine-SegmentedControl-root');
+    await themes.getByText('Dark').click();
+    const notice = page.getByRole('alert').filter({ hasText: 'Earlier preferences kept aside' });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(
+      "Your saved preferences couldn't be opened, so HemoIO kept them aside and saved your change."
+    );
+    await notice.getByRole('button').click();
+    await expect(notice).toHaveCount(0);
+
+    // Unreadable preferences again, as another tab under another key would write
+    await writeUnreadableRecords(page, { labResults: 0, testValues: 0, preferences: true });
+    await themes.getByText('Light').click();
+    await expect(page.locator('html')).toHaveAttribute('data-mantine-color-scheme', 'light');
+
+    await expect.poll(() => setAsideTables(page)).toEqual(['userPreferences', 'userPreferences']);
+    await expect(notice).toHaveCount(0);
   });
 });

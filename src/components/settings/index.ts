@@ -5,6 +5,7 @@
  */
 
 export { BackupRestore, type BackupRestoreProps, type RestoreOptions } from './BackupRestore';
+export { RestoreConfirmation, type RestoreConfirmationProps } from './RestoreConfirmation';
 export { SettingsPage, type SettingsPageProps } from './SettingsPage';
 export { DisplaySettings, type DisplaySettingsProps } from './DisplaySettings';
 export { AISettings, type AISettingsProps } from './AISettings';

@@ -55,6 +55,8 @@ export interface UseLabResultsResult {
   results: LabResultWithDetails[];
   /** Results without a valid date, listed after the dated ones; none while a date filter is set */
   undatedResults: LabResultWithDetails[];
+  /** Results without a valid date that the search matches but a date filter hides */
+  hiddenUndatedCount: number;
   /** Whether data is currently loading */
   isLoading: boolean;
   /** Error message if fetch failed */
@@ -186,17 +188,18 @@ export function useLabResults(): UseLabResultsResult {
   }, [allResults, filters]);
 
   // A result with no date is in no date range; the search still applies
-  const filteredUndated = useMemo(() => {
-    if (filters.startDate || filters.endDate) return [];
+  const searchedUndated = useMemo(() => {
     const search = filters.searchTerm?.toLowerCase();
     return search
       ? undatedResults.filter((r) => r.labName.toLowerCase().includes(search))
       : undatedResults;
-  }, [undatedResults, filters]);
+  }, [undatedResults, filters.searchTerm]);
+  const dateFiltered = Boolean(filters.startDate || filters.endDate);
 
   return {
     results: filteredResults,
-    undatedResults: filteredUndated,
+    undatedResults: dateFiltered ? [] : searchedUndated,
+    hiddenUndatedCount: dateFiltered ? searchedUndated.length : 0,
     isLoading,
     error,
     filters,

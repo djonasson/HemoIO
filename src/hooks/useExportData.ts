@@ -8,7 +8,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { testDisplayName, testName, trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
-import type { TestValue } from '@/types';
+import { useSetAsideRecords } from './useSetAsideRecords';
+import type { SetAsideSummary, TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
 
 /** A test to filter the export by, with every stored key its values have */
@@ -28,8 +29,10 @@ export interface UseExportDataResult {
   dataSources: ExportDataSources;
   /** Lab results with test values and biomarker names for CSV export */
   labResultsData: LabResultForExport[];
-  /** Available biomarker options for filtering, one per test */
+  /** Available biomarker options for filtering, one per test with a dated value */
   biomarkerOptions: ExportBiomarkerOption[];
+  /** Records HemoIO cannot open, which no export holds */
+  setAside: SetAsideSummary;
   /** Whether data is loading */
   isLoading: boolean;
   /** Error if loading failed */
@@ -69,6 +72,8 @@ export interface UseExportDataOptions {
 export function useExportData({ enabled = true }: UseExportDataOptions = {}): UseExportDataResult {
   const catalog = useCatalog();
   const { db, isReady } = useEncryptedDb();
+  // Kept current as rows are set aside, saved or deleted
+  const { summary: setAside } = useSetAsideRecords();
   const [dataSources, setDataSources] = useState<ExportDataSources>({
     labResults: [],
     testValues: [],
@@ -125,12 +130,17 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         testValuesByLabResult.set(tv.labResultId, existing);
       }
 
+      // The CSV and the date filters work on dated results
+      const datedResults = labResults.filter((labResult) => !Number.isNaN(labResult.date.getTime()));
+      const datedIds = new Set(datedResults.map((labResult) => labResult.id));
+
       // Name each test as every view does, and offer each test once,
-      // whatever codes of its trend group its values were saved under
+      // whatever codes of its trend group its values were saved under.
+      // Only tests with a dated value: the CSV of any other would be empty.
       const biomarkerNames = new Map<string, string>();
       const tests = new Map<string, ExportBiomarkerOption>();
       for (const tv of testValues) {
-        if (biomarkerNames.has(tv.biomarkerKey)) continue;
+        if (!datedIds.has(tv.labResultId) || biomarkerNames.has(tv.biomarkerKey)) continue;
         const name = testDisplayName(catalog, tv);
         biomarkerNames.set(tv.biomarkerKey, name);
         const test = trendCode(catalog, tv.biomarkerKey);
@@ -144,15 +154,11 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         tests.set(test, option);
       }
 
-      // Build lab results data
-      // (the CSV and the date filters work on dated results)
-      const resultsData: LabResultForExport[] = labResults
-        .filter((labResult) => !Number.isNaN(labResult.date.getTime()))
-        .map((labResult) => ({
-          labResult,
-          testValues: testValuesByLabResult.get(labResult.id!) || [],
-          biomarkerNames,
-        }));
+      const resultsData: LabResultForExport[] = datedResults.map((labResult) => ({
+        labResult,
+        testValues: testValuesByLabResult.get(labResult.id!) || [],
+        biomarkerNames,
+      }));
 
       setLabResultsData(resultsData);
 
@@ -181,6 +187,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     dataSources,
     labResultsData,
     biomarkerOptions,
+    setAside,
     isLoading,
     error,
     refresh,

@@ -154,6 +154,7 @@ describe('TrendsView', () => {
   it('should render loading state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: true,
       error: null,
@@ -171,6 +172,7 @@ describe('TrendsView', () => {
   it('should render error state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: false,
       error: 'Database connection failed',
@@ -188,6 +190,7 @@ describe('TrendsView', () => {
   it('should render empty state when no results', () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: false,
       error: null,
@@ -212,6 +215,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -236,6 +240,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -262,6 +267,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -302,6 +308,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -325,6 +332,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -349,6 +357,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -372,6 +381,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -393,6 +403,7 @@ describe('TrendsView', () => {
   it('opens with the requested biomarker selected', () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2024-01-15', [
           createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
@@ -421,6 +432,7 @@ describe('TrendsView', () => {
   it('starts a fresh note editor for another biomarker, so a draft is not saved under it', async () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2024-01-15', [
           createMockTestValue(1, 1, '2345-7', 'Glucose', 95),
@@ -460,6 +472,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -513,6 +526,7 @@ describe('TrendsView', () => {
     ];
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -542,6 +556,7 @@ describe('TrendsView', () => {
   it('opens on the line a linked value is on, not the line of a same-day value', async () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2024-01-15', [
           createMockTestValue(1, 1, '2345-7', 'Glucose', 100, 'normal', 'mg/dL', 70, 100),
@@ -573,6 +588,7 @@ describe('TrendsView', () => {
   it('says which values have no unit, and never "converted to ." for a line with none', async () => {
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2024-01-15', [
           createMockTestValue(1, 1, 'unknown:zorblatin', 'Zorblatin', 4, 'normal', ''),
@@ -615,6 +631,7 @@ describe('TrendsView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -660,6 +677,7 @@ function renderWithTwoValues(
 ): void {
   vi.mocked(useLabResults).mockReturnValue({
     undatedResults: [],
+    hiddenUndatedCount: 0,
     results: [
       createMockResult(1, '2024-01-15', [createMockTestValue(1, 1, key, rawText, 95)]),
       createMockResult(2, '2024-02-15', [createMockTestValue(2, 2, key, rawText, 120)]),

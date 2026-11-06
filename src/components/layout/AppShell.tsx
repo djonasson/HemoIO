@@ -42,6 +42,7 @@ import {
   usePreferences,
   useSaveImport,
   useNavigation,
+  useSetAsideRecords,
 } from '@hooks';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
@@ -51,7 +52,7 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { FolderRestoreModal } from '@components/storage';
+import { FolderRestoreModal, SetAsideBanner } from '@components/storage';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
@@ -139,6 +140,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   } = useExportData({
     enabled: exportDialogOpen,
   });
+  const setAsideRecords = useSetAsideRecords();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
@@ -409,6 +411,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
+          <SetAsideBanner
+            total={setAsideRecords.summary.total}
+            onDownload={setAsideRecords.download}
+            onDelete={setAsideRecords.remove}
+          />
           {children ?? (
             <MainContent
               view={activeView}
@@ -432,6 +439,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         fullDataSources={dataSources}
         isLoading={isLoadingExportData}
         biomarkerOptions={biomarkerOptions}
+        setAsideCount={setAsideRecords.summary.total}
       />
     </>
   );

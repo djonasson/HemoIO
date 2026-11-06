@@ -6,7 +6,7 @@
  * look, with readable IDs and links as HemoIO stores them.
  */
 
-import type { Page } from '@playwright/test';
+import { expect, type Download, type Locator, type Page } from '@playwright/test';
 import { unlockApp } from './app.steps';
 
 /** IDs well above those the app assigns in a test, so they never collide */
@@ -133,4 +133,24 @@ export async function restoreCredentials(page: Page, credentials: string): Promi
     ([name, value]) => localStorage.setItem(name, value),
     [CREDENTIALS_STORAGE_KEY, credentials] as const
   );
+}
+
+/** The notice that says how many stored records HemoIO cannot open */
+export function setAsideBanner(page: Page): Locator {
+  return page.getByRole('region', { name: 'Unreadable records' });
+}
+
+/** When I download the unreadable records as a sealed file */
+export async function downloadSealedFile(page: Page): Promise<Download> {
+  const downloadPromise = page.waitForEvent('download');
+  await setAsideBanner(page).getByRole('button', { name: 'Download sealed file' }).click();
+  return downloadPromise;
+}
+
+/** When I choose to delete the unreadable records: the confirmation it opens */
+export async function openDeleteConfirmation(page: Page): Promise<Locator> {
+  await setAsideBanner(page).getByRole('button', { name: 'Delete…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete unreadable records?' });
+  await expect(dialog).toBeVisible();
+  return dialog;
 }

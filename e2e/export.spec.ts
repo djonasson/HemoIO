@@ -334,3 +334,21 @@ test.describe('Export after changes in this session', () => {
     expect(backup.labResults[0].date).toMatch(/^2024-02-20/);
   });
 });
+
+test.describe('Export of results without a date', () => {
+  // Scenario: The CSV biomarker choice lists only tests with a dated value
+  test('offers no test that only an undated result holds', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // The undated result holds the only Glucose value; Hemoglobin is also in the dated one
+    await seedLabData(page, {
+      labResults: [{ ...SEED_LAB_RESULTS[0], date: null }, SEED_LAB_RESULTS[1]],
+    });
+
+    await openExportDialog(page);
+    await exportDialog(page).getByRole('textbox', { name: 'Select biomarkers to include' }).click();
+
+    await expect(page.getByRole('option', { name: 'Hemoglobin' })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'Glucose' })).toHaveCount(0);
+  });
+});

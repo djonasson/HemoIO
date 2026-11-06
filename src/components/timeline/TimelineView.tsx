@@ -32,8 +32,17 @@ export function TimelineView({
   focusLabResultId,
   onOpenTrend,
 }: TimelineViewProps): React.ReactNode {
-  const { results, undatedResults, isLoading, error, filters, setFilters, deleteResult, refresh } =
-    useLabResults();
+  const {
+    results,
+    undatedResults,
+    hiddenUndatedCount,
+    isLoading,
+    error,
+    filters,
+    setFilters,
+    deleteResult,
+    refresh,
+  } = useLabResults();
   const {
     createNote,
     updateNote,
@@ -164,6 +173,15 @@ export function TimelineView({
   return (
     <Stack gap="md" ref={rootRef}>
       <TimelineFilters filters={filters} onFiltersChange={setFilters} />
+
+      {/* A result without a date is in no date range */}
+      {hiddenUndatedCount > 0 && (
+        <Text size="sm" c="dimmed">
+          {hiddenUndatedCount === 1
+            ? '1 result without a date is hidden while a date range is set.'
+            : `${hiddenUndatedCount} results without a date are hidden while a date range is set.`}
+        </Text>
+      )}
 
       {results.length === 0 && undatedResults.length === 0 ? (
         // No results matching current filters

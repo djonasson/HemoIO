@@ -73,6 +73,7 @@ vi.mock('@hooks', () => ({
       userPreferences: null,
       settings: null,
     },
+    setAside: { total: 0, unsaved: 0 },
     isLoading: false,
     error: null,
     refresh: vi.fn(),

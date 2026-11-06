@@ -53,6 +53,12 @@ Feature: Export Lab Results
     When I clear the choice
     Then the export button should be enabled
 
+  # The CSV holds dated results only
+  Scenario: The CSV biomarker choice lists only tests with a dated value
+    Given I have a lab result without a date that holds the only "Glucose" value
+    When I open the export dialog
+    Then the biomarker choice should not offer "Glucose"
+
   Scenario: Export all data to JSON
     When I click the "Export" button
     And I select "JSON" format

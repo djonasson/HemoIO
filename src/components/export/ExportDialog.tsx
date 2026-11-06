@@ -4,7 +4,7 @@
  * Modal dialog for exporting lab data to various formats.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Modal,
   Stack,
@@ -35,6 +35,7 @@ import {
   type LabResultForExport,
   type ExportDataSources,
 } from '@services/export';
+import { setAsideLeftOutLine } from '@components/storage/setAsideCopy';
 import { toLocalDay } from '@/utils/localDate';
 
 /**
@@ -58,6 +59,8 @@ export interface ExportDialogProps {
   biomarkerOptions: { value: string; label: string; keys: string[] }[];
   /** While the data as it is now loads, the previous data must not be exported */
   isLoading?: boolean;
+  /** Records HemoIO cannot open: no export holds them, and a backup asks first */
+  setAsideCount?: number;
 }
 
 /**
@@ -95,6 +98,7 @@ export function ExportDialog({
   fullDataSources,
   biomarkerOptions,
   isLoading = false,
+  setAsideCount = 0,
 }: ExportDialogProps): React.ReactNode {
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [dateRangePreset, setDateRangePreset] = useState('all');
@@ -103,6 +107,17 @@ export function ExportDialog({
   const [selectedBiomarkers, setSelectedBiomarkers] = useState<string[]>([]);
   const [includeReferenceRanges, setIncludeReferenceRanges] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  // A backup that leaves set-aside records out is saved only once the user agrees
+  const [confirmingLeftOut, setConfirmingLeftOut] = useState(false);
+  const cancelLeftOutRef = useRef<HTMLButtonElement>(null);
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
+  // Focus follows the step, as the button that opened it is gone
+  const stepShown = useRef(false);
+  useEffect(() => {
+    if (confirmingLeftOut) cancelLeftOutRef.current?.focus();
+    else if (stepShown.current) exportButtonRef.current?.focus();
+    stepShown.current = confirmingLeftOut;
+  }, [confirmingLeftOut]);
 
   // Calculate effective date range
   const effectiveDateRange = useMemo(() => {
@@ -161,7 +176,8 @@ export function ExportDialog({
   }, [labResultsData, effectiveDateRange, selectedKeys]);
 
   // Handle export
-  const handleExport = useCallback(async () => {
+  const runExport = useCallback(async () => {
+    setConfirmingLeftOut(false);
     setIsExporting(true);
 
     try {
@@ -199,9 +215,15 @@ export function ExportDialog({
     onClose,
   ]);
 
+  const handleExport = useCallback(() => {
+    if (format === 'json' && setAsideCount > 0) setConfirmingLeftOut(true);
+    else void runExport();
+  }, [format, setAsideCount, runExport]);
+
   // Handle close
   const handleClose = useCallback(() => {
     if (!isExporting) {
+      setConfirmingLeftOut(false);
       onClose();
     }
   }, [isExporting, onClose]);
@@ -214,162 +236,185 @@ export function ExportDialog({
       size="md"
       centered
     >
-      <Stack gap="md">
-        {!hasData && (
+      {confirmingLeftOut ? (
+        <Stack gap="md">
           <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-            No data to export. Import some lab results first.
+            {setAsideLeftOutLine(setAsideCount)}
           </Alert>
-        )}
+          <Group justify="flex-end" gap="sm">
+            <Button ref={cancelLeftOutRef} variant="default" onClick={() => setConfirmingLeftOut(false)}>
+              Cancel
+            </Button>
+            <Button leftSection={<IconDownload size={16} />} onClick={() => void runExport()}>
+              Export anyway
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        <Stack gap="md">
+          {!hasData && (
+            <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+              No data to export. Import some lab results first.
+            </Alert>
+          )}
 
-        {/* Format Selection */}
-        <Select
-          label="Export Format"
-          value={format}
-          onChange={(value) => setFormat(value as ExportFormat)}
-          data={[
-            {
-              value: 'csv',
-              label: 'CSV (Spreadsheet)',
-            },
-            {
-              value: 'json',
-              label: 'JSON (Full Backup)',
-            },
-          ]}
-          leftSection={
-            format === 'csv' ? (
-              <IconFileTypeCsv size={16} />
-            ) : (
-              <IconJson size={16} />
-            )
-          }
-          aria-label="Select export format"
-        />
+          {/* Format Selection */}
+          <Select
+            label="Export Format"
+            value={format}
+            onChange={(value) => setFormat(value as ExportFormat)}
+            data={[
+              {
+                value: 'csv',
+                label: 'CSV (Spreadsheet)',
+              },
+              {
+                value: 'json',
+                label: 'JSON (Full Backup)',
+              },
+            ]}
+            leftSection={
+              format === 'csv' ? (
+                <IconFileTypeCsv size={16} />
+              ) : (
+                <IconJson size={16} />
+              )
+            }
+            aria-label="Select export format"
+          />
 
-        {format === 'csv' && (
-          <>
-            <Divider label="Filter Options" labelPosition="center" />
+          {format === 'csv' && (
+            <>
+              <Divider label="Filter Options" labelPosition="center" />
 
-            {/* Date Range */}
-            <Select
-              label="Date Range"
-              value={dateRangePreset}
-              onChange={(value) => setDateRangePreset(value || 'all')}
-              data={DATE_RANGE_PRESETS}
-              aria-label="Select date range"
-            />
+              {/* Date Range */}
+              <Select
+                label="Date Range"
+                value={dateRangePreset}
+                onChange={(value) => setDateRangePreset(value || 'all')}
+                data={DATE_RANGE_PRESETS}
+                aria-label="Select date range"
+              />
 
-            {dateRangePreset === 'custom' && (
-              <Group grow>
-                <DatePickerInput
-                  label="Start Date"
-                  value={customStartDate}
-                  onChange={(value) =>
-                    setCustomStartDate(toLocalDay(value))
-                  }
-                  clearable
-                  aria-label="Start date"
-                />
-                <DatePickerInput
-                  label="End Date"
-                  value={customEndDate}
-                  onChange={(value) =>
-                    setCustomEndDate(toLocalDay(value))
-                  }
-                  clearable
-                  aria-label="End date"
-                />
-              </Group>
-            )}
+              {dateRangePreset === 'custom' && (
+                <Group grow>
+                  <DatePickerInput
+                    label="Start Date"
+                    value={customStartDate}
+                    onChange={(value) =>
+                      setCustomStartDate(toLocalDay(value))
+                    }
+                    clearable
+                    aria-label="Start date"
+                  />
+                  <DatePickerInput
+                    label="End Date"
+                    value={customEndDate}
+                    onChange={(value) =>
+                      setCustomEndDate(toLocalDay(value))
+                    }
+                    clearable
+                    aria-label="End date"
+                  />
+                </Group>
+              )}
 
-            {/* Biomarker Selection */}
-            <MultiSelect
-              label="Biomarkers"
-              placeholder="All biomarkers"
-              data={biomarkerOptions.map(({ value, label }) => ({ value, label }))}
-              value={chosenOptions.map((option) => option.value)}
-              onChange={setSelectedBiomarkers}
-              clearable
-              searchable
-              aria-label="Select biomarkers to include"
-            />
+              {/* Biomarker Selection */}
+              <MultiSelect
+                label="Biomarkers"
+                placeholder="All biomarkers"
+                data={biomarkerOptions.map(({ value, label }) => ({ value, label }))}
+                value={chosenOptions.map((option) => option.value)}
+                onChange={setSelectedBiomarkers}
+                clearable
+                searchable
+                aria-label="Select biomarkers to include"
+              />
 
-            {choiceGone && (
-              <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-                <Stack gap="xs" align="flex-start">
-                  <Text size="sm">
-                    The biomarkers you chose have no values now. Choose biomarkers again, or clear
-                    the choice to export every biomarker.
-                  </Text>
-                  <Button size="xs" variant="light" onClick={() => setSelectedBiomarkers([])}>
-                    Clear the choice
-                  </Button>
-                </Stack>
-              </Alert>
-            )}
+              {choiceGone && (
+                <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+                  <Stack gap="xs" align="flex-start">
+                    <Text size="sm">
+                      The biomarkers you chose have no values now. Choose biomarkers again, or clear
+                      the choice to export every biomarker.
+                    </Text>
+                    <Button size="xs" variant="light" onClick={() => setSelectedBiomarkers([])}>
+                      Clear the choice
+                    </Button>
+                  </Stack>
+                </Alert>
+              )}
 
-            {/* Options */}
-            <Checkbox
-              label="Include reference ranges"
-              checked={includeReferenceRanges}
-              onChange={(e) => setIncludeReferenceRanges(e.currentTarget.checked)}
-            />
-          </>
-        )}
+              {/* Options */}
+              <Checkbox
+                label="Include reference ranges"
+                checked={includeReferenceRanges}
+                onChange={(e) => setIncludeReferenceRanges(e.currentTarget.checked)}
+              />
 
-        {format === 'json' && (
-          <Text size="sm" c="dimmed">
-            JSON export includes all lab results, test values, notes, and
-            settings (excluding API keys). Use this for full backup and
-            restore.
-          </Text>
-        )}
+              {setAsideCount > 0 && (
+                <Text size="sm" c="dimmed">
+                  {setAsideLeftOutLine(setAsideCount)}
+                </Text>
+              )}
+            </>
+          )}
 
-        {/* Preview */}
-        <Paper p="sm" withBorder>
-          <Stack gap="xs">
-            <Text size="sm" fw={500}>
-              Export Preview
+          {format === 'json' && (
+            <Text size="sm" c="dimmed">
+              JSON export includes all lab results, test values, notes, and
+              settings (excluding API keys). Use this for full backup and
+              restore.
             </Text>
-            {format === 'csv' ? (
-              <>
-                <Text size="sm" c="dimmed">
-                  {previewCounts.labResults} lab result
-                  {previewCounts.labResults !== 1 ? 's' : ''},{' '}
-                  {previewCounts.testValues} test value
-                  {previewCounts.testValues !== 1 ? 's' : ''}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text size="sm" c="dimmed">
-                  {fullDataSources.labResults.length} lab result
-                  {fullDataSources.labResults.length !== 1 ? 's' : ''},{' '}
-                  {fullDataSources.testValues.length} test value
-                  {fullDataSources.testValues.length !== 1 ? 's' : ''},{' '}
-                  {fullDataSources.userNotes.length} note
-                  {fullDataSources.userNotes.length !== 1 ? 's' : ''}
-                </Text>
-              </>
-            )}
-          </Stack>
-        </Paper>
+          )}
 
-        {/* Actions */}
-        <Group justify="flex-end" gap="sm">
-          <Button variant="subtle" onClick={handleClose} disabled={isExporting}>
-            Cancel
-          </Button>
-          <Button
-            leftSection={<IconDownload size={16} />}
-            onClick={handleExport}
-            loading={isExporting}
-            disabled={!hasData || isLoading || (format === 'csv' && choiceGone)}
-          >
-            Export
-          </Button>
-        </Group>
-      </Stack>
+          {/* Preview */}
+          <Paper p="sm" withBorder>
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>
+                Export Preview
+              </Text>
+              {format === 'csv' ? (
+                <>
+                  <Text size="sm" c="dimmed">
+                    {previewCounts.labResults} lab result
+                    {previewCounts.labResults !== 1 ? 's' : ''},{' '}
+                    {previewCounts.testValues} test value
+                    {previewCounts.testValues !== 1 ? 's' : ''}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text size="sm" c="dimmed">
+                    {fullDataSources.labResults.length} lab result
+                    {fullDataSources.labResults.length !== 1 ? 's' : ''},{' '}
+                    {fullDataSources.testValues.length} test value
+                    {fullDataSources.testValues.length !== 1 ? 's' : ''},{' '}
+                    {fullDataSources.userNotes.length} note
+                    {fullDataSources.userNotes.length !== 1 ? 's' : ''}
+                  </Text>
+                </>
+              )}
+            </Stack>
+          </Paper>
+
+          {/* Actions */}
+          <Group justify="flex-end" gap="sm">
+            <Button variant="subtle" onClick={handleClose} disabled={isExporting}>
+              Cancel
+            </Button>
+            <Button
+              ref={exportButtonRef}
+              leftSection={<IconDownload size={16} />}
+              onClick={handleExport}
+              loading={isExporting}
+              disabled={!hasData || isLoading || (format === 'csv' && choiceGone)}
+            >
+              Export
+            </Button>
+          </Group>
+        </Stack>
+      )}
     </Modal>
   );
 }
