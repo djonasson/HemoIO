@@ -20,7 +20,7 @@ import { PWAUpdatePrompt, PWAInstallPrompt } from '@components/common';
 import { cssVariablesResolver, theme } from './theme/theme';
 
 function AppContent(): React.ReactNode {
-  const { status } = useAuth();
+  const { status, startingOver } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -33,6 +33,15 @@ function AppContent(): React.ReactNode {
           />
           <Text c="dimmed">Loading...</Text>
         </Stack>
+      </Center>
+    );
+  }
+
+  // Until the page reloads: setup would show only to be thrown away
+  if (startingOver) {
+    return (
+      <Center h="100vh">
+        <Text role="status">Removing HemoIO's data from this browser…</Text>
       </Center>
     );
   }

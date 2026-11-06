@@ -6,7 +6,15 @@
  * reads them (credentialsStorage.ts) to see whether another tab came first.
  */
 
-import { createContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import {
+  createContext,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { verifyPassword, getEncryptionKey, type StoredCredentials } from '@data/encryption';
 import {
   createCredentialsV2,
@@ -21,6 +29,7 @@ import {
 import { createEncryptedDb } from '@data/db';
 import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
 import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
+import { reloadPage } from '@/utils/reloadPage';
 import {
   CREDENTIALS_STORAGE_KEY,
   SETUP_LOCK,
@@ -84,10 +93,13 @@ export interface AuthContextValue {
    * Deletes this browser's HemoIO data and returns to first run: the key
    * leaves memory at once, then, once any folder sync in flight is done,
    * every table and every HemoIO key in localStorage are cleared. Never
-   * touches the folder. Rejects when something could not be cleared; setup
-   * then finds what is left.
+   * touches the folder. Then the page reloads, whatever the outcome, so no
+   * state of the old setup stays in memory; a failure is logged first, and
+   * setup finds what is left.
    */
   startOver: () => Promise<void>;
+  /** From the moment startOver begins until the page reloads */
+  startingOver: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -168,6 +180,12 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
   const [status, setStatus] = useState<AuthStatus>(storedCreds ? 'locked' : 'needs_setup');
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
   const [credentials, setCredentials] = useState<object | null>(storedCreds);
+  const [startingOver, setStartingOver] = useState(false);
+  // Read by the storage listener, which is registered once
+  const statusRef = useRef(status);
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const isSetupComplete = useCallback((): boolean => {
     return credentials !== null || loadStoredCredentials() !== null;
@@ -305,6 +323,11 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
       // credentials, written before this tab heard) need not wrap this
       // session's key, so the key leaves memory and the next unlock decides
       const removed = event.newValue === null || event.key === null;
+      // A tab that held this setup reloads, so nothing of it (API key
+      // caches, AI choices, preferences, notices) outlives it in memory. Not
+      // a tab already in setup: what its wizard had begun stays as it was.
+      const hadSetup = statusRef.current === 'locked' || statusRef.current === 'unlocked';
+      if (removed && hadSetup) reloadPage();
       if (stored) {
         setCredentials(stored);
         if (removed) {
@@ -357,33 +380,40 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     setEncryptionKey(null);
     setCredentials(null);
     setStatus('needs_setup');
+    setStartingOver(true);
 
-    // The setup lock, then the folder-sync lock, nested in that order: waits
-    // for a setup in another tab, and for a sync in flight, which may still
-    // write its state or the folder copy. No sync writes after the clear.
-    const cleared = await withWebLock(SETUP_LOCK, () =>
-      withWebLock(FOLDER_SYNC_LOCK, async (): Promise<boolean> => {
-        let ok = true;
-        try {
-          await clearStoredData();
-        } catch {
-          ok = false;
-        }
-        // Even when the rows stay: without the credentials, setup offers to
-        // keep them aside or delete them. Removed, never overwritten, so
-        // other tabs return to setup too.
-        try {
-          await clearLocalHemoIOStorage();
-        } catch {
-          ok = false;
-        }
-        return ok;
-      })
-    );
-    if (!cleared) {
-      // Fixed text: the error could name stored data
-      console.error('Could not clear the data stored in this browser');
-      throw new Error('Start over did not finish');
+    try {
+      // The setup lock, then the folder-sync lock, nested in that order: waits
+      // for a setup in another tab, and for a sync in flight, which may still
+      // write its state or the folder copy. No sync writes after the clear.
+      const cleared = await withWebLock(SETUP_LOCK, () =>
+        withWebLock(FOLDER_SYNC_LOCK, async (): Promise<boolean> => {
+          let ok = true;
+          try {
+            await clearStoredData();
+          } catch {
+            ok = false;
+          }
+          // Even when the rows stay: without the credentials, setup offers to
+          // keep them aside or delete them. Removed, never overwritten, so
+          // other tabs return to setup too.
+          try {
+            await clearLocalHemoIOStorage();
+          } catch {
+            ok = false;
+          }
+          return ok;
+        })
+      );
+      if (!cleared) {
+        // Fixed text: the error could name stored data
+        console.error('Could not clear the data stored in this browser');
+        throw new Error('Start over did not finish');
+      }
+    } finally {
+      // Whatever happened, with the locks released: nothing of the old setup
+      // stays in this page's memory
+      reloadPage();
     }
   }, []);
 
@@ -431,6 +461,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     storedLock,
     adoptFolderLock,
     startOver,
+    startingOver,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

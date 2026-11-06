@@ -6,6 +6,7 @@ Feature: Start Over
   Start over removes everything HemoIO keeps in this browser: lab results,
   notes, settings, the password lock and the folder choice. It never touches
   the folder: the folder copy and the folder's dated backups stay as they are.
+  Every open tab of HemoIO reloads, so nothing of the old setup stays in memory.
   To use a folder made by another setup, start over, then choose "I already
   have a folder copy".
 
@@ -18,7 +19,7 @@ Feature: Start Over
     When I choose "Start over"
     And I type START OVER to confirm
     And I confirm "Start over"
-    Then I should see the first-run setup
+    Then HemoIO should reload and show the first-run setup
     And nothing of HemoIO's should be left in this browser's local storage
     And unlocking should no longer be offered
 
@@ -60,7 +61,7 @@ Feature: Start Over
   Scenario: Another open tab returns to setup
     Given HemoIO is open in a second tab
     When I start over in the first tab
-    Then the second tab should show the first-run setup without being reloaded
+    Then the second tab should reload and show the first-run setup, without my reloading it
 
   Scenario: The "another setup" message points to Start over
     Given my data is stored in a local folder

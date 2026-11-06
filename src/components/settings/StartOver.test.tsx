@@ -120,20 +120,4 @@ describe('StartOver', () => {
     expect(within(dialog).getByLabelText('Type START OVER to confirm')).toHaveValue('');
     expect(within(dialog).getByRole('button', { name: 'Start over' })).toBeDisabled();
   });
-
-  it('a failure shows a fixed alert', async () => {
-    const user = userEvent.setup();
-    mockStartOver.mockRejectedValue(new Error('labResults row 7: Hemoglobin 14.5'));
-    renderStartOver();
-    const dialog = await openConfirmation(user);
-    await user.type(within(dialog).getByLabelText('Type START OVER to confirm'), 'START OVER');
-
-    await user.click(within(dialog).getByRole('button', { name: 'Start over' }));
-
-    const alert = await within(dialog).findByRole('alert');
-    expect(alert).toHaveTextContent(
-      "Some of HemoIO's data couldn't be removed from this browser. Try again."
-    );
-    expect(alert).not.toHaveTextContent('Hemoglobin');
-  });
 });

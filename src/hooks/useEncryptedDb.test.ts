@@ -37,6 +37,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -58,6 +59,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -80,6 +82,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -103,6 +106,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -134,6 +138,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -152,6 +157,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     rerender();
@@ -175,6 +181,7 @@ describe('useEncryptedDb', () => {
       adoptFolderLock: vi.fn(),
       recoverFromFolder: vi.fn(),
       startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());

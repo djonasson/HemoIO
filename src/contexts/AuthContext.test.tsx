@@ -21,6 +21,7 @@ import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { withWebLock } from '@/utils/withWebLock';
+import { reloadPage } from '@/utils/reloadPage';
 
 // The sweep that sets unreadable records aside reads the database: tested in
 // encryptedDb.setAside.test.ts, here only when and how it is called
@@ -37,6 +38,9 @@ vi.mock('@data/db/storedRows', () => ({
   clearStoredData: vi.fn(),
   clearLocalHemoIOStorage: vi.fn(),
 }));
+
+// jsdom cannot navigate: whether and when the page reloads is what is tested
+vi.mock('@/utils/reloadPage', () => ({ reloadPage: vi.fn() }));
 
 // Counted where two setups must make one data key; otherwise the real one
 vi.mock('@data/encryption/keyWrapping', async (importOriginal) => {
@@ -116,6 +120,7 @@ describe('AuthContext', () => {
     localStorage.clear();
     settleUnreadable.mockReset();
     settleUnreadable.mockResolvedValue({ returned: 0, setAside: 0 });
+    vi.mocked(reloadPage).mockReset();
     vi.mocked(clearStoredData).mockReset();
     vi.mocked(clearStoredData).mockResolvedValue();
     vi.mocked(clearLocalHemoIOStorage).mockReset();
@@ -332,6 +337,43 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
       expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
       expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('another tab that was unlocked reloads when the credentials are removed', async () => {
+      await setUp();
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      storageEventFromAnotherTab(null);
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('another tab that was locked reloads when localStorage is cleared', async () => {
+      await setUp();
+      lock();
+      localStorage.clear();
+
+      storageEventFromAnotherTab(null, null);
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('a tab in needs_setup does not reload when credentials are removed', async () => {
+      renderAuth();
+
+      storageEventFromAnotherTab(null);
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it('credentials changed, not removed, in another tab do not reload', async () => {
+      await setUp();
+
+      storageEventFromAnotherTab(localStorage.getItem(CREDENTIALS_KEY));
+
+      expect(reloadPage).not.toHaveBeenCalled();
     });
 
     it('localStorage cleared in another tab returns to setup', async () => {
@@ -902,6 +944,7 @@ describe('AuthContext', () => {
 
     it('startOver returns to setup', async () => {
       await setUp();
+      expect(auth.startingOver).toBe(false);
 
       await startOver();
 
@@ -909,6 +952,20 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
       expect(auth.encryptionKey).toBeNull();
       expect(auth.storedLock).toBeNull();
+    });
+
+    it('the tab that starts over reloads once the clears are done', async () => {
+      await setUp();
+      vi.mocked(clearLocalHemoIOStorage).mockImplementation(async () => {
+        expect(reloadPage).not.toHaveBeenCalled();
+      });
+
+      await startOver();
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(reloadPage).mock.invocationCallOrder[0]
+      );
     });
 
     it('startOver clears every local store and never touches the folder', async () => {
@@ -951,9 +1008,10 @@ describe('AuthContext', () => {
         await act(async () => {
           pending = auth.startOver();
         });
-        // The key left before either lock was held
+        // The key left before either lock was held; the app says what is happening
         expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
         expect(auth.encryptionKey).toBeNull();
+        expect(auth.startingOver).toBe(true);
         expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup']);
         expect(seen).toEqual([]);
 
@@ -1009,7 +1067,7 @@ describe('AuthContext', () => {
       }
     });
 
-    it('a failed clear logs a fixed message and stays in setup', async () => {
+    it('a failed clear logs a fixed message, stays in setup and still reloads', async () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       await setUp();
       vi.mocked(clearStoredData).mockRejectedValue(new Error('labResults row 7 secret'));
@@ -1023,6 +1081,11 @@ describe('AuthContext', () => {
 
       expect(failed).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      // The tab reloads on failure too, after the failure is logged
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        vi.mocked(reloadPage).mock.invocationCallOrder[0]
+      );
       // The credentials still go, so setup offers to deal with the rows left
       expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
       expect(errorSpy).toHaveBeenCalledWith('Could not clear the data stored in this browser');

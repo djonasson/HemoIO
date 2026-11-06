@@ -41,12 +41,17 @@ export class StartOverPage {
     await expect(this.dialog).toBeVisible();
   }
 
-  /** When I start over: open the Security tab, type the word and confirm */
+  /**
+   * When I start over: open the Security tab, type the word and confirm.
+   * Ends once the page has reloaded, as it does when the data is cleared.
+   */
   async startOverConfirmed(): Promise<void> {
     await this.open();
     await this.openConfirmation();
     await this.word.fill(CONFIRMATION_WORD);
+    const reloaded = this.page.waitForEvent('load');
     await this.confirm.click();
+    await reloaded;
   }
 }
 

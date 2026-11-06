@@ -106,10 +106,13 @@ test.describe('Start over', () => {
     await second.goto('/');
     await unlockApp(second);
 
+    // Nothing in the test reloads the second page: HemoIO does
+    const secondReloaded = second.waitForEvent('load');
     await page.bringToFront();
     await new StartOverPage(page).startOverConfirmed();
     await expectFirstRun(page);
 
+    await secondReloaded;
     await expectFirstRun(second);
     await second.close();
   });

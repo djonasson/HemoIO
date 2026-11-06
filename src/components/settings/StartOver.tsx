@@ -7,8 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Alert, Anchor, Button, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core';
-import { IconAlertCircle } from '@tabler/icons-react';
+import { Anchor, Button, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core';
 import { useAuth } from '@contexts';
 
 const BODY =
@@ -17,9 +16,6 @@ const BODY =
 
 /** What the user types to confirm */
 const CONFIRMATION_WORD = 'START OVER';
-
-const FAILED =
-  "Some of HemoIO's data couldn't be removed from this browser. Try again.";
 
 export interface StartOverProps {
   /** Opens Settings > Data, where a backup is exported */
@@ -31,11 +27,9 @@ export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
   const [opened, setOpened] = useState(false);
   const [typed, setTyped] = useState('');
   const [isWorking, setIsWorking] = useState(false);
-  const [failed, setFailed] = useState(false);
 
   const open = (): void => {
     setTyped('');
-    setFailed(false);
     setOpened(true);
   };
 
@@ -51,16 +45,8 @@ export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
   const confirm = async (): Promise<void> => {
     if (typed !== CONFIRMATION_WORD || isWorking) return;
     setIsWorking(true);
-    setFailed(false);
-    try {
-      // On success setup replaces Settings, so nothing more happens here
-      await startOver();
-    } catch {
-      // AuthContext logs it, with no detail
-      setFailed(true);
-    } finally {
-      setIsWorking(false);
-    }
+    // The page reloads when it is done, failed or not; AuthContext logs a failure
+    await startOver().catch(() => undefined);
   };
 
   const exportLink = (
@@ -107,11 +93,6 @@ export function StartOver({ onExportBackup }: StartOverProps): React.ReactNode {
               spellCheck={false}
               disabled={isWorking}
             />
-            {failed && (
-              <Alert role="alert" color="red" icon={<IconAlertCircle size={16} />}>
-                {FAILED}
-              </Alert>
-            )}
             <Group justify="flex-end">
               <Button variant="default" onClick={close} disabled={isWorking} data-autofocus>
                 Cancel
