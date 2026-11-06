@@ -67,7 +67,7 @@ describe('useEncryptedApiKey', () => {
 
     it('an API key the session key cannot decrypt is unset and removed', async () => {
       localStorage.setItem(ENCRYPTED_KEY, 'sealed-under-another-key');
-      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
 
@@ -78,6 +78,7 @@ describe('useEncryptedApiKey', () => {
       expect(result.current.hasApiKey).toBe(false);
       expect(result.current.apiKeyLastFour).toBeUndefined();
       expect(localStorage.getItem(ENCRYPTED_KEY)).toBeNull();
+      expect(warn.mock.calls).toEqual([['Removed a stored API key that could not be decrypted']]);
     });
 
     it('should migrate legacy plaintext API key', async () => {
@@ -216,6 +217,7 @@ describe('useEncryptedApiKey', () => {
   describe('errors', () => {
     it('errors are logged without detail', async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       localStorage.setItem(ENCRYPTED_KEY, 'sealed-under-another-key');
       const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
       await waitFor(() => {
@@ -233,12 +235,12 @@ describe('useEncryptedApiKey', () => {
         await expect(result.current.setApiKey('sk-secret-key')).rejects.toThrow();
       });
 
+      expect(warn.mock.calls).toEqual([['Removed a stored API key that could not be decrypted']]);
       expect(error.mock.calls).toEqual([
-        ['Could not read the stored API key'],
         ['Could not decrypt the stored API key'],
         ['Could not encrypt the API key'],
       ]);
-      expect(JSON.stringify(error.mock.calls)).not.toMatch(/sealed-under|sk-secret/);
+      expect(JSON.stringify([...warn.mock.calls, ...error.mock.calls])).not.toMatch(/sealed-under|sk-secret/);
     });
   });
 

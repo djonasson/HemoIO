@@ -74,14 +74,50 @@ describe('EncryptedDb.settleUnreadable', () => {
 
   it('settleUnreadable returns rows that open with the current key, with their links rewritten', async () => {
     const { db, other } = await twoKeys();
-    await addResultWithValues(other, 'Other key');
+    const originalId = await addResultWithValues(other, 'Other key');
     await db.settleUnreadable();
 
     expect(await other.settleUnreadable()).toEqual(expect.objectContaining({ returned: 3 }));
 
     const [returned] = await other.getAllLabResults();
     expect(returned.labName).toBe('Other key');
+    // Its ID is free, so it is kept
+    expect(returned.id).toBe(originalId);
     expect(await other.getTestValuesByLabResult(returned.id!)).toHaveLength(2);
+  });
+
+  it('gives a returned row a new ID only when its ID is taken, and relinks its values', async () => {
+    const { db, other, database } = await twoKeys();
+    const asideId = await addResultWithValues(other, 'Set aside');
+    await db.settleUnreadable();
+    // The other key stores a result under the same ID meanwhile
+    const laterId = await other.addLabResult(result('Later'));
+    const later = (await database.labResults.get(laterId))!;
+    await database.labResults.delete(laterId);
+    await database.labResults.put({ ...later, id: asideId });
+
+    expect(await other.settleUnreadable()).toEqual({ returned: 3, setAside: 0 });
+
+    const results = await other.getAllLabResults();
+    const returned = results.find((r) => r.labName === 'Set aside')!;
+    expect(results.find((r) => r.labName === 'Later')!.id).toBe(asideId);
+    expect(returned.id).not.toBe(asideId);
+    expect(await other.getTestValuesByLabResult(returned.id!)).toHaveLength(2);
+    expect(await other.getTestValuesByLabResult(asideId)).toHaveLength(0);
+  });
+
+  it('returns preferences sealed under the recovered key at the same unlock', async () => {
+    const { db, other, database } = await twoKeys();
+    await other.savePreferences(preferences('dark'));
+    await db.settleUnreadable();
+    await db.savePreferences(preferences('light'));
+
+    expect(await other.settleUnreadable()).toEqual({ returned: 1, setAside: 1 });
+
+    expect(await database.userPreferences.count()).toBe(1);
+    expect(await other.getPreferences()).toEqual(expect.objectContaining({ theme: 'dark' }));
+    // This key's preferences wait aside in turn
+    expect((await other.exportSetAside()).map((r) => r.table)).toEqual(['userPreferences']);
   });
 
   it('rewrites a returned note to the returned result and value, and keeps other links', async () => {
@@ -127,15 +163,18 @@ describe('EncryptedDb.settleUnreadable', () => {
     expect(await other.getPreferences()).toEqual(expect.objectContaining({ theme: 'dark' }));
   });
 
-  it('does nothing when every row opens', async () => {
-    const { db } = await openTestDb();
+  it('does nothing, and writes nothing, when every row opens', async () => {
+    const { db, database } = await openTestDb();
     await addResultWithValues(db, 'Lab');
     const listener = vi.fn();
     const stop = onSetAsideChanged(listener);
+    const transaction = vi.spyOn(database, 'transaction');
 
     expect(await db.settleUnreadable()).toEqual({ returned: 0, setAside: 0 });
     stop();
 
+    // One read-only pass, no write transaction
+    expect(transaction.mock.calls.map(([mode]) => mode)).toEqual(['r']);
     expect(listener).not.toHaveBeenCalled();
     expect(await db.countSetAside()).toEqual({ total: 0, unsaved: 0 });
   });
@@ -182,6 +221,16 @@ describe('EncryptedDb: writes that meet unreadable rows', () => {
     expect(settings?.aiApiKey).toBeUndefined();
     expect(settings?.aiProvider).toBe('openai');
     expect(warn).toHaveBeenCalledWith('Failed to decrypt field aiApiKey, leaving it unset');
+  });
+});
+
+describe('EncryptedDb.hasLabData with rows this key cannot open', () => {
+  it('counts only rows that open, even before any sweep', async () => {
+    const { db, other } = await twoKeys();
+    await addResultWithValues(other, 'Other key');
+
+    expect(await db.hasLabData()).toBe(false);
+    expect(await other.hasLabData()).toBe(true);
   });
 });
 

@@ -24,6 +24,17 @@ export interface UnreadableRecords {
  * after setup, then the app is reloaded and unlocked, which sets them aside
  */
 export async function seedUnreadableRecords(page: Page, records: UnreadableRecords): Promise<void> {
+  await writeUnreadableRecords(page, records);
+  await page.reload();
+  await unlockApp(page);
+}
+
+/**
+ * The same records written while the app stays unlocked, as another tab
+ * under another key would: no unlock has set them aside, so the next write
+ * that meets them must
+ */
+export async function writeUnreadableRecords(page: Page, records: UnreadableRecords): Promise<void> {
   await page.evaluate(
     ({ labResults, testValues, preferences, firstId }) =>
       new Promise<void>((resolve, reject) => {
@@ -62,8 +73,6 @@ export async function seedUnreadableRecords(page: Page, records: UnreadableRecor
       }),
     { ...records, preferences: records.preferences ?? false, firstId: FIRST_UNREADABLE_ID }
   );
-  await page.reload();
-  await unlockApp(page);
 }
 
 /** The rows kept aside, as stored: the table each came from */
@@ -101,5 +110,27 @@ export async function storeUndecryptableApiKey(page: Page): Promise<void> {
       'hemoio_ai_api_key_encrypted',
       btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(64))))
     )
+  );
+}
+
+const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
+
+/** The stored credentials, which unlock the key the current records are sealed under */
+export async function saveCredentials(page: Page): Promise<string> {
+  const credentials = await page.evaluate((name) => localStorage.getItem(name), CREDENTIALS_STORAGE_KEY);
+  if (!credentials) throw new Error('No stored credentials');
+  return credentials;
+}
+
+/** Given the credentials are lost: the next load offers setup, with a new key */
+export async function forgetCredentials(page: Page): Promise<void> {
+  await page.evaluate((name) => localStorage.removeItem(name), CREDENTIALS_STORAGE_KEY);
+}
+
+/** When HemoIO gets the key the records were saved with: those credentials are back */
+export async function restoreCredentials(page: Page, credentials: string): Promise<void> {
+  await page.evaluate(
+    ([name, value]) => localStorage.setItem(name, value),
+    [CREDENTIALS_STORAGE_KEY, credentials] as const
   );
 }

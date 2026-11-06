@@ -40,11 +40,12 @@ Feature: Unreadable Records
     And I open the AI settings
     Then my API key should be shown as not configured
 
-  # Proven by unit tests: a second key cannot be given to the app in a browser test
+  # For example, credentials that were lost and set up again are found later
   @data
   Scenario: Records that open with a key HemoIO gets later come back
     Given the records HemoIO cannot open are kept aside
     When HemoIO gets the key they were saved with
+    And I unlock the app
     Then those records should come back to my lab results, with their values and notes
     And they should no longer be kept aside
 

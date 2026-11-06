@@ -624,16 +624,18 @@ export class EncryptedDb {
   // ============ Bulk Operations ============
 
   /**
-   * Whether any lab result, test value or note is stored. Counts rows, so
-   * nothing is decrypted: the sweep at unlock (settleUnreadable) has moved
-   * the rows this key cannot open aside, so the lab tables hold readable
-   * rows only.
+   * Whether any lab result, test value or note this key can open is stored.
+   * Rows are tried one by one until one opens, so usually only the first is
+   * decrypted; rows that do not open are never counted, even when the sweep
+   * at unlock failed or another tab wrote them since.
    */
   async hasLabData(): Promise<boolean> {
-    const counts = await Promise.all(
-      (['labResults', 'testValues', 'userNotes'] as const).map((name) => this.table(name).count())
-    );
-    return counts.some((count) => count > 0);
+    for (const name of LAB_TABLES) {
+      for (const row of await this.table(name).toArray()) {
+        if (await opens(row, name, this.key)) return true;
+      }
+    }
+    return false;
   }
 
   async exportAllData(): Promise<{
@@ -720,9 +722,10 @@ export class EncryptedDb {
         this.db.userNotes.clear(),
       ]);
 
+      // Empty bulk calls are skipped: see keepAside
       const resultIds = idMap(
         labResults,
-        await this.table('labResults').bulkAdd(
+        labResults.length === 0 ? [] : await this.table('labResults').bulkAdd(
           labResults.map((r) => r.sealed),
           { allKeys: true }
         )
@@ -731,7 +734,7 @@ export class EncryptedDb {
       const linkedValues = testValues.filter((tv) => resultIds.has(tv.record.labResultId));
       const valueIds = idMap(
         linkedValues,
-        await this.table('testValues').bulkAdd(
+        linkedValues.length === 0 ? [] : await this.table('testValues').bulkAdd(
           linkedValues.map((tv) => ({
             ...tv.sealed,
             labResultId: resultIds.get(tv.record.labResultId)!,
@@ -742,16 +745,18 @@ export class EncryptedDb {
 
       const remap = (ids: Map<number, number>, id: number | undefined) =>
         id !== undefined ? ids.get(id) : undefined;
-      await this.table('userNotes').bulkAdd(
-        userNotes.map(
-          ({ record, sealed }) =>
-            definedFields({
-              ...sealed,
-              labResultId: remap(resultIds, record.labResultId),
-              testValueId: remap(valueIds, record.testValueId),
-            }) as SealedRecord
-        )
-      );
+      if (userNotes.length > 0) {
+        await this.table('userNotes').bulkAdd(
+          userNotes.map(
+            ({ record, sealed }) =>
+              definedFields({
+                ...sealed,
+                labResultId: remap(resultIds, record.labResultId),
+                testValueId: remap(valueIds, record.testValueId),
+              }) as SealedRecord
+          )
+        );
+      }
 
       if (data.userPreferences) {
         // As savePreferences: fields the backup lacks keep their current values
@@ -816,77 +821,134 @@ export class EncryptedDb {
   }
 
   /**
-   * Return the set-aside rows that open with this key, inside the caller's
-   * transaction, which must include setAside and the sealed tables. They get
-   * new IDs, as a restore gives, and the links between them are rewritten;
-   * links to rows not returned are kept. Preferences go back only when there
-   * are none, as there is one set; otherwise they stay aside.
-   *
-   * @returns How many rows were returned
+   * Add set-aside rows back to a table, inside the caller's transaction.
+   * Each keeps its ID when that is free; one whose ID is taken gets a new
+   * ID, and its old ID → the new one is returned, for the links to it.
+   * Called with at least one row: see keepAside.
    */
-  private async returnOpenedRows(): Promise<number> {
-    const rows = await this.db.setAside.toArray();
-    const openedRows = await Dexie.waitFor(
-      Promise.all(rows.map((entry) => opens(entry.row as SealedRecord, entry.table, this.key)))
-    );
-    const opened = rows.filter((_, i) => openedRows[i]);
-    if (opened.length === 0) return 0;
-    const of = (name: SealedTable): SetAsideRow[] => opened.filter((entry) => entry.table === name);
-
-    /** Add the rows under new IDs; each row's old ID → its new one */
-    const addBack = async (
-      name: SealedTable,
-      entries: SetAsideRow[],
-      relinked: (row: SealedRecord) => SealedRecord = (row) => row
-    ): Promise<Map<unknown, number>> => {
-      const keys = await this.table(name).bulkAdd(
-        entries.map((entry) => definedFields({ ...relinked(entry.row), id: undefined }) as SealedRecord),
-        { allKeys: true }
-      );
-      return new Map(entries.map((entry, i) => [entry.row.id, keys[i] as number]));
-    };
-    const relink = (ids: Map<unknown, number>, id: unknown): unknown => ids.get(id) ?? id;
-
-    const preferences = of('userPreferences');
-    const returned = [...of('labResults'), ...of('testValues'), ...of('userNotes')];
-    const resultIds = await addBack('labResults', of('labResults'));
-    const valueIds = await addBack('testValues', of('testValues'), (row) => ({
-      ...row,
-      labResultId: relink(resultIds, row.labResultId),
-    }));
-    await addBack('userNotes', of('userNotes'), (row) => ({
-      ...row,
-      labResultId: relink(resultIds, row.labResultId),
-      testValueId: relink(valueIds, row.testValueId),
-    }));
-    if (preferences.length > 0 && (await this.table('userPreferences').count()) === 0) {
-      // The most recently set aside: the others wait
-      const latest = preferences.slice(-1);
-      await addBack('userPreferences', latest);
-      returned.push(...latest);
+  private async addBack(
+    name: SealedTable,
+    entries: SetAsideRow[],
+    relinked: (row: SealedRecord) => SealedRecord = (row) => row
+  ): Promise<Map<unknown, number>> {
+    const table = this.table(name);
+    const rows = entries.map((entry) => relinked(entry.row));
+    const existing = await table.bulkGet(rows.map((row) => row.id as number));
+    const taken = new Set(existing.flatMap((row) => (row ? [row.id] : [])));
+    const free: SealedRecord[] = [];
+    const colliding: SealedRecord[] = [];
+    for (const row of rows) {
+      if (typeof row.id === 'number' && !taken.has(row.id)) {
+        taken.add(row.id);
+        free.push(row);
+      } else {
+        colliding.push(row);
+      }
     }
-    await this.db.setAside.bulkDelete(returned.map((entry) => entry.id!));
-    return returned.length;
+    if (free.length > 0) await table.bulkAdd(free);
+    if (colliding.length === 0) return new Map();
+    const keys = await table.bulkAdd(
+      colliding.map((row) => definedFields({ ...row, id: undefined }) as SealedRecord),
+      { allKeys: true }
+    );
+    return new Map(colliding.map((row, i) => [row.id, keys[i] as number]));
   }
 
   /**
-   * Settle the records against this key, at every unlock: set-aside rows
-   * that now open are returned, then every stored row that does not open is
-   * moved aside. Nothing is deleted.
+   * Settle the records against this key, at every unlock, so a sweep that
+   * failed is tried again at the next one. Every stored row that does not
+   * open is moved aside, then the set-aside rows that now open are returned
+   * (after the sweep, so preferences of this key come back in place of
+   * another key's). Nothing is deleted.
+   *
+   * Rows are decrypted outside any transaction, after a read-only pass; a
+   * write transaction is opened only when a row is to move, and there a row
+   * is moved only if its ciphertext is still the one that was tried.
    */
   async settleUnreadable(): Promise<{ returned: number; setAside: number }> {
     const tables = [...SEALED_TABLES.map((name) => this.table(name)), this.db.setAside];
-    const returned = await this.write(tables, () => this.returnOpenedRows());
-    let movedAside: SealedTable[] = [];
-    let setAside = 0;
-    try {
-      ({ movedAside, count: setAside } = await this.write(tables, () =>
-        this.moveUnreadableAside(SEALED_TABLES)
-      ));
-    } finally {
-      // The returned rows are committed even when the sweep fails
-      if (returned > 0 || setAside > 0) notifySetAsideChanged({ movedAside });
-    }
+    const [stored, setAsideRows] = await this.db.transaction('r', tables, () =>
+      Promise.all([
+        Promise.all(SEALED_TABLES.map((name) => this.table(name).toArray())),
+        this.db.setAside.toArray(),
+      ])
+    );
+
+    const unreadableRows = await Promise.all(
+      SEALED_TABLES.map(async (name, i) => {
+        const opened = await Promise.all(stored[i].map((row) => opens(row, name, this.key)));
+        return stored[i].filter((_, j) => !opened[j]);
+      })
+    );
+    // In table order, so the tables moved from are reported in it
+    const unreadable = new Map<SealedTable, SealedRecord[]>(
+      SEALED_TABLES.flatMap((name, i) =>
+        unreadableRows[i].length > 0 ? [[name, unreadableRows[i]] as const] : []
+      )
+    );
+    const openedAside = await Promise.all(
+      setAsideRows.map((entry) => opens(entry.row as SealedRecord, entry.table, this.key))
+    );
+    const returnable = setAsideRows.filter((_, i) => openedAside[i]);
+    if (unreadable.size === 0 && returnable.length === 0) return { returned: 0, setAside: 0 };
+
+    // Every await in the body is an IndexedDB request: see keepAside
+    const { movedAside, setAside, returned } = await this.write(tables, async () => {
+      const moving: Array<[SealedTable, SealedRecord[]]> = [];
+      for (const [name, rows] of unreadable) {
+        const current = await this.table(name).bulkGet(rows.map((row) => row.id!));
+        const still = current.filter(
+          (row, i): row is SealedRecord => row !== undefined && row.encrypted === rows[i].encrypted
+        );
+        if (still.length > 0) moving.push([name, still]);
+      }
+      if (moving.length > 0) await this.keepAside(moving);
+      for (const [name, rows] of moving) {
+        await this.table(name).bulkDelete(rows.map((row) => row.id!));
+      }
+
+      let back: SetAsideRow[] = [];
+      if (returnable.length > 0) {
+        const current = await this.db.setAside.bulkGet(returnable.map((entry) => entry.id!));
+        back = current.filter((entry): entry is SetAsideRow => entry !== undefined);
+      }
+      const of = (name: SealedTable): SetAsideRow[] => back.filter((entry) => entry.table === name);
+      const relink = (ids: Map<unknown, number>, id: unknown): unknown => ids.get(id) ?? id;
+      const returning = [...of('labResults'), ...of('testValues'), ...of('userNotes')];
+      let resultIds = new Map<unknown, number>();
+      let valueIds = new Map<unknown, number>();
+      if (of('labResults').length > 0) resultIds = await this.addBack('labResults', of('labResults'));
+      if (of('testValues').length > 0) {
+        valueIds = await this.addBack('testValues', of('testValues'), (row) => ({
+          ...row,
+          labResultId: relink(resultIds, row.labResultId),
+        }));
+      }
+      if (of('userNotes').length > 0) {
+        await this.addBack('userNotes', of('userNotes'), (row) => ({
+          ...row,
+          labResultId: relink(resultIds, row.labResultId),
+          testValueId: relink(valueIds, row.testValueId),
+        }));
+      }
+      const preferences = of('userPreferences');
+      if (preferences.length > 0 && (await this.table('userPreferences').count()) === 0) {
+        // One set of preferences: the most recently set aside; the others wait
+        const latest = preferences.slice(-1);
+        await this.addBack('userPreferences', latest);
+        returning.push(...latest);
+      }
+      if (returning.length > 0) {
+        await this.db.setAside.bulkDelete(returning.map((entry) => entry.id!));
+      }
+
+      return {
+        movedAside: moving.map(([name]) => name),
+        setAside: moving.reduce((sum, [, rows]) => sum + rows.length, 0),
+        returned: returning.length,
+      };
+    });
+    if (returned > 0 || setAside > 0) notifySetAsideChanged({ movedAside });
     return { returned, setAside };
   }
 
@@ -906,6 +968,7 @@ export class EncryptedDb {
 
   /** Mark set-aside rows as saved in a downloaded file */
   async markSetAsideSaved(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
     const table = this.db.setAside;
     await this.write(table, () => table.where(':id').anyOf(ids).modify({ savedToFile: 1 }));
     notifySetAsideChanged();

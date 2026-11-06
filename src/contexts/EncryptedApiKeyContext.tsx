@@ -47,14 +47,15 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         const encryptedKey = localStorage.getItem(ENCRYPTED_API_KEY_STORAGE_KEY);
         if (encryptedKey) {
           // Decrypt to get last 4 chars
-          let decrypted: string;
-          try {
-            decrypted = await decryptString(encryptedKey, encryptionKey!);
-          } catch {
+          const decrypted = await decryptString(encryptedKey, encryptionKey!).catch(() => null);
+          if (decrypted === null) {
             // Encrypted under another key, or damaged: it is not an API key
             // any more, so it is removed and reported as not set
             localStorage.removeItem(ENCRYPTED_API_KEY_STORAGE_KEY);
-            throw new Error('Undecryptable API key');
+            console.warn('Removed a stored API key that could not be decrypted');
+            setHasApiKey(false);
+            setApiKeyLastFour(undefined);
+            return;
           }
           setHasApiKey(true);
           setApiKeyLastFour(decrypted.slice(-4));
