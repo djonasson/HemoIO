@@ -61,6 +61,7 @@ deletes or overwrites data the user hasn't been told about.
   recovering the key from the folder can make the browser's own records
   readable again. If they differ from the folder copy, HemoIO shows the
   conflict choice instead of replacing them.
+- **Start over (user's decision, 2026-11-06):** Settings gets a "Start over" action. After an offer to export first and a strong confirmation, it deletes this browser's HemoIO data (never the folder) and returns to first run.
 - **Joining a folder from Settings is out of scope (user's decision):** a
   computer already set up with its own key that picks a folder made with
   another key gets a clear explanation. That folder belongs to another
