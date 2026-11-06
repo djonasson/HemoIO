@@ -10,6 +10,7 @@ export {
   digestFolderData,
   folderCopyId,
   folderDataJson,
+  isNothingToKeep,
   markFolderCopySeen,
   sealFolderCopy,
   writeFolderCopy,

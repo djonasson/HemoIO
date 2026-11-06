@@ -74,6 +74,16 @@ export interface FolderSide {
   savedAt: Date | null;
 }
 
+/**
+ * Whether "Keep this computer's data" cannot be carried out: this browser
+ * holds no health records and the folder copy does, and a sync never writes
+ * an empty browser over such a copy
+ */
+export function isNothingToKeep(browser: FolderSide, folder: FolderSide): boolean {
+  const records = (side: FolderSide): number => side.labResults + side.testValues + side.notes;
+  return records(browser) === 0 && records(folder) > 0;
+}
+
 /** The folder, as the sync reads and writes it: the copy, the previous copy and the lock file */
 export interface FolderCopyStore extends FolderLockStore {
   /** The folder copy's bytes, or null when there is none */

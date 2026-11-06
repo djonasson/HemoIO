@@ -32,6 +32,14 @@ const dialog = (): HTMLElement =>
   screen.getByRole('dialog', { name: 'Your folder copy changed on another computer' });
 
 describe('FolderConflictModal', () => {
+  it("does not offer to keep this computer's data when it holds no lab results", () => {
+    renderModal({ ...CONFLICT, browser: { labResults: 0, testValues: 0, notes: 0, savedAt: null } });
+
+    expect(screen.queryByRole('button', { name: "Keep this computer's data" })).not.toBeInTheDocument();
+    expect(dialog()).toHaveTextContent('This computer holds no lab results to keep.');
+    expect(screen.getByRole('button', { name: 'Load the folder copy' })).toBeEnabled();
+  });
+
   it('is closed without a conflict', () => {
     renderModal(null);
 

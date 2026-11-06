@@ -31,7 +31,7 @@ import {
   runFolderSync,
   type SyncSession,
 } from '@services/sync/folderSyncRun';
-import { sealLockIntoFolderCopy, type FolderSyncOutcome } from '@services/sync/folderSync';
+import { isNothingToKeep, sealLockIntoFolderCopy, type FolderSyncOutcome } from '@services/sync/folderSync';
 import { setFolderLockPush } from '@services/sync/folderLockPush';
 import { loadStoredCredentials } from '@contexts/credentialsStorage';
 import { isCredentialsV2, isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -89,6 +89,8 @@ interface PendingConflict {
   copy: ParsedBackupData;
   revision: string | null;
   bytes: ArrayBuffer;
+  /** This browser holds no health records and the copy does: never written over, so not to be kept */
+  nothingToKeep: boolean;
 }
 
 /**
@@ -243,6 +245,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
               copy: outcome.copy,
               revision: outcome.revision,
               bytes: outcome.bytes,
+              nothingToKeep: isNothingToKeep(outcome.browser, outcome.folder),
             };
             holdFor(session.key);
             setAsked({
@@ -385,6 +388,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
           }
           return;
         }
+        // Checked before any backup: an empty browser never writes over a
+        // copy with health records, so the choice could not be carried out
+        if (pending.nothingToKeep) throw new Error('This computer holds no lab results to keep');
         // The folder copy, as it was when the user was asked, without its lock
         await keepFolderCopy(backups, pending.bytes);
         resolved();

@@ -980,6 +980,21 @@ describe('useFilesystemSync', () => {
         expect(result.current.conflict).toBeNull();
       });
 
+      it("refuses to keep this computer's data when it holds no lab results, keeping nothing", async () => {
+        vi.mocked(writeFolderCopy).mockResolvedValueOnce({
+          ...(changedElsewhere(true) as Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>),
+          browser: { labResults: 0, testValues: 0, notes: 0, savedAt: null },
+        });
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(result.current.conflict).not.toBeNull());
+
+        await expect(act(() => result.current.resolveConflict('browser'))).rejects.toThrow();
+
+        expect(keepFolderCopy).not.toHaveBeenCalled();
+        expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+        expect(result.current.conflict).not.toBeNull();
+      });
+
       it("asks again when the folder copy changed before this computer's data was written", async () => {
         const { result } = await inConflict();
         vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(true, 'r3'));

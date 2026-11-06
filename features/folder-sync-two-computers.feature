@@ -101,6 +101,29 @@ Feature: Two computers on one folder
     Then nothing should be loaded
     And I should be asked again which data to keep, with my change on this computer's side
 
+  # Unit-tested (folderSync, folderSyncRun, useFilesystemSync): another tab
+  # cannot be made to save at that exact moment on cue
+  Scenario: A change saved just after the folder copy loads is still synced
+    Given I was asked which data to keep
+    When I choose to load the folder copy
+    And a change is saved on this computer, in another tab, just after the copy loaded
+    Then the next folder sync should write my change to the folder
+
+  # Unit-tested (FolderConflictModal, useFilesystemSync)
+  Scenario: A failed load keeps the question open
+    Given I was asked which data to keep
+    When I choose to load the folder copy
+    But the folder copy cannot be loaded into this computer
+    Then I should still be asked which data to keep, and told nothing was changed
+
+  # Unit-tested (FolderConflictModal, useFilesystemSync)
+  Scenario: Keeping this computer's data is not offered when it holds no lab results
+    Given this computer holds no lab results, and the folder copy does
+    And I was asked which data to keep
+    Then I should not be offered to keep this computer's data
+    And I should be told "This computer holds no lab results to keep."
+    And no backup should be kept
+
   Scenario: Deciding later writes nothing
     Given I was asked which data to keep
     When I choose to decide later

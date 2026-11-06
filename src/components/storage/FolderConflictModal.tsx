@@ -12,6 +12,7 @@ import { Alert, Button, Group, List, Modal, Paper, SimpleGrid, Stack, Text, Titl
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { pluralize } from '@/utils/pluralize';
+import { isNothingToKeep } from '@services/sync';
 import type { FolderConflict, FolderConflictChoice } from '@hooks';
 import type { FolderSide } from '@services/sync';
 
@@ -78,6 +79,7 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
   };
 
   const folder = shown?.folderName ? `“${shown.folderName}”` : 'your folder';
+  const nothingToKeep = shown !== null && isNothingToKeep(shown.browser, shown.folder);
 
   return (
     <Modal
@@ -115,6 +117,7 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
             <Side heading="On this computer" side={shown.browser} dateLabel="Last changed" />
           </SimpleGrid>
           <Text size="sm">The side you don&apos;t choose is kept as a dated backup in your folder.</Text>
+          {nothingToKeep && <Text size="sm">This computer holds no lab results to keep.</Text>}
           {failed && (
             <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
               Your data was not changed: the backup could not be saved to your folder, or the
@@ -130,14 +133,16 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
             >
               Decide later
             </Button>
-            <Button
-              variant="default"
-              onClick={() => void choose('browser')}
-              loading={busy === 'browser'}
-              disabled={busy !== null && busy !== 'browser'}
-            >
-              Keep this computer&apos;s data
-            </Button>
+            {!nothingToKeep && (
+              <Button
+                variant="default"
+                onClick={() => void choose('browser')}
+                loading={busy === 'browser'}
+                disabled={busy !== null && busy !== 'browser'}
+              >
+                Keep this computer&apos;s data
+              </Button>
+            )}
             <Button
               onClick={() => void choose('folder')}
               loading={busy === 'folder'}
