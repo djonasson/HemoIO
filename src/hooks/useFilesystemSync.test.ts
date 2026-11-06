@@ -22,6 +22,7 @@ import {
 import { sealLockIntoFolderCopy } from '@services/sync/folderSync';
 import { pushLockToFolder } from '@services/sync/folderLockPush';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { markUnsavedEdit } from '@/utils/unsavedEdits';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { ParsedBackupData } from '@services/import';
@@ -732,6 +733,23 @@ describe('useFilesystemSync', () => {
         title: 'Updated from the folder',
         message: `Saved on ${formatDateTime(EXPORTED_AT)}`,
       });
+    });
+
+    it('holds an automatic load while a note editor holds unsaved text, and loads at a later sync (P44)', async () => {
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      vi.mocked(writeFolderCopy).mockResolvedValue(changedElsewhere(false));
+      const clear = markUnsavedEdit();
+      try {
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        await act(() => result.current.syncNow());
+
+        expect(keepBrowserData).not.toHaveBeenCalled();
+        expect(applyFolderCopy).not.toHaveBeenCalled();
+        expect(result.current.issue).toBeNull();
+      } finally {
+        clear();
+      }
     });
 
     it('a failed backup loads nothing', async () => {

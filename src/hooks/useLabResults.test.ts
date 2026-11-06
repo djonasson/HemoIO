@@ -420,7 +420,8 @@ describe('useLabResults', () => {
 
     expect(result.current.error).toBe('Database error');
     expect(result.current.results).toEqual([]);
-    expect(consoleError).toHaveBeenCalledWith('Error fetching lab results:', expect.any(Error));
+    // Fixed text: the error could name stored data
+    expect(consoleError).toHaveBeenCalledWith('Could not load the lab results');
   });
 
   it('should handle errors during delete', async () => {
@@ -471,6 +472,28 @@ describe('useLabResults', () => {
     });
 
     expect(mockDb.getAllLabResults).toHaveBeenCalled();
+  });
+
+  it('shows the loader only on the first load: a refresh keeps the results on screen (P44)', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let finish: (results: LabResult[]) => void = () => {};
+    mockDb.getAllLabResults.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+
+    let refreshing: Promise<void> = Promise.resolve();
+    act(() => {
+      refreshing = result.current.refresh();
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.results).toHaveLength(3);
+    await act(async () => {
+      finish(mockLabResults.slice(0, 1));
+      await refreshing;
+    });
+    expect(result.current.results).toHaveLength(1);
   });
 
   it('should return unknown status when no reference range', async () => {

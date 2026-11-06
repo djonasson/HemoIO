@@ -5,11 +5,12 @@
  * biomarkers, or specific test values.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { SaveError } from '@data/db/saveError';
 import { trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { useDataReplaced } from './useDataReplacedElsewhere';
+import { logFailure } from '@/utils/logFailure';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
 
@@ -104,6 +105,8 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<NoteFilters>(initialFilters);
+  // The database whose notes were loaded once: a reload keeps them on screen (P44)
+  const loadedDb = useRef<unknown>(null);
 
   /**
    * Fetch notes from database
@@ -113,7 +116,7 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
       return;
     }
 
-    setIsLoading(true);
+    if (loadedDb.current !== db) setIsLoading(true);
     setError(null);
 
     try {
@@ -155,8 +158,10 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
       filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
       setNotes(filtered);
+      loadedDb.current = db;
     } catch (err) {
-      console.error('Failed to fetch notes:', err);
+      // Fixed text: the error could name stored data
+      logFailure('Could not load the notes');
       setError(err instanceof Error ? err.message : 'Failed to fetch notes');
     } finally {
       setIsLoading(false);

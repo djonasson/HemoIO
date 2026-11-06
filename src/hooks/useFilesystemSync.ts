@@ -39,6 +39,7 @@ import { FOLDER_SYNC_LOCK } from '@/utils/locks';
 import { withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { logFailure } from '@/utils/logFailure';
+import { hasUnsavedEdits } from '@/utils/unsavedEdits';
 import type { ParsedBackupData } from '@services/import';
 import type { ApplyFolderCopy } from './useApplyFolderCopy';
 import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from '@services/sync';
@@ -224,6 +225,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             setIssue(null);
             if (!enabledRef.current || sessionRef.current !== session) return;
             if (outcome.reason === 'newer' && lastSeen) {
+              // A note being typed would be lost with the views it is in:
+              // the load waits, and the next sync finds the copy again (P44)
+              if (hasUnsavedEdits()) return;
               await loadNewerFolderCopy(session, provider, outcome, lastSeen, {
                 apply: (copy, stamp) => applyRef.current(copy, stamp),
                 isCurrent: () => sessionRef.current === session && enabledRef.current,

@@ -92,7 +92,7 @@ describe('useNotes', () => {
       });
 
       expect(result.current.error).toBe('Database error');
-      expect(consoleError).toHaveBeenCalledWith('Failed to fetch notes:', expect.any(Error));
+      expect(consoleError).toHaveBeenCalledWith('Could not load the notes');
     });
 
     it('should not fetch when db is not ready', async () => {

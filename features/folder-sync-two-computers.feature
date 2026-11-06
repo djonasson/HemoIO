@@ -131,6 +131,14 @@ Feature: Two computers on one folder
     And nothing in my folder or on this computer should change, not even at the periodic sync
     And I should be asked again the next time I unlock the app, still with nothing written
 
+  # Unit-tested (useFilesystemSync, NoteEditor, useLabResults)
+  Scenario: A newer folder copy waits while I am typing a note
+    Given I am typing a note that I have not saved
+    When my other computer saves a newer folder copy
+    Then the copy should not be loaded while my note is unsaved
+    And it should be loaded at a later sync, once I save or cancel the note
+    And my results should stay on screen while they reload, without a loading spinner
+
   Scenario: A copy loaded from the folder is not written back unchanged
     Given a newer folder copy was loaded onto this computer
     When the periodic folder sync runs twice

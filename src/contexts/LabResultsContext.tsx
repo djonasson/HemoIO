@@ -3,11 +3,14 @@
  *
  * Loads and decrypts the lab results once for every view. Views reload them
  * only after a write (an import, a restore or a deletion), never on navigation.
+ * The loader shows only on a session's first load: a reload keeps the
+ * results on screen until the new ones are in, so no card is unmounted (P44).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LabResult } from '@/types';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
+import { logFailure } from '@/utils/logFailure';
 import {
   LabResultsContext,
   enrichTestValue,
@@ -29,6 +32,8 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
   useEffect(() => {
     sessionDb.current = isReady ? db : null;
   }, [db, isReady]);
+  // The database whose results were loaded once: later loads show no loader
+  const loadedDb = useRef<unknown>(null);
 
   const refresh = useCallback(async () => {
     if (!db || !isReady) {
@@ -39,7 +44,7 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
     }
     const isCurrent = () => sessionDb.current === db;
 
-    setIsLoading(true);
+    if (loadedDb.current !== db) setIsLoading(true);
     setError(null);
 
     try {
@@ -65,11 +70,12 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
       if (isCurrent()) {
         setAllResults(dated);
         setUndatedResults(undated);
+        loadedDb.current = db;
       }
     } catch (err) {
       if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to load lab results');
-      console.error('Error fetching lab results:', err);
+      logFailure('Could not load the lab results');
     } finally {
       if (isCurrent()) setIsLoading(false);
     }
