@@ -108,6 +108,19 @@ describe('folder backups', () => {
     expect(store.files.has(backupFileName(at(1)))).toBe(false);
   });
 
+  it('counts a backup dated in the future (a clock ahead) as the oldest, so it does not stay forever', async () => {
+    const store = new MemoryBackups();
+    const future = backupFileName(new Date(Date.UTC(2099, 0, 1)));
+    store.files.set(future, bytes(99));
+    for (let minute = 1; minute <= 10; minute++) {
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
+    }
+
+    expect(store.files.has(future)).toBe(false);
+    expect(store.files.has(backupFileName(at(1)))).toBe(true);
+    expect(store.files.size).toBe(10);
+  });
+
   it('never deletes a protected backup, even the oldest of the kind', async () => {
     const store = new MemoryBackups();
     for (let minute = 1; minute <= 10; minute++) {

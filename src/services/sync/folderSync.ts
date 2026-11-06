@@ -594,8 +594,9 @@ async function syncFolderCopy(
     try {
       parsed = parseFolderCopyData(copy.file);
     } catch {
-      // Opens, but its records cannot be read back: no copy to load, and none to write over
-      return { status: 'protected', reason: 'unreadable' };
+      // Opens, but its records cannot be read back: no copy to load, and none
+      // to write over. Its lock opened under the key, so a later one is adopted.
+      return { status: 'protected', reason: 'unreadable', folderLock };
     }
     return {
       status: 'changed-elsewhere',

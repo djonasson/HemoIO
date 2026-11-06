@@ -111,11 +111,14 @@ export async function keepFolderBackup(
   await store.saveBackup(name, bytes);
 
   // The one just saved always stays, whatever the clocks of the computers
-  // that made the others said: the newest of the rest make up the number
+  // that made the others said: the newest of the rest make up the number.
+  // One dated after now (a clock ahead) counts as older than all others,
+  // or it would never be removed; the earliest of those goes first.
+  const rank = (date: Date): number => (date.getTime() > time ? date.getTime() - Number.MAX_SAFE_INTEGER : date.getTime());
   const othersNewestFirst = [...existing]
     .filter((backup) => backupKind(backup) === kind)
-    .map((backup) => ({ backup, date: backupDate(backup)! }))
-    .sort((a, b) => b.date.getTime() - a.date.getTime());
+    .map((backup) => ({ backup, rank: rank(backupDate(backup)!) }))
+    .sort((a, b) => b.rank - a.rank);
   for (const { backup } of othersNewestFirst.slice(MAX_FOLDER_BACKUPS - 1)) {
     if (protect.includes(backup) || shownForRestore.has(backup)) continue;
     try {

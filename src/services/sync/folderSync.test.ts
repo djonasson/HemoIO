@@ -548,6 +548,20 @@ describe('writeFolderCopy', () => {
     expect(store.copy).toBe(damaged);
   });
 
+  it("passes on the copy's lock when its records cannot be read back, so a later one is adopted", async () => {
+    const records = { ...withResults(1), testValues: [{ id: 1, labResultId: 1, biomarkerKey: 'not-a-test', value: 1, unit: 'u' }] };
+    store.copy = (await sealFolderCopy(records as unknown as FolderSyncData, key, dated(LATER))).bytes;
+
+    const outcome = await write(store, withResults(2), key, {
+      ...context,
+      lock: dated(EARLIER),
+      lastSeen: null,
+      lockMayBeBehind: false,
+    });
+
+    expect(outcome).toEqual({ status: 'protected', reason: 'unreadable', folderLock: dated(LATER) });
+  });
+
   describe('a password change while the data are left as they are (P42)', () => {
     /** A copy written with the earlier lock, then a password change here */
     async function writtenThenPasswordChanged(data = withResults(2)) {

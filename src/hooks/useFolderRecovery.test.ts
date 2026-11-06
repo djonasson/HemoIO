@@ -367,6 +367,22 @@ describe('useFolderRecovery', () => {
     error.mockRestore();
   });
 
+  it('a copy restored but not recorded as seen is not called not restored', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(markFolderCopySeen).mockRejectedValueOnce(new Error('Storage full'));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(restoreBackup).toHaveBeenCalled();
+    expect(notifications.show).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Folder copy not restored' })
+    );
+    // The first sync finds the same data on both sides and records it
+    expect(error).toHaveBeenCalledWith('Could not record the folder copy as seen');
+    error.mockRestore();
+  });
+
   it('a failed save of the folder choice says only that, when the copy is restored', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     persistDirectory.mockRejectedValueOnce(new Error('/home/someone/Lab Folder'));

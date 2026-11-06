@@ -160,7 +160,12 @@ export async function recoverFromFolderCopy({
           seen = written ?? revision;
         }
         // Only while the data is as restored: a change saved since is written by the first sync
-        await markFolderCopySeen(db, sessionKey, seen, stamp);
+        try {
+          await markFolderCopySeen(db, sessionKey, seen, stamp);
+        } catch {
+          // The copy is restored: the first sync finds the same data on both sides and records it
+          logFailure('Could not record the folder copy as seen');
+        }
       });
     } catch {
       restored = false;
