@@ -1,8 +1,9 @@
 /**
  * AI Settings Context
  *
- * Provides access to AI provider and model settings stored in IndexedDB,
- * with automatic migration from localStorage for existing users.
+ * Provides access to AI provider and model settings stored in IndexedDB.
+ * The setup wizard's choices, left in localStorage, are stored at the first
+ * unlock, over anything an earlier setup left.
  *
  * State lives in a single provider so a model chosen in Settings is used by
  * the import view, which stays mounted across navigation.
@@ -13,7 +14,7 @@ import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import { AISettingsContext, type UseAISettingsResult } from '@hooks/useAISettings';
 import type { AIProviderType, Settings } from '@/types';
 
-// Where the setup wizard and older versions kept these settings
+// Where the setup wizard leaves its choices for the first unlock
 const LEGACY_KEYS = {
   aiProvider: 'hemoio_ai_provider',
   ollamaModel: 'hemoio_ollama_model',
@@ -66,12 +67,14 @@ function useAISettingsState(): UseAISettingsResult {
 
       try {
         const settings = await db.getSettings();
-        // Stored values win; localStorage only fills what was never saved
+        // Only the setup wizard writes these keys now, just before the first
+        // unlock: its choices win over a settings row an earlier setup left
+        // in this browser, then are stored and the keys removed
         const fields: AIFields = {
-          aiProvider: settings?.aiProvider ?? legacy.aiProvider ?? 'openai',
-          ollamaModel: settings?.ollamaModel ?? legacy.ollamaModel,
-          openaiModel: settings?.openaiModel ?? legacy.openaiModel,
-          anthropicModel: settings?.anthropicModel ?? legacy.anthropicModel,
+          aiProvider: legacy.aiProvider ?? settings?.aiProvider ?? 'openai',
+          ollamaModel: legacy.ollamaModel ?? settings?.ollamaModel,
+          openaiModel: legacy.openaiModel ?? settings?.openaiModel,
+          anthropicModel: legacy.anthropicModel ?? settings?.anthropicModel,
         };
         show(fields);
 

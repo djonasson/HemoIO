@@ -147,6 +147,14 @@ Feature: First-Run Setup Wizard
     Then the data should be kept aside, not deleted
     And I should be told how many stored records can't be opened
 
+  # Unit-tested (AISettingsContext)
+  Scenario: The AI provider I choose in setup is used, whatever an earlier setup chose
+    Given setup tells me this browser already holds HemoIO data
+    When I choose "Keep it aside and set up anew"
+    And I choose Ollama as my AI provider in setup
+    And I finish setup
+    Then my AI provider should be Ollama
+
   Scenario: I can clear the existing data, after confirming
     Given setup tells me this browser already holds HemoIO data
     When I choose "Clear it and set up anew…"
