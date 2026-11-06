@@ -12,26 +12,27 @@ import { notifyFolderBackupsChanged } from './folderAccessEvents';
 import type { StorageProvider } from '@/types';
 
 /**
- * The folder copy: the encrypted JSON sync file
- * (`{ version, exportedAt, data }`, see `services/sync/folderSync.ts`),
- * AES-GCM encrypted with the session data key, IV first.
+ * The folder copy: the JSON sync file (`{ version, exportedAt, revision,
+ * ancestors, data }`, see `services/sync/folderSync.ts`), sealed in the
+ * envelope beside the password lock (`services/sync/folderEnvelope.ts`)
  */
 export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
 
 /**
- * An earlier folder copy, to undo a bad write from: the bytes of a copy a
- * write replaced, unchanged, so it has the same format and encryption as
- * FOLDER_DATA_FILE_NAME. The sync decides which replaced copy is kept here
- * (never one holding less than the copy already here, see
- * `services/sync/folderSync.ts`). Only one is kept, so a synced folder does
- * not fill up with copies of health data.
+ * An earlier folder copy, to undo a bad write from: the content of a copy a
+ * write replaced, sealed again in the same envelope but without the lock
+ * (only the current copy carries it). The sync decides which replaced copy
+ * is kept here (never one holding less than half of the copy already here,
+ * see `services/sync/folderSync.ts`). Only one is kept, so a synced folder
+ * does not fill up with copies of health data.
  */
 export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
 
 /**
  * The folder's dated backups, in a folder of their own beside the copy: the
- * side of a conflict the user did not choose, sealed like the copy but
- * without the lock (see `services/sync/folderBackups.ts`)
+ * side of a conflict the user did not choose, and this computer's data kept
+ * before a newer copy was loaded, sealed like the copy but without the lock
+ * (see `services/sync/folderBackups.ts`)
  */
 export const FOLDER_BACKUPS_DIR_NAME = 'hemoio-backups';
 
