@@ -312,10 +312,15 @@ export class EncryptedDb {
    * moved such records aside; this guards against one written since, by
    * another tab under another key.
    */
-  private async unsealAll<T>(name: SealedTable, stored: SealedRecord[]): Promise<T[]> {
+  private async unsealAll<T>(
+    name: SealedTable,
+    stored: SealedRecord[],
+    onSkipped?: (count: number) => void
+  ): Promise<T[]> {
     const results = await Promise.allSettled(stored.map((record) => unseal<T>(record, name, this.key)));
     const failed = results.filter((result) => result.status === 'rejected').length;
     if (failed > 0) {
+      onSkipped?.(failed);
       // Not logged with the errors or records, which could name stored data
       console.warn(
         failed === 1
@@ -327,8 +332,8 @@ export class EncryptedDb {
   }
 
   /** Every readable record of a table, unsorted and unfiltered */
-  private async allSealed<T>(name: SealedTable): Promise<T[]> {
-    return this.unsealAll<T>(name, await this.table(name).toArray());
+  private async allSealed<T>(name: SealedTable, onSkipped?: (count: number) => void): Promise<T[]> {
+    return this.unsealAll<T>(name, await this.table(name).toArray(), onSkipped);
   }
 
   /** A record, or undefined when it cannot be decrypted */
@@ -671,7 +676,12 @@ export class EncryptedDb {
     return false;
   }
 
-  async exportAllData(): Promise<{
+  /**
+   * Every lab result, test value and note this key opens, with the settings
+   * and preferences. Records it cannot open are left out; `onSkipped` is told
+   * how many, so a folder sync does not save over the copy without them.
+   */
+  async exportAllData(onSkipped?: (count: number) => void): Promise<{
     labResults: LabResult[];
     testValues: TestValue[];
     userNotes: UserNote[];
@@ -679,9 +689,9 @@ export class EncryptedDb {
     preferences: UserPreferences | undefined;
   }> {
     const [labResults, testValues, userNotes, settings, preferences] = await Promise.all([
-      this.allSealed<LabResult>('labResults'),
-      this.getAllTestValues(),
-      this.allSealed<UserNote>('userNotes'),
+      this.allSealed<LabResult>('labResults', onSkipped),
+      this.allSealed<TestValue>('testValues', onSkipped),
+      this.allSealed<UserNote>('userNotes', onSkipped),
       this.getSettings(),
       this.getPreferences(),
     ]);

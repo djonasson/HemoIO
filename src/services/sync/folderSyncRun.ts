@@ -60,12 +60,19 @@ export async function runFolderSync(
   folder: FolderCopyStore,
   { lock, takeReplaces, isEnabled, lockMayBeBehind }: RunFolderSyncOptions
 ): Promise<FolderSyncRun | null> {
+  // Records the export could not open (sealed since the unlock under
+  // another key) protect the copy as set-aside ones do: saved without them,
+  // it would lose them on the other computers too
+  let skipped = 0;
   // Read together: none depends on another
-  const [data, { unsaved }, lastSeen] = await Promise.all([
-    session.db.exportAllData(),
+  const [data, setAside, lastSeen] = await Promise.all([
+    session.db.exportAllData((count) => {
+      skipped += count;
+    }),
     session.db.countSetAside(),
     loadFolderSyncState(session.key),
   ]);
+  const unsaved = setAside.unsaved + skipped;
   // The hold may begin while this sync is under way: checked here, so a
   // held sync does not decrypt the folder copy, and again at the save
   if (!isEnabled()) return null;

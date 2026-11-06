@@ -120,6 +120,25 @@ describe('EncryptedDb: a record that cannot be decrypted', () => {
     expect(warn).toHaveBeenCalledWith('Skipped a stored record that could not be decrypted');
   });
 
+  it('is counted for an export that asks, which still holds the others', async () => {
+    const first = await openTestDb();
+    await first.db.addLabResult({ date: now, labName: 'Other key', createdAt: now, updatedAt: now });
+    await first.db.addNote({ content: 'other key', tags: [], createdAt: now, updatedAt: now });
+    const otherKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+      'encrypt',
+      'decrypt',
+    ]);
+    const db = new EncryptedDb(otherKey, first.database);
+    await db.addLabResult({ date: now, labName: 'Readable', createdAt: now, updatedAt: now });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const skipped = vi.fn();
+
+    const exported = await db.exportAllData(skipped);
+
+    expect(exported.labResults.map((r) => r.labName)).toEqual(['Readable']);
+    expect(skipped.mock.calls.reduce((sum, [count]) => sum + count, 0)).toBe(2);
+  });
+
   it('as preferences, reads as none and is replaced by the next save', async () => {
     const first = await openTestDb();
     await first.db.savePreferences({

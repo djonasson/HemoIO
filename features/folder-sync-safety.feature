@@ -95,6 +95,13 @@ Feature: Folder Sync Safety
     Then the message about the skipped folder sync should go away
     And my folder copy should be updated
 
+  # Unit-tested: folderSyncRun.test.ts, encryptedDb.robustness.test.ts
+  Scenario: Records stored since unlocking that cannot be opened also pause the folder sync
+    Given another tab stored records this session cannot open after I unlocked
+    When the folder sync runs
+    Then my folder copy should be left as it was
+    And I should see that the folder sync was skipped because some records cannot be opened
+
   Scenario: The folder copy keeps the password lock beside the data
     Given my lab results have been synced to my folder
     Then my folder copy should hold my password lock beside the encrypted data

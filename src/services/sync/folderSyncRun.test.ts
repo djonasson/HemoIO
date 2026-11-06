@@ -183,6 +183,26 @@ describe('runFolderSync', () => {
     expect(store.save).not.toHaveBeenCalled();
   });
 
+  it('leaves the folder copy as it was while stored records could not be opened for the export', async () => {
+    const { db, key } = await openTestDb();
+    await db.addLabResult(result('Here'));
+    const exportAllData = db.exportAllData.bind(db);
+    // A record another tab sealed under another key since the unlock
+    vi.spyOn(db, 'exportAllData').mockImplementation(async (onSkipped) => {
+      const data = await exportAllData(onSkipped);
+      onSkipped?.(1);
+      return data;
+    });
+    const store = folder();
+    const takeReplaces = vi.fn(() => 'r1');
+
+    const run = await runFolderSync({ db, key }, store, { lock: null, takeReplaces, isEnabled: () => true });
+
+    expect(run?.outcome).toMatchObject({ status: 'protected', reason: 'set-aside' });
+    expect(store.save).not.toHaveBeenCalled();
+    expect(takeReplaces).not.toHaveBeenCalled();
+  });
+
   it('keeps the choice to replace a copy while set-aside records keep the folder from being read', async () => {
     const { db, key } = await openTestDb();
     vi.spyOn(db, 'countSetAside').mockResolvedValue({ total: 1, unsaved: 1 });
