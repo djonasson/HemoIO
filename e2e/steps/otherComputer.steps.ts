@@ -27,6 +27,11 @@ export interface OtherComputerCopy {
   changedAt?: string;
   /** The folder both computers sync to */
   folderName?: string;
+  /**
+   * The copies this one replaced, newest first; none by default, as a
+   * computer that never read the folder writes. See `ancestryOfFolderCopy`.
+   */
+  ancestors?: string[];
 }
 
 /** Where a copy's data key comes from: this browser's lock, or a setup of its own */
@@ -42,7 +47,8 @@ export async function writeEnvelopeCopy(
   page: Page,
   source: KeySource,
   data: SeedData = {},
-  folderName: string = TEST_FOLDER_NAME
+  folderName: string = TEST_FOLDER_NAME,
+  ancestors: string[] = []
 ): Promise<void> {
   const body = {
     labResults: data.labResults ?? SEED_LAB_RESULTS,
@@ -51,7 +57,7 @@ export async function writeEnvelopeCopy(
     ...(data.userPreferences ? { preferences: data.userPreferences } : {}),
   };
   await page.evaluate(
-    async ({ source, body, folderName, fileName }) => {
+    async ({ source, body, folderName, fileName, ancestors }) => {
       const toBase64 = (bytes: Uint8Array): string => {
         let binary = '';
         for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -146,6 +152,7 @@ export async function writeEnvelopeCopy(
           version: 4,
           exportedAt: new Date().toISOString(),
           revision: crypto.randomUUID(),
+          ancestors,
           data: body,
         })
       );
@@ -164,7 +171,7 @@ export async function writeEnvelopeCopy(
       await writable.write(JSON.stringify({ ...header, sealed: toBase64(sealed) }));
       await writable.close();
     },
-    { source, body, folderName, fileName: FOLDER_COPY }
+    { source, body, folderName, fileName: FOLDER_COPY, ancestors }
   );
 }
 
@@ -173,12 +180,13 @@ export async function writeEnvelopeCopy(
  * folder — or only saved there, with `newPassword` left out
  */
 export function saveCopyAsAnotherComputer(page: Page, options: OtherComputerCopy): Promise<void> {
-  const { password, data, newPassword, changedAt, folderName } = options;
+  const { password, data, newPassword, changedAt, folderName, ancestors } = options;
   return writeEnvelopeCopy(
     page,
     { kind: 'this-setup', password, newPassword, changedAt },
     data,
-    folderName
+    folderName,
+    ancestors
   );
 }
 
@@ -232,6 +240,7 @@ export function folderFileBody(
 ): Promise<{
   revision?: string;
   exportedAt?: string;
+  ancestors?: string[];
   data: { labResults: Array<{ labName?: string }>; testValues: unknown[]; userNotes: unknown[]; preferences?: object };
 }> {
   return page.evaluate(
@@ -302,6 +311,19 @@ export async function currentFolderData(
     userNotes: data.userNotes,
     ...(data.preferences ? { userPreferences: data.preferences } : {}),
   };
+}
+
+/**
+ * The ancestry a copy built on the folder copy now there carries: that
+ * copy's revision, then its own ancestors, newest first, as HemoIO writes it
+ */
+export async function ancestryOfFolderCopy(
+  page: Page,
+  password: string,
+  folderName: string = TEST_FOLDER_NAME
+): Promise<string[]> {
+  const { revision, ancestors } = await folderFileBody(page, FOLDER_COPY, password, folderName);
+  return [...(revision ? [revision] : []), ...(ancestors ?? [])].slice(0, 50);
 }
 
 /**

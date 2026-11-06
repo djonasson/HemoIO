@@ -10,17 +10,15 @@ import { notifySetAsideChanged } from '@data/db/setAsideEvents';
 import { notifications } from '@mantine/notifications';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { loadFolderSyncState, saveFolderSyncState } from '@data/storage/folderSyncState';
-import { createCredentialsV2 } from '@data/encryption/keyWrapping';
 import {
-  exportDigest,
-  keepFolderBackup,
+  folderCopyId,
+  keepBrowserData,
+  keepCurrentFolderCopy,
+  keepFolderCopy,
   markFolderCopySeen,
-  sealFolderCopy,
-  sealedForBackup,
   writeFolderCopy,
   type FolderSyncOutcome,
 } from '@services/sync';
-import { readEnvelopeHeader, sealEnvelope } from '@services/sync/folderEnvelope';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -35,10 +33,10 @@ vi.mock('@/utils/fileSystemSupport', () => ({
 vi.mock('@services/sync', () => ({
   writeFolderCopy: vi.fn(),
   markFolderCopySeen: vi.fn(),
-  exportDigest: vi.fn(),
-  sealFolderCopy: vi.fn(),
-  sealedForBackup: vi.fn(),
-  keepFolderBackup: vi.fn(),
+  folderCopyId: vi.fn(),
+  keepBrowserData: vi.fn(),
+  keepFolderCopy: vi.fn(),
+  keepCurrentFolderCopy: vi.fn(),
 }));
 
 // What this browser last saw of the folder copy, sealed in localStorage
@@ -107,8 +105,6 @@ vi.mock('@mantine/notifications', () => ({
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
-const SEALED_LOCAL = new Uint8Array([1]).buffer;
-const SEALED_FOLDER = new Uint8Array([2]).buffer;
 const FOLDER_BYTES = new Uint8Array([3]).buffer;
 const EXPORTED_AT = new Date('2026-11-05T18:30:00.000Z');
 const COPY = { labResults: [], testValues: [], userNotes: [], exportedAt: EXPORTED_AT } as unknown as ParsedBackupData;
@@ -118,6 +114,7 @@ const BROWSER_SIDE = { labResults: 2, testValues: 4, notes: 0, savedAt: new Date
 /** The folder copy was written on another computer since this browser last saw it */
 const changedElsewhere = (localChanged: boolean, revision = 'r2'): FolderSyncOutcome => ({
   status: 'changed-elsewhere',
+  reason: localChanged ? 'both-changed' : 'newer',
   copy: COPY,
   revision,
   bytes: FOLDER_BYTES,
@@ -135,9 +132,10 @@ describe('useFilesystemSync', () => {
     vi.mocked(loadFolderSyncState).mockResolvedValue(null);
     vi.mocked(saveFolderSyncState).mockResolvedValue(undefined);
     vi.mocked(markFolderCopySeen).mockResolvedValue(undefined);
-    vi.mocked(keepFolderBackup).mockResolvedValue('hemoio-backup-20261106T101500123Z.encrypted');
-    vi.mocked(sealFolderCopy).mockResolvedValue({ bytes: SEALED_LOCAL, revision: 'r-local' });
-    vi.mocked(sealedForBackup).mockResolvedValue(SEALED_FOLDER);
+    vi.mocked(keepBrowserData).mockResolvedValue(true);
+    vi.mocked(keepFolderCopy).mockResolvedValue(undefined);
+    vi.mocked(keepCurrentFolderCopy).mockResolvedValue(FOLDER_BYTES);
+    vi.mocked(folderCopyId).mockImplementation(async (_bytes, revision) => revision ?? 'sha256:bytes');
     applyFolderCopy.mockResolvedValue(undefined);
     mockGetPermissionState.mockResolvedValue('granted');
     mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
@@ -632,32 +630,60 @@ describe('useFilesystemSync', () => {
       expect(saveFolderSyncState).not.toHaveBeenCalled();
     });
 
-    it('loads a newer copy and notifies with its date', async () => {
+    it("loads a newer copy after keeping this computer's data, and notifies with its date", async () => {
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
-      vi.mocked(exportDigest).mockResolvedValue(STATE.digest);
       vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
 
       renderHook(() => useFilesystemSync({ applyFolderCopy }));
 
-      await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
-      expect(applyFolderCopy).toHaveBeenCalledWith(COPY);
-      expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2');
-      expect(vi.mocked(markFolderCopySeen).mock.invocationCallOrder[0]).toBeGreaterThan(
-        applyFolderCopy.mock.invocationCallOrder[0]
+      await waitFor(() => expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2'));
+      expect(keepBrowserData).toHaveBeenCalledWith(
+        { db: mockDb, key: mockKey, backups: expect.anything() },
+        { kind: 'before-load', unchangedSince: STATE.digest }
       );
+      expect(applyFolderCopy).toHaveBeenCalledWith(COPY);
+      const order = (fn: { mock: { invocationCallOrder: number[] } }): number => fn.mock.invocationCallOrder[0];
+      expect(order(vi.mocked(keepBrowserData))).toBeLessThan(order(applyFolderCopy));
+      // Told before the load is recorded as seen, which could fail
+      expect(order(vi.mocked(notifications.show))).toBeLessThan(order(vi.mocked(markFolderCopySeen)));
       expect(vi.mocked(notifications.show).mock.calls[0][0]).toMatchObject({
         title: 'Updated from the folder',
         message: `Saved on ${formatDateTime(EXPORTED_AT)}`,
       });
     });
 
-    it('does not load a newer copy over changes made while it was read', async () => {
+    it('a failed backup loads nothing', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
-      vi.mocked(exportDigest).mockResolvedValue('digest-after-an-import');
+      vi.mocked(keepBrowserData).mockRejectedValue(new Error('Disk full'));
       vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
 
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
-      await waitFor(() => expect(exportDigest).toHaveBeenCalled());
+
+      await waitFor(() => expect(result.current.issue).toBe('failed'));
+      expect(applyFolderCopy).not.toHaveBeenCalled();
+      expect(markFolderCopySeen).not.toHaveBeenCalled();
+    });
+
+    it('still tells of the load when recording it as seen fails', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      vi.mocked(markFolderCopySeen).mockRejectedValue(new Error('Storage full'));
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
+
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+
+      await waitFor(() => expect(result.current.issue).toBe('failed'));
+      expect(vi.mocked(notifications.show).mock.calls[0][0]).toMatchObject({ title: 'Updated from the folder' });
+    });
+
+    it('does not load a newer copy over changes made while it was read', async () => {
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      vi.mocked(keepBrowserData).mockResolvedValue(false);
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
+
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+      await waitFor(() => expect(keepBrowserData).toHaveBeenCalled());
       await act(() => result.current.syncNow());
 
       expect(applyFolderCopy).not.toHaveBeenCalled();
@@ -666,7 +692,6 @@ describe('useFilesystemSync', () => {
 
     it('loading a newer copy does not start another sync', async () => {
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
-      vi.mocked(exportDigest).mockResolvedValue(STATE.digest);
       let applied = false;
       applyFolderCopy.mockImplementation(async () => {
         applied = true;
@@ -680,6 +705,36 @@ describe('useFilesystemSync', () => {
 
       expect(applied).toBe(true);
       expect(writeFolderCopy).toHaveBeenCalledTimes(2);
+    });
+
+    it('a copy that is not newer is asked about, even with no change here', async () => {
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({
+        ...(changedElsewhere(false) as Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>),
+        reason: 'not-newer',
+      });
+
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+
+      await waitFor(() => expect(result.current.conflict).toMatchObject({ reason: 'not-newer' }));
+      expect(keepBrowserData).not.toHaveBeenCalled();
+      expect(applyFolderCopy).not.toHaveBeenCalled();
+    });
+
+    it('adopts a later lock found with a conflict', async () => {
+      auth.adoptFolderLock = vi.fn(() => true);
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({
+        ...(changedElsewhere(true) as Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>),
+        folderLock: LOCK_B,
+      });
+
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+
+      await waitFor(() => expect(result.current.conflict).not.toBeNull());
+      expect(auth.adoptFolderLock).toHaveBeenCalledWith(LOCK_B);
+      expect(vi.mocked(notifications.show).mock.calls[0][0]).toMatchObject({
+        title: 'Password changed on another computer',
+      });
     });
 
     it('syncs run inside the folder-sync Web Lock', async () => {
@@ -722,6 +777,7 @@ describe('useFilesystemSync', () => {
         const { result } = await inConflict();
 
         expect(result.current.conflict).toEqual({
+          reason: 'both-changed',
           folder: FOLDER_SIDE,
           browser: BROWSER_SIDE,
           folderName: 'Lab Folder',
@@ -737,10 +793,11 @@ describe('useFilesystemSync', () => {
 
         await act(() => result.current.resolveConflict('folder'));
 
-        const exported = await mockExportAllData.mock.results.at(-1)!.value;
-        expect(sealFolderCopy).toHaveBeenCalledWith(exported, mockKey, null);
-        expect(keepFolderBackup).toHaveBeenCalledWith(expect.anything(), SEALED_LOCAL);
-        expect(vi.mocked(keepFolderBackup).mock.invocationCallOrder[0]).toBeLessThan(
+        expect(keepBrowserData).toHaveBeenCalledWith(
+          { db: mockDb, key: mockKey, backups: expect.anything() },
+          { kind: 'conflict' }
+        );
+        expect(vi.mocked(keepBrowserData).mock.invocationCallOrder[0]).toBeLessThan(
           applyFolderCopy.mock.invocationCallOrder[0]
         );
         expect(applyFolderCopy).toHaveBeenCalledWith(COPY);
@@ -754,11 +811,10 @@ describe('useFilesystemSync', () => {
 
         await act(() => result.current.resolveConflict('browser'));
 
-        expect(sealedForBackup).toHaveBeenCalledWith(FOLDER_BYTES, mockKey);
-        expect(keepFolderBackup).toHaveBeenCalledWith(expect.anything(), SEALED_FOLDER);
+        expect(keepFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ key: mockKey }), FOLDER_BYTES);
         expect(writeFolderCopy).toHaveBeenCalledTimes(2);
         expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toMatchObject({ replaces: 'r2' });
-        expect(vi.mocked(keepFolderBackup).mock.invocationCallOrder[0]).toBeLessThan(
+        expect(vi.mocked(keepFolderCopy).mock.invocationCallOrder[0]).toBeLessThan(
           vi.mocked(writeFolderCopy).mock.invocationCallOrder[1]
         );
         expect(applyFolderCopy).not.toHaveBeenCalled();
@@ -780,7 +836,8 @@ describe('useFilesystemSync', () => {
         'when the backup cannot be written, neither side is replaced (%s)',
         async (choice) => {
           const { result } = await inConflict();
-          vi.mocked(keepFolderBackup).mockRejectedValue(new Error('Disk full'));
+          vi.mocked(keepBrowserData).mockRejectedValue(new Error('Disk full'));
+          vi.mocked(keepFolderCopy).mockRejectedValue(new Error('Disk full'));
 
           await expect(act(() => result.current.resolveConflict(choice))).rejects.toThrow('Disk full');
 
@@ -789,6 +846,43 @@ describe('useFilesystemSync', () => {
           expect(writeFolderCopy).toHaveBeenCalledTimes(1);
           expect(markFolderCopySeen).not.toHaveBeenCalled();
           expect(result.current.conflict).not.toBeNull();
+        }
+      );
+
+      it.each(['folder', 'browser'] as const)(
+        'saves and loads nothing when the session ended while the choice waited for earlier syncs (%s)',
+        async (choice) => {
+          // The folder-sync lock, held elsewhere (a sync in another tab) once `busy` is set
+          const lock = { busy: false, release: null as (() => void) | null };
+          const request = vi.fn(async (_name: string, _options: unknown, task: () => Promise<unknown>) => {
+            if (lock.busy) await new Promise<void>((resolve) => (lock.release = resolve));
+            return task();
+          });
+          Object.defineProperty(navigator, 'locks', { value: { request }, configurable: true });
+          try {
+            const { result, rerender } = await inConflict();
+            lock.busy = true;
+            let resolving!: Promise<void>;
+            act(() => {
+              resolving = result.current.resolveConflict(choice);
+            });
+            await waitFor(() => expect(lock.release).not.toBeNull());
+
+            // Locked while it waited
+            auth.encryptionKey = null;
+            rerender();
+            await act(async () => {
+              lock.release!();
+              await resolving;
+            });
+
+            expect(keepBrowserData).not.toHaveBeenCalled();
+            expect(keepFolderCopy).not.toHaveBeenCalled();
+            expect(applyFolderCopy).not.toHaveBeenCalled();
+            expect(writeFolderCopy).toHaveBeenCalledTimes(1);
+          } finally {
+            delete (navigator as Partial<Navigator> & { locks?: unknown }).locks;
+          }
         }
       );
 
@@ -801,36 +895,12 @@ describe('useFilesystemSync', () => {
         expect(result.current.held).toBe(true);
         await act(() => result.current.syncNow());
         expect(writeFolderCopy).toHaveBeenCalledTimes(1);
-        expect(keepFolderBackup).not.toHaveBeenCalled();
+        expect(keepFolderCopy).not.toHaveBeenCalled();
 
         act(() => notifyFolderAccessChanged());
         expect(result.current.held).toBe(false);
         await act(() => result.current.syncNow());
         expect(writeFolderCopy).toHaveBeenCalledTimes(2);
-      });
-
-      it('every backup is sealed without the lock', async () => {
-        const actual = await vi.importActual<typeof import('@services/sync')>('@services/sync');
-        vi.mocked(sealFolderCopy).mockImplementation(actual.sealFolderCopy);
-        vi.mocked(sealedForBackup).mockImplementation(actual.sealedForBackup);
-        const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-        auth.encryptionKey = key;
-        const lock = (await createCredentialsV2('Passw0rd!', 1000)).credentials;
-        const folderBytes = await sealEnvelope(new TextEncoder().encode('{"version":4}'), key, lock);
-        const outcome = { ...changedElsewhere(true), bytes: folderBytes, folderLock: lock } as FolderSyncOutcome;
-
-        for (const choice of ['folder', 'browser'] as const) {
-          vi.mocked(writeFolderCopy).mockResolvedValueOnce(outcome);
-          const { result, unmount } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
-          await waitFor(() => expect(result.current.conflict).not.toBeNull());
-          await act(() => result.current.resolveConflict(choice));
-          unmount();
-        }
-
-        expect(keepFolderBackup).toHaveBeenCalledTimes(2);
-        for (const [, bytes] of vi.mocked(keepFolderBackup).mock.calls) {
-          expect(readEnvelopeHeader(bytes)).toMatchObject({ lock: null });
-        }
       });
     });
 
@@ -841,6 +911,39 @@ describe('useFilesystemSync', () => {
 
       expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r5');
       expect(writeFolderCopy).not.toHaveBeenCalled();
+    });
+
+    describe('replacing the folder copy from the restore question', () => {
+      it('keeps the folder copy as a backup, then the next sync writes over it without asking', async () => {
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+
+        await act(() => result.current.replaceFolderCopy('r7'));
+        expect(keepCurrentFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ key: mockKey }));
+        expect(writeFolderCopy).not.toHaveBeenCalled();
+
+        rerender({ enabled: true });
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).toMatchObject({ replaces: 'r7' });
+
+        // Once only
+        await act(() => result.current.syncNow());
+        expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).not.toHaveProperty('replaces');
+      });
+
+      it('chooses nothing when the backup cannot be saved', async () => {
+        vi.mocked(keepCurrentFolderCopy).mockRejectedValue(new Error('Disk full'));
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+
+        await expect(act(() => result.current.replaceFolderCopy('r7'))).rejects.toThrow('Disk full');
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replaces');
+      });
     });
   });
 });

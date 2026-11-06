@@ -33,8 +33,17 @@ export interface FolderSyncFile {
   exportedAt: string;
   /** New with every write; absent from a copy written before the lock was kept beside it */
   revision?: string;
+  /**
+   * The revisions this copy was built on, newest first: the copy it replaced,
+   * then that copy's own. A copy is loaded without asking only when it was
+   * built on the one this browser last saw. Absent from older copies.
+   */
+  ancestors?: string[];
   data: FolderSyncData;
 }
+
+/** How many revisions a copy records as built on: a browser that missed more writes is asked */
+export const MAX_FOLDER_ANCESTORS = 50;
 
 /** What a sync knows besides the data */
 export interface FolderWriteContext {
@@ -100,12 +109,14 @@ export type FolderSyncOutcome =
   | { status: 'protected'; reason: FolderProtectionReason; folderLock?: StoredCredentialsV2 | null }
   /**
    * The folder copy was written elsewhere since this browser last saw it (or
-   * this browser never saw it). Without local changes (`localChanged` false)
-   * it is to be loaded; with them the user chooses. `bytes` are the copy as
-   * it lies in the folder.
+   * this browser never saw it). `reason` 'newer' means it is to be loaded:
+   * built on the copy this browser last saw, which has not changed here
+   * since. Otherwise the user chooses. `bytes` are the copy as it lies in
+   * the folder.
    */
   | {
       status: 'changed-elsewhere';
+      reason: ChangedElsewhereReason;
       copy: ParsedBackupData;
       revision: string | null;
       bytes: ArrayBuffer;
@@ -114,6 +125,14 @@ export type FolderSyncOutcome =
       browser: FolderSide;
       folderLock: StoredCredentialsV2 | null;
     };
+
+/**
+ * Why a copy written elsewhere is loaded or asked about: built on the one
+ * this browser last saw, with nothing changed here (`newer`); both changed
+ * (`both-changed`); or nothing changed here, but the copy is not built on the
+ * one last seen, or would take every health record away (`not-newer`)
+ */
+export type ChangedElsewhereReason = 'newer' | 'both-changed' | 'not-newer';
 
 type CopyProblem = Exclude<FolderProtectionReason, 'empty' | 'set-aside'>;
 
@@ -283,14 +302,26 @@ export async function markFolderCopySeen(
 export async function sealFolderCopy(
   data: FolderSyncData,
   key: CryptoKey,
-  lock: StoredCredentialsV2 | null
+  lock: StoredCredentialsV2 | null,
+  ancestors: string[] = []
 ): Promise<{ bytes: ArrayBuffer; revision: string }> {
   const revision = crypto.randomUUID();
   // The version leads: the format is told by it before anything else
   const file =
     `{"version":${FOLDER_SYNC_FILE_VERSION},"exportedAt":"${new Date().toISOString()}",` +
-    `"revision":"${revision}","data":${JSON.stringify(data)}}`;
+    `"revision":"${revision}","ancestors":${JSON.stringify(ancestors.slice(0, MAX_FOLDER_ANCESTORS))},` +
+    `"data":${JSON.stringify(data)}}`;
   return { bytes: await sealEnvelope(new TextEncoder().encode(file), key, lock), revision };
+}
+
+/**
+ * What identifies a folder copy the user chose to replace: its revision, or
+ * for a copy without one (written before revisions were kept), a digest of
+ * its bytes
+ */
+export async function folderCopyId(bytes: ArrayBuffer, revision: string | null): Promise<string> {
+  if (revision !== null) return revision;
+  return `sha256:${arrayBufferToBase64(await crypto.subtle.digest('SHA-256', bytes))}`;
 }
 
 /** A folder copy's records as a restore reads them, with dates; throws when they cannot be read */
@@ -372,11 +403,20 @@ export async function writeFolderCopy(
   const folderLock = existing?.lock ?? null;
   const lockIsLater = context.lock !== null && isLaterLock(context.lock, folderLock);
   const revision = typeof existing?.file.revision === 'string' ? existing.file.revision : null;
+  // What the copy was built on; a copy without a revision is no ancestor to name
+  const ancestors =
+    revision === null
+      ? []
+      : [revision, ...(existing?.file.ancestors ?? []).filter((a): a is string => typeof a === 'string')];
 
-  /** Seal and save; `replaced` is the copy written over, kept as the previous copy when it should be */
-  const write = async (replaced: OpenedCopy | null): Promise<FolderSyncOutcome> => {
+  /**
+   * Seal and save, as built on the copy there now; `keepPrevious`: keep that
+   * copy as the previous copy when it should be (not for a lock-only rewrite)
+   */
+  const write = async (keepPrevious: boolean): Promise<FolderSyncOutcome> => {
     const lock = lockIsLater || folderLock === null ? context.lock : folderLock;
-    const sealed = await sealFolderCopy(data, key, lock);
+    const sealed = await sealFolderCopy(data, key, lock, ancestors);
+    const replaced = keepPrevious ? existing : null;
     const keep = replaced !== null && (await keepsAsPrevious(store, replaced.file, key));
     // Only the current copy carries the lock. A password change re-wraps the
     // same data key, so an older lock left in the previous copy would let an
@@ -389,7 +429,7 @@ export async function writeFolderCopy(
   const unchanged: FolderSyncOutcome = { status: 'unchanged', state: { revision, digest }, folderLock };
 
   // An interrupted first write, or none yet: there is nothing to lose
-  if (!existing) return write(null);
+  if (!existing) return write(false);
   const copy = existing;
   const copyJson = folderDataJson(copy.file.data);
   const sameData = local === copyJson;
@@ -401,11 +441,11 @@ export async function writeFolderCopy(
       return { status: 'protected', reason: 'empty', folderLock };
     }
     // Only the lock changed: the previous copy stays the one from before the last change of data
-    return write(sameData ? null : copy);
+    return write(!sameData);
   };
 
-  /** The copy is to be loaded, or the user is to choose */
-  const changedElsewhere = (localChanged: boolean): FolderSyncOutcome => {
+  /** The copy is to be loaded ('newer'), or the user is to choose */
+  const changedElsewhere = (reason: ChangedElsewhereReason, localChanged: boolean): FolderSyncOutcome => {
     let parsed: ParsedBackupData;
     try {
       parsed = parseFolderCopyData(copy.file);
@@ -415,6 +455,7 @@ export async function writeFolderCopy(
     }
     return {
       status: 'changed-elsewhere',
+      reason,
       copy: parsed,
       revision,
       bytes: encrypted as ArrayBuffer,
@@ -425,27 +466,42 @@ export async function writeFolderCopy(
     };
   };
 
-  // The user chose to replace this very copy
-  if (context.replaces !== undefined && context.replaces === revision) return writeOver();
+  // The user chose to replace this very copy (a copy without a revision by its bytes)
+  const { replaces } = context;
+  if (typeof replaces === 'string' && replaces === (await folderCopyId(encrypted as ArrayBuffer, revision))) {
+    return writeOver();
+  }
 
   const { lastSeen } = context;
   // The copy this browser last read or wrote; or one rewritten elsewhere with
   // the data this browser saw then, as a password change there rewrites it
-  // for the lock alone: nothing in it is new to this browser
+  // for the lock alone: nothing in it is new to this browser. A missing
+  // revision never matches a missing one.
   const seenBefore =
     lastSeen !== null &&
-    (revision === lastSeen.revision || (await digestFolderData(copyJson)) === lastSeen.digest);
+    ((revision !== null && revision === lastSeen.revision) ||
+      (await digestFolderData(copyJson)) === lastSeen.digest);
   if (seenBefore) {
     if (digest === lastSeen.digest && !lockIsLater) return unchanged;
     return writeOver();
   }
 
   // Written elsewhere, or never read here
-  const localChanged = lastSeen === null || digest !== lastSeen.digest;
-  if (sameData) return lockIsLater ? write(null) : unchanged;
-  if (!localChanged) return changedElsewhere(false);
-  if (healthRecords(copy.file.data) === 0) return write(copy);
-  // A browser that lost its data must not write its empty state over the copy
-  if (healthRecords(data) === 0) return { status: 'protected', reason: 'empty', folderLock };
-  return changedElsewhere(true);
+  if (sameData) return lockIsLater ? write(false) : unchanged;
+  if (lastSeen === null) {
+    if (healthRecords(copy.file.data) === 0) return write(true);
+    // A browser that lost its data must not write its empty state over the copy
+    if (healthRecords(data) === 0) return { status: 'protected', reason: 'empty', folderLock };
+    return changedElsewhere('both-changed', true);
+  }
+  // Loaded without asking only when nothing here changed since this browser
+  // last saw the folder, the copy was built on that one (not an older copy
+  // put back, one written at the same time, or another folder's), and it
+  // takes no health records away
+  const localChanged = digest !== lastSeen.digest;
+  const builtOnLastSeen = lastSeen.revision !== null && ancestors.includes(lastSeen.revision);
+  if (!localChanged && builtOnLastSeen && (healthRecords(copy.file.data) > 0 || healthRecords(data) === 0)) {
+    return changedElsewhere('newer', false);
+  }
+  return changedElsewhere(localChanged ? 'both-changed' : 'not-newer', localChanged);
 }

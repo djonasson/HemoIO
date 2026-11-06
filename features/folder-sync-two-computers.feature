@@ -22,6 +22,24 @@ Feature: Two computers on one folder
     Then this computer should show the lab result saved on my other computer
     And I should be told that it was updated from the folder
 
+  Scenario: Loading a newer folder copy first keeps my computer's data as an autobackup
+    Given my lab results have been synced to my folder
+    When my other computer saves a copy with another lab result
+    And the periodic folder sync loads it
+    Then my folder should hold one autobackup, which is this computer's data from before
+    And the autobackup should hold no password lock
+
+  # A copy loads by itself only when it was built on the one this computer last
+  # saw. Clocks are not trusted: an older copy put back (from a cloud drive's
+  # history, say) or one saved at the same moment is asked about instead
+  Scenario: An older folder copy put back is asked about, never loaded
+    Given a newer folder copy was loaded onto this computer
+    When the folder copy from before is put back in my folder
+    And the periodic folder sync runs
+    Then I should be asked which data to keep, and told the folder copy is not a newer version of the one this computer last saw
+    And this computer should still show the lab result saved on my other computer
+    And my folder copy should not have changed
+
   Scenario: With changes on both sides I choose, and see counts and dates only
     Given my lab results have been synced to my folder
     When my other computer saves a copy with another lab result
@@ -68,13 +86,16 @@ Feature: Two computers on one folder
     When I choose to decide later
     Then I should be told that folder sync is paused
     And nothing in my folder or on this computer should change, not even at the periodic sync
-    And I should be asked again the next time I unlock the app
+    And I should be asked again the next time I unlock the app, still with nothing written
 
   Scenario: A copy loaded from the folder is not written back unchanged
     Given a newer folder copy was loaded onto this computer
     When the periodic folder sync runs twice
     Then my folder copy should still be the one my other computer saved
 
+  # Dated backups (from a choice) and autobackups (from a copy loaded by
+  # itself) are kept apart: each keeps its own 10 newest, and the backup just
+  # saved is never the one removed
   Scenario: Only the 10 newest backups are kept
     Given my folder already holds 10 dated backups
     When I am asked which data to keep, and choose to load the folder copy

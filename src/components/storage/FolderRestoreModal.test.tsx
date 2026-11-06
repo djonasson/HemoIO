@@ -29,14 +29,18 @@ const OFFER: FolderRestorePrompt = {
   replacesBrowserData: false,
 };
 
-function renderModal(prompt: FolderRestorePrompt | null = OFFER, onRestore = vi.fn(async () => {})) {
+function renderModal(
+  prompt: FolderRestorePrompt | null = OFFER,
+  onRestore = vi.fn(async () => {}),
+  onReplace = vi.fn(async () => {})
+) {
   const onDecide = vi.fn();
   render(
     <MantineProvider env="test">
-      <FolderRestoreModal prompt={prompt} onRestore={onRestore} onDecide={onDecide} />
+      <FolderRestoreModal prompt={prompt} onRestore={onRestore} onReplace={onReplace} onDecide={onDecide} />
     </MantineProvider>
   );
-  return { onRestore, onDecide };
+  return { onRestore, onReplace, onDecide };
 }
 
 describe('FolderRestoreModal', () => {
@@ -140,7 +144,36 @@ describe('FolderRestoreModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
-    expect(onDecide).toHaveBeenCalledWith('sync');
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('sync'));
+  });
+
+  it('keeps the folder copy as a backup before letting sync replace it', async () => {
+    const { onReplace, onDecide } = renderModal();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('kept as a dated backup');
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('sync'));
+    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onReplace.mock.invocationCallOrder[0]).toBeLessThan(onDecide.mock.invocationCallOrder[0]);
+  });
+
+  it('replaces nothing when the folder copy cannot be kept as a backup', async () => {
+    const onReplace = vi.fn(async () => {
+      throw new Error('Disk full');
+    });
+    const { onDecide } = renderModal(OFFER, undefined, onReplace);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nothing was changed: the folder copy could not be kept as a backup.'
+    );
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Disk full');
   });
 
   it('Escape on the confirmation goes back, rather than closing', async () => {
@@ -157,7 +190,7 @@ describe('FolderRestoreModal', () => {
     const onDecide = vi.fn();
     const ui = (prompt: FolderRestorePrompt | null) => (
       <MantineProvider env="test">
-        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onDecide={onDecide} />
+        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onReplace={vi.fn(async () => {})} onDecide={onDecide} />
       </MantineProvider>
     );
     const { rerender } = render(ui(OFFER));
@@ -171,7 +204,7 @@ describe('FolderRestoreModal', () => {
     const onDecide = vi.fn();
     const ui = (prompt: FolderRestorePrompt | null) => (
       <MantineProvider env="test">
-        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onDecide={onDecide} />
+        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onReplace={vi.fn(async () => {})} onDecide={onDecide} />
       </MantineProvider>
     );
     const { rerender } = render(ui(OFFER));

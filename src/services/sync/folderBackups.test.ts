@@ -4,6 +4,7 @@ import {
   MAX_FOLDER_BACKUPS,
   backupDate,
   backupFileName,
+  backupKind,
   keepFolderBackup,
   sealedForBackup,
   type FolderBackupStore,
@@ -52,10 +53,10 @@ describe('folder backups', () => {
       '2026-11-06T10:15:00.124Z',
       '2026-02-01T00:00:00.000Z',
     ].map((iso) => new Date(iso));
-    const names = times.map(backupFileName);
+    const names = times.map((date) => backupFileName(date));
 
     expect([...names].sort()).toEqual(
-      [...times].sort((a, b) => a.getTime() - b.getTime()).map(backupFileName)
+      [...times].sort((a, b) => a.getTime() - b.getTime()).map((date) => backupFileName(date))
     );
   });
 
@@ -71,7 +72,7 @@ describe('folder backups', () => {
   it('keeps a backup under its dated name', async () => {
     const store = new MemoryBackups();
 
-    const name = await keepFolderBackup(store, bytes(7), at(15));
+    const name = await keepFolderBackup(store, bytes(7), { kind: 'conflict', at: at(15) });
 
     expect(name).toBe('hemoio-backup-20261106T101500123Z.encrypted');
     expect(new Uint8Array(store.files.get(name)!)).toEqual(new Uint8Array([7]));
@@ -82,7 +83,7 @@ describe('folder backups', () => {
     const store = new MemoryBackups();
     store.files.set('notes.txt', bytes(0));
     for (let minute = 0; minute < 11; minute++) {
-      await keepFolderBackup(store, bytes(minute), at(minute));
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
     }
 
     const names = (await store.listBackups()).filter((name) => backupDate(name) !== null);
@@ -93,23 +94,51 @@ describe('folder backups', () => {
     expect(store.files.has('notes.txt')).toBe(true);
   });
 
-  it('keeps an older backup saved after newer ones only when it is among the newest', async () => {
+  it('never deletes the backup just saved, even one dated before the others (a clock behind)', async () => {
     const store = new MemoryBackups();
     for (let minute = 1; minute <= 10; minute++) {
-      await keepFolderBackup(store, bytes(minute), at(minute));
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
     }
 
-    await keepFolderBackup(store, bytes(0), at(0));
+    const name = await keepFolderBackup(store, bytes(0), { kind: 'conflict', at: at(0) });
 
     expect(store.files.size).toBe(10);
-    expect(store.files.has(backupFileName(at(0)))).toBe(false);
+    expect(store.files.has(name)).toBe(true);
+    // The oldest of the others makes room
+    expect(store.files.has(backupFileName(at(1)))).toBe(false);
+  });
+
+  it('names each kind apart, and reads both back', () => {
+    const date = new Date('2026-11-06T10:15:00.123Z');
+
+    expect(backupFileName(date, 'before-load')).toBe('hemoio-autobackup-20261106T101500123Z.encrypted');
+    expect(backupKind(backupFileName(date))).toBe('conflict');
+    expect(backupKind(backupFileName(date, 'before-load'))).toBe('before-load');
+    expect(backupDate(backupFileName(date, 'before-load'))).toEqual(date);
+    expect(backupKind('hemoio-data.encrypted')).toBeNull();
+  });
+
+  it('each kind keeps its own 10 newest', async () => {
+    const store = new MemoryBackups();
+    for (let minute = 0; minute < 10; minute++) {
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
+    }
+    // Routine loads, later than every conflict backup, push none of them out
+    for (let minute = 20; minute < 32; minute++) {
+      await keepFolderBackup(store, bytes(minute), { kind: 'before-load', at: at(minute) });
+    }
+
+    const names = [...store.files.keys()];
+    expect(names.filter((name) => backupKind(name) === 'conflict')).toHaveLength(10);
+    expect(names.filter((name) => backupKind(name) === 'before-load')).toHaveLength(10);
+    expect(store.files.has(backupFileName(at(20), 'before-load'))).toBe(false);
   });
 
   it('never overwrites a backup made the same millisecond', async () => {
     const store = new MemoryBackups();
 
-    const first = await keepFolderBackup(store, bytes(1), at(5));
-    const second = await keepFolderBackup(store, bytes(2), at(5));
+    const first = await keepFolderBackup(store, bytes(1), { kind: 'conflict', at: at(5) });
+    const second = await keepFolderBackup(store, bytes(2), { kind: 'conflict', at: at(5) });
 
     expect(second).not.toBe(first);
     expect(store.files.size).toBe(2);
@@ -119,13 +148,13 @@ describe('folder backups', () => {
   it('a failed save deletes nothing', async () => {
     const store = new MemoryBackups();
     for (let minute = 0; minute < 10; minute++) {
-      await keepFolderBackup(store, bytes(minute), at(minute));
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
     }
     const before = [...store.files.keys()];
     store.failSaves = true;
     const deleteBackup = vi.spyOn(store, 'deleteBackup');
 
-    await expect(keepFolderBackup(store, bytes(11), at(11))).rejects.toThrow('Disk full');
+    await expect(keepFolderBackup(store, bytes(11), { kind: 'conflict', at: at(11) })).rejects.toThrow('Disk full');
 
     expect(deleteBackup).not.toHaveBeenCalled();
     expect([...store.files.keys()]).toEqual(before);

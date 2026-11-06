@@ -18,6 +18,11 @@ export interface FolderRestoreModalProps {
   prompt: FolderRestorePrompt | null;
   /** Restore the copy into this browser; rejects when the restore failed */
   onRestore: (data: ParsedBackupData) => Promise<void>;
+  /**
+   * Keep the folder copy as a dated backup, so that the sync may write over
+   * it; rejects, choosing nothing, when the backup cannot be saved
+   */
+  onReplace: () => Promise<void>;
   onDecide: (decision: FolderRestoreDecision) => void;
 }
 
@@ -60,17 +65,21 @@ function problemMessage(reason: FolderCopyProblem, folder: string): string {
 export function FolderRestoreModal({
   prompt,
   onRestore,
+  onReplace,
   onDecide,
 }: FolderRestoreModalProps): React.ReactNode {
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
+  const [replaceFailed, setReplaceFailed] = useState(false);
   // The last prompt stays on screen while the dialog closes; a new one starts afresh
   const [shown, setShown] = useState(prompt);
   if (prompt !== null && prompt !== shown) {
     setShown(prompt);
     setConfirmingReplace(false);
     setRestoreFailed(false);
+    setReplaceFailed(false);
   }
   const decide = onDecide;
 
@@ -89,6 +98,21 @@ export function FolderRestoreModal({
     decide('sync');
   };
 
+  const handleReplace = async (): Promise<void> => {
+    setIsReplacing(true);
+    setReplaceFailed(false);
+    try {
+      await onReplace();
+    } catch {
+      // Not shown: the reason could name stored data, and nothing was chosen
+      setReplaceFailed(true);
+      return;
+    } finally {
+      setIsReplacing(false);
+    }
+    decide('sync');
+  };
+
   const folder = shown?.folderName ? `“${shown.folderName}”` : 'your folder';
   const title = confirmingReplace
     ? REPLACE_TITLE
@@ -104,14 +128,23 @@ export function FolderRestoreModal({
         <>
           <Text size="sm">
             From now on HemoIO saves this browser&apos;s data to {folder}, and the copy there
-            will be replaced. If you might need it, first copy the file hemoio-data.encrypted
-            from the folder somewhere safe.
+            will be replaced. It is kept as a dated backup in the folder first.
           </Text>
+          {replaceFailed && (
+            <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              Nothing was changed: the folder copy could not be kept as a backup.
+            </Alert>
+          )}
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setConfirmingReplace(false)} data-autofocus>
+            <Button
+              variant="default"
+              onClick={() => setConfirmingReplace(false)}
+              disabled={isReplacing}
+              data-autofocus
+            >
               Back
             </Button>
-            <Button color="red" onClick={() => decide('sync')}>
+            <Button color="red" onClick={() => void handleReplace()} loading={isReplacing}>
               Replace folder copy
             </Button>
           </Group>
@@ -188,7 +221,7 @@ export function FolderRestoreModal({
       opened={prompt !== null}
       // Escape is "Back" on the confirmation, else "Not now"; never during a restore
       onClose={() => {
-        if (isRestoring) return;
+        if (isRestoring || isReplacing) return;
         if (confirmingReplace) setConfirmingReplace(false);
         else decide('hold');
       }}

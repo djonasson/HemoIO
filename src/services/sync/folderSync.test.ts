@@ -6,6 +6,7 @@ import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
 import {
   FOLDER_SYNC_FILE_VERSION,
   digestFolderData,
+  folderCopyId,
   folderDataJson,
   markFolderCopySeen,
   sealFolderCopy,
@@ -382,8 +383,8 @@ describe('writeFolderCopy', () => {
       );
       const legacy = await plainOf(store.copy, key);
 
-      // This browser read the legacy copy before: its own data changed since
-      await write(store, withResults(2), key, { ...context, lastSeen: { revision: null, digest: 'earlier' } });
+      // The user chose to keep this computer's data over it
+      await write(store, withResults(2), key, { ...context, replaces: await folderCopyId(store.copy!, null) });
 
       expect(readEnvelopeHeader(store.previous!)).toMatchObject({ lock: null });
       expect(await plainOf(store.previous, key)).toBe(legacy);
@@ -567,9 +568,19 @@ describe('two computers on one folder', () => {
     store = new MemoryStore();
   });
 
-  /** The other computer writes the folder copy; returns its revision */
-  async function writtenElsewhere(data: FolderSyncData): Promise<string> {
-    const { bytes, revision } = await sealFolderCopy(data, key, LOCK);
+  /** What a copy was built on: its revision, then its own ancestors */
+  async function ancestryOf(bytes: ArrayBuffer | null): Promise<string[]> {
+    if (!bytes) return [];
+    const body = JSON.parse(await plainOf(bytes, key));
+    return [body.revision, ...(body.ancestors ?? [])].slice(0, 50);
+  }
+
+  /**
+   * The other computer writes the folder copy, built on the copy there now
+   * (as its sync does) unless told what it was built on; returns its revision
+   */
+  async function writtenElsewhere(data: FolderSyncData, ancestors?: string[]): Promise<string> {
+    const { bytes, revision } = await sealFolderCopy(data, key, LOCK, ancestors ?? (await ancestryOf(store.copy)));
     store.copy = bytes;
     return revision;
   }
@@ -629,6 +640,7 @@ describe('two computers on one folder', () => {
 
     expect(outcome).toMatchObject({
       status: 'changed-elsewhere',
+      reason: 'newer',
       revision,
       localChanged: false,
       folderLock: LOCK,
@@ -647,7 +659,7 @@ describe('two computers on one folder', () => {
 
     const outcome = await writeFolderCopy(store, withResults(3), key, context(lastSeen));
 
-    expect(outcome).toMatchObject({ status: 'changed-elsewhere', revision, localChanged: true });
+    expect(outcome).toMatchObject({ status: 'changed-elsewhere', reason: 'both-changed', revision, localChanged: true });
     expect(store.saves).toBe(1);
   });
 
@@ -682,18 +694,109 @@ describe('two computers on one folder', () => {
 
     expect(await writeFolderCopy(store, withResults(1), key, context(null))).toMatchObject({
       status: 'changed-elsewhere',
+      reason: 'both-changed',
       localChanged: true,
     });
     expect(store.saves).toBe(0);
   });
 
-  it('a folder copy written elsewhere without health records is written over', async () => {
-    const { lastSeen } = await syncedThenWrittenElsewhere(withResults(1), empty());
+  it('a never-read folder copy without health records is written over', async () => {
+    await writtenElsewhere(empty());
 
-    expect(await writeFolderCopy(store, withResults(2), key, context(lastSeen))).toMatchObject({
+    expect(await writeFolderCopy(store, withResults(2), key, context(null))).toMatchObject({
       status: 'written',
     });
   });
+
+  it('an empty copy written elsewhere over a browser with data goes to the dialog', async () => {
+    // A descendant of the copy this browser saw, but holding no health records
+    const { lastSeen } = await syncedThenWrittenElsewhere(withResults(1), empty());
+
+    expect(await writeFolderCopy(store, withResults(1), key, context(lastSeen))).toMatchObject({
+      status: 'changed-elsewhere',
+      reason: 'not-newer',
+      localChanged: false,
+    });
+    expect(store.saves).toBe(1);
+  });
+
+  it('a replayed older copy goes to the dialog', async () => {
+    // A writes r1, B builds r2 on it, A loads r2; then r1 is put back (a cloud history restore)
+    const first = await writeFolderCopy(store, withResults(1), key, context(null));
+    const r1Bytes = store.copy;
+    const r2 = await writtenElsewhere(withResults(2));
+    const loaded = await seenAs(r2, withResults(2));
+    store.copy = r1Bytes;
+
+    const outcome = await writeFolderCopy(store, withResults(2), key, context(loaded));
+
+    expect(first.status).toBe('written');
+    expect(outcome).toMatchObject({ status: 'changed-elsewhere', reason: 'not-newer', localChanged: false });
+  });
+
+  it('two computers writing within seconds: the copy that won is not loaded over unsynced data', async () => {
+    // Both at r1
+    const atR1 = await writeFolderCopy(store, withResults(1), key, context(null));
+    if (atR1.status !== 'written') throw new Error('expected a write');
+    const r1Bytes = store.copy;
+    // A adds a result and writes r2
+    const aWrote = await writeFolderCopy(store, withResults(2), key, context(atR1.state));
+    if (aWrote.status !== 'written') throw new Error('expected a write');
+    // B, which had not yet received r2, wrote r3 over r1, and the cloud kept B's file
+    store.copy = r1Bytes;
+    await writtenElsewhere(linked());
+
+    const outcome = await writeFolderCopy(store, withResults(2), key, context(aWrote.state));
+
+    expect(outcome).toMatchObject({ status: 'changed-elsewhere', reason: 'not-newer', localChanged: false });
+    expect(store.saves).toBe(2);
+  });
+
+  it('another folder holding a copy of the same setup goes to the dialog', async () => {
+    const dropbox = await writeFolderCopy(store, withResults(1), key, context(null));
+    if (dropbox.status !== 'written') throw new Error('expected a write');
+    // The same key, a copy written there long ago
+    const onedrive = new MemoryStore();
+    onedrive.copy = (await sealFolderCopy(withResults(3), key, LOCK)).bytes;
+
+    expect(await writeFolderCopy(onedrive, withResults(1), key, context(dropbox.state))).toMatchObject({
+      status: 'changed-elsewhere',
+      reason: 'not-newer',
+    });
+    expect(onedrive.saves).toBe(0);
+  });
+
+  it('a copy without a revision is never the copy last seen', async () => {
+    store.copy = await sealed({ version: FOLDER_SYNC_FILE_VERSION, exportedAt: '2024-01-01T00:00:00.000Z', data: withResults(2) }, key);
+
+    expect(
+      await writeFolderCopy(store, withResults(1), key, context(await seenAs(null, linked())))
+    ).toMatchObject({ status: 'changed-elsewhere' });
+    // Nor matched by a null choice; only by the identity of its bytes
+    expect(await writeFolderCopy(store, withResults(1), key, context(null, { replaces: null }))).toMatchObject({
+      status: 'changed-elsewhere',
+    });
+    expect(
+      await writeFolderCopy(store, withResults(1), key, context(null, { replaces: await folderCopyId(store.copy, null) }))
+    ).toMatchObject({ status: 'written' });
+  });
+
+  it('a written copy records what it was built on, newest first, keeping 50', async () => {
+    let lastSeen: FolderSyncState | null = null;
+    const revisions: string[] = [];
+    for (let n = 1; n <= 55; n++) {
+      const outcome = await writeFolderCopy(store, withResults(n), key, context(lastSeen));
+      if (outcome.status !== 'written') throw new Error('expected a write');
+      lastSeen = outcome.state;
+      revisions.push(outcome.state.revision!);
+    }
+
+    const { ancestors } = JSON.parse(await plainOf(store.copy, key));
+    expect(ancestors).toHaveLength(50);
+    expect(ancestors[0]).toBe(revisions[53]);
+    expect(ancestors).toEqual(revisions.slice(4, 54).reverse());
+  });
+
 
   it('a copy rewritten elsewhere with the data this browser last saw is written over, not a conflict', async () => {
     // The other computer changed its password: its sync rewrote the copy for the lock alone
@@ -740,10 +843,11 @@ describe('two computers on one folder', () => {
   });
 
   it('an empty browser that changed nothing since it last read loads the newer copy', async () => {
-    await writtenElsewhere(withResults(2));
+    await writtenElsewhere(withResults(2), ['r0']);
 
     expect(await writeFolderCopy(store, empty(), key, context(await seenAs('r0', empty())))).toMatchObject({
       status: 'changed-elsewhere',
+      reason: 'newer',
       localChanged: false,
     });
     expect(store.saves).toBe(0);

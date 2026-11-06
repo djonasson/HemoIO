@@ -95,10 +95,18 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
     >
       {shown && (
         <Stack gap="md">
-          <Text size="sm">
-            The copy in {folder} was saved on another computer, and this computer has changes of its
-            own. Choose which data to keep.
-          </Text>
+          {shown.reason === 'not-newer' ? (
+            <Text size="sm">
+              The folder copy is not a newer version of the one this computer last saw. It may be an
+              older copy put back, or one saved at the same time as this computer&apos;s. Choose which
+              data to keep.
+            </Text>
+          ) : (
+            <Text size="sm">
+              The copy in {folder} was saved on another computer, and this computer has changes of
+              its own. Choose which data to keep.
+            </Text>
+          )}
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <Side heading="In the folder" side={shown.folder} dateLabel="Saved" />
             <Side heading="On this computer" side={shown.browser} dateLabel="Last changed" />

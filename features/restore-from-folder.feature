@@ -34,9 +34,10 @@ Feature: Restore From the Folder Copy
     Given this browser no longer has any of my lab data
     And I unlock HemoIO
     When I choose to replace the folder copy
-    Then I should be asked to confirm that the folder copy will be replaced
+    Then I should be asked to confirm that the folder copy will be replaced, and told it is kept as a dated backup
     When I confirm
-    Then HemoIO should save to the folder again
+    Then my folder should hold the folder copy as a dated backup, with no password lock
+    And HemoIO should save to the folder again
 
   Scenario: Folder copy from another setup
     Given the folder copy was made by another HemoIO setup, with a different key

@@ -7,12 +7,15 @@
 
 export {
   FOLDER_SYNC_FILE_VERSION,
+  MAX_FOLDER_ANCESTORS,
   digestFolderData,
   exportDigest,
+  folderCopyId,
   folderDataJson,
   markFolderCopySeen,
   sealFolderCopy,
   writeFolderCopy,
+  type ChangedElsewhereReason,
   type FolderCopyStore,
   type FolderProtectionReason,
   type FolderSide,
@@ -23,10 +26,14 @@ export {
   MAX_FOLDER_BACKUPS,
   backupDate,
   backupFileName,
+  backupKind,
   keepFolderBackup,
   sealedForBackup,
+  type FolderBackupKind,
   type FolderBackupStore,
+  type KeepFolderBackupOptions,
 } from './folderBackups';
+export { keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
 export {
   assessFolderCopy,
   readFolderCopy,

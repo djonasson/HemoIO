@@ -21,44 +21,76 @@ export interface FolderBackupStore {
   deleteBackup(name: string): Promise<void>;
 }
 
-const BACKUP_NAME = /^hemoio-backup-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z\.encrypted$/;
+/**
+ * What a backup holds: the side of a conflict the user did not choose
+ * (`conflict`), or this computer's data, kept before a newer folder copy was
+ * loaded over it (`before-load`). Each kind keeps its own newest few, so
+ * routine loads never push out the user's conflict backups.
+ */
+export type FolderBackupKind = 'conflict' | 'before-load';
 
-/** 'hemoio-backup-20261106T101500123Z.encrypted': UTC to the millisecond, so names sort by time */
-export function backupFileName(at: Date): string {
-  return `hemoio-backup-${at.toISOString().replace(/[-:.]/g, '')}.encrypted`;
+const PREFIX: Record<FolderBackupKind, string> = {
+  conflict: 'hemoio-backup-',
+  'before-load': 'hemoio-autobackup-',
+};
+
+const BACKUP_NAME =
+  /^(hemoio-backup-|hemoio-autobackup-)(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\d{3})Z\.encrypted$/;
+
+/**
+ * 'hemoio-backup-20261106T101500123Z.encrypted' ('hemoio-autobackup-…' before
+ * a load): UTC to the millisecond, so names of a kind sort by time
+ */
+export function backupFileName(at: Date, kind: FolderBackupKind = 'conflict'): string {
+  return `${PREFIX[kind]}${at.toISOString().replace(/[-:.]/g, '')}.encrypted`;
+}
+
+/** The kind of backup of this name; null for a name that is not a backup's */
+export function backupKind(name: string): FolderBackupKind | null {
+  return backupDate(name) === null ? null : name.startsWith(PREFIX.conflict) ? 'conflict' : 'before-load';
 }
 
 /** When the backup of this name was made; null for a name that is not a backup's */
 export function backupDate(name: string): Date | null {
   const match = BACKUP_NAME.exec(name);
   if (!match) return null;
-  const [year, month, day, hours, minutes, seconds, ms] = match.slice(1).map(Number);
+  const [year, month, day, hours, minutes, seconds, ms] = match.slice(2).map(Number);
   const date = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds, ms));
+  const kind: FolderBackupKind = match[1] === PREFIX.conflict ? 'conflict' : 'before-load';
   // Date.UTC rolls a 13th month or a 61st second over; such a name is no backup's
-  return backupFileName(date) === name ? date : null;
+  return backupFileName(date, kind) === name ? date : null;
+}
+
+export interface KeepFolderBackupOptions {
+  kind: FolderBackupKind;
+  /** When the backup is made; now by default */
+  at?: Date;
 }
 
 /**
- * Saves the bytes as a dated backup, then deletes all but the
- * MAX_FOLDER_BACKUPS newest. A failed save deletes nothing. Returns the name.
+ * Saves the bytes as a dated backup of its kind, then deletes the oldest
+ * others of that kind, so that MAX_FOLDER_BACKUPS are left, the new one
+ * among them. A failed save deletes nothing. Returns the name.
  */
 export async function keepFolderBackup(
   store: FolderBackupStore,
   bytes: ArrayBuffer,
-  at: Date = new Date()
+  { kind, at = new Date() }: KeepFolderBackupOptions
 ): Promise<string> {
   const existing = new Set(await store.listBackups());
   let time = at.getTime();
   // Two backups in one millisecond: the later one is named a millisecond on
-  while (existing.has(backupFileName(new Date(time)))) time += 1;
-  const name = backupFileName(new Date(time));
+  while (existing.has(backupFileName(new Date(time), kind))) time += 1;
+  const name = backupFileName(new Date(time), kind);
   await store.saveBackup(name, bytes);
 
-  const newestFirst = [...existing, name]
-    .map((backup) => ({ backup, date: backupDate(backup) }))
-    .filter((entry): entry is { backup: string; date: Date } => entry.date !== null)
+  // The one just saved always stays, whatever the clocks of the computers
+  // that made the others said: the newest of the rest make up the number
+  const othersNewestFirst = [...existing]
+    .filter((backup) => backupKind(backup) === kind)
+    .map((backup) => ({ backup, date: backupDate(backup)! }))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
-  for (const { backup } of newestFirst.slice(MAX_FOLDER_BACKUPS)) {
+  for (const { backup } of othersNewestFirst.slice(MAX_FOLDER_BACKUPS - 1)) {
     try {
       await store.deleteBackup(backup);
     } catch {

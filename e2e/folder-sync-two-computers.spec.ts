@@ -23,6 +23,7 @@ import {
 import { folderCopyHash } from './steps/folderRestore.steps';
 import {
   FOLDER_BACKUPS,
+  ancestryOfFolderCopy,
   currentFolderData,
   folderBackupNames,
   folderFileBody,
@@ -30,11 +31,13 @@ import {
   folderFileRevision,
   holdFolderSyncs,
   putFolderBackups,
+  readFolderCopyText,
   saveCopyAsAnotherComputer,
 } from './steps/otherComputer.steps';
 import { seedUnreadableRecords, setAsideBanner, setAsideSavedFlags, withSavePicker } from './steps/unreadableRecords.steps';
 
 const BACKUP_NAME = /^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/;
+const AUTOBACKUP_NAME = /^hemoio-autobackup-\d{8}T\d{9}Z\.encrypted$/;
 
 const result = (id: number, labName: string, day: string) => ({
   id,
@@ -52,12 +55,16 @@ const THIS_RESULTS = [result(3, 'This Computer Clinic', '2024-05-06'), result(4,
 
 const SYNC_STATE = 'hemoio_folder_sync_state';
 
-/** When my other computer saves a copy with these lab results (and the seeded test values) */
-function otherComputerSaves(page: Page, labResults: unknown[]): Promise<void> {
-  return saveCopyAsAnotherComputer(page, {
+/**
+ * When my other computer saves a copy with these lab results (and the seeded
+ * test values), built on the folder copy it read: the one there now
+ */
+async function otherComputerSaves(page: Page, labResults: unknown[]): Promise<void> {
+  await saveCopyAsAnotherComputer(page, {
     password: TEST_PASSWORD,
     data: { labResults },
     folderName: TEST_FOLDER_NAME,
+    ancestors: await ancestryOfFolderCopy(page, TEST_PASSWORD),
   });
 }
 
@@ -145,6 +152,40 @@ test.describe('Two computers on one folder', () => {
 
     await expect(page.getByText('Other Computer Clinic')).toBeVisible();
     await expect(updatedNotice(page)).toBeVisible();
+  });
+
+  test("loading a newer folder copy first keeps my computer's data as an autobackup", async ({ page }) => {
+    // Scenario: Loading a newer folder copy first keeps my computer's data as an autobackup
+    await otherComputerSaves(page, [...SEED_LAB_RESULTS, OTHER_RESULT]);
+
+    await periodicSync(page);
+    await expect(updatedNotice(page)).toBeVisible();
+
+    const names = await folderBackupNames(page);
+    expect(names).toHaveLength(1);
+    expect(names[0]).toMatch(AUTOBACKUP_NAME);
+    const backup = await folderFileBody(page, `${FOLDER_BACKUPS}/${names[0]}`, TEST_PASSWORD);
+    expect(backup.data.labResults.map((r) => r.labName)).not.toContain('Other Computer Clinic');
+    expect(backup.data.labResults).toHaveLength(SEED_LAB_RESULTS.length);
+    expect(await folderFileHeader(page, `${FOLDER_BACKUPS}/${names[0]}`)).toMatchObject({ lock: null });
+  });
+
+  test('an older folder copy put back is asked about, never loaded', async ({ page }) => {
+    // Scenario: An older folder copy put back is asked about, never loaded
+    const older = await readFolderCopyText(page);
+    await otherComputerSaves(page, [...SEED_LAB_RESULTS, OTHER_RESULT]);
+    await periodicSync(page);
+    await expect(page.getByText('Other Computer Clinic')).toBeVisible();
+
+    // The copy from before, put back in the folder as it was
+    await folder.write(FOLDER_COPY, older);
+    await periodicSync(page);
+
+    await expect(conflictDialog(page)).toContainText(
+      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, or one saved at the same time as this computer's."
+    );
+    await expect(page.getByText('Other Computer Clinic')).toBeVisible();
+    expect(await readFolderCopyText(page)).toBe(older);
   });
 
   test('with changes on both sides I choose, and see counts and dates only', async ({ page }) => {
@@ -267,6 +308,9 @@ test.describe('Two computers on one folder', () => {
     await lockApp(page);
     await unlockApp(page);
     await expect(conflictDialog(page)).toBeVisible();
+    // The sync that asked again wrote nothing either
+    expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
+    expect(await folderBackupNames(page)).toEqual([]);
   });
 
   test('a copy loaded from the folder is not written back unchanged', async ({ page }) => {

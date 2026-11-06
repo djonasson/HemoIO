@@ -193,6 +193,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     held: folderConflictHeld,
     resolveConflict,
     acknowledgeFolderCopy,
+    replaceFolderCopy,
   } = useFilesystemSync({
     enabled: folderRestore.syncAllowed,
     applyFolderCopy,
@@ -342,6 +343,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [handleRestore, acknowledgeFolderCopy, offeredRevision]
   );
 
+  // "Replace folder copy": the copy is kept as a backup first, and the next
+  // sync writes over it without asking again
+  const handleFolderReplace = useCallback(
+    () => replaceFolderCopy(offeredRevision),
+    [replaceFolderCopy, offeredRevision]
+  );
+
   const handleConflictChoice = useCallback(
     async (choice: FolderConflictChoice) => {
       await resolveConflict(choice);
@@ -366,6 +374,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       <FolderRestoreModal
         prompt={folderRestore.prompt}
         onRestore={handleFolderRestore}
+        onReplace={handleFolderReplace}
         onDecide={handleFolderDecision}
       />
       <FolderConflictModal conflict={folderConflict} onResolve={handleConflictChoice} />

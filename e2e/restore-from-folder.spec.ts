@@ -21,6 +21,7 @@ import {
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
 import { loseBrowserData } from './steps/folderSync.steps';
+import { FOLDER_BACKUPS, folderBackupNames, folderFileHeader } from './steps/otherComputer.steps';
 
 /**
  * Background: folder storage on, holding a copy of two lab results, three
@@ -161,8 +162,15 @@ test.describe('Restore from the folder copy', () => {
     const dialog = new FolderRestoreDialog(page);
     await dialog.replace.click();
     await expect(dialog.dialog).toContainText('will be replaced');
+    await expect(dialog.dialog).toContainText('kept as a dated backup');
     await dialog.confirmReplace.click();
     await expect(dialog.dialog).toBeHidden();
+    // The copy offered is kept first, without the lock
+    const names = await folderBackupNames(page, FOLDER_NAME);
+    expect(names).toEqual([expect.stringMatching(/^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/)]);
+    expect(await folderFileHeader(page, `${FOLDER_BACKUPS}/${names[0]}`, FOLDER_NAME)).toMatchObject({
+      lock: null,
+    });
 
     // From now on saves reach the folder: a one-result backup replaces the copy
     await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });

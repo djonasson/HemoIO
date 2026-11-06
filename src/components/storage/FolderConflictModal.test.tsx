@@ -10,6 +10,7 @@ const FOLDER_SAVED = new Date('2026-11-05T18:30:00.000Z');
 const BROWSER_CHANGED = new Date('2026-11-06T09:15:00.000Z');
 
 const CONFLICT: FolderConflict = {
+  reason: 'both-changed',
   folder: { labResults: 3, testValues: 5, notes: 1, savedAt: FOLDER_SAVED },
   browser: { labResults: 2, testValues: 4, notes: 0, savedAt: BROWSER_CHANGED },
   folderName: 'Health',
@@ -52,6 +53,22 @@ describe('FolderConflictModal', () => {
     expect(browser).toHaveTextContent(`Last changed ${formatDateTime(BROWSER_CHANGED)}`);
     expect(dialog()).toHaveTextContent("The side you don't choose is kept as a dated backup in your folder.");
     expect(dialog()).toHaveTextContent('“Health”');
+  });
+
+  it('says when the folder copy is not a newer version of the one last seen', () => {
+    renderModal({ ...CONFLICT, reason: 'not-newer' });
+
+    expect(dialog()).toHaveTextContent(
+      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, or one saved at the same time as this computer's."
+    );
+    expect(dialog()).not.toHaveTextContent('this computer has changes of its own');
+  });
+
+  it('says both sides changed when they did', () => {
+    renderModal();
+
+    expect(dialog()).toHaveTextContent('this computer has changes of its own');
+    expect(dialog()).not.toHaveTextContent('not a newer version');
   });
 
   it('leaves out a date it does not have', () => {
