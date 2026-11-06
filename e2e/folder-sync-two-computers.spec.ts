@@ -479,10 +479,12 @@ test.describe('Two computers on one folder', () => {
 
   test("a current folder copy that can't be opened is left as it is", async ({ page }) => {
     // Scenario: A current folder copy that can't be opened is left as it is
-    await askedWhichToKeep(page);
+    const { otherRevision } = await askedWhichToKeep(page);
     await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
     await expect.poll(() => folderBackupNames(page)).toHaveLength(1);
     const [name] = await folderBackupNames(page);
+    // The backup is kept first; this computer's copy is written after it
+    await expect.poll(() => folderFileRevision(page, FOLDER_COPY, TEST_PASSWORD)).not.toBe(otherRevision);
     // Damaged after this computer last saw it
     await folder.write(FOLDER_COPY, 'not a folder copy');
     const folderCopy = await folderCopyHash(page, TEST_FOLDER_NAME);
