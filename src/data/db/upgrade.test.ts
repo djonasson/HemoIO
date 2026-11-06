@@ -68,6 +68,7 @@ describe('database upgrade to LOINC codes', () => {
 
     expect(db.tables.map((table) => table.name).sort()).toEqual([
       'labResults',
+      'setAside',
       'settings',
       'testValues',
       'userNotes',
@@ -82,6 +83,45 @@ describe('database upgrade to LOINC codes', () => {
     await db.open();
 
     expect(db.testValues.schema.indexes.map((index) => index.name)).toEqual(['labResultId']);
+    db.close();
+  });
+});
+
+/** The v7 schema exactly as shipped before unreadable records were set aside */
+function openV7(name: string): Dexie {
+  const legacy = new Dexie(name);
+  legacy.version(7).stores({
+    labResults: '++id',
+    testValues: '++id, labResultId',
+    userPreferences: '++id',
+    settings: '++id',
+    userNotes: '++id, labResultId, testValueId',
+  });
+  return legacy;
+}
+
+describe('database upgrade to set-aside records', () => {
+  it('version 8 adds the setAside table and keeps the data', async () => {
+    const name = 'upgrade-test-8';
+    names.push(name);
+    const legacy = openV7(name);
+    await legacy.table('labResults').add({ encrypted: 'enc:lab' });
+    await legacy.table('testValues').add({ labResultId: 1, encrypted: 'enc:v1' });
+    await legacy.table('userNotes').add({ labResultId: 1, encrypted: 'enc:n1' });
+    await legacy.table('userPreferences').add({ encrypted: 'enc:prefs' });
+    await legacy.table('settings').add({ storageProvider: 'local', aiProvider: 'ollama', language: 'en' });
+    legacy.close();
+
+    const db = new HemoIODatabase(name);
+    await db.open();
+
+    expect(db.verno).toBe(8);
+    expect(await db.setAside.count()).toBe(0);
+    expect(await db.labResults.toArray()).toEqual([{ id: 1, encrypted: 'enc:lab' }]);
+    expect(await db.testValues.toArray()).toEqual([{ id: 1, labResultId: 1, encrypted: 'enc:v1' }]);
+    expect(await db.userNotes.toArray()).toEqual([{ id: 1, labResultId: 1, encrypted: 'enc:n1' }]);
+    expect(await db.userPreferences.toArray()).toEqual([{ id: 1, encrypted: 'enc:prefs' }]);
+    expect(await db.settings.count()).toBe(1);
     db.close();
   });
 });

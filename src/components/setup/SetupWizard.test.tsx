@@ -13,6 +13,15 @@ vi.mock('@data/encryption', async (importOriginal) => ({
   encryptString: vi.fn().mockResolvedValue('encrypted'),
 }));
 
+// Unlocking settles the stored records against the key (see
+// AuthContext.test.tsx); this test has no database
+vi.mock('@data/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@data/db')>()),
+  createEncryptedDb: () => ({
+    settleUnreadable: () => Promise.resolve({ returned: 0, setAside: 0 }),
+  }),
+}));
+
 function renderWithProviders(ui: React.ReactElement) {
   return render(
     <MantineProvider env="test">

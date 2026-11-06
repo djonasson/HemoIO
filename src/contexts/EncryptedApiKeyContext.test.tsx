@@ -19,8 +19,11 @@ vi.mock('./useAuth', () => ({
 // Mock encryption functions
 vi.mock('@data/encryption', () => ({
   encryptString: vi.fn((text: string) => Promise.resolve(`encrypted:${text}`)),
+  // Only what this key encrypted opens: anything else was sealed under another key
   decryptString: vi.fn((text: string) =>
-    Promise.resolve(text.replace('encrypted:', ''))
+    text.startsWith('encrypted:')
+      ? Promise.resolve(text.replace('encrypted:', ''))
+      : Promise.reject(new Error(`Could not decrypt ${text}`))
   ),
 }));
 
@@ -60,6 +63,21 @@ describe('useEncryptedApiKey', () => {
 
       expect(result.current.hasApiKey).toBe(true);
       expect(result.current.apiKeyLastFour).toBe('1234');
+    });
+
+    it('an API key the session key cannot decrypt is unset and removed', async () => {
+      localStorage.setItem(ENCRYPTED_KEY, 'sealed-under-another-key');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      expect(result.current.hasApiKey).toBe(false);
+      expect(result.current.apiKeyLastFour).toBeUndefined();
+      expect(localStorage.getItem(ENCRYPTED_KEY)).toBeNull();
     });
 
     it('should migrate legacy plaintext API key', async () => {
@@ -192,6 +210,35 @@ describe('useEncryptedApiKey', () => {
 
       expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
       expect(localStorage.getItem(ENCRYPTED_KEY)).toBeNull();
+    });
+  });
+
+  describe('errors', () => {
+    it('errors are logged without detail', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      localStorage.setItem(ENCRYPTED_KEY, 'sealed-under-another-key');
+      const { result } = renderHook(() => useEncryptedApiKey(), { wrapper: EncryptedApiKeyProvider });
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
+      // Stored again after the check, as another tab could
+      localStorage.setItem(ENCRYPTED_KEY, 'sealed-under-another-key');
+      await act(async () => {
+        expect(await result.current.getApiKey()).toBeNull();
+      });
+      const { encryptString } = await import('@data/encryption');
+      vi.mocked(encryptString).mockRejectedValueOnce(new Error('sk-secret-key'));
+      await act(async () => {
+        await expect(result.current.setApiKey('sk-secret-key')).rejects.toThrow();
+      });
+
+      expect(error.mock.calls).toEqual([
+        ['Could not read the stored API key'],
+        ['Could not decrypt the stored API key'],
+        ['Could not encrypt the API key'],
+      ]);
+      expect(JSON.stringify(error.mock.calls)).not.toMatch(/sealed-under|sk-secret/);
     });
   });
 

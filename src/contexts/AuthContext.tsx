@@ -15,6 +15,7 @@ import {
   rewrapCredentials,
   unlockV2,
 } from '@data/encryption/keyWrapping';
+import { createEncryptedDb } from '@data/db';
 
 const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
 
@@ -67,6 +68,20 @@ function saveStoredCredentials(credentials: object): void {
   localStorage.setItem(CREDENTIALS_STORAGE_KEY, JSON.stringify(credentials));
 }
 
+/**
+ * Move the records this key cannot open aside, and return those that now
+ * open, before the app reads any. A failure leaves them where they are,
+ * skipped as before, and does not stop the unlock.
+ */
+async function settleStoredRecords(key: CryptoKey): Promise<void> {
+  try {
+    await createEncryptedDb(key).settleUnreadable();
+  } catch {
+    // Not logged with the error, which could name stored data
+    console.error('Could not check stored records against this key');
+  }
+}
+
 /** The session key, or null for a wrong password or unreadable credentials */
 async function unlockCredentials(password: string, credentials: object): Promise<CryptoKey | null> {
   if (isCredentialsV2(credentials)) {
@@ -96,6 +111,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
       const { credentials: newCredentials, key } = await createCredentialsV2(password);
       saveStoredCredentials(newCredentials);
       setCredentials(newCredentials);
+      await settleStoredRecords(key);
       await prepare?.(key);
 
       // Automatically unlock after setup
@@ -124,6 +140,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         return false;
       }
 
+      await settleStoredRecords(key);
       setEncryptionKey(key);
       setCredentials(storedCreds);
       setStatus('unlocked');

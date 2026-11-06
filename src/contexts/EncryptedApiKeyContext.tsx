@@ -47,7 +47,15 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         const encryptedKey = localStorage.getItem(ENCRYPTED_API_KEY_STORAGE_KEY);
         if (encryptedKey) {
           // Decrypt to get last 4 chars
-          const decrypted = await decryptString(encryptedKey, encryptionKey!);
+          let decrypted: string;
+          try {
+            decrypted = await decryptString(encryptedKey, encryptionKey!);
+          } catch {
+            // Encrypted under another key, or damaged: it is not an API key
+            // any more, so it is removed and reported as not set
+            localStorage.removeItem(ENCRYPTED_API_KEY_STORAGE_KEY);
+            throw new Error('Undecryptable API key');
+          }
           setHasApiKey(true);
           setApiKeyLastFour(decrypted.slice(-4));
           setIsLoading(false);
@@ -70,8 +78,9 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         // No key found
         setHasApiKey(false);
         setApiKeyLastFour(undefined);
-      } catch (error) {
-        console.error('Error checking API key:', error);
+      } catch {
+        // Fixed messages: an error could hold the key or what it encrypts
+        console.error('Could not read the stored API key');
         setHasApiKey(false);
         setApiKeyLastFour(undefined);
       } finally {
@@ -95,8 +104,8 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
       }
 
       return await decryptString(encryptedKey, encryptionKey);
-    } catch (error) {
-      console.error('Error decrypting API key:', error);
+    } catch {
+      console.error('Could not decrypt the stored API key');
       return null;
     }
   }, [isReady, encryptionKey]);
@@ -118,7 +127,7 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         setHasApiKey(true);
         setApiKeyLastFour(apiKey.slice(-4));
       } catch (error) {
-        console.error('Error encrypting API key:', error);
+        console.error('Could not encrypt the API key');
         throw error;
       }
     },

@@ -8,6 +8,16 @@ import {
   isCredentialsV2,
   rewrapCredentials,
 } from '@data/encryption/keyWrapping';
+import { createEncryptedDb } from '@data/db';
+
+// The sweep that sets unreadable records aside reads the database: tested in
+// encryptedDb.setAside.test.ts, here only when and how it is called
+const { settleUnreadable } = vi.hoisted(() => ({
+  settleUnreadable: vi.fn<() => Promise<{ returned: number; setAside: number }>>(),
+}));
+vi.mock('@data/db', () => ({
+  createEncryptedDb: vi.fn(() => ({ settleUnreadable })),
+}));
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
 const OLD = 'Old-Passw0rd!';
@@ -68,6 +78,8 @@ function lock() {
 describe('AuthContext', () => {
   beforeEach(() => {
     localStorage.clear();
+    settleUnreadable.mockReset();
+    settleUnreadable.mockResolvedValue({ returned: 0, setAside: 0 });
   });
 
   afterEach(() => {
@@ -131,6 +143,23 @@ describe('AuthContext', () => {
       expect(auth.encryptionKey).toBe(preparedWith);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
+
+    it('moves unreadable records aside with the new key before unlocking', async () => {
+      renderAuth();
+      let statusDuringSweep = '';
+      settleUnreadable.mockImplementation(async () => {
+        statusDuringSweep = screen.getByTestId('status').textContent ?? '';
+        return { returned: 0, setAside: 0 };
+      });
+
+      await act(async () => {
+        await auth.setupPassword(OLD);
+      });
+
+      expect(statusDuringSweep).toBe('needs_setup');
+      expect(createEncryptedDb).toHaveBeenLastCalledWith(auth.encryptionKey);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
   });
 
   describe('unlock', () => {
@@ -141,6 +170,43 @@ describe('AuthContext', () => {
       expect(await unlock(OLD)).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       expect(auth.encryptionKey).not.toBeNull();
+    });
+
+    it('unlock moves unreadable records aside before unlocking', async () => {
+      await setUp();
+      lock();
+      let finishSweep: () => void = () => {};
+      settleUnreadable.mockReturnValue(
+        new Promise((resolve) => {
+          finishSweep = () => resolve({ returned: 0, setAside: 3 });
+        })
+      );
+
+      let unlocked: Promise<boolean> = Promise.resolve(false);
+      act(() => {
+        unlocked = auth.unlock(OLD);
+      });
+      await vi.waitFor(() => expect(settleUnreadable).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+
+      await act(async () => {
+        finishSweep();
+        expect(await unlocked).toBe(true);
+      });
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(createEncryptedDb).toHaveBeenLastCalledWith(auth.encryptionKey);
+    });
+
+    it('a failed sweep still unlocks and logs no error detail', async () => {
+      await setUp();
+      lock();
+      settleUnreadable.mockRejectedValue(new Error('labResults row 7: Glucose'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(error.mock.calls).toEqual([['Could not check stored records against this key']]);
     });
 
     it('stays locked with a wrong password', async () => {

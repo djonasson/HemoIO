@@ -1,0 +1,100 @@
+Feature: Unreadable Records
+  As a user whose browser holds records HemoIO cannot open
+  I want HemoIO to keep those records aside and tell me about them
+  So that nothing I stored is ever deleted without my say
+
+  # A record HemoIO cannot open was saved with a different key (for example
+  # by a second setup in another tab) or is damaged. HemoIO never deletes
+  # such a record on its own: it keeps it aside, says how many there are
+  # (never what they hold), and lets me download or delete them.
+
+  Background:
+    Given I am logged into the application
+    And my browser holds records HemoIO cannot open with my key
+
+  @data
+  Scenario: Unreadable records are kept aside when I unlock
+    Given I also have lab results HemoIO can open
+    When I unlock the app
+    Then the records HemoIO cannot open should be kept aside
+    And my timeline should show only the lab results HemoIO can open
+
+  @data
+  Scenario: Restoring a backup keeps unreadable records aside
+    Given the records HemoIO cannot open are kept aside
+    When I restore my lab results from a backup
+    Then the records HemoIO cannot open should still be kept aside
+
+  @data
+  Scenario: Saving preferences keeps unreadable preferences aside
+    Given my stored preferences cannot be opened with my key
+    When I unlock the app
+    And I change the theme
+    Then the preferences HemoIO could not open should be kept aside
+    And my new theme should be saved
+
+  @data
+  Scenario: An API key that cannot be decrypted is treated as not set
+    Given my stored AI API key cannot be decrypted with my key
+    When I unlock the app
+    And I open the AI settings
+    Then my API key should be shown as not configured
+
+  # Proven by unit tests: a second key cannot be given to the app in a browser test
+  @data
+  Scenario: Records that open with a key HemoIO gets later come back
+    Given the records HemoIO cannot open are kept aside
+    When HemoIO gets the key they were saved with
+    Then those records should come back to my lab results, with their values and notes
+    And they should no longer be kept aside
+
+  Scenario: I am told how many records are kept aside
+    When I unlock the app
+    Then I should see a notice saying how many stored records cannot be opened
+    And the notice should not show anything the records hold
+
+  Scenario: I can download the unreadable records as a sealed file
+    Given the records HemoIO cannot open are kept aside
+    When I download them as a sealed file
+    Then the file should hold the records exactly as they were stored, still sealed
+    And its name should hold only the date
+
+  Scenario: The downloaded file cannot be restored as a backup
+    Given I downloaded the unreadable records as a sealed file
+    When I try to restore that file as a backup
+    Then I should be told it is not a backup
+    And my data should be unchanged
+
+  Scenario: I can delete the unreadable records after confirming
+    Given the records HemoIO cannot open are kept aside
+    When I choose to delete them
+    Then I should be asked to confirm, with Cancel as the default choice
+    When I confirm the delete
+    Then the records kept aside should be gone
+    And my other records should be unchanged
+
+  Scenario: A backup export tells me what it leaves out and asks first
+    Given the records HemoIO cannot open are kept aside
+    When I export a backup
+    Then I should be told how many records the backup leaves out
+    And the backup should be saved only after I confirm
+
+  Scenario: The restore confirmation says how many records are kept aside
+    Given the records HemoIO cannot open are kept aside
+    When I choose a backup to restore
+    Then the confirmation should say how many records are kept aside and will not be deleted
+
+  Scenario: The banner is accessible
+    Given the records HemoIO cannot open are kept aside
+    Then the notice should be a labelled region with an icon and a title
+    And its meaning should not rely on color alone
+    And its buttons should be reachable with the keyboard
+
+  Scenario: Folder sync waits until unreadable records are saved or deleted
+    Given my data is stored in a local folder
+    And the records HemoIO cannot open are kept aside and not yet saved
+    When the folder sync runs
+    Then my folder copy should not be overwritten
+    And I should be told that the sync waits until I download or delete those records
+    When I download them as a sealed file
+    Then the folder sync should start again

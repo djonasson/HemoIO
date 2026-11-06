@@ -12,8 +12,9 @@
  */
 
 import Dexie, { type Table, type Transaction } from 'dexie';
-import { db, HemoIODatabase } from './index';
+import { db, HemoIODatabase, type SealedTable, type SetAsideRow } from './index';
 import { SaveError, toSaveError } from './saveError';
+import { notifySetAsideChanged } from './setAsideEvents';
 import { encryptString, decryptString } from '@data/encryption';
 import type {
   LabResult,
@@ -21,6 +22,7 @@ import type {
   Settings,
   UserPreferences,
   UserNote,
+  SetAsideSummary,
 } from '@/types';
 
 const DEFAULT_PREFERENCES: Omit<UserPreferences, 'id'> = {
@@ -38,7 +40,8 @@ const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
 
 // ============ Sealed records ============
 
-type SealedTable = 'labResults' | 'testValues' | 'userNotes' | 'userPreferences';
+const LAB_TABLES = ['labResults', 'testValues', 'userNotes'] as const;
+const SEALED_TABLES: readonly SealedTable[] = [...LAB_TABLES, 'userPreferences'];
 
 /** Fields kept readable: IDs and links, which the indexes need */
 const READABLE_FIELDS: Record<SealedTable, readonly string[]> = {
@@ -129,8 +132,10 @@ async function decryptFields<T>(obj: T, fields: readonly string[], key: CryptoKe
     try {
       decrypted[field] = await decryptString(value, key);
     } catch {
-      // If decryption fails, leave the field as-is (might be unencrypted data)
-      console.warn(`Failed to decrypt field ${field}, leaving as-is`);
+      // Unset, never passed on as if it were plaintext: sealed under another
+      // key or damaged, it is ciphertext
+      decrypted[field] = undefined;
+      console.warn(`Failed to decrypt field ${field}, leaving it unset`);
     }
   }
   return decrypted as T;
@@ -145,6 +150,16 @@ async function unseal<T>(stored: SealedRecord, table: SealedTable, key: CryptoKe
   }
   const hidden = JSON.parse(await decryptString(stored.encrypted, key), reviver) as object;
   return { ...hidden, ...readable } as T;
+}
+
+/** Whether a stored record opens with the key. Never logs: a failure is expected. */
+async function opens(stored: SealedRecord, table: SealedTable, key: CryptoKey): Promise<boolean> {
+  try {
+    await unseal(stored, table, key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Whether a record has a date it can be sorted by (the date indexes skipped others) */
@@ -267,7 +282,9 @@ export class EncryptedDb {
 
   /**
    * Records that cannot be decrypted (sealed under another key, or damaged)
-   * are skipped, so they do not hide the others
+   * are skipped, so they do not hide the others. The sweep at unlock has
+   * moved such records aside; this guards against one written since, by
+   * another tab under another key.
    */
   private async unsealAll<T>(name: SealedTable, stored: SealedRecord[]): Promise<T[]> {
     const results = await Promise.allSettled(stored.map((record) => unseal<T>(record, name, this.key)));
@@ -515,24 +532,51 @@ export class EncryptedDb {
     await this.writePreferences(update);
   }
 
-  private writePreferences(
+  private async writePreferences(
     update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
   ): Promise<number> {
-    return this.write(this.table('userPreferences'), () => this.putPreferences(update));
+    const { id, movedAside } = await this.write(
+      [this.table('userPreferences'), this.db.setAside],
+      () => this.putPreferences(update)
+    );
+    if (movedAside) notifySetAsideChanged({ movedAside: ['userPreferences'] });
+    return id;
   }
 
-  /** Read, change and write the preferences, inside the caller's transaction */
+  /**
+   * Read, change and write the preferences, inside the caller's transaction,
+   * which must include setAside. Stored preferences that do not open are
+   * moved aside first, never replaced, and the new ones get a new ID.
+   */
   private async putPreferences(
     update: (current: UserPreferences | undefined) => Partial<Omit<UserPreferences, 'id'>>
-  ): Promise<number> {
+  ): Promise<{ id: number; movedAside: boolean }> {
     const table = this.table('userPreferences');
     const stored = await table.toCollection().first();
     // Dexie.waitFor keeps the transaction open across the decryption and
     // encryption, which are not IndexedDB requests
-    const current = await Dexie.waitFor(this.unsealOne<UserPreferences>('userPreferences', stored));
-    // Under the stored record's ID, so unreadable preferences are replaced
-    const next = { ...(current ?? DEFAULT_PREFERENCES), ...update(current), id: stored?.id };
-    return (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
+    const opened =
+      stored &&
+      (await Dexie.waitFor(
+        unseal<UserPreferences>(stored, 'userPreferences', this.key).then(
+          (preferences) => ({ preferences }),
+          () => undefined
+        )
+      ));
+    const movedAside = stored !== undefined && opened === undefined;
+    if (movedAside) {
+      await this.keepAside([['userPreferences', [stored]]]);
+      await table.delete(stored.id!);
+    }
+    const current = opened?.preferences;
+    // Under the stored record's ID only when it opened: an unreadable one is aside
+    const next = {
+      ...(current ?? DEFAULT_PREFERENCES),
+      ...update(current),
+      id: current ? stored?.id : undefined,
+    };
+    const id = (await table.put(await Dexie.waitFor(this.seal('userPreferences', next)))) as number;
+    return { id, movedAside };
   }
 
   // ============ User Notes ============
@@ -581,7 +625,9 @@ export class EncryptedDb {
 
   /**
    * Whether any lab result, test value or note is stored. Counts rows, so
-   * nothing is decrypted.
+   * nothing is decrypted: the sweep at unlock (settleUnreadable) has moved
+   * the rows this key cannot open aside, so the lab tables hold readable
+   * rows only.
    */
   async hasLabData(): Promise<boolean> {
     const counts = await Promise.all(
@@ -657,8 +703,17 @@ export class EncryptedDb {
         )
       );
 
-    const tables = [this.db.labResults, this.db.testValues, this.db.userNotes, this.db.userPreferences];
-    return this.write(tables, async () => {
+    const tables = [
+      this.db.labResults,
+      this.db.testValues,
+      this.db.userNotes,
+      this.db.userPreferences,
+      this.db.setAside,
+    ];
+    const movedAside: SealedTable[] = [];
+    const counts = await this.write(tables, async () => {
+      // Rows this key cannot open are kept aside, not cleared with the rest
+      movedAside.push(...(await this.moveUnreadableAside(LAB_TABLES)).movedAside);
       await Promise.all([
         this.db.labResults.clear(),
         this.db.testValues.clear(),
@@ -701,7 +756,9 @@ export class EncryptedDb {
       if (data.userPreferences) {
         // As savePreferences: fields the backup lacks keep their current values
         const preferences = definedFields(data.userPreferences);
-        await this.putPreferences(() => preferences);
+        if ((await this.putPreferences(() => preferences)).movedAside) {
+          movedAside.push('userPreferences');
+        }
       }
 
       return {
@@ -710,6 +767,164 @@ export class EncryptedDb {
         notes: userNotes.length,
       };
     });
+    if (movedAside.length > 0) notifySetAsideChanged({ movedAside });
+    return counts;
+  }
+
+  // ============ Set-aside records ============
+
+  /**
+   * Keep stored rows aside, inside the caller's transaction, which must
+   * include setAside. Callers skip it when there are none: awaiting an async
+   * function that made no IndexedDB request loses Dexie's transaction, and
+   * the next request fails as committed too early.
+   */
+  private async keepAside(rows: Array<[SealedTable, SealedRecord[]]>): Promise<void> {
+    await this.db.setAside.bulkAdd(
+      rows.flatMap(([table, stored]) => stored.map((row) => ({ table, row, savedToFile: 0 as const })))
+    );
+  }
+
+  /**
+   * Move the rows of the given tables that do not open with this key aside,
+   * inside the caller's transaction, which must include them and setAside
+   *
+   * @returns The tables a row was moved from, and how many rows were moved
+   */
+  private async moveUnreadableAside(
+    names: readonly SealedTable[]
+  ): Promise<{ movedAside: SealedTable[]; count: number }> {
+    const unreadable: Array<[SealedTable, SealedRecord[]]> = [];
+    for (const name of names) {
+      const stored = await this.table(name).toArray();
+      if (stored.length === 0) continue;
+      // Dexie.waitFor keeps the transaction open across the trial decryption
+      const readable = await Dexie.waitFor(
+        Promise.all(stored.map((row) => opens(row, name, this.key)))
+      );
+      const rows = stored.filter((_, i) => !readable[i]);
+      if (rows.length > 0) unreadable.push([name, rows]);
+    }
+    if (unreadable.length > 0) await this.keepAside(unreadable);
+    for (const [name, rows] of unreadable) {
+      await this.table(name).bulkDelete(rows.map((row) => row.id!));
+    }
+    return {
+      movedAside: unreadable.map(([name]) => name),
+      count: unreadable.reduce((sum, [, rows]) => sum + rows.length, 0),
+    };
+  }
+
+  /**
+   * Return the set-aside rows that open with this key, inside the caller's
+   * transaction, which must include setAside and the sealed tables. They get
+   * new IDs, as a restore gives, and the links between them are rewritten;
+   * links to rows not returned are kept. Preferences go back only when there
+   * are none, as there is one set; otherwise they stay aside.
+   *
+   * @returns How many rows were returned
+   */
+  private async returnOpenedRows(): Promise<number> {
+    const rows = await this.db.setAside.toArray();
+    const openedRows = await Dexie.waitFor(
+      Promise.all(rows.map((entry) => opens(entry.row as SealedRecord, entry.table, this.key)))
+    );
+    const opened = rows.filter((_, i) => openedRows[i]);
+    if (opened.length === 0) return 0;
+    const of = (name: SealedTable): SetAsideRow[] => opened.filter((entry) => entry.table === name);
+
+    /** Add the rows under new IDs; each row's old ID → its new one */
+    const addBack = async (
+      name: SealedTable,
+      entries: SetAsideRow[],
+      relinked: (row: SealedRecord) => SealedRecord = (row) => row
+    ): Promise<Map<unknown, number>> => {
+      const keys = await this.table(name).bulkAdd(
+        entries.map((entry) => definedFields({ ...relinked(entry.row), id: undefined }) as SealedRecord),
+        { allKeys: true }
+      );
+      return new Map(entries.map((entry, i) => [entry.row.id, keys[i] as number]));
+    };
+    const relink = (ids: Map<unknown, number>, id: unknown): unknown => ids.get(id) ?? id;
+
+    const preferences = of('userPreferences');
+    const returned = [...of('labResults'), ...of('testValues'), ...of('userNotes')];
+    const resultIds = await addBack('labResults', of('labResults'));
+    const valueIds = await addBack('testValues', of('testValues'), (row) => ({
+      ...row,
+      labResultId: relink(resultIds, row.labResultId),
+    }));
+    await addBack('userNotes', of('userNotes'), (row) => ({
+      ...row,
+      labResultId: relink(resultIds, row.labResultId),
+      testValueId: relink(valueIds, row.testValueId),
+    }));
+    if (preferences.length > 0 && (await this.table('userPreferences').count()) === 0) {
+      // The most recently set aside: the others wait
+      const latest = preferences.slice(-1);
+      await addBack('userPreferences', latest);
+      returned.push(...latest);
+    }
+    await this.db.setAside.bulkDelete(returned.map((entry) => entry.id!));
+    return returned.length;
+  }
+
+  /**
+   * Settle the records against this key, at every unlock: set-aside rows
+   * that now open are returned, then every stored row that does not open is
+   * moved aside. Nothing is deleted.
+   */
+  async settleUnreadable(): Promise<{ returned: number; setAside: number }> {
+    const tables = [...SEALED_TABLES.map((name) => this.table(name)), this.db.setAside];
+    const returned = await this.write(tables, () => this.returnOpenedRows());
+    let movedAside: SealedTable[] = [];
+    let setAside = 0;
+    try {
+      ({ movedAside, count: setAside } = await this.write(tables, () =>
+        this.moveUnreadableAside(SEALED_TABLES)
+      ));
+    } finally {
+      // The returned rows are committed even when the sweep fails
+      if (returned > 0 || setAside > 0) notifySetAsideChanged({ movedAside });
+    }
+    return { returned, setAside };
+  }
+
+  /** How many rows are kept aside, and how many are not yet in a downloaded file */
+  async countSetAside(): Promise<SetAsideSummary> {
+    const table = this.db.setAside;
+    return this.db.transaction('r', table, async () => ({
+      total: await table.count(),
+      unsaved: await table.filter((entry) => entry.savedToFile === 0).count(),
+    }));
+  }
+
+  /** Every set-aside row, as stored: for the sealed download */
+  async exportSetAside(): Promise<SetAsideRow[]> {
+    return this.db.setAside.toArray();
+  }
+
+  /** Mark set-aside rows as saved in a downloaded file */
+  async markSetAsideSaved(ids: number[]): Promise<void> {
+    const table = this.db.setAside;
+    await this.write(table, () => table.where(':id').anyOf(ids).modify({ savedToFile: 1 }));
+    notifySetAsideChanged();
+  }
+
+  /**
+   * Delete every set-aside row, at the user's explicit request
+   *
+   * @returns How many were deleted
+   */
+  async deleteSetAside(): Promise<number> {
+    const table = this.db.setAside;
+    const deleted = await this.write(table, async () => {
+      const count = await table.count();
+      await table.clear();
+      return count;
+    });
+    notifySetAsideChanged();
+    return deleted;
   }
 }
 
