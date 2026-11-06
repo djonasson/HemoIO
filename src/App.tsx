@@ -15,7 +15,7 @@ import {
 } from '@contexts';
 import { SetupWizard } from '@components/setup';
 import { LoginScreen } from '@components/auth';
-import { AppShell } from '@components/layout';
+import { AppShell, HEADER_HEIGHT } from '@components/layout';
 import { PWAUpdatePrompt, PWAInstallPrompt } from '@components/common';
 import { cssVariablesResolver, theme } from './theme/theme';
 
@@ -65,7 +65,10 @@ function AppContent(): React.ReactNode {
 function App(): React.ReactNode {
   return (
     <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver}>
-      <Notifications position="top-right" />
+      {/* Below the header: a notice that stays until closed must never cover its buttons.
+          A margin, not top: Mantine renders a container for each position, and the
+          margin moves only those placed from the top. */}
+      <Notifications position="top-right" styles={{ root: { marginTop: HEADER_HEIGHT } }} />
       <AuthProvider>
         <EncryptedApiKeyProvider>
           <AISettingsProvider>

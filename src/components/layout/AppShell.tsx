@@ -52,6 +52,7 @@ import { AlertsView } from '@components/alerts';
 import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
+import { HEADER_HEIGHT } from './headerHeight';
 import { DictionaryView } from '@components/dictionary';
 import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@components/storage';
 import { modelForProvider } from '@services/ai';
@@ -380,7 +381,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       <FolderConflictModal conflict={folderConflict} onResolve={handleConflictChoice} />
 
       <MantineAppShell
-        header={{ height: 60 }}
+        header={{ height: HEADER_HEIGHT }}
         navbar={{
           width: 260,
           breakpoint: 'sm',
