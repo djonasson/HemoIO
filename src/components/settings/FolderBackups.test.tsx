@@ -192,6 +192,23 @@ describe('FolderBackups', () => {
     expect(onRestore).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['newer-version', 'This backup was saved by a newer version of HemoIO. Update HemoIO on this device to restore it.'],
+    [
+      'before-loinc',
+      'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.',
+    ],
+  ] as const)('explains a backup it cannot restore by why (%s)', async (reason, message) => {
+    const user = userEvent.setup();
+    read.mockResolvedValue({ status: 'unreadable', reason });
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[0]);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(onRestore).not.toHaveBeenCalled();
+  });
+
   it('shows the restore failing as an alert, with the dialog kept open', async () => {
     const user = userEvent.setup();
     onRestore.mockRejectedValue(new Error('x'));

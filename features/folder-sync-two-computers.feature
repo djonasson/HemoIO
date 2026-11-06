@@ -41,6 +41,15 @@ Feature: Two computers on one folder
     And this computer should still show the lab result saved on my other computer
     And my folder copy should not have changed
 
+  # Unit-tested (folderSync, FolderConflictModal): the same rule as the
+  # scenario above, for a copy that takes every record away
+  Scenario: A newer folder copy that holds no lab results is asked about, never loaded
+    Given my lab results have been synced to my folder
+    When my other computer deletes every lab result and saves the empty copy
+    And the periodic folder sync runs
+    Then I should be asked which data to keep, and told the folder copy holds no lab results, while this computer does
+    And this computer should still show my lab results
+
   Scenario: With changes on both sides I choose, and see counts and dates only
     Given my lab results have been synced to my folder
     When my other computer saves a copy with another lab result
@@ -82,6 +91,15 @@ Feature: Two computers on one folder
     And I add a lab result on this computer before it syncs
     Then I should not be asked which data to keep
     And my folder copy should hold this computer's lab results
+
+  # Unit-tested (useFilesystemSync): another tab cannot be made to save at
+  # the moment the backup is kept on cue
+  Scenario: A change saved while I load the folder copy is never lost
+    Given I was asked which data to keep
+    When I choose to load the folder copy
+    And a change is saved on this computer, in another tab, after this computer's data was kept as a backup
+    Then nothing should be loaded
+    And I should be asked again which data to keep, with my change on this computer's side
 
   Scenario: Deciding later writes nothing
     Given I was asked which data to keep
@@ -147,6 +165,14 @@ Feature: Two computers on one folder
     When I open Settings, on the Data tab, and choose to restore that backup
     Then I should be told the backup is damaged or was made with a different key, and can't be opened
     And nothing in my folder or on this computer should change
+
+  # Unit-tested (FolderBackups): a backup from a newer HemoIO or from before
+  # LOINC is sealed with this setup's key, which a test cannot make on cue
+  Scenario: A backup from a newer HemoIO, or from before LOINC, says so
+    Given my folder holds a dated backup saved by a newer version of HemoIO
+    When I choose to restore that backup
+    Then I should be told it was saved by a newer version of HemoIO, and to update HemoIO to restore it
+    And a backup made before tests were identified by LOINC should say it cannot be restored
 
   Scenario: A current folder copy that can't be opened is left as it is
     Given my folder copy can't be opened with my key

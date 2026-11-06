@@ -403,8 +403,11 @@ in memory and decides:
   stamped, checked inside the replacing transaction: a change saved at any
   moment meanwhile is kept, nothing is loaded, and the next sync asks;
 - otherwise the user **chooses**. The dialog shows both sides as counts and
-  dates, never values: load the folder copy (this browser's data is kept as
-  a dated backup first), keep this computer's data (the folder copy is kept
+  dates, never values, and says why it asks (both changed, a copy that is
+  not a newer version, or a newer copy that holds no lab results while this
+  browser does): load the folder copy (this browser's data is kept as a
+  dated backup first, under the same stamp check as an automatic load, so a
+  change saved meanwhile loads nothing and the question is asked again), keep this computer's data (the folder copy is kept
   as a dated backup first, and the new copy names both sides as ancestors,
   so the other computer then loads it without asking), or decide later,
   which holds syncs for the session. A choice writes over only the copy the
@@ -424,6 +427,13 @@ confirmation, unless it cannot be opened, in which case it is left as it is.
 readable data whose folder holds a copy is offered to restore it, with its
 counts and date; syncs wait for the answer. "Replace folder copy" keeps the
 folder copy as a dated backup before the next sync writes over it.
+
+**Other tabs after a replace.** Loading a folder copy (by itself or by
+choice) and every restore replace the lab records under new IDs. The tab
+that did it posts `{ type: "replaced" }` on the `hemoio-data`
+BroadcastChannel, which carries no data; other unlocked tabs of this
+browser reload their preferences, alert acknowledgements and lab results,
+as the tab that restored does, so no edit or note goes to an old ID.
 
 **One at a time across tabs.** Every sync holds the `hemoio-folder-sync`
 Web Lock, and so do the answers to its questions (a conflict choice,

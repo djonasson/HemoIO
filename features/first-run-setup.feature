@@ -156,6 +156,7 @@ Feature: First-Run Setup Wizard
     When I choose "Clear it and set up anew…" again
     And I confirm with "Clear and set up anew"
     Then the data should be cleared
+    And the earlier setup's storage choice and folder should be forgotten
     And setup should go on to its first step
     And after I finish setup no records should be kept aside
 

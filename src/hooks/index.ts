@@ -5,6 +5,7 @@
  */
 
 export { useFolderStorageOn } from './useFolderStorageOn';
+export { useDataReplacedElsewhere } from './useDataReplacedElsewhere';
 export { useEncryptedDb, type UseEncryptedDbResult } from './useEncryptedDb';
 export { useLabResults, type UseLabResultsResult, type LabResultWithDetails, type LabResultFilters, type TestValueStatus, type EnrichedTestValue } from './useLabResults';
 export { useAlerts, type UseAlertsResult, type BiomarkerAlert, type GroupedAlert, type AlertType } from './useAlerts';

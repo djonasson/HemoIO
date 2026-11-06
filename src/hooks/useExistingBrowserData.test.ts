@@ -1,18 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from '@data/db/storedRows';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { useExistingBrowserData } from './useExistingBrowserData';
 
 vi.mock('@data/db/storedRows', () => ({
   countStoredRows: vi.fn(),
   clearStoredData: vi.fn(),
+  clearLocalHemoIOStorage: vi.fn(),
 }));
 
 describe('useExistingBrowserData', () => {
   beforeEach(() => {
     vi.mocked(countStoredRows).mockReset();
     vi.mocked(clearStoredData).mockReset();
+    vi.mocked(clearLocalHemoIOStorage).mockReset();
+    vi.mocked(clearLocalHemoIOStorage).mockResolvedValue();
     localStorage.clear();
   });
 
@@ -39,6 +42,39 @@ describe('useExistingBrowserData', () => {
     expect(cleared).toBe(true);
     expect(clearStoredData).toHaveBeenCalledTimes(1);
     expect(result.current.rows).toBe(0);
+  });
+
+  it("clearing also forgets the old setup's folder choice and other HemoIO keys, after the rows", async () => {
+    vi.mocked(countStoredRows).mockResolvedValue(4);
+    vi.mocked(clearStoredData).mockResolvedValue();
+    const { result } = renderHook(() => useExistingBrowserData());
+    await waitFor(() => expect(result.current.rows).toBe(4));
+
+    await act(() => result.current.clear());
+
+    expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(clearStoredData).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]
+    );
+  });
+
+  it('a folder choice that cannot be forgotten does not fail the clear, and is logged with a fixed message', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(countStoredRows).mockResolvedValue(4);
+    vi.mocked(clearStoredData).mockResolvedValue();
+    vi.mocked(clearLocalHemoIOStorage).mockRejectedValue(new Error('Could not forget the chosen folder'));
+    const { result } = renderHook(() => useExistingBrowserData());
+    await waitFor(() => expect(result.current.rows).toBe(4));
+
+    let cleared: boolean | undefined;
+    await act(async () => {
+      cleared = await result.current.clear();
+    });
+
+    expect(cleared).toBe(true);
+    expect(result.current.rows).toBe(0);
+    expect(error).toHaveBeenCalledWith("Could not forget the earlier setup's folder choice");
+    error.mockRestore();
   });
 
   it('counts under the setup lock, so a start over already clearing finishes first', async () => {

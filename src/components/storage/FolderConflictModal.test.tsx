@@ -64,6 +64,14 @@ describe('FolderConflictModal', () => {
     expect(dialog()).not.toHaveTextContent('this computer has changes of its own');
   });
 
+  it('says when a newer folder copy holds no lab results, while this computer does', () => {
+    renderModal({ ...CONFLICT, reason: 'empties' });
+
+    expect(dialog()).toHaveTextContent('The folder copy holds no lab results, while this computer does.');
+    expect(dialog()).not.toHaveTextContent('not a newer version');
+    expect(dialog()).not.toHaveTextContent('this computer has changes of its own');
+  });
+
   it('says both sides changed when they did', () => {
     renderModal();
 

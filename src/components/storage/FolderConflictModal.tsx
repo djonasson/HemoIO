@@ -95,7 +95,13 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
     >
       {shown && (
         <Stack gap="md">
-          {shown.reason === 'not-newer' ? (
+          {shown.reason === 'empties' ? (
+            <Text size="sm">
+              The folder copy holds no lab results, while this computer does. It was saved on another
+              computer after the copy this computer last saw, so they may have been deleted there.
+              Choose which data to keep.
+            </Text>
+          ) : shown.reason === 'not-newer' ? (
             <Text size="sm">
               The folder copy is not a newer version of the one this computer last saw. It may be an
               older copy put back, one saved at the same time as this computer&apos;s, or one this

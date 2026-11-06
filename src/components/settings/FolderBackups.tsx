@@ -9,7 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, List, Button, Modal, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { useFolderBackups, type FolderBackupEntry } from '@hooks/useFolderBackups';
+import { folderCopyProblemMessage } from '@components/storage/folderCopyProblemMessage';
+import { useFolderBackups, type FolderBackupEntry, type FolderBackupReading } from '@hooks/useFolderBackups';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { ParsedBackupData } from '@services/import';
 import { RestoreConfirmation } from './RestoreConfirmation';
@@ -29,6 +30,20 @@ const KIND_LABEL: Record<FolderBackupEntry['kind'], string> = {
 const KEPT_NOTE = 'Your current folder copy is kept as a dated backup first.';
 const LEFT_AS_IS_NOTE = "Your current folder copy can't be opened, so HemoIO leaves it as it is.";
 const UNREADABLE_MESSAGE = "This backup is damaged or was made with a different key, and can't be opened.";
+const NEWER_VERSION_MESSAGE =
+  'This backup was saved by a newer version of HemoIO. Update HemoIO on this device to restore it.';
+
+/**
+ * Why a backup can't be restored. A backup is sealed with the session key
+ * and has no lock, so one that does not open is damaged or another key's;
+ * one that opens may still be from a newer HemoIO (a normal case while only
+ * one of two computers is updated) or from before LOINC.
+ */
+function unreadableMessage(reason: Extract<FolderBackupReading, { status: 'unreadable' }>['reason']): string {
+  if (reason === 'newer-version') return NEWER_VERSION_MESSAGE;
+  if (reason === 'before-loinc') return folderCopyProblemMessage(reason, 'this backup');
+  return UNREADABLE_MESSAGE;
+}
 const KEEP_FAILED_MESSAGE = 'Nothing was changed: the current folder copy could not be kept as a backup.';
 
 const HEADING_ID = 'folder-backups-heading';
@@ -71,9 +86,7 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
     try {
       const reading = await read(entry.name);
       if (reading.status === 'unreadable') {
-        // A backup is sealed with the session key and has no lock, so the
-        // reason matters less than that it can't be opened
-        setProblem(UNREADABLE_MESSAGE);
+        setProblem(unreadableMessage(reading.reason));
         return;
       }
       let keepsCurrent: boolean;

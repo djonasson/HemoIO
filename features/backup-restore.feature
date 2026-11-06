@@ -105,6 +105,13 @@ Feature: Backup and Restore
     Then my existing data should be replaced
     And I should only see data from the backup
 
+  # A restore, or a folder copy loaded by folder sync, renumbers every record.
+  # Other open tabs reload their data, so no edit or note goes to an old record.
+  Scenario: Another open tab shows the restored data without my reloading it
+    Given HemoIO is open and unlocked in a second tab, showing the timeline
+    When I restore from a backup file in the first tab
+    Then the second tab should show the backup's lab results, without reloading the page
+
   # Restoring from Encrypted Backup
   Scenario: Encrypted backup auto-detected
     Given I have a valid .hemoio encrypted backup file

@@ -733,16 +733,16 @@ describe('useFilesystemSync', () => {
       expect(writeFolderCopy).toHaveBeenCalledTimes(2);
     });
 
-    it('a copy that is not newer is asked about, even with no change here', async () => {
+    it.each(['not-newer', 'empties'] as const)('a copy that is %s is asked about, even with no change here', async (reason) => {
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
       vi.mocked(writeFolderCopy).mockResolvedValueOnce({
         ...(changedElsewhere(false) as Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>),
-        reason: 'not-newer',
+        reason,
       });
 
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
 
-      await waitFor(() => expect(result.current.conflict).toMatchObject({ reason: 'not-newer' }));
+      await waitFor(() => expect(result.current.conflict).toMatchObject({ reason }));
       expect(keepBrowserData).not.toHaveBeenCalled();
       expect(applyFolderCopy).not.toHaveBeenCalled();
     });
@@ -826,10 +826,41 @@ describe('useFilesystemSync', () => {
         expect(vi.mocked(keepBrowserData).mock.invocationCallOrder[0]).toBeLessThan(
           applyFolderCopy.mock.invocationCallOrder[0]
         );
-        expect(applyFolderCopy).toHaveBeenCalledWith(COPY);
+        // Only while the data is as it was stamped before the backup's export
+        expect(mockDb.storedDataStamp.mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(keepBrowserData).mock.invocationCallOrder[0]
+        );
+        expect(applyFolderCopy).toHaveBeenCalledWith(COPY, 'stamp-1');
         expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2');
         expect(result.current.conflict).toBeNull();
         expect(result.current.held).toBe(false);
+      });
+
+      it('asks again, loading nothing, when a change was saved after the backup was kept', async () => {
+        const { result } = await inConflict();
+        applyFolderCopy.mockResolvedValueOnce(false);
+        vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(true, 'r2'));
+
+        await act(() => result.current.resolveConflict('folder'));
+
+        expect(markFolderCopySeen).not.toHaveBeenCalled();
+        expect(writeFolderCopy).toHaveBeenCalledTimes(2);
+        expect(result.current.conflict).not.toBeNull();
+        expect(result.current.issue).toBeNull();
+      });
+
+      it('a copy loaded but not recorded as seen is not called a failed load', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { result } = await inConflict();
+        vi.mocked(markFolderCopySeen).mockRejectedValueOnce(new Error('quota'));
+
+        await act(() => result.current.resolveConflict('folder'));
+
+        expect(applyFolderCopy).toHaveBeenCalled();
+        expect(error).toHaveBeenCalledWith('Could not record the folder copy as seen');
+        expect(error).not.toHaveBeenCalledWith('Failed to load the folder copy');
+        expect(result.current.issue).toBeNull();
+        error.mockRestore();
       });
 
       it("keeping this computer's data keeps the folder copy as a backup, then writes over it", async () => {

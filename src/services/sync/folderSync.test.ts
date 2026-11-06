@@ -795,7 +795,7 @@ describe('two computers on one folder', () => {
 
     expect(await writeFolderCopy(store, withResults(1), key, context(lastSeen))).toMatchObject({
       status: 'changed-elsewhere',
-      reason: 'not-newer',
+      reason: 'empties',
       localChanged: false,
     });
     expect(store.saves).toBe(1);

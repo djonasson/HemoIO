@@ -32,7 +32,7 @@ import {
 import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { ParsedBackupData } from '@services/import';
-import type { FolderProtectionReason, FolderSide } from '@services/sync';
+import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from '@services/sync';
 
 /** The notice that this browser took on a password changed on another computer */
 const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
@@ -43,11 +43,12 @@ export type FolderSyncIssue = FolderProtectionReason | 'failed';
 
 /**
  * What the user is shown to choose: both the folder copy and this browser
- * changed (`both-changed`), or this browser changed nothing but the folder
- * copy is not a newer version of the one it last saw (`not-newer`)
+ * changed (`both-changed`); or this browser changed nothing, but the folder
+ * copy is not a newer version of the one it last saw (`not-newer`), or is
+ * one that holds no health records while this browser does (`empties`)
  */
 export interface FolderConflict {
-  reason: 'both-changed' | 'not-newer';
+  reason: Exclude<ChangedElsewhereReason, 'newer'>;
   folder: FolderSide;
   browser: FolderSide;
   folderName: string | null;
@@ -227,7 +228,8 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             setAsked({
               key: session.key,
               conflict: {
-                reason: outcome.reason === 'not-newer' ? 'not-newer' : 'both-changed',
+                // A 'newer' copy is loaded above and never asked about
+                reason: outcome.reason === 'newer' ? 'both-changed' : outcome.reason,
                 folder: outcome.folder,
                 browser: outcome.browser,
                 folderName: await provider.getDirectoryName(),
@@ -304,17 +306,35 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         const provider = new FileSystemStorageProvider();
         const backups = { db: session.db, key: session.key, backups: provider };
         if (choice === 'folder') {
+          // Stamped before the backup's export, as for an automatic load: a
+          // change saved after it (in another tab, while the backup is saved
+          // to a cloud folder) stops the load in its transaction
+          const stamp = await session.db.storedDataStamp();
           // This browser's data first, as a dated backup: if that fails, nothing is replaced
           await keepBrowserData(backups, { kind: 'conflict' });
           resolved();
+          let loaded: boolean;
           try {
-            await applyRef.current(pending.copy);
-            await markFolderCopySeen(session.db, session.key, pending.revision);
+            loaded = await applyRef.current(pending.copy, stamp);
           } catch {
             // Fixed text: the error could name stored data. Both sides are as
             // they were, so the next sync asks again.
             console.error('Failed to load the folder copy');
             setIssue('failed');
+            return;
+          }
+          if (!loaded) {
+            // Changed meanwhile: nothing was replaced. Asked again, with both
+            // sides as they are now; a failure is told by the sync.
+            await syncOnce(session).catch(() => undefined);
+            return;
+          }
+          try {
+            await markFolderCopySeen(session.db, session.key, pending.revision);
+          } catch {
+            // The copy is loaded: the next sync finds the same data on both
+            // sides and records it. Fixed text: the error could name stored data.
+            console.error('Could not record the folder copy as seen');
           }
           return;
         }

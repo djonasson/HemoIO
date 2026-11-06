@@ -31,7 +31,8 @@ export type FolderSyncData = Awaited<ReturnType<EncryptedDb['exportAllData']>>;
 /** The decrypted folder copy */
 export interface FolderSyncFile {
   version: number;
-  exportedAt: string;
+  /** When it was saved, as an ISO string; anything else reads as an unknown date */
+  exportedAt?: unknown;
   /** New with every write; absent from a copy written before the lock was kept beside it */
   revision?: string;
   /**
@@ -130,10 +131,12 @@ export type FolderSyncOutcome =
 /**
  * Why a copy written elsewhere is loaded or asked about: built on the one
  * this browser last saw, with nothing changed here (`newer`); both changed
- * (`both-changed`); or nothing changed here, but the copy is not built on the
- * one last seen, or would take every health record away (`not-newer`)
+ * (`both-changed`); nothing changed here, but the copy is not built on the
+ * one last seen (`not-newer`); or nothing changed here and the copy is built
+ * on the one last seen, but holds no health records while this browser does
+ * (`empties`): everything may have been deleted on the other computer
  */
-export type ChangedElsewhereReason = 'newer' | 'both-changed' | 'not-newer';
+export type ChangedElsewhereReason = 'newer' | 'both-changed' | 'not-newer' | 'empties';
 
 type CopyProblem = Exclude<FolderProtectionReason, 'empty' | 'set-aside'>;
 
@@ -153,7 +156,13 @@ function healthRecords(data: FolderSyncData): number {
   return data.labResults.length + data.testValues.length + data.userNotes.length;
 }
 
-function isSyncFile(value: unknown): value is FolderSyncFile {
+/**
+ * Whether a decrypted copy is a sync file: the one check for every reader
+ * (the sync, a restore, recovery, a backup). Its save date is not checked:
+ * a copy whose date cannot be read is loaded all the same, with the date
+ * shown as unknown.
+ */
+export function isFolderSyncFile(value: unknown): value is FolderSyncFile {
   if (typeof value !== 'object' || value === null) return false;
   const { version, data } = value as Partial<FolderSyncFile>;
   return (
@@ -191,7 +200,7 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
     const version = (parsed as { version?: unknown } | null)?.version;
     if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return 'newer';
     if (typeof version === 'number' && isPreLoincBackupVersion(version)) return 'before-loinc';
-    return isSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null, plain } : 'unreadable';
+    return isFolderSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null, plain } : 'unreadable';
   } catch {
     return 'unreadable';
   }
@@ -337,13 +346,14 @@ function ancestorsOf(file: Pick<FolderSyncFile, 'ancestors'> | undefined): strin
 /** A folder copy's records as a restore reads them, with dates; throws when they cannot be read */
 export function parseFolderCopyData(file: {
   version: number;
-  exportedAt: string;
+  exportedAt?: unknown;
   data: { labResults?: unknown; testValues?: unknown; userNotes?: unknown; preferences?: unknown };
 }): ParsedBackupData {
   const { data } = file;
   return parseBackupData({
     schemaVersion: file.version,
-    exportedAt: file.exportedAt,
+    // A date that cannot be read is an unknown date (Invalid Date), never a reason to refuse the copy
+    exportedAt: typeof file.exportedAt === 'string' ? file.exportedAt : '',
     appVersion: 'folder copy',
     labResults: data.labResults,
     testValues: data.testValues,
@@ -533,8 +543,7 @@ async function syncFolderCopy(
   // takes no health records away
   const localChanged = digest !== lastSeen.digest;
   const builtOnLastSeen = lastSeen.revision !== null && ancestors.includes(lastSeen.revision);
-  if (!localChanged && builtOnLastSeen && (healthRecords(copy.file.data) > 0 || healthRecords(data) === 0)) {
-    return changedElsewhere('newer', false);
-  }
-  return changedElsewhere(localChanged ? 'both-changed' : 'not-newer', localChanged);
+  if (localChanged) return changedElsewhere('both-changed', true);
+  if (!builtOnLastSeen) return changedElsewhere('not-newer', false);
+  return changedElsewhere(healthRecords(copy.file.data) > 0 || healthRecords(data) === 0 ? 'newer' : 'empties', false);
 }

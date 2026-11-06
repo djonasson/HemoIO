@@ -159,14 +159,16 @@ describe('readFolderCopy', () => {
     });
   });
 
-  it('reports a copy without a readable save date as not a copy', async () => {
+  it('reads a copy without a readable save date, as the sync loads it, with the date unknown', async () => {
     const key = await newKey();
-    const undated = { version: SYNC_FILE_VERSION, exportedAt: 'yesterday-ish', data: STORED };
 
-    expect(await readFolderCopy(await sealed(undated, key), key)).toEqual({
-      status: 'unreadable',
-      reason: 'not-a-copy',
-    });
+    for (const exportedAt of ['yesterday-ish', undefined]) {
+      const undated = { version: SYNC_FILE_VERSION, exportedAt, data: STORED };
+      const reading = await readFolderCopy(await sealed(undated, key), key);
+
+      expect(reading.status).toBe('readable');
+      if (reading.status === 'readable') expect(Number.isNaN(reading.data.exportedAt.getTime())).toBe(true);
+    }
   });
 
   it('reports a copy from a newer version of HemoIO', async () => {

@@ -63,6 +63,12 @@ describe('FolderRestoreModal', () => {
     expect(dialog).toHaveTextContent('This browser has no lab data');
   });
 
+  it('says the save date is unknown for a copy whose date cannot be read', () => {
+    renderModal({ ...OFFER, data: { ...copyOf(1, 0, 0), exportedAt: new Date(NaN) } } as FolderRestorePrompt);
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Save date unknown');
+  });
+
   it('warns that a restore replaces data the browser gained since unlock', () => {
     renderModal({ ...OFFER, replacesBrowserData: true } as FolderRestorePrompt);
 

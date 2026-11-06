@@ -45,6 +45,12 @@ describe('RestoreConfirmation', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('says the date is unknown for a backup whose date cannot be read', () => {
+    renderConfirmation({ preview: { exportedAt: new Date(NaN), labResultCount: 1, testValueCount: 0, noteCount: 0 } });
+
+    expect(screen.getByText('Created: unknown date')).toBeInTheDocument();
+  });
+
   it('says nothing of set-aside records when there are none', () => {
     renderConfirmation();
 

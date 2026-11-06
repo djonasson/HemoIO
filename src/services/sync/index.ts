@@ -7,9 +7,7 @@
 
 export {
   FOLDER_SYNC_FILE_VERSION,
-  MAX_FOLDER_ANCESTORS,
   digestFolderData,
-  exportDigest,
   folderCopyId,
   folderDataJson,
   markFolderCopySeen,

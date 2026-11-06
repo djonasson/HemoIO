@@ -65,7 +65,8 @@ export function RestoreConfirmation({
             )}
           </Group>
           <Text size="sm" c="dimmed">
-            Created: {formatDateTime(preview.exportedAt)}
+            Created:{' '}
+            {Number.isNaN(preview.exportedAt.getTime()) ? 'unknown date' : formatDateTime(preview.exportedAt)}
           </Text>
           <Text size="sm" c="dimmed">
             {plural(preview.labResultCount, 'lab result')},{' '}

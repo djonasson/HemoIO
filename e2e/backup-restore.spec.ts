@@ -11,7 +11,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import { goToNotes, noteCards } from './steps/userNotes.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
@@ -341,6 +341,34 @@ test.describe('Restore Flow', () => {
     } finally {
       cleanupBackupFile(backupPath);
     }
+  });
+
+  test('another open tab shows the restored data without my reloading it', async ({ page }) => {
+    // Scenario: Another open tab shows the restored data without my reloading it
+    await page.goto('/');
+    await setupOrUnlock(page);
+    const second = await page.context().newPage();
+    await second.goto('/');
+    await unlockApp(second);
+    await goToTimeline(second);
+    await expect(labResultCards(second)).toHaveCount(0);
+    let secondLoads = 0;
+    second.on('load', () => secondLoads++);
+
+    await page.bringToFront();
+    await navigateToSettings(page);
+    const backupPath = createBackupFile(createValidBackupData());
+    try {
+      await uploadBackupFile(page, backupPath);
+      await page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByText(/Restore Complete/i)).toBeVisible({ timeout: 10000 });
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
+
+    await expect(labResultCards(second)).toHaveCount(MOCK_LAB_RESULTS.length);
+    expect(secondLoads).toBe(0);
+    await second.close();
   });
 
   test('should cancel restore when clicking cancel', async ({ page }) => {

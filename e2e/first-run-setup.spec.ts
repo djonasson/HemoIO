@@ -348,6 +348,8 @@ test.describe('First-run setup: tabs and existing data', () => {
   test('I can clear the existing data, after confirming', async ({ page }) => {
     // Scenario: I can clear the existing data, after confirming
     await seedDataWithoutLock(page);
+    // The earlier setup's storage choice, left beside its data
+    await page.evaluate(() => localStorage.setItem('hemoio_storage_provider', 'filesystem'));
     const step = existingDataStep(page);
 
     await step.getByRole('button', { name: 'Clear it and set up anew…' }).click();
@@ -365,6 +367,9 @@ test.describe('First-run setup: tabs and existing data', () => {
     await expect(page.getByPlaceholder(/enter your password/i)).toBeVisible();
     const rows = await readStoredRows(page);
     expect(Object.values(rows).every((table) => table.length === 0)).toBe(true);
+    expect(
+      await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('hemoio_')))
+    ).toEqual([]);
 
     await completeSetup(page);
     await expect(setAsideBanner(page)).toHaveCount(0);

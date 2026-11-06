@@ -14,8 +14,10 @@ import type { SetAsideRow } from '@data/db';
  * store the row came from, and `row` is the row exactly as IndexedDB held it.
  * Only its IDs and links are readable (`id`; `labResultId` for test values;
  * `labResultId` and `testValueId` for notes). `row.encrypted` is base64 of a
- * 12-byte AES-GCM IV followed by the ciphertext, sealed with the key derived
- * from the password the row was saved under. It decrypts to UTF-8 JSON of
+ * 12-byte AES-GCM IV followed by the ciphertext, sealed with the data key of
+ * the setup that saved the row: a random key the password only wraps. The
+ * file carries no lock, so the old password alone does not open it; that
+ * setup's lock (its wrapped key) is needed too. It decrypts to UTF-8 JSON of
  * the record's other fields, padded with trailing spaces to a multiple of 256
  * bytes, with dates as `{ "$date": milliseconds | null }` and NaN or
  * ±Infinity as `{ "$number": "NaN" }`.

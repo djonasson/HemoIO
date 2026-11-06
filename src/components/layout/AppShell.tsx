@@ -44,7 +44,9 @@ import {
   useNavigation,
   useSetAsideRecords,
   useFolderStorageOn,
+  useDataReplacedElsewhere,
 } from '@hooks';
+import { announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -171,6 +173,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       }
       if (unchangedSince === undefined) await restoreBackup(db, data);
       else if ((await restoreBackupIfUnchanged(db, data, unchangedSince)) === null) return false;
+      announceDataReplaced();
       const steps: AfterRestoreStep[] = [
         { name: 'loading your preferences', run: reloadPreferences },
         { name: 'loading your alert acknowledgements', run: reloadAlertState },
@@ -187,6 +190,27 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       return true;
     },
     [db, isReady, reloadPreferences, reloadAlertState, refreshLabResults]
+  );
+
+  // Another tab of this browser replaced the data (a folder copy loaded, a
+  // restore), under new IDs: reload what this tab shows, as a restore here
+  // does, so no edit or note goes to an old ID
+  useDataReplacedElsewhere(
+    useCallback(() => {
+      const steps: AfterRestoreStep[] = [
+        { name: 'loading your preferences', run: reloadPreferences },
+        { name: 'loading your alert acknowledgements', run: reloadAlertState },
+        { name: 'showing the updated results', run: refreshLabResults },
+      ];
+      void runAfterRestore(steps).then((failed) => {
+        if (failed.length === 0) return;
+        notifications.show({
+          title: 'Updated in Another Tab, With Problems',
+          message: `Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
+          color: 'yellow',
+        });
+      });
+    }, [reloadPreferences, reloadAlertState, refreshLabResults])
   );
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
@@ -254,6 +278,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
       try {
         const restored = await restoreBackup(db, data);
+        // Other tabs of this browser hold the old IDs: they reload
+        announceDataReplaced();
 
         // The data is replaced: from here on a failure is not a failed restore
         const steps: AfterRestoreStep[] = [

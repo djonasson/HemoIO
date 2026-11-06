@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { clearStoredData, countStoredRows } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from '@data/db/storedRows';
 import { SETUP_LOCK, loadStoredCredentials } from '@contexts/credentialsStorage';
 import { withWebLock } from '@/utils/withWebLock';
 
@@ -13,8 +13,9 @@ export interface UseExistingBrowserDataResult {
   rows: number | null;
   /**
    * Deletes them all, at the user's confirmed request; throws if it fails.
-   * False, with nothing deleted, when another tab has finished setup
-   * meanwhile: the data is that setup's now.
+   * The earlier setup's folder choice and other HemoIO keys go too, so the
+   * new setup starts as on a fresh browser. False, with nothing deleted,
+   * when another tab has finished setup meanwhile: the data is that setup's now.
    */
   clear: () => Promise<boolean>;
 }
@@ -48,6 +49,12 @@ export function useExistingBrowserData(): UseExistingBrowserDataResult {
     const cleared = await withWebLock(SETUP_LOCK, async () => {
       if (loadStoredCredentials()) return false;
       await clearStoredData();
+      // Checked above: no credentials are among the keys this removes. The
+      // rows are gone, so a folder choice left behind fails nothing: the new
+      // setup's first sync finds another setup's copy there, and says so.
+      await clearLocalHemoIOStorage().catch(() => {
+        console.error("Could not forget the earlier setup's folder choice");
+      });
       return true;
     });
     if (cleared) setRows(0);

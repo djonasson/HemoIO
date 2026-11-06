@@ -127,6 +127,8 @@ Feature: Set Up From a Folder Copy
     When instead only my folder choice cannot be saved
     Then I should be told my folder copy is loaded, but to choose the folder again in Settings
 
+  # Unit-tested (useFolderRecovery, SetupWizard): another tab cannot be made
+  # to finish setup between this tab's unlock of the copy and its save on cue
   Scenario: If another tab finishes setup first, I am asked to unlock
     Given I am restoring from my folder copy
     And another tab finishes setting HemoIO up first

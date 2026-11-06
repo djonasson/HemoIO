@@ -159,7 +159,7 @@ export function FolderRestoreModal({
           <List.Item>{count(userNotes.length, 'note')}</List.Item>
         </List>
         <Text size="sm">
-          Saved {formatDateTime(exportedAt)}
+          {Number.isNaN(exportedAt.getTime()) ? 'Save date unknown' : `Saved ${formatDateTime(exportedAt)}`}
         </Text>
         {shown.replacesBrowserData && (
           <Text size="sm" fw={500}>

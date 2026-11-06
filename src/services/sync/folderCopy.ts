@@ -10,7 +10,7 @@ import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import
 import { backupDate } from './folderBackups';
 import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
 import { readLockFile } from './folderLockFile';
-import { FOLDER_SYNC_FILE_VERSION, parseFolderCopyData } from './folderSync';
+import { FOLDER_SYNC_FILE_VERSION, isFolderSyncFile, parseFolderCopyData } from './folderSync';
 import { isCredentialsV2, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 export type FolderCopyProblem =
@@ -37,31 +37,6 @@ export type FolderCopyReading =
     }
   | { status: 'unreadable'; reason: Exclude<FolderCopyProblem, 'read-failed'> };
 
-interface FolderCopyEnvelope {
-  version: number;
-  exportedAt: string;
-  revision?: unknown;
-  data: {
-    labResults?: unknown;
-    testValues?: unknown;
-    userNotes?: unknown;
-    preferences?: unknown;
-  };
-}
-
-function isEnvelope(value: unknown): value is FolderCopyEnvelope {
-  if (!value || typeof value !== 'object') return false;
-  const envelope = value as Partial<FolderCopyEnvelope>;
-  return (
-    typeof envelope.version === 'number' &&
-    typeof envelope.exportedAt === 'string' &&
-    // Shown to the user as the copy's date
-    !Number.isNaN(new Date(envelope.exportedAt).getTime()) &&
-    typeof envelope.data === 'object' &&
-    envelope.data !== null
-  );
-}
-
 /**
  * Decrypt and parse the folder copy with the session key. Never throws, and
  * logs nothing: the content is health data.
@@ -85,13 +60,12 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   } catch {
     return { status: 'unreadable', reason: 'not-a-copy' };
   }
-  if (!isEnvelope(envelope)) {
-    return { status: 'unreadable', reason: 'not-a-copy' };
-  }
-  if (envelope.version > FOLDER_SYNC_FILE_VERSION) {
+  // Its version first: a newer HemoIO may lay its data out in a way this one cannot check
+  const version = (envelope as { version?: unknown } | null)?.version;
+  if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) {
     return { status: 'unreadable', reason: 'newer-version' };
   }
-  if (!Number.isInteger(envelope.version) || envelope.version < 1) {
+  if (!isFolderSyncFile(envelope) || !Number.isInteger(envelope.version) || envelope.version < 1) {
     return { status: 'unreadable', reason: 'not-a-copy' };
   }
   if (isPreLoincBackupVersion(envelope.version)) {
