@@ -34,6 +34,7 @@ import { useFormKeyboardSubmit } from '@hooks';
 import { useExistingBrowserData } from '@hooks/useExistingBrowserData';
 import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
 import type { StorageProviderType, AIProviderType } from '@/types';
+import type { SetupOutcome } from '@contexts/AuthContext';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
@@ -147,10 +148,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     // Set when the choices could not be stored after the password lock was
     // saved: setup still finishes, and says what was not kept
     let choicesFailed = false;
+    let outcome: SetupOutcome;
     try {
       // Stored before the app unlocks, so the providers that load at unlock
       // (API key, AI settings) start with them
-      const outcome = await setupPassword(password, async (encryptionKey) => {
+      outcome = await setupPassword(password, async (encryptionKey) => {
         try {
           localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
 
@@ -170,28 +172,31 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
           choicesFailed = true;
         }
       });
-
-      if (outcome === 'existing-locked') {
-        // The login screen shows in place of the wizard
-        notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
-        return;
-      }
-      if (outcome === 'unlocked-existing') {
-        notifySetUpElsewhere(unsavedChoicesRef.current);
-      } else if (choicesFailed) {
-        notifySetupChoicesNotSaved(unsavedChoicesRef.current);
-      }
-      onComplete();
     } catch {
       // Only before the password lock was saved, so nothing was set up.
       // Fixed text: the error could name the credentials. The wizard stays,
       // to be submitted again
       console.error('Setup failed');
       notifySetupFailed();
+      return;
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
     }
+
+    // Outside the try: the password lock is saved by now, so nothing here may
+    // report "Setup failed"
+    if (outcome === 'existing-locked') {
+      // The login screen shows in place of the wizard
+      notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
+      return;
+    }
+    if (outcome === 'unlocked-existing') {
+      notifySetUpElsewhere(unsavedChoicesRef.current);
+    } else if (choicesFailed) {
+      notifySetupChoicesNotSaved(unsavedChoicesRef.current);
+    }
+    onComplete();
   }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
 
   const handleSubmit = useCallback(
