@@ -219,6 +219,9 @@ interface ReplacedCounts {
   notes: number;
 }
 
+/** A sealed row's IV, as the base64 that starts its ciphertext: 12 bytes are 16 characters */
+const STAMP_IV_LENGTH = 16;
+
 export class EncryptedDb {
   private key: CryptoKey;
   private db: HemoIODatabase;
@@ -807,9 +810,13 @@ export class EncryptedDb {
   }
 
   /**
-   * The stored rows of the lab tables and the preferences, as one string.
-   * Every save seals afresh under a new IV, so it is equal only while
-   * nothing was written, by this tab or another.
+   * The stored rows of the lab tables and the preferences, as one string:
+   * every readable field, and each ciphertext by its IV alone (its first 16
+   * base64 characters, the 12-byte IV encryptString puts first). Every save
+   * seals afresh under a new random IV, so a changed row has a new IV, and
+   * the stamp is equal only while nothing was written, by this tab or
+   * another, as the whole ciphertext would be, without holding a copy of
+   * the database in memory.
    */
   async storedDataStamp(): Promise<string> {
     return this.db.transaction('r', this.stampedTables(), () => this.readStamp());
@@ -825,7 +832,15 @@ export class EncryptedDb {
    */
   private async readStamp(): Promise<string> {
     const rows = await Promise.all(this.stampedTables().map((table) => table.toArray()));
-    return JSON.stringify(rows);
+    // Built in the same task as the reads: no await outside IndexedDB, so
+    // the stamp may be compared inside a write transaction
+    return JSON.stringify(
+      rows.map((stored) =>
+        stored.map((row: SealedRecord) =>
+          typeof row.encrypted === 'string' ? { ...row, encrypted: row.encrypted.slice(0, STAMP_IV_LENGTH) } : row
+        )
+      )
+    );
   }
 
   // ============ Set-aside records ============

@@ -49,4 +49,25 @@ describe('EncryptedDb.replaceLabData with a stamp', () => {
 
     expect(await db.storedDataStamp()).toBe(await db.storedDataStamp());
   });
+
+  it('changes when a row is saved again with the same content: each save has a new IV', async () => {
+    const { db } = await openTestDb();
+    const id = await db.addLabResult(result('Here'));
+    const stamp = await db.storedDataStamp();
+
+    await db.updateLabResult(id, { labName: 'Here' });
+
+    expect(await db.storedDataStamp()).not.toBe(stamp);
+  });
+
+  it('holds no ciphertext beyond each row\'s IV', async () => {
+    const { db, database } = await openTestDb();
+    await db.addLabResult(result('A lab name long enough to make a long ciphertext'));
+    const [row] = await database.table('labResults').toArray();
+
+    const stamp = await db.storedDataStamp();
+
+    expect(stamp).toContain(row.encrypted.slice(0, 16));
+    expect(stamp).not.toContain(row.encrypted.slice(0, 17));
+  });
 });
