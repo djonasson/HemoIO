@@ -30,14 +30,15 @@ import {
 import { createEncryptedDb } from '@data/db';
 import { clearStoredDataButSetAside } from '@data/db/storedRows';
 import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
-import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
+import { FOLDER_SYNC_LOCK, SETUP_LOCK, withLocks } from '@/utils/locks';
+import { withWebLock } from '@/utils/withWebLock';
 import { reloadPage } from '@/utils/reloadPage';
 import {
   CREDENTIALS_STORAGE_KEY,
-  SETUP_LOCK,
   loadStoredCredentials,
   mayChangeCredentials,
 } from './credentialsStorage';
+import { logFailure } from '@/utils/logFailure';
 
 export type AuthStatus = 'loading' | 'needs_setup' | 'locked' | 'unlocked';
 
@@ -130,7 +131,7 @@ async function settleStoredRecords(key: CryptoKey): Promise<void> {
     await createEncryptedDb(key).settleUnreadable();
   } catch {
     // Not logged with the error, which could name stored data
-    console.error('Could not check stored records against this key');
+    logFailure('Could not check stored records against this key');
   }
 }
 
@@ -160,7 +161,7 @@ async function convertToV2(
     return await (holdsSetupLock ? save() : withWebLock(SETUP_LOCK, save));
   } catch {
     // Fixed text: never the error, which could carry key material
-    console.error('Could not move the credentials to the current format');
+    logFailure('Could not move the credentials to the current format');
     return null;
   }
 }
@@ -253,7 +254,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
           // already have unlocked with them and sealed records under this key.
           // The setup choices are what is lost; the caller says so itself.
           // Fixed text: the error could name what was being stored.
-          console.error('Could not store the setup choices');
+          logFailure('Could not store the setup choices');
         }
 
         // Automatically unlock after setup
@@ -287,7 +288,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
           await onSaved?.();
         } catch {
           // Fixed text: the error could name the folder
-          console.error('Could not keep the folder choice');
+          logFailure('Could not keep the folder choice');
         }
         // Before the restore: rows set aside earlier that this key opens come
         // back first, and rows it cannot open go aside, so the restore neither
@@ -298,7 +299,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         } catch {
           // As in setup: once saved, the credentials are never taken back.
           // Fixed text: the error could name what was being restored.
-          console.error('Could not restore the folder copy');
+          logFailure('Could not restore the folder copy');
         }
 
         setEncryptionKey(key);
@@ -374,7 +375,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     try {
       saveStoredCredentials(lock);
     } catch {
-      console.error('Could not save the password lock from the folder');
+      logFailure('Could not save the password lock from the folder');
       return false;
     }
     setCredentials(lock);
@@ -389,33 +390,31 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     setStartingOver(true);
 
     try {
-      // The setup lock, then the folder-sync lock, nested in that order: waits
-      // for a setup in another tab, and for a sync in flight, which may still
-      // write its state or the folder copy. No sync writes after the clear.
-      const cleared = await withWebLock(SETUP_LOCK, () =>
-        withWebLock(FOLDER_SYNC_LOCK, async (): Promise<boolean> => {
-          let ok = true;
-          try {
-            // The rows set aside stay: no key here opened them, but one
-            // recovered from a folder copy may, and setup offers them
-            await clearStoredDataButSetAside();
-          } catch {
-            ok = false;
-          }
-          // Even when the rows stay: without the credentials, setup offers to
-          // keep them aside or delete them. Removed, never overwritten, so
-          // other tabs return to setup too.
-          try {
-            await clearLocalHemoIOStorage();
-          } catch {
-            ok = false;
-          }
-          return ok;
-        })
-      );
+      // Both locks: waits for a setup in another tab, and for a sync in
+      // flight, which may still write its state or the folder copy. No sync
+      // writes after the clear.
+      const cleared = await withLocks([SETUP_LOCK, FOLDER_SYNC_LOCK], async (): Promise<boolean> => {
+        let ok = true;
+        try {
+          // The rows set aside stay: no key here opened them, but one
+          // recovered from a folder copy may, and setup offers them
+          await clearStoredDataButSetAside();
+        } catch {
+          ok = false;
+        }
+        // Even when the rows stay: without the credentials, setup offers to
+        // keep them aside or delete them. Removed, never overwritten, so
+        // other tabs return to setup too.
+        try {
+          await clearLocalHemoIOStorage();
+        } catch {
+          ok = false;
+        }
+        return ok;
+      });
       if (!cleared) {
         // Fixed text: the error could name stored data
-        console.error('Could not clear the data stored in this browser');
+        logFailure('Could not clear the data stored in this browser');
         throw new Error('Start over did not finish');
       }
     } finally {
@@ -450,7 +449,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         setCredentials(rewrapped.credentials);
         return { ok: true };
       } catch {
-        console.error('Password change failed');
+        logFailure('Password change failed');
         return FAILED;
       }
     },

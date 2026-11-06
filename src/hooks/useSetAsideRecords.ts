@@ -9,6 +9,7 @@ import { useAuth } from '@contexts/useAuth';
 import { onSetAsideChanged } from '@data/db/setAsideEvents';
 import { buildSetAsideFile, saveSealedFile, setAsideFileName } from '@services/export';
 import { useEncryptedDb } from './useEncryptedDb';
+import { logFailure } from '@/utils/logFailure';
 import type { EncryptedDb } from '@data/db';
 import type { SetAsideSummary } from '@/types';
 
@@ -75,7 +76,7 @@ function startCount(key: CryptoKey, db: EncryptedDb): SharedCount {
         count.listeners.forEach((listener) => listener());
       },
       // Fixed text: the error could name stored data
-      () => console.error('Could not count the records kept aside')
+      () => logFailure('Could not count the records kept aside')
     );
   };
   const stopListening = onSetAsideChanged(({ movedAside }) => {

@@ -15,7 +15,8 @@
 
 import { createEncryptedDb, type EncryptedDb } from '@data/db';
 import { restoreBackup } from '@services/import';
-import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
+import { FOLDER_SYNC_LOCK } from '@/utils/locks';
+import { withWebLock } from '@/utils/withWebLock';
 import { logFailure } from '@/utils/logFailure';
 import { keepFolderBackup, type FolderBackupStore } from './folderBackups';
 import { unlockFolderCopy, type FolderCopyOrigin, type FolderRecoverySource, type FolderUnlockProblem } from './folderCopy';

@@ -1,13 +1,10 @@
 /**
- * Where the credentials live, and the lock setup holds while it reads and
- * writes them. AuthContext is their only writer; setup reads them to find
+ * Where the credentials live; setup holds SETUP_LOCK (utils/locks.ts)
+ * while it reads and writes them. AuthContext is their only writer; setup reads them to find
  * out whether another tab has finished first.
  */
 
 export const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
-
-/** Held while a tab sets up or clears for setup, so tabs take turns */
-export const SETUP_LOCK = 'hemoio-setup';
 
 /**
  * Loads stored credentials from localStorage. The format (v1, v2 or unknown)

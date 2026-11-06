@@ -22,6 +22,7 @@ import {
   EncryptedApiKeyContext,
   type UseEncryptedApiKeyResult,
 } from '@hooks/useEncryptedApiKey';
+import { logFailure } from '@/utils/logFailure';
 
 const LEGACY_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key';
 
@@ -81,7 +82,7 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         setApiKeyLastFour(undefined);
       } catch {
         // Fixed messages: an error could hold the key or what it encrypts
-        console.error('Could not read the stored API key');
+        logFailure('Could not read the stored API key');
         setHasApiKey(false);
         setApiKeyLastFour(undefined);
       } finally {
@@ -106,7 +107,7 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
 
       return await decryptString(encryptedKey, encryptionKey);
     } catch {
-      console.error('Could not decrypt the stored API key');
+      logFailure('Could not decrypt the stored API key');
       return null;
     }
   }, [isReady, encryptionKey]);
@@ -128,7 +129,7 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         setHasApiKey(true);
         setApiKeyLastFour(apiKey.slice(-4));
       } catch (error) {
-        console.error('Could not encrypt the API key');
+        logFailure('Could not encrypt the API key');
         throw error;
       }
     },

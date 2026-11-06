@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import { AlertStateContext, type AlertState } from '@hooks/useAlertState';
+import { logFailure } from '@/utils/logFailure';
 
 function toDates(stored: Record<string, string> | undefined): Record<string, Date> {
   return Object.fromEntries(Object.entries(stored ?? {}).map(([key, iso]) => [key, new Date(iso)]));
@@ -69,7 +70,7 @@ export function AlertStateProvider({ children }: { children: ReactNode }): React
         // Acknowledgements made while loading win over the stored ones
         if (!cancelled) update((current) => ({ ...toDates(prefs?.acknowledgedAlerts), ...current }));
       })
-      .catch(() => console.error('Failed to load alert acknowledgements'));
+      .catch(() => logFailure('Failed to load alert acknowledgements'));
     return () => {
       cancelled = true;
     };

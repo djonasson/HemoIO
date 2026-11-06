@@ -68,6 +68,7 @@ import {
   type AfterRestoreStep,
 } from '@services/import';
 import { HEADER_HEIGHT } from './headerHeight';
+import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 import type { AppView, ViewFocus } from '@hooks';
@@ -360,7 +361,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         await acknowledgeFolderCopy(offeredRevision);
       } catch {
         // The restore is done; the next sync compares the data with the copy instead
-        console.error('Could not record the restored folder copy as seen');
+        logFailure('Could not record the restored folder copy as seen');
       }
     },
     [handleRestore, acknowledgeFolderCopy, offeredRevision]

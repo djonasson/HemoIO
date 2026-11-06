@@ -31,8 +31,10 @@ import {
   runFolderSync,
   type SyncSession,
 } from '@services/sync/folderSyncRun';
-import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
+import { FOLDER_SYNC_LOCK } from '@/utils/locks';
+import { withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
 import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from '@services/sync';
 
@@ -238,7 +240,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         }
       } catch (error) {
         // Fixed text: the error could name stored data
-        console.error('Failed to sync to the folder');
+        logFailure('Failed to sync to the folder');
         setIssue('failed');
         throw error;
       }
@@ -259,9 +261,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     await withWebLock(FOLDER_SYNC_LOCK, () => syncOnce(session));
   }, [syncOnce]);
 
-  /** Runs `task` after the syncs already asked for, holding the folder-sync lock */
-  const afterSyncs = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
-    const next = lastRef.current.then(() => withWebLock(FOLDER_SYNC_LOCK, task));
+  /** Runs `task` after everything already queued; its failure is its caller's, and the next still runs */
+  const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const next = lastRef.current.then(task);
     lastRef.current = next.then(
       () => undefined,
       () => undefined
@@ -269,17 +271,21 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     return next;
   }, []);
 
+  /** Runs `task` after the syncs already asked for, holding the folder-sync lock */
+  const afterSyncs = useCallback(
+    <T,>(task: () => Promise<T>): Promise<T> => enqueue(() => withWebLock(FOLDER_SYNC_LOCK, task)),
+    [enqueue]
+  );
+
   const syncNow = useCallback((): Promise<void> => {
     if (waitingRef.current) return waitingRef.current;
-    const next = lastRef.current.then(() => {
+    const next = enqueue(() => {
       waitingRef.current = null;
       return runSync();
     });
     waitingRef.current = next;
-    // A failed sync is its caller's to handle; the next one still runs
-    lastRef.current = next.catch(() => undefined);
     return next;
-  }, [runSync]);
+  }, [enqueue, runSync]);
 
   const resolveConflict = useCallback(
     async (choice: FolderConflictChoice): Promise<void> => {
@@ -320,7 +326,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
           } catch {
             // Fixed text: the error could name stored data. Both sides are as
             // they were, so the next sync asks again.
-            console.error('Failed to load the folder copy');
+            logFailure('Failed to load the folder copy');
             setIssue('failed');
             return;
           }
@@ -335,7 +341,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
           } catch {
             // The copy is loaded: the next sync finds the same data on both
             // sides and records it. Fixed text: the error could name stored data.
-            console.error('Could not record the folder copy as seen');
+            logFailure('Could not record the folder copy as seen');
           }
           return;
         }

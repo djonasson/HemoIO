@@ -6,8 +6,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { clearStoredData, countStoredRows } from '@data/db/storedRows';
 import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
-import { SETUP_LOCK, loadStoredCredentials } from '@contexts/credentialsStorage';
+import { loadStoredCredentials } from '@contexts/credentialsStorage';
+import { SETUP_LOCK } from '@/utils/locks';
 import { withWebLock } from '@/utils/withWebLock';
+import { logFailure } from '@/utils/logFailure';
 
 export interface UseExistingBrowserDataResult {
   /** How many rows are stored; null while they are being counted */
@@ -35,7 +37,7 @@ export function useExistingBrowserData(): UseExistingBrowserDataResult {
       () => {
         // Fixed text: the error could name stored data. Setup goes ahead:
         // the unlock sweep still keeps aside any rows the new key cannot open
-        console.error('Could not count the data stored in this browser');
+        logFailure('Could not count the data stored in this browser');
         if (current) setRows(0);
       }
     );
@@ -54,7 +56,7 @@ export function useExistingBrowserData(): UseExistingBrowserDataResult {
       // rows are gone, so a folder choice left behind fails nothing: the new
       // setup's first sync finds another setup's copy there, and says so.
       await clearLocalHemoIOStorage().catch(() => {
-        console.error("Could not forget the earlier setup's folder choice");
+        logFailure("Could not forget the earlier setup's folder choice");
       });
       return true;
     });

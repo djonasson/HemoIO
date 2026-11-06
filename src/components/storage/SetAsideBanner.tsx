@@ -13,6 +13,7 @@ import { IconDownload, IconLockQuestion, IconTrash } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { pluralize } from '@/utils/pluralize';
 import { recordCount } from './setAsideCopy';
+import { logFailure } from '@/utils/logFailure';
 import type { SealedDownload } from '@hooks/useSetAsideRecords';
 
 export interface SetAsideBannerProps {
@@ -117,7 +118,7 @@ export function SetAsideBanner({
         setDeleteIds(ids);
       }
     } catch {
-      console.error('Could not list the records kept aside');
+      logFailure('Could not list the records kept aside');
     }
   };
 

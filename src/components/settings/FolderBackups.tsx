@@ -15,6 +15,7 @@ import { useFocusOnShow } from '@hooks/useFocusOnShow';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { ParsedBackupData } from '@services/import';
 import { RestoreConfirmation } from './RestoreConfirmation';
+import { logFailure } from '@/utils/logFailure';
 import type { RestoreOptions } from './BackupRestore';
 
 export interface FolderBackupsProps {
@@ -91,7 +92,7 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
         keepsCurrent = await canKeepCurrentCopy();
       } catch {
         // Fixed message: the reason could name stored data
-        console.error('Could not look at the current folder copy');
+        logFailure('Could not look at the current folder copy');
         setProblem(KEEP_FAILED_MESSAGE);
         return;
       }
@@ -120,7 +121,7 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
           setPending({ ...pending, kept: true });
         } catch {
           // Fixed message: the reason could name stored data
-          console.error('Could not keep the current folder copy as a backup');
+          logFailure('Could not keep the current folder copy as a backup');
           setFailure(KEEP_FAILED_MESSAGE);
           return;
         }

@@ -9,6 +9,7 @@
  * backup would let an old password open the data key).
  */
 
+import { logFailure } from '@/utils/logFailure';
 
 export const MAX_FOLDER_BACKUPS = 10;
 
@@ -121,7 +122,7 @@ export async function keepFolderBackup(
       await store.deleteBackup(backup);
     } catch {
       // The backup is saved; an old one left behind is removed the next time
-      console.error('Could not remove an old folder backup');
+      logFailure('Could not remove an old folder backup');
     }
   }
   return name;

@@ -44,6 +44,7 @@ import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
 import { saveStorageChoice } from '@data/storage/storageChoice';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import { logFailure } from '@/utils/logFailure';
 import type { FolderUnlockProblem } from '@services/sync';
 
 interface SetupWizardProps {
@@ -188,7 +189,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       // Only before the password lock was saved, so nothing was set up.
       // Fixed text: the error could name the credentials. The wizard stays,
       // to be submitted again
-      console.error('Setup failed');
+      logFailure('Setup failed');
       notifySetupFailed();
       return;
     } finally {

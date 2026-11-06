@@ -16,6 +16,7 @@ import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { assessFolderCopy, type FolderCopyAssessment, type FolderCopyProblem } from '@services/sync';
 import { useEncryptedDb } from './useEncryptedDb';
+import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
 
 export type FolderRestorePrompt =
@@ -77,7 +78,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
         browserHasData = await database.hasLabData();
       } catch {
         // Not logged with the error, which could name stored data. Sync stays held.
-        console.error('Could not check this browser for lab data before syncing to the folder');
+        logFailure('Could not check this browser for lab data before syncing to the folder');
         return;
       }
       // Data added while folder access waited (an import, say) is not what the
