@@ -6,6 +6,7 @@ import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
 import { readLockFile } from './folderLockFile';
 import {
   FOLDER_SYNC_FILE_VERSION,
+  FolderWriteHeld,
   MAX_FOLDER_ANCESTORS,
   digestFolderData,
   folderCopyId,
@@ -620,6 +621,18 @@ describe('writeFolderCopy', () => {
 
       expect(outcome).toMatchObject({ status: 'protected', reason: 'set-aside' });
       expect(error.mock.calls).toEqual([['Could not put the new lock into the folder copy']]);
+      error.mockRestore();
+    });
+
+    it('lets a re-seal the hold stopped end the sync, logging nothing', async () => {
+      const { changed } = await writtenThenPasswordChanged();
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.spyOn(store, 'saveLock').mockRejectedValue(new FolderWriteHeld());
+
+      await expect(write(store, withResults(1), key, { ...changed, setAsideUnsaved: 2 })).rejects.toBeInstanceOf(
+        FolderWriteHeld
+      );
+      expect(error).not.toHaveBeenCalled();
       error.mockRestore();
     });
 

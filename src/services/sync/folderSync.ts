@@ -479,6 +479,12 @@ export async function sealLockIntoFolderCopy(
 }
 
 /**
+ * Rejected by a store's save once the sync's hold has begun: nothing was
+ * written, and the sync ends without a word, as one never started would
+ */
+export class FolderWriteHeld extends Error {}
+
+/**
  * Write the data to the folder copy, unless that could lose data there.
  * A copy with the same data is not rewritten, so the previous copy stays the
  * one from before the last real change, unless this browser's lock is later
@@ -519,7 +525,9 @@ export async function writeFolderCopy(
     try {
       const reseal = await sealLockIntoFolderCopy(store, key, context.lock, bytes);
       if (reseal.folderLock !== null) return { ...outcome, folderLock: reseal.folderLock };
-    } catch {
+    } catch (error) {
+      // A write the hold stopped did not fail: the caller ends the sync quietly
+      if (error instanceof FolderWriteHeld) throw error;
       // The data's own outcome is what the user needs to hear; the lock is
       // tried again at the next sync. Fixed text: the error could name the folder.
       logFailure('Could not put the new lock into the folder copy');

@@ -10,7 +10,7 @@
 
 import { loadFolderSyncState, saveFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
 import { keepBrowserData } from './folderConflict';
-import { markFolderCopySeen, writeFolderCopy } from './folderSync';
+import { FolderWriteHeld, markFolderCopySeen, writeFolderCopy } from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { ParsedBackupData } from '@services/import';
@@ -47,9 +47,6 @@ export interface RunFolderSyncOptions {
   lockMayBeBehind?: boolean;
 }
 
-/** Thrown by a save the hold stopped: the sync ends without a word, as one never started would */
-class SyncHeld extends Error {}
-
 /**
  * Write this browser's data to the folder copy, unless that could lose data
  * there (writeFolderCopy decides). Resolves null when the hold began while
@@ -81,8 +78,8 @@ export async function runFolderSync(
     loadCurrent: () => folder.loadCurrent(),
     loadPrevious: () => folder.loadPrevious(),
     loadLock: () => folder.loadLock(),
-    save: (bytes, previous) => (isEnabled() ? folder.save(bytes, previous) : Promise.reject(new SyncHeld())),
-    saveLock: (bytes) => (isEnabled() ? folder.saveLock(bytes) : Promise.reject(new SyncHeld())),
+    save: (bytes, previous) => (isEnabled() ? folder.save(bytes, previous) : Promise.reject(new FolderWriteHeld())),
+    saveLock: (bytes) => (isEnabled() ? folder.saveLock(bytes) : Promise.reject(new FolderWriteHeld())),
   };
   // Not while set-aside records keep the copy from being read for its data:
   // the choice waits for a sync that can act on it
@@ -95,12 +92,9 @@ export async function runFolderSync(
       ...(replaces !== undefined && { replaces }),
       ...(lockMayBeBehind !== undefined && { lockMayBeBehind }),
     });
-    // A write the hold stopped may have been one whose failure is passed
-    // over (the lock-only re-seal): nothing is reported while held
-    if (!isEnabled()) return null;
     return { outcome, lastSeen };
   } catch (error) {
-    if (error instanceof SyncHeld) return null;
+    if (error instanceof FolderWriteHeld) return null;
     throw error;
   }
 }
