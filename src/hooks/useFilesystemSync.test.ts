@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { notifySetAsideChanged } from '@data/db/setAsideEvents';
+import { notifications } from '@mantine/notifications';
 import { writeFolderCopy, type FolderSyncOutcome } from '@services/sync';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -60,12 +61,17 @@ vi.mock('./useEncryptedDb', () => ({
 const LOCK_A = { version: 2, kekSalt: 'c2FsdEE=', iterations: 1000, wrapIv: 'aXZB', wrappedKey: 'a2V5QQ==' } as const;
 const LOCK_B = { ...LOCK_A, kekSalt: 'c2FsdEI=', changedAt: '2026-11-06T09:00:00.000Z' };
 const auth: {
+  encryptionKey: CryptoKey | null;
   storedLock: StoredCredentialsV2 | null;
   adoptFolderLock: (lock: StoredCredentialsV2) => boolean;
-} = { storedLock: LOCK_A, adoptFolderLock: () => false };
+} = { encryptionKey: mockKey, storedLock: LOCK_A, adoptFolderLock: () => false };
 
 vi.mock('@contexts', () => ({
-  useAuth: () => ({ encryptionKey: mockKey, ...auth }),
+  useAuth: () => ({ ...auth }),
+}));
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: vi.fn(), hide: vi.fn() },
 }));
 
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
@@ -77,6 +83,7 @@ describe('useFilesystemSync', () => {
     vi.mocked(writeFolderCopy).mockResolvedValue(WRITTEN);
     mockGetPermissionState.mockResolvedValue('granted');
     mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
+    auth.encryptionKey = mockKey;
     auth.storedLock = LOCK_A;
     auth.adoptFolderLock = vi.fn(() => false);
   });
@@ -291,6 +298,47 @@ describe('useFilesystemSync', () => {
       renderHook(() => useFilesystemSync());
 
       await waitFor(() => expect(auth.adoptFolderLock).toHaveBeenCalledWith(LOCK_B));
+    });
+
+    it('says when it adopted a password changed on another computer', async () => {
+      auth.adoptFolderLock = vi.fn(() => true);
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce({ status: 'unchanged', folderLock: LOCK_B });
+
+      renderHook(() => useFilesystemSync());
+
+      await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(notifications.show).mock.calls[0][0]).toMatchObject({
+        title: 'Password changed on another computer',
+        message: 'Use the new password the next time you unlock HemoIO.',
+        autoClose: false,
+      });
+    });
+
+    it('says nothing for a lock this browser holds already', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValue({ status: 'unchanged', folderLock: LOCK_A });
+
+      const { result } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(auth.adoptFolderLock).toHaveBeenCalledWith(LOCK_A));
+      await act(() => result.current.syncNow());
+
+      expect(notifications.show).not.toHaveBeenCalled();
+    });
+
+    it('adopts nothing found by a sync whose session has ended', async () => {
+      let finish: (outcome: FolderSyncOutcome) => void = () => {};
+      vi.mocked(writeFolderCopy).mockImplementationOnce(
+        () => new Promise<FolderSyncOutcome>((resolve) => (finish = resolve))
+      );
+      const { rerender } = renderHook(() => useFilesystemSync());
+      await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+      // Locked while the sync read the folder
+      auth.encryptionKey = null;
+      rerender();
+      await act(async () => finish({ status: 'unchanged', folderLock: LOCK_B }));
+
+      expect(auth.adoptFolderLock).not.toHaveBeenCalled();
+      expect(notifications.show).not.toHaveBeenCalled();
     });
 
     it('adopts nothing when the folder had no lock, or could not be opened', async () => {

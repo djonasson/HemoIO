@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { notifications } from '@mantine/notifications';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
@@ -14,6 +15,9 @@ import { onSetAsideChanged } from '@data/db/setAsideEvents';
 import { writeFolderCopy } from '@services/sync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderCopyStore, FolderProtectionReason } from '@services/sync';
+
+/** The notice that this browser took on a password changed on another computer */
+const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
 
 /** What the user is told about the folder sync: why it held back, or that it failed */
 export type FolderSyncIssue = FolderProtectionReason | 'failed';
@@ -104,8 +108,16 @@ export function useFilesystemSync({ enabled = true }: UseFilesystemSyncOptions =
         lock: lockRef.current,
         setAsideUnsaved: unsaved,
       });
-      // A password changed on another computer: adopted when later than this one's
-      if (outcome.folderLock) adoptRef.current(outcome.folderLock);
+      // A password changed on another computer: adopted when later than this
+      // one's, and only for the session whose key opened the copy
+      if (outcome.folderLock && sessionRef.current === session && adoptRef.current(outcome.folderLock)) {
+        notifications.show({
+          id: FOLDER_LOCK_ADOPTED_NOTICE_ID,
+          title: 'Password changed on another computer',
+          message: 'Use the new password the next time you unlock HemoIO.',
+          autoClose: false,
+        });
+      }
       setIssue(outcome.status === 'protected' ? outcome.reason : null);
     } catch (error) {
       if (error instanceof SyncHeld) return;

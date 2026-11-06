@@ -37,6 +37,7 @@ Feature: Folder Sync Safety
     When I add more lab results
     Then my folder should hold a new copy with all of my lab results
     And my folder should keep the copy from before, as the previous copy
+    And only the new copy should hold my password lock, so an old password opens nothing in the folder
 
   Scenario: A full copy is not pushed out by smaller ones
     Given my lab results have been synced to my folder
@@ -101,6 +102,7 @@ Feature: Folder Sync Safety
     And I changed my password on another computer that syncs to the same folder
     When I keep working on this computer
     Then I should be able to keep working without unlocking again
+    And I should be told that my password was changed on another computer, and to use the new one next time
     And the next time I unlock, my old password should no longer work
     And my new password should unlock HemoIO
 

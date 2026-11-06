@@ -89,6 +89,8 @@ type CopyProblem = Exclude<FolderProtectionReason, 'empty' | 'set-aside'>;
 interface OpenedCopy {
   file: FolderSyncFile;
   lock: StoredCredentialsV2 | null;
+  /** Its plaintext, sealed again without the lock when it becomes the previous copy */
+  plain: ArrayBuffer;
 }
 
 /**
@@ -121,6 +123,7 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
   if (!encrypted || encrypted.byteLength === 0) return null;
 
   const header = readEnvelopeHeader(encrypted);
+  // 'unreadable' here and 'not-a-copy' in readFolderCopy: both name a damaged header
   if (header === 'damaged') return 'unreadable';
   let plain: ArrayBuffer;
   try {
@@ -136,7 +139,7 @@ async function open(encrypted: ArrayBuffer | null, key: CryptoKey): Promise<Open
     const version = (parsed as { version?: unknown } | null)?.version;
     if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return 'newer';
     if (typeof version === 'number' && isPreLoincBackupVersion(version)) return 'before-loinc';
-    return isSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null } : 'unreadable';
+    return isSyncFile(parsed) ? { file: parsed, lock: header?.lock ?? null, plain } : 'unreadable';
   } catch {
     return 'unreadable';
   }
@@ -211,8 +214,12 @@ export async function writeFolderCopy(
   const lock = lockIsLater || folderLock === null ? context.lock : folderLock;
   const sealed = await sealEnvelope(new TextEncoder().encode(file), key, lock);
   // Only the lock changed: the previous copy stays the one from before the last change of data
-  const keep =
-    existing && encrypted && !sameData && (await keepsAsPrevious(store, existing.file, key));
-  await store.save(sealed, keep ? encrypted : undefined);
+  const keep = existing && !sameData && (await keepsAsPrevious(store, existing.file, key));
+  // Only the current copy carries the lock. A password change re-wraps the
+  // same data key, so an older lock left in the previous copy would let an
+  // old password unwrap the key that opens the current copy too. Sealed
+  // before anything is saved: if this fails, both files stay as they are.
+  const previous = keep ? await sealEnvelope(new Uint8Array(existing.plain), key, null) : undefined;
+  await store.save(sealed, previous);
   return { status: 'written', folderLock };
 }

@@ -66,6 +66,7 @@ function isEnvelope(value: unknown): value is FolderCopyEnvelope {
  */
 export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promise<FolderCopyReading> {
   const read = readEnvelopeHeader(bytes);
+  // 'not-a-copy' here and 'unreadable' in the sync: both name a damaged header
   if (read === 'damaged') return { status: 'unreadable', reason: 'not-a-copy' };
   const header: FolderEnvelopeHeader | null = read;
 

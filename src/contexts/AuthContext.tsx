@@ -233,9 +233,18 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
       if (!mayChangeCredentials(event)) return;
 
       const stored = loadStoredCredentials();
+      // Removed or cleared: whatever storage holds by now (another setup's
+      // credentials, written before this tab heard) need not wrap this
+      // session's key, so the key leaves memory and the next unlock decides
+      const removed = event.newValue === null || event.key === null;
       if (stored) {
         setCredentials(stored);
-        setStatus((current) => (current === 'needs_setup' ? 'locked' : current));
+        if (removed) {
+          setEncryptionKey(null);
+          setStatus('locked');
+        } else {
+          setStatus((current) => (current === 'needs_setup' ? 'locked' : current));
+        }
       } else {
         // The key leaves memory; the data layer closes as on any lock
         setCredentials(null);

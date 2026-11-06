@@ -215,3 +215,64 @@ export function storedLockChangedAt(page: Page): Promise<string | undefined> {
     () => (JSON.parse(localStorage.getItem('hemoio_credentials') ?? '{}') as { changedAt?: string }).changedAt
   );
 }
+
+/**
+ * The revision sealed inside a folder file: the same however often the copy
+ * is sealed again (the previous copy is sealed again without its lock). Opened
+ * with the data key, unwrapped from this browser's lock with `password`.
+ */
+export function folderFileRevision(
+  page: Page,
+  fileName: string,
+  password: string,
+  folderName: string = TEST_FOLDER_NAME
+): Promise<string | null> {
+  return page.evaluate(
+    async ({ fileName, password, folderName }) => {
+      const fromBase64 = (text: string): Uint8Array<ArrayBuffer> =>
+        Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+      const stored = JSON.parse(localStorage.getItem('hemoio_credentials') ?? 'null');
+      const kek = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: fromBase64(stored.kekSalt), iterations: stored.iterations, hash: 'SHA-256' },
+        await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']),
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['unwrapKey']
+      );
+      const dataKey = await crypto.subtle.unwrapKey(
+        'raw',
+        fromBase64(stored.wrappedKey),
+        kek,
+        { name: 'AES-GCM', iv: fromBase64(stored.wrapIv) },
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      const file = JSON.parse(await (await (await folder.getFileHandle(fileName)).getFile()).text());
+      const { lock } = file;
+      const additionalData = new TextEncoder().encode(
+        JSON.stringify({
+          format: file.format,
+          version: file.version,
+          lock: lock && {
+            version: lock.version,
+            kekSalt: lock.kekSalt,
+            iterations: lock.iterations,
+            wrapIv: lock.wrapIv,
+            wrappedKey: lock.wrappedKey,
+            changedAt: lock.changedAt ?? null,
+          },
+        })
+      );
+      const sealed = fromBase64(file.sealed);
+      const plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: sealed.slice(0, 12), additionalData },
+        dataKey,
+        sealed.slice(12)
+      );
+      return (JSON.parse(new TextDecoder().decode(plain)) as { revision?: string }).revision ?? null;
+    },
+    { fileName, password, folderName }
+  );
+}

@@ -338,6 +338,23 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
     });
 
+    it.each([
+      ['the credentials removed', CREDENTIALS_KEY],
+      ['localStorage cleared', null],
+    ])('%s in another tab drops the key, even with credentials in storage again', async (_label, key) => {
+      await setUp();
+      // Removed, then another setup's credentials written, before this tab hears of either
+      const theirs = (await createCredentialsV2(NEW, 1000)).credentials;
+      store(theirs);
+
+      storageEventFromAnotherTab(null, key);
+
+      expect(auth.encryptionKey).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(auth.storedLock).toEqual(theirs);
+      expect(await unlock(NEW)).toBe(true);
+    });
+
     it('storage events for other keys change nothing', async () => {
       renderAuth();
       localStorage.setItem('hemoio_ai_provider', 'openai');
@@ -466,6 +483,46 @@ describe('AuthContext', () => {
       expect(await unlock('Wrong-Passw0rd!')).toBe(false);
       expect(await unlock(OLD)).toBe(true);
       expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+    });
+
+    it('setup over v1 credentials another tab left converts them, under the setup lock it holds', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        const v1 = await createStoredCredentials(OLD);
+        renderAuth();
+        store(v1);
+        const ciphertext = await encryptString('Annual checkup', await getEncryptionKey(OLD, v1));
+
+        let outcome;
+        await act(async () => {
+          outcome = await auth.setupPassword(OLD);
+        });
+
+        expect(outcome).toBe('unlocked-existing');
+        expect(isCredentialsV2(storedCredentials())).toBe(true);
+        expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+        // Taken once, by setup: the conversion inside did not ask again
+        expect(locks.requests.filter((r) => r.name === 'hemoio-setup')).toHaveLength(1);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('skips the conversion when another tab changed the credentials meanwhile', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      vi.mocked(keyMatchesCredentials).mockImplementationOnce(async () => {
+        // Another tab converts them, or changes the password, while this one checks
+        store(theirs);
+        return true;
+      });
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
 
     it('a failed conversion leaves the v1 credentials and unlocks', async () => {

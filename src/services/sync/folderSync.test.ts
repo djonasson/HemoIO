@@ -64,6 +64,11 @@ async function readCopy(store: MemoryStore, key: CryptoKey) {
   return JSON.parse(new TextDecoder().decode(plain));
 }
 
+/** A copy's plaintext, the same however it was sealed */
+async function plainOf(bytes: ArrayBuffer | null, key: CryptoKey): Promise<string> {
+  return new TextDecoder().decode((await openEnvelope(bytes!, key)).plain);
+}
+
 /** The lock the folder copy carries in its header */
 function folderLockOf(store: MemoryStore): StoredCredentialsV2 | null | undefined {
   const header = readEnvelopeHeader(store.copy!);
@@ -321,12 +326,67 @@ describe('writeFolderCopy', () => {
       expect(store.previous).toBe(previous);
     });
 
-    it('keeps the previous copy in the same format', async () => {
+    it('keeps the previous copy in the same format, without a lock', async () => {
       await writeFolderCopy(store, withResults(1), key, context);
       await writeFolderCopy(store, withResults(2), key, context);
 
-      const header = readEnvelopeHeader(store.previous!);
-      expect(header && header !== 'damaged' && header.lock).toEqual(LOCK);
+      expect(readEnvelopeHeader(store.previous!)).toEqual({
+        format: 'hemoio-folder-copy',
+        version: 1,
+        lock: null,
+      });
+    });
+
+    it('after a password change and a later data change, the previous copy has no lock and still opens', async () => {
+      await writeFolderCopy(store, withResults(1), key, { ...context, lock: dated(EARLIER) });
+      // The password change: only the lock is rewritten
+      await writeFolderCopy(store, withResults(1), key, { ...context, lock: dated(LATER) });
+      const beforeChange = await plainOf(store.copy, key);
+
+      await writeFolderCopy(store, withResults(2), key, { ...context, lock: dated(LATER) });
+
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+      const previous = readEnvelopeHeader(store.previous!);
+      expect(previous && previous !== 'damaged' && previous.lock).toBeNull();
+      // The same data and revision as the copy it was, under the session key
+      expect(await plainOf(store.previous, key)).toBe(beforeChange);
+      expect(new TextDecoder().decode(store.previous!)).not.toContain(dated(EARLIER).wrappedKey);
+    });
+
+    it('a legacy copy moved to the previous copy is sealed in the envelope, without a lock', async () => {
+      store.copy = await sealed(
+        { version: FOLDER_SYNC_FILE_VERSION, exportedAt: '2024-01-01T00:00:00.000Z', data: withResults(1) },
+        key
+      );
+      const legacy = await plainOf(store.copy, key);
+
+      await writeFolderCopy(store, withResults(2), key, context);
+
+      expect(readEnvelopeHeader(store.previous!)).toMatchObject({ lock: null });
+      expect(await plainOf(store.previous, key)).toBe(legacy);
+    });
+
+    it('when the replaced copy cannot be sealed again, nothing in the folder changes', async () => {
+      await writeFolderCopy(store, withResults(1), key, context);
+      await writeFolderCopy(store, withResults(2), key, context);
+      const [copy, previous] = [store.copy, store.previous];
+      // Seals the new copy, then fails on the one being moved aside
+      const realEncrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+      let seals = 0;
+      const spy = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation((...args) => {
+        seals++;
+        return seals === 2 ? Promise.reject(new Error('sealing failed')) : realEncrypt(...args);
+      });
+
+      try {
+        await expect(writeFolderCopy(store, withResults(3), key, context)).rejects.toThrow();
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(store.copy).toBe(copy);
+      expect(store.previous).toBe(previous);
+      expect(store.saves).toBe(2);
     });
   });
 
@@ -372,33 +432,33 @@ describe('writeFolderCopy', () => {
 
     it('is the copy a write replaced', async () => {
       await writeFolderCopy(store, withResults(1), key, context);
-      const replaced = store.copy;
+      const replaced = await plainOf(store.copy, key);
 
       await writeFolderCopy(store, withResults(2), key, context);
 
-      expect(store.previous).toBe(replaced);
+      expect(await plainOf(store.previous, key)).toBe(replaced);
     });
 
     it('moves on as the data grows', async () => {
       await writeFolderCopy(store, withResults(1), key, context);
       await writeFolderCopy(store, withResults(2), key, context);
-      const replaced = store.copy;
+      const replaced = await plainOf(store.copy, key);
 
       await writeFolderCopy(store, withResults(3), key, context);
 
-      expect(store.previous).toBe(replaced);
+      expect(await plainOf(store.previous, key)).toBe(replaced);
     });
 
     it('is not pushed out by a copy holding less', async () => {
       // A full history, then a browser that lost it writes one new result, then another
       await writeFolderCopy(store, withResults(5), key, context);
       await writeFolderCopy(store, withResults(6), key, context);
-      const full = store.copy;
+      const full = await plainOf(store.copy, key);
       await writeFolderCopy(store, withResults(1), key, context);
 
       await writeFolderCopy(store, withResults(2), key, context);
 
-      expect(store.previous).toBe(full);
+      expect(await plainOf(store.previous, key)).toBe(full);
     });
 
     it('is not pushed out by a copy without health data', async () => {
@@ -413,22 +473,22 @@ describe('writeFolderCopy', () => {
 
     it('is replaced when it cannot be read: it is no copy to undo to', async () => {
       await writeFolderCopy(store, withResults(1), key, context);
-      const replaced = store.copy;
+      const replaced = await plainOf(store.copy, key);
       store.previous = await sealed({ version: 2, exportedAt: 'x', data: withResults() }, await newKey());
 
       await writeFolderCopy(store, withResults(2), key, context);
 
-      expect(store.previous).toBe(replaced);
+      expect(await plainOf(store.previous, key)).toBe(replaced);
     });
 
     it('moves on after a cleanup that keeps at least half of the records', async () => {
       await writeFolderCopy(store, withResults(10), key, context);
       await writeFolderCopy(store, withResults(8), key, context);
-      const cleaned = store.copy;
+      const cleaned = await plainOf(store.copy, key);
 
       await writeFolderCopy(store, withResults(9), key, context);
 
-      expect(store.previous).toBe(cleaned);
+      expect(await plainOf(store.previous, key)).toBe(cleaned);
     });
   });
 

@@ -72,6 +72,14 @@ describe('folderEnvelope', () => {
     await expect(openEnvelope(fileOf(JSON.stringify(file)), key)).rejects.toThrow();
   });
 
+  it.each(['iterations', 'kekSalt', 'wrapIv'] as const)('a lock with its %s edited does not open', async (field) => {
+    const { key, lock } = await newSetup();
+    const file = JSON.parse(textOf(await sealEnvelope(encode(PLAIN), key, lock)));
+    file.lock[field] = field === 'iterations' ? file.lock.iterations + 1 : oneCharChanged(file.lock[field]);
+
+    await expect(openEnvelope(fileOf(JSON.stringify(file)), key)).rejects.toThrow();
+  });
+
   it.each([
     ['its date', (file: Record<string, Record<string, unknown>>) => {
       file.lock.changedAt = '2099-01-01T00:00:00.000Z';
