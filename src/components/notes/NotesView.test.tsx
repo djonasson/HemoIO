@@ -74,6 +74,7 @@ beforeEach(() => {
         totalCount: 1,
       },
     ],
+    undatedResults: [],
     isLoading: false,
     error: null,
   } as unknown as ReturnType<typeof useLabResults>);
@@ -114,6 +115,22 @@ describe('NotesView', () => {
     expect(onOpenTrend).toHaveBeenCalledWith('2345-7', new Date('2024-01-15T12:00:00Z'), 2);
   });
 
+  it('names a note on an undated result "No date", not a deleted result', () => {
+    mockNotes([{ id: 9, content: 'Fasting', tags: [], labResultId: 5, createdAt: new Date(), updatedAt: new Date() }], []);
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [],
+      undatedResults: [
+        { id: 5, date: new Date(NaN), labName: 'LabCorp', createdAt: new Date(), updatedAt: new Date(), testValues: [] },
+      ],
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useLabResults>);
+
+    renderView();
+
+    expect(screen.getByRole('article', { name: 'Note attached to LabCorp · No date' })).toBeInTheDocument();
+  });
+
   it('searches and marks matches', async () => {
     renderView();
     await userEvent.type(screen.getByRole('textbox', { name: 'Search notes' }), 'headache');
@@ -137,6 +154,7 @@ describe('NotesView', () => {
   it('waits for lab results before labelling notes', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
       isLoading: true,
       error: null,
     } as unknown as ReturnType<typeof useLabResults>);

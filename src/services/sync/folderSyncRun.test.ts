@@ -182,4 +182,14 @@ describe('runFolderSync', () => {
     expect(store.saveLock).not.toHaveBeenCalled();
     expect(store.save).not.toHaveBeenCalled();
   });
+
+  it('keeps the choice to replace a copy while set-aside records keep the folder from being read', async () => {
+    const { db, key } = await openTestDb();
+    vi.spyOn(db, 'countSetAside').mockResolvedValue({ total: 1, unsaved: 1 });
+    const takeReplaces = vi.fn(() => 'r1');
+
+    await runFolderSync({ db, key }, folder(), { lock: null, takeReplaces, isEnabled: () => true });
+
+    expect(takeReplaces).not.toHaveBeenCalled();
+  });
 });

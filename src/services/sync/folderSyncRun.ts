@@ -36,8 +36,9 @@ export interface RunFolderSyncOptions {
   lock: StoredCredentialsV2 | null;
   /**
    * The copy the user chose to replace, if any. Asked for once the sync is
-   * past the hold's first check, so a choice is used up only by a sync that
-   * goes on to read the folder.
+   * past the hold's first check, and only when no set-aside record keeps the
+   * copy from being read, so a choice is used up only by a sync that goes on
+   * to read the folder. One that then fails to read it asks again.
    */
   takeReplaces: () => string | null | undefined;
   /** False once the hold begins: checked before the folder copy is decrypted, and at the save */
@@ -75,7 +76,9 @@ export async function runFolderSync(
     save: (bytes, previous) => (isEnabled() ? folder.save(bytes, previous) : Promise.reject(new SyncHeld())),
     saveLock: (bytes) => (isEnabled() ? folder.saveLock(bytes) : Promise.reject(new SyncHeld())),
   };
-  const replaces = takeReplaces();
+  // Not while set-aside records keep the copy from being read for its data:
+  // the choice waits for a sync that can act on it
+  const replaces = unsaved > 0 ? undefined : takeReplaces();
   try {
     const outcome = await writeFolderCopy(store, data, session.key, {
       lock,

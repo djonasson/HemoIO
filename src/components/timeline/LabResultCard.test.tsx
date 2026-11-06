@@ -338,4 +338,13 @@ describe('LabResultCard', () => {
 
     expect(onOpenTrend).toHaveBeenCalledWith('marker-1', new Date('2024-01-15T12:00:00Z'), 1);
   });
+
+  it('offers no trend links on an undated result: its values are on no trend', () => {
+    const result = createMockResult({ date: new Date('garbage') });
+    renderWithProviders(
+      <LabResultCard result={result} onDelete={() => {}} defaultExpanded onOpenTrend={vi.fn()} />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Hemoglobin, open trend' })).not.toBeInTheDocument();
+  });
 });

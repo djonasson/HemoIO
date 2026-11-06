@@ -272,7 +272,8 @@ export function LabResultCard({
               <TestValuesList
                 testValues={result.testValues}
                 onOpenTrend={
-                  onOpenTrend
+                  // An undated value is on no trend: nothing to open it at
+                  onOpenTrend && !Number.isNaN(result.date.getTime())
                     ? (biomarkerKey, testValueId) => onOpenTrend(biomarkerKey, result.date, testValueId)
                     : undefined
                 }

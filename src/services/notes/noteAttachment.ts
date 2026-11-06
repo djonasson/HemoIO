@@ -16,6 +16,10 @@ export interface AttachmentLookup {
   biomarkerName: (biomarkerKey: string) => string;
 }
 
+/** Whether a result has a date: one that could not be read is listed under "No date" */
+const isDated = (date: Date): boolean => !Number.isNaN(date.getTime());
+const dateLabel = (date: Date): string => (isDated(date) ? formatShortDate(date) : 'No date');
+
 export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup): NoteAttachment {
   if (note.biomarkerKey) {
     const name = lookup.biomarkerName(note.biomarkerKey);
@@ -23,12 +27,11 @@ export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup)
       note.testValueId !== undefined ? lookup.testValues.get(note.testValueId) : undefined;
     const result = testValue ? lookup.labResults.get(testValue.labResultId) : undefined;
     if (testValue && result) {
-      return {
-        kind: 'measurement',
-        label: `${name} · ${testValue.value} ${testValue.unit} · ${formatShortDate(result.date)}`,
-        biomarkerKey: note.biomarkerKey,
-        date: result.date,
-      };
+      const label = `${name} · ${testValue.value} ${testValue.unit} · ${dateLabel(result.date)}`;
+      // An undated value is on no trend: the note leads to its test
+      return isDated(result.date)
+        ? { kind: 'measurement', label, biomarkerKey: note.biomarkerKey, date: result.date }
+        : { kind: 'biomarker', label, biomarkerKey: note.biomarkerKey };
     }
     // The measurement is gone: the note still belongs to its biomarker
     return { kind: 'biomarker', label: name, biomarkerKey: note.biomarkerKey };
@@ -39,7 +42,7 @@ export function describeNoteAttachment(note: UserNote, lookup: AttachmentLookup)
     return result
       ? {
           kind: 'lab-result',
-          label: `${result.labName} · ${formatShortDate(result.date)}`,
+          label: `${result.labName} · ${dateLabel(result.date)}`,
           labResultId: note.labResultId,
         }
       : { kind: 'none', label: 'Deleted lab result' };
