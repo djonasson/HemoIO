@@ -12,13 +12,23 @@ const loadCurrent = vi.fn<() => Promise<ArrayBuffer | null>>();
 const saveBackup = vi.fn<(name: string, bytes: ArrayBuffer) => Promise<void>>();
 const deleteBackup = vi.fn<(name: string) => Promise<void>>();
 
+/** The folder chosen in Settings now: a provider reads the one chosen when it was made, as the real one caches it */
+let chosenFolder = 'A';
+/** The folder each provider call read or wrote */
+const foldersUsed: string[] = [];
+
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
-    listBackups = listBackups;
-    loadBackup = loadBackup;
-    loadCurrent = loadCurrent;
-    saveBackup = saveBackup;
-    deleteBackup = deleteBackup;
+    private readonly folder = chosenFolder;
+    private use<T>(call: () => T): T {
+      foldersUsed.push(this.folder);
+      return call();
+    }
+    listBackups = () => this.use(() => listBackups());
+    loadBackup = (name: string) => this.use(() => loadBackup(name));
+    loadCurrent = () => this.use(() => loadCurrent());
+    saveBackup = (name: string, bytes: ArrayBuffer) => this.use(() => saveBackup(name, bytes));
+    deleteBackup = (name: string) => this.use(() => deleteBackup(name));
   },
 }));
 
@@ -43,6 +53,8 @@ describe('useFolderBackups', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    chosenFolder = 'A';
+    foldersUsed.length = 0;
     saveBackup.mockResolvedValue(undefined);
     deleteBackup.mockResolvedValue(undefined);
     listBackups.mockResolvedValue([OLDER, 'notes.txt', AUTO, NEWER, 'hemoio-backup-bad.encrypted']);
@@ -149,5 +161,26 @@ describe('useFolderBackups', () => {
     await expect(result.current.canKeepCurrentCopy()).resolves.toBe(true);
     loadCurrent.mockResolvedValue(null);
     await expect(result.current.canKeepCurrentCopy()).resolves.toBe(false);
+  });
+
+  it('lists, reads and keeps in the folder chosen now, after "Change folder"', async () => {
+    const { bytes } = await sealFolderCopy({ labResults: [], testValues: [], userNotes: [], settings: undefined, preferences: undefined }, KEY, null);
+    const { result } = renderHook(() => useFolderBackups());
+    await waitFor(() => expect(result.current.backups).toHaveLength(3));
+
+    chosenFolder = 'B';
+    foldersUsed.length = 0;
+    listBackups.mockResolvedValue([NEWER]);
+    act(() => notifyFolderAccessChanged());
+    await waitFor(() => expect(result.current.backups).toHaveLength(1));
+    loadBackup.mockResolvedValue(new ArrayBuffer(4));
+    vi.mocked(readFolderCopy).mockResolvedValue({ status: 'unreadable', reason: 'not-a-copy' });
+    await result.current.read(NEWER);
+    loadCurrent.mockResolvedValue(bytes);
+    await expect(result.current.canKeepCurrentCopy()).resolves.toBe(true);
+    await result.current.keepCurrentCopy();
+
+    expect(saveBackup).toHaveBeenCalledTimes(1);
+    expect(new Set(foldersUsed)).toEqual(new Set(['B']));
   });
 });

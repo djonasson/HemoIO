@@ -4,9 +4,13 @@
  * A backup is sealed with the session key and carries no lock, so it opens
  * with the key this session already holds. Nothing here logs: the content is
  * health data.
+ *
+ * Keeping the current copy and the restore run outside the folder-sync lock:
+ * a sync meanwhile writes the copy atomically, and the restored data, which
+ * carries no stamp, then goes to the folder through a normal sync.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { onFolderAccessChanged, onFolderBackupsChanged } from '@data/storage/folderAccessEvents';
@@ -53,15 +57,23 @@ export interface UseFolderBackupsResult {
   protectShown: (name: string) => () => void;
 }
 
+/**
+ * A provider for the folder chosen now. Made for each call, as the sync's
+ * is: a provider keeps the folder it first read, and "Change folder" in
+ * Settings leaves this list mounted.
+ */
+function chosenFolder(): FileSystemStorageProvider {
+  return new FileSystemStorageProvider();
+}
+
 export function useFolderBackups(): UseFolderBackupsResult {
   const { encryptionKey } = useAuth();
-  const folder = useMemo(() => new FileSystemStorageProvider(), []);
   const [backups, setBackups] = useState<FolderBackupEntry[]>([]);
 
   const refresh = useCallback(async (): Promise<FolderBackupEntry[]> => {
     let names: string[];
     try {
-      names = await folder.listBackups();
+      names = await chosenFolder().listBackups();
     } catch {
       // No folder or no access yet: nothing to list
       return [];
@@ -73,7 +85,7 @@ export function useFolderBackups(): UseFolderBackupsResult {
       if (savedAt && kind) entries.push({ name, savedAt, kind });
     }
     return entries.sort((a, b) => b.savedAt.getTime() - a.savedAt.getTime());
-  }, [folder]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,26 +112,27 @@ export function useFolderBackups(): UseFolderBackupsResult {
       if (!encryptionKey) return { status: 'unreadable', reason: 'read-failed' };
       let bytes: ArrayBuffer;
       try {
-        bytes = await folder.loadBackup(name);
+        bytes = await chosenFolder().loadBackup(name);
       } catch {
         return { status: 'unreadable', reason: 'read-failed' };
       }
       return readFolderCopy(bytes, encryptionKey);
     },
-    [folder, encryptionKey]
+    [encryptionKey]
   );
 
   const canKeepCurrentCopy = useCallback(async (): Promise<boolean> => {
     if (!encryptionKey) return false;
-    return canKeepFolderCopy({ key: encryptionKey, folder });
-  }, [folder, encryptionKey]);
+    return canKeepFolderCopy({ key: encryptionKey, folder: chosenFolder() });
+  }, [encryptionKey]);
 
   const keepCurrentCopy = useCallback(
     async (protect?: string[]): Promise<void> => {
       if (!encryptionKey) throw new Error('No key');
+      const folder = chosenFolder();
       await keepCurrentFolderCopy({ key: encryptionKey, backups: folder, folder, protect });
     },
-    [folder, encryptionKey]
+    [encryptionKey]
   );
 
   return { backups, read, canKeepCurrentCopy, keepCurrentCopy, protectShown: protectFolderBackup };
