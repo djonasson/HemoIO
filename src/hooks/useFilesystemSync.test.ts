@@ -820,6 +820,33 @@ describe('useFilesystemSync', () => {
       }
     });
 
+    it("holds an automatic load while another tab's note editor holds unsaved text, and loads once it is saved (P44)", async () => {
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      vi.mocked(writeFolderCopy).mockResolvedValue(changedElsewhere(false));
+      const locks = installFakeWebLocks();
+      try {
+        // The editor in the other tab holds its lock
+        let saved = (): void => {};
+        const otherTab = withWebLock(
+          'hemoio-unsaved-edit:0b6f3c1e-1111-4222-8333-944455556666',
+          () => new Promise<void>((resolve) => (saved = resolve))
+        );
+        await waitFor(() => expect(locks.heldNames()).toHaveLength(1));
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        await act(() => result.current.syncNow());
+        expect(applyFolderCopy).not.toHaveBeenCalled();
+
+        saved();
+        await otherTab;
+        await act(() => result.current.syncNow());
+
+        expect(applyFolderCopy).toHaveBeenCalledTimes(1);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
     it('a failed backup loads nothing', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);

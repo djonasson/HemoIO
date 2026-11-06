@@ -227,7 +227,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             if (outcome.reason === 'newer' && lastSeen) {
               // A note being typed would be lost with the views it is in:
               // the load waits, and the next sync finds the copy again (P44)
-              if (hasUnsavedEdits()) return;
+              if (await hasUnsavedEdits()) return;
               await loadNewerFolderCopy(session, provider, outcome, lastSeen, {
                 apply: (copy, stamp) => applyRef.current(copy, stamp),
                 isCurrent: () => sessionRef.current === session && enabledRef.current,

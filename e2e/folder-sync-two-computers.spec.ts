@@ -36,6 +36,7 @@ import {
   saveCopyAsAnotherComputer,
 } from './steps/otherComputer.steps';
 import { seedUnreadableRecords, setAsideBanner, setAsideSavedFlags, withSavePicker } from './steps/unreadableRecords.steps';
+import { noteEditor, openLabResultNotes } from './steps/userNotes.steps';
 
 const BACKUP_NAME = /^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/;
 const AUTOBACKUP_NAME = /^hemoio-autobackup-\d{8}T\d{9}Z\.encrypted$/;
@@ -318,6 +319,35 @@ test.describe('Two computers on one folder', () => {
     // The sync that asked again wrote nothing either
     expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);
     expect(await folderBackupNames(page)).toEqual([]);
+  });
+
+  test('a newer folder copy waits while I am typing a note in another tab', async ({ page }) => {
+    // Scenario: A newer folder copy waits while I am typing a note in another tab
+    const second = await page.context().newPage();
+    await useTestFolder(second);
+    await second.goto('/');
+    await unlockApp(second);
+    await openFromMenu(second, 'Timeline');
+    const card = await openLabResultNotes(second, '2024-01-15');
+    await card.getByRole('button', { name: 'Add Note' }).click();
+    await noteEditor(card).fill('Felt tired after the fast');
+
+    await page.bringToFront();
+    await otherComputerSaves(page, [...SEED_LAB_RESULTS, OTHER_RESULT]);
+    await periodicSync(page);
+    // A second sync begins only once the first has ended
+    await periodicSync(page);
+
+    await expect(page.getByText('Other Computer Clinic')).toHaveCount(0);
+    await expect(updatedNotice(page)).toHaveCount(0);
+    await expect(noteEditor(card)).toContainText('Felt tired after the fast');
+
+    await card.getByRole('button', { name: 'Cancel' }).click();
+    await expect(noteEditor(card)).toBeHidden();
+    await periodicSync(page);
+
+    await expect(page.getByText('Other Computer Clinic')).toBeVisible();
+    await second.close();
   });
 
   test('a copy loaded from the folder is not written back unchanged', async ({ page }) => {

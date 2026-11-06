@@ -139,6 +139,16 @@ Feature: Two computers on one folder
     And it should be loaded at a later sync, once I save or cancel the note
     And my results should stay on screen while they reload, without a loading spinner
 
+  Scenario: A newer folder copy waits while I am typing a note in another tab
+    Given HemoIO is open in a second tab of this browser
+    And I am typing a note in that tab that I have not saved
+    When my other computer saves a newer folder copy
+    And the folder sync runs in the first tab
+    Then the copy should not be loaded while my note is unsaved
+    And my note should still be in the editor
+    When I cancel the note
+    Then the copy should be loaded at a later sync
+
   Scenario: A copy loaded from the folder is not written back unchanged
     Given a newer folder copy was loaded onto this computer
     When the periodic folder sync runs twice

@@ -41,7 +41,13 @@ export function installFakeWebLocks(): FakeWebLocks {
       return run;
     },
   };
-  Object.defineProperty(navigator, 'locks', { value: locks, configurable: true });
+  Object.defineProperty(navigator, 'locks', {
+    value: {
+      ...locks,
+      query: async () => ({ held: [...heldNow].map((name) => ({ name, mode: 'exclusive' })), pending: [] }),
+    },
+    configurable: true,
+  });
 
   return {
     requests,

@@ -22,13 +22,13 @@ describe('NoteEditor', () => {
   it('holds automatic loads from the folder while it holds unsaved text (P44)', async () => {
     const user = userEvent.setup();
     const { unmount } = renderWithProviders(<NoteEditor {...defaultProps} />);
-    expect(hasUnsavedEdits()).toBe(false);
+    expect(await hasUnsavedEdits()).toBe(false);
 
     await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Felt tired');
-    expect(hasUnsavedEdits()).toBe(true);
+    expect(await hasUnsavedEdits()).toBe(true);
 
     unmount();
-    expect(hasUnsavedEdits()).toBe(false);
+    expect(await hasUnsavedEdits()).toBe(false);
   });
 
   describe('rendering', () => {
