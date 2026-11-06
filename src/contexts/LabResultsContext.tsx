@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { LabResult } from '@/types';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
 import {
   LabResultsContext,
@@ -17,6 +18,7 @@ import {
 export function LabResultsProvider({ children }: { children: ReactNode }): ReactNode {
   const { db, isReady } = useEncryptedDb();
   const [allResults, setAllResults] = useState<LabResultWithDetails[]>([]);
+  const [undatedResults, setUndatedResults] = useState<LabResultWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +33,7 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
   const refresh = useCallback(async () => {
     if (!db || !isReady) {
       setAllResults([]);
+      setUndatedResults([]);
       setIsLoading(false);
       return;
     }
@@ -40,22 +43,29 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
     setError(null);
 
     try {
-      const labResults = await db.getAllLabResults();
-      const resultsWithDetails = await Promise.all(
-        labResults.map(async (labResult) => {
-          const testValues = labResult.id ? await db.getTestValuesByLabResult(labResult.id) : [];
-          const enrichedTestValues = testValues.map(enrichTestValue);
-          return {
-            ...labResult,
-            testValues: enrichedTestValues,
-            abnormalCount: enrichedTestValues.filter(
-              (tv) => tv.status === 'low' || tv.status === 'high'
-            ).length,
-            totalCount: testValues.length,
-          };
-        })
-      );
-      if (isCurrent()) setAllResults(resultsWithDetails);
+      const withDetails = (labResults: LabResult[]): Promise<LabResultWithDetails[]> =>
+        Promise.all(
+          labResults.map(async (labResult) => {
+            const testValues = labResult.id ? await db.getTestValuesByLabResult(labResult.id) : [];
+            const enrichedTestValues = testValues.map(enrichTestValue);
+            return {
+              ...labResult,
+              testValues: enrichedTestValues,
+              abnormalCount: enrichedTestValues.filter(
+                (tv) => tv.status === 'low' || tv.status === 'high'
+              ).length,
+              totalCount: testValues.length,
+            };
+          })
+        );
+      const [dated, undated] = await Promise.all([
+        db.getAllLabResults().then(withDetails),
+        db.getUndatedLabResults().then(withDetails),
+      ]);
+      if (isCurrent()) {
+        setAllResults(dated);
+        setUndatedResults(undated);
+      }
     } catch (err) {
       if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to load lab results');
@@ -81,13 +91,14 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
       await db.deleteLabResult(id);
       // Committed: remove it from the shared state at once, so every view updates
       setAllResults((prev) => prev.filter((r) => r.id !== id));
+      setUndatedResults((prev) => prev.filter((r) => r.id !== id));
     },
     [db]
   );
 
   const value = useMemo<LabResultsStore>(
-    () => ({ allResults, isLoading, error, refresh, deleteResult }),
-    [allResults, isLoading, error, refresh, deleteResult]
+    () => ({ allResults, undatedResults, isLoading, error, refresh, deleteResult }),
+    [allResults, undatedResults, isLoading, error, refresh, deleteResult]
   );
 
   return <LabResultsContext.Provider value={value}>{children}</LabResultsContext.Provider>;

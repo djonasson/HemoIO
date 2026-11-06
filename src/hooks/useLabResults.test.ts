@@ -87,6 +87,7 @@ const mockTestValues: Record<number, TestValue[]> = {
 function createMockDb() {
   return {
     getAllLabResults: vi.fn().mockResolvedValue(mockLabResults),
+    getUndatedLabResults: vi.fn().mockResolvedValue([]),
     getTestValuesByLabResult: vi.fn((id: number) =>
       Promise.resolve(mockTestValues[id] || [])
     ),

@@ -121,6 +121,15 @@ describe('jsonExport', () => {
       expect(data.labResults).toHaveLength(2);
     });
 
+    it('writes an invalid date as null instead of failing', () => {
+      const sources = createMockDataSources();
+      sources.labResults[0] = { ...sources.labResults[0], date: new Date('garbage') };
+      const data = JSON.parse(exportToJson(sources)) as { labResults: { date: unknown }[] };
+
+      expect(data.labResults).toHaveLength(2);
+      expect(data.labResults[0].date).toBeNull();
+    });
+
     it('should include all test values', () => {
       const sources = createMockDataSources();
       const json = exportToJson(sources);

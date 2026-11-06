@@ -14,6 +14,17 @@ const mockDb = {
   getAllNotes: vi.fn(),
   getPreferences: vi.fn(),
   getSettings: vi.fn(),
+  // Reads the same lists as EncryptedDb.exportAllData, so each is mocked once
+  exportAllData: vi.fn(async () => {
+    const [labResults, testValues, userNotes, preferences, settings] = await Promise.all([
+      mockDb.getAllLabResults(),
+      mockDb.getAllTestValues(),
+      mockDb.getAllNotes(),
+      mockDb.getPreferences(),
+      mockDb.getSettings(),
+    ]);
+    return { labResults, testValues, userNotes, preferences, settings };
+  }),
 };
 
 const catalogs = vi.hoisted(() => ({ current: undefined as Catalog | undefined }));
@@ -76,6 +87,20 @@ describe('useExportData', () => {
     rerender({ enabled: false });
     rerender({ enabled: true });
     await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps a lab result without a valid date in the backup but not in the CSV rows', async () => {
+    const dated = { id: 1, date: new Date('2024-01-15'), labName: 'A', createdAt: new Date(), updatedAt: new Date() };
+    const undated = { ...dated, id: 2, date: new Date('garbage') };
+    mockDb.getAllLabResults.mockResolvedValue([dated, undated]);
+    mockDb.getAllTestValues.mockResolvedValue([]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.dataSources.labResults).toHaveLength(2);
+    expect(result.current.labResultsData.map((r) => r.labResult.id)).toEqual([1]);
   });
 
   it('should return empty data sources when db returns empty arrays', async () => {

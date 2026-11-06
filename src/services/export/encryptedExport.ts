@@ -21,10 +21,11 @@ import { encryptForBackup } from '@data/encryption/backupEncryption';
 import { BACKUP_SCHEMA_VERSION, sanitizeSettings, type ExportDataSources } from './jsonExport';
 
 /**
- * Serialize date to ISO string
+ * Serialize date to ISO string; an invalid date (toISOString would throw)
+ * is written as null, which a restore reads back as an invalid date
  */
-function serializeDate(date: Date): string {
-  return date.toISOString();
+function serializeDate(date: Date): string | null {
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**

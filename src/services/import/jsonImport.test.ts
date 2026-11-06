@@ -2,7 +2,7 @@
  * Tests for JSON Import Service
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseBackupJson,
   validateBackupFile,
@@ -69,6 +69,69 @@ function createMockDataSources(): ExportDataSources {
     },
   };
 }
+
+describe('jsonImport: records with an invalid date', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const exported = new Date('2024-05-01T00:00:00Z');
+
+  /** A backup file as JSON whose first lab result and note have the given fields */
+  function backupWith(result: object, note: object = {}): string {
+    const json = JSON.parse(
+      exportToJson({
+        labResults: [createMockLabResult(1)],
+        testValues: [],
+        userNotes: [createMockNote(1)],
+        settings: null,
+        userPreferences: null,
+      })
+    );
+    Object.assign(json.labResults[0], result);
+    Object.assign(json.userNotes[0], note);
+    json.exportedAt = exported.toISOString();
+    return JSON.stringify(json);
+  }
+
+  it('keeps a lab result whose date is null or unreadable', () => {
+    for (const date of [null, 'garbage']) {
+      const parsed = parseBackupJson(backupWith({ date }));
+      expect(parsed.labResults).toHaveLength(1);
+      expect(Number.isNaN(parsed.labResults[0].date.getTime())).toBe(true);
+    }
+    const missing = JSON.parse(backupWith({}));
+    delete missing.labResults[0].date;
+    expect(Number.isNaN(parseBackupJson(JSON.stringify(missing)).labResults[0].date.getTime())).toBe(true);
+  });
+
+  it('repairs an invalid createdAt from updatedAt, else exportedAt, else the restore time', () => {
+    const updatedAt = '2024-03-03T00:00:00.000Z';
+    expect(
+      parseBackupJson(backupWith({ createdAt: 'garbage', updatedAt })).labResults[0].createdAt.getTime()
+    ).toBe(new Date(updatedAt).getTime());
+    expect(
+      parseBackupJson(backupWith({ createdAt: null, updatedAt: 'garbage' })).labResults[0].createdAt.getTime()
+    ).toBe(exported.getTime());
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const noExport = JSON.parse(backupWith({ createdAt: 'garbage', updatedAt: 'garbage' }));
+    noExport.exportedAt = 'garbage';
+    const parsed = parseBackupJson(JSON.stringify(noExport));
+    expect(parsed.labResults[0].createdAt.getTime()).toBe(new Date('2025-01-01T00:00:00Z').getTime());
+    expect(parsed.labResults[0].updatedAt.getTime()).toBe(parsed.labResults[0].createdAt.getTime());
+  });
+
+  it('repairs an invalid updatedAt from createdAt', () => {
+    const createdAt = '2024-02-02T00:00:00.000Z';
+    const parsed = parseBackupJson(
+      backupWith({ createdAt, updatedAt: 'garbage' }, { createdAt, updatedAt: null })
+    );
+    expect(parsed.labResults[0].updatedAt.getTime()).toBe(new Date(createdAt).getTime());
+    expect(parsed.userNotes[0].updatedAt.getTime()).toBe(new Date(createdAt).getTime());
+  });
+});
 
 describe('jsonImport', () => {
   describe('parseBackupJson', () => {

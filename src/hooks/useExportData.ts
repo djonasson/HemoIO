@@ -94,14 +94,15 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     setError(null);
 
     try {
-      // Fetch all data in parallel
-      const [labResults, testValues, userNotes, userPreferences, settings] = await Promise.all([
-        db.getAllLabResults(),
-        db.getAllTestValues(),
-        db.getAllNotes(),
-        db.getPreferences(),
-        db.getSettings(),
-      ]);
+      // Every record, those without a valid date included: a backup that left
+      // them out would let the next restore delete them
+      const {
+        labResults,
+        testValues,
+        userNotes,
+        preferences: userPreferences,
+        settings,
+      } = await db.exportAllData();
 
       // Build data sources for JSON export. Exporters decide what of the
       // settings a backup may contain (standard backups omit the API key).
@@ -144,11 +145,14 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
       }
 
       // Build lab results data
-      const resultsData: LabResultForExport[] = labResults.map((labResult) => ({
+      // (the CSV and the date filters work on dated results)
+      const resultsData: LabResultForExport[] = labResults
+        .filter((labResult) => !Number.isNaN(labResult.date.getTime()))
+        .map((labResult) => ({
         labResult,
-        testValues: testValuesByLabResult.get(labResult.id!) || [],
-        biomarkerNames,
-      }));
+          testValues: testValuesByLabResult.get(labResult.id!) || [],
+          biomarkerNames,
+        }));
 
       setLabResultsData(resultsData);
 

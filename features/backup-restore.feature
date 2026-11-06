@@ -226,3 +226,14 @@ Feature: Backup and Restore
     When I choose it on the Data tab
     Then I should see that it holds tests HemoIO does not know and was not restored
     And no restore dialog should open
+
+  Scenario: A lab result without a valid date is restored and kept
+    Given I have a backup file with a lab result whose date is missing
+    When I restore it
+    Then the timeline should list that lab result last, under "No date"
+    And the next standard backup I create should still hold the lab result
+
+  Scenario: A note with an unreadable creation date is restored with a repaired date
+    Given I have a backup file with a note whose creation date is unreadable
+    When I restore it
+    Then the note should appear on the Notes page

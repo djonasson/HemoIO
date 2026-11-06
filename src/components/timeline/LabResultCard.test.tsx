@@ -71,6 +71,15 @@ function createMockResult(
 }
 
 describe('LabResultCard', () => {
+  it('shows "No date" for a result without a valid date', () => {
+    const result = createMockResult({ date: new Date('garbage') });
+    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+
+    expect(screen.getByText('No date')).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Lab result with no date' })).toBeInTheDocument();
+  });
+
   it('should render lab date', () => {
     const result = createMockResult();
     renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);

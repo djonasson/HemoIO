@@ -5,10 +5,10 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Anchor, Stack, Text, Loader, Alert, Center } from '@mantine/core';
+import { Anchor, Stack, Text, Title, Loader, Alert, Center } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconAlertCircle, IconCheck } from '@tabler/icons-react';
-import { useLabResults } from '@hooks/useLabResults';
+import { useLabResults, type LabResultWithDetails } from '@hooks/useLabResults';
 import { useNotes } from '@hooks/useNotes';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { LabResultCard } from './LabResultCard';
@@ -32,7 +32,7 @@ export function TimelineView({
   focusLabResultId,
   onOpenTrend,
 }: TimelineViewProps): React.ReactNode {
-  const { results, isLoading, error, filters, setFilters, deleteResult, refresh } =
+  const { results, undatedResults, isLoading, error, filters, setFilters, deleteResult, refresh } =
     useLabResults();
   const {
     createNote,
@@ -77,7 +77,7 @@ export function TimelineView({
     focusAfterDelete.current = null;
     const next = pending.nextId !== undefined ? toggles.current.get(pending.nextId) : undefined;
     (next ?? rootRef.current?.querySelector<HTMLElement>('button, input'))?.focus();
-  }, [results]);
+  }, [results, undatedResults]);
 
   // Loading state
   if (isLoading) {
@@ -109,7 +109,7 @@ export function TimelineView({
   }
 
   // Check if we have any results at all (before filtering)
-  const hasAnyResults = results.length > 0 || filters.searchTerm || filters.startDate || filters.endDate;
+  const hasAnyResults = results.length > 0 || undatedResults.length > 0 || filters.searchTerm || filters.startDate || filters.endDate;
 
   // Empty state (no results and no filters applied)
   if (!hasAnyResults) {
@@ -122,8 +122,9 @@ export function TimelineView({
 
   // Handle delete with error handling
   const handleDelete = async (id: number) => {
-    const index = results.findIndex((result) => result.id === id);
-    const neighbour = results[index + 1] ?? results[index - 1];
+    const listed = [...results, ...undatedResults];
+    const index = listed.findIndex((result) => result.id === id);
+    const neighbour = listed[index + 1] ?? listed[index - 1];
     // Set before the list changes, which may happen before deleteResult returns
     focusAfterDelete.current = { nextId: neighbour?.id };
     try {
@@ -140,11 +141,31 @@ export function TimelineView({
     }
   };
 
+  const renderCard = (result: LabResultWithDetails): React.ReactNode => (
+    <LabResultCard
+      key={result.id}
+      result={result}
+      defaultExpanded={result.id === focusLabResultId}
+      scrollIntoViewOnMount={result.id === focusLabResultId}
+      onDelete={handleDelete}
+      notes={result.id !== undefined ? getNotesForLabResult(result.id) : []}
+      onCreateNote={handleCreateNote}
+      onUpdateNote={handleUpdateNote}
+      onDeleteNote={handleDeleteNote}
+      onOpenTrend={onOpenTrend}
+      toggleRef={(toggle) => {
+        if (result.id === undefined) return;
+        if (toggle) toggles.current.set(result.id, toggle);
+        else toggles.current.delete(result.id);
+      }}
+    />
+  );
+
   return (
     <Stack gap="md" ref={rootRef}>
       <TimelineFilters filters={filters} onFiltersChange={setFilters} />
 
-      {results.length === 0 ? (
+      {results.length === 0 && undatedResults.length === 0 ? (
         // No results matching current filters
         <Center py="xl">
           <Stack align="center" gap="sm">
@@ -157,25 +178,15 @@ export function TimelineView({
       ) : (
         // Results list
         <Stack gap="sm">
-          {results.map((result) => (
-            <LabResultCard
-              key={result.id}
-              result={result}
-              defaultExpanded={result.id === focusLabResultId}
-              scrollIntoViewOnMount={result.id === focusLabResultId}
-              onDelete={handleDelete}
-              notes={result.id !== undefined ? getNotesForLabResult(result.id) : []}
-              onCreateNote={handleCreateNote}
-              onUpdateNote={handleUpdateNote}
-              onDeleteNote={handleDeleteNote}
-              onOpenTrend={onOpenTrend}
-              toggleRef={(toggle) => {
-                if (result.id === undefined) return;
-                if (toggle) toggles.current.set(result.id, toggle);
-                else toggles.current.delete(result.id);
-              }}
-            />
-          ))}
+          {results.map(renderCard)}
+          {undatedResults.length > 0 && (
+            <Stack gap="sm" component="section" aria-labelledby="timeline-no-date">
+              <Title order={2} size="h4" id="timeline-no-date">
+                No date
+              </Title>
+              {undatedResults.map(renderCard)}
+            </Stack>
+          )}
         </Stack>
       )}
     </Stack>

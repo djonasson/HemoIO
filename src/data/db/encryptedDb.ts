@@ -283,6 +283,11 @@ export class EncryptedDb {
     return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
   }
 
+  /** Every readable record of a table, unsorted and unfiltered */
+  private async allSealed<T>(name: SealedTable): Promise<T[]> {
+    return this.unsealAll<T>(name, await this.table(name).toArray());
+  }
+
   /** A record, or undefined when it cannot be decrypted */
   private async unsealOne<T>(name: SealedTable, stored: SealedRecord | undefined): Promise<T | undefined> {
     return stored && (await this.unsealAll<T>(name, [stored]))[0];
@@ -339,9 +344,17 @@ export class EncryptedDb {
 
   /** Newest first. Dates are encrypted, so not indexed: results are sorted once read. */
   async getAllLabResults(): Promise<LabResult[]> {
-    const stored = await this.table('labResults').toArray();
-    const results = await this.unsealAll<LabResult>('labResults', stored);
+    const results = await this.allSealed<LabResult>('labResults');
     return results.filter((r) => hasValidDate(r.date)).sort(newestFirst((r) => r.date));
+  }
+
+  /**
+   * The results without a valid date, which getAllLabResults leaves out so
+   * that trends, alerts and date filters never see one. Oldest ID first.
+   */
+  async getUndatedLabResults(): Promise<LabResult[]> {
+    const results = await this.allSealed<LabResult>('labResults');
+    return results.filter((r) => !hasValidDate(r.date)).sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
   }
 
   /** From the start date, inclusive, to the end date, exclusive; oldest first */
@@ -534,8 +547,7 @@ export class EncryptedDb {
 
   /** Newest first. Dates are encrypted, so not indexed: notes are sorted once read. */
   async getAllNotes(): Promise<UserNote[]> {
-    const stored = await this.table('userNotes').toArray();
-    const notes = await this.unsealAll<UserNote>('userNotes', stored);
+    const notes = await this.allSealed<UserNote>('userNotes');
     return notes.filter((n) => hasValidDate(n.createdAt)).sort(newestFirst((n) => n.createdAt));
   }
 
@@ -586,17 +598,24 @@ export class EncryptedDb {
     preferences: UserPreferences | undefined;
   }> {
     const [labResults, testValues, userNotes, settings, preferences] = await Promise.all([
-      this.getAllLabResults(),
+      this.allSealed<LabResult>('labResults'),
       this.getAllTestValues(),
-      this.getAllNotes(),
+      this.allSealed<UserNote>('userNotes'),
       this.getSettings(),
       this.getPreferences(),
     ]);
 
+    // A record without a valid date is exported too: a backup that left it
+    // out would let the next restore delete it. Dated ones come first.
+    const datedFirst = <T extends { id?: number }>(records: T[], date: (record: T) => Date): T[] => [
+      ...records.filter((r) => hasValidDate(date(r))).sort(newestFirst(date)),
+      ...records.filter((r) => !hasValidDate(date(r))).sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
+    ];
+
     return {
-      labResults,
+      labResults: datedFirst(labResults, (r) => r.date),
       testValues,
-      userNotes,
+      userNotes: datedFirst(userNotes, (n) => n.createdAt),
       settings,
       preferences,
     };

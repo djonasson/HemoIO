@@ -71,6 +71,33 @@ describe('EncryptedDb: records with an invalid date', () => {
   });
 });
 
+describe('EncryptedDb: records with an invalid date, exported and listed apart', () => {
+  async function seed() {
+    const { db } = await openTestDb();
+    const add = (date: Date, labName: string) =>
+      db.addLabResult({ date, labName, createdAt: now, updatedAt: now });
+    await add(invalid, 'Undated');
+    await add(new Date('2024-01-01'), 'January');
+    await add(new Date('2024-02-01'), 'February');
+    await db.addNote({ content: 'broken', tags: [], createdAt: invalid, updatedAt: invalid });
+    await db.addNote({ content: 'fine', tags: [], createdAt: now, updatedAt: now });
+    return db;
+  }
+
+  it('exportAllData keeps a lab result and a note whose date is invalid, after the dated ones', async () => {
+    const exported = await (await seed()).exportAllData();
+
+    expect(exported.labResults.map((r) => r.labName)).toEqual(['February', 'January', 'Undated']);
+    expect(exported.userNotes.map((n) => n.content)).toEqual(['fine', 'broken']);
+  });
+
+  it('getUndatedLabResults returns only results without a valid date', async () => {
+    const db = await seed();
+
+    expect((await db.getUndatedLabResults()).map((r) => r.labName)).toEqual(['Undated']);
+  });
+});
+
 describe('EncryptedDb: a record that cannot be decrypted', () => {
   it('is skipped, so the others are still listed', async () => {
     const first = await openTestDb();
