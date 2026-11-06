@@ -49,7 +49,8 @@ export type AuthStatus = 'loading' | 'needs_setup' | 'locked' | 'unlocked';
 export type SetupOutcome = 'created' | 'unlocked-existing' | 'existing-locked';
 
 export type ChangePasswordResult =
-  { ok: true } | { ok: false; reason: 'wrong_password' | 'same_password' | 'failed' };
+  | { ok: true }
+  | { ok: false; reason: 'wrong_password' | 'same_password' | 'changed_elsewhere' | 'failed' };
 
 export interface AuthContextValue {
   status: AuthStatus;
@@ -308,11 +309,19 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
 
   const unlock = useCallback(
     async (password: string): Promise<boolean> => {
-      // Storage first: another tab may have changed the password since this one loaded
-      const storedCreds = loadStoredCredentials() ?? credentials;
-      return storedCreds ? unlockWith(password, storedCreds) : false;
+      // Storage only: another tab may have changed the password since this
+      // one loaded, or removed the credentials (Start over) before this tab
+      // heard. Then setup decides, never the credentials still in memory.
+      const storedCreds = loadStoredCredentials();
+      if (!storedCreds) {
+        setCredentials(null);
+        setEncryptionKey(null);
+        setStatus('needs_setup');
+        return false;
+      }
+      return unlockWith(password, storedCreds);
     },
-    [credentials, unlockWith]
+    [unlockWith]
   );
 
   // Another tab's setup, its Start over, or its password change or adopted
@@ -427,24 +436,32 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
         return { ok: false, reason: 'same_password' };
       }
       try {
-        const stored = loadStoredCredentials();
-        if (!encryptionKey || !(isCredentialsV1(stored) || isCredentialsV2(stored))) {
-          return FAILED;
-        }
+        // Under the setup lock, so no setup or other change runs in between
+        return await withWebLock(SETUP_LOCK, async (): Promise<ChangePasswordResult> => {
+          const stored = loadStoredCredentials();
+          if (!encryptionKey || !(isCredentialsV1(stored) || isCredentialsV2(stored))) {
+            return FAILED;
+          }
 
-        const rewrapped = await rewrapCredentials(current, next, stored);
-        if (!rewrapped) {
-          return { ok: false, reason: 'wrong_password' };
-        }
+          const rewrapped = await rewrapCredentials(current, next, stored);
+          if (!rewrapped) {
+            return { ok: false, reason: 'wrong_password' };
+          }
 
-        // Never store credentials that would not unlock the key the data uses
-        if (!(await keyMatchesCredentials(encryptionKey, next, rewrapped.credentials))) {
-          return FAILED;
-        }
+          // Never store credentials that would not unlock the key the data uses
+          if (!(await keyMatchesCredentials(encryptionKey, next, rewrapped.credentials))) {
+            return FAILED;
+          }
 
-        saveStoredCredentials(rewrapped.credentials);
-        setCredentials(rewrapped.credentials);
-        return { ok: true };
+          // Read again: a lock adopted from the folder takes no setup lock, and
+          // saving over it would bring back the password it replaced
+          if (JSON.stringify(loadStoredCredentials()) !== JSON.stringify(stored)) {
+            return { ok: false, reason: 'changed_elsewhere' };
+          }
+          saveStoredCredentials(rewrapped.credentials);
+          setCredentials(rewrapped.credentials);
+          return { ok: true };
+        });
       } catch {
         logFailure('Password change failed');
         return FAILED;

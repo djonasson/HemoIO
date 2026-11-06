@@ -264,6 +264,20 @@ describe('ChangePassword', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('says when the password was changed elsewhere meanwhile', async () => {
+    const user = userEvent.setup();
+    mockChangePassword.mockResolvedValue({ ok: false, reason: 'changed_elsewhere' });
+    renderForm();
+    await fill(user);
+
+    await user.click(submit());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Password not changed: it was changed meanwhile, in another tab or on another computer. Try again with the current password.'
+    );
+    expect(folder.push).not.toHaveBeenCalled();
+  });
+
   it('ignores the result if it arrives after the form is gone', async () => {
     const user = userEvent.setup();
     let finish: (result: ChangePasswordResult) => void = () => {};

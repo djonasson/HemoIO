@@ -501,6 +501,19 @@ describe('AuthContext', () => {
       expect(await unlock(OLD)).toBe(false);
     });
 
+    it('credentials removed from storage unheard return to setup, not to the ones in memory', async () => {
+      await setUp();
+      lock();
+      // Removed without a storage event reaching this tab (or before it is handled)
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      expect(await unlock(OLD)).toBe(false);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(auth.encryptionKey).toBeNull();
+      expect(auth.storedLock).toBeNull();
+    });
+
     it('returns false for credentials of an unknown version', async () => {
       const { credentials } = await createCredentialsV2(OLD, 1000);
       store({ ...credentials, version: 3 });
@@ -923,6 +936,53 @@ describe('AuthContext', () => {
 
       expect(result).toEqual({ ok: false, reason: 'failed' });
       expect(storedCredentials()).toEqual(other);
+    });
+
+    it('a lock that another tab saved during the change is kept, and nothing is saved', async () => {
+      await setUp();
+      const key = auth.encryptionKey!;
+      // Another tab adopts a later folder lock while this one rewraps
+      const theirs = (await rewrapCredentials(OLD, 'Their-Passw0rd!', storedCredentials() as StoredCredentialsV2))!
+        .credentials;
+      vi.mocked(keyMatchesCredentials).mockImplementationOnce(async (...args) => {
+        store(theirs);
+        const actual = await vi.importActual<typeof import('@data/encryption/keyWrapping')>(
+          '@data/encryption/keyWrapping'
+        );
+        return actual.keyMatchesCredentials(...args);
+      });
+
+      let result;
+      await act(async () => {
+        result = await auth.changePassword(OLD, NEW);
+      });
+
+      expect(result).toEqual({ ok: false, reason: 'changed_elsewhere' });
+      expect(storedCredentials()).toEqual(theirs);
+      expect(auth.encryptionKey).toBe(key);
+    });
+
+    it('reads and saves the credentials holding the setup lock', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        const heldAtSave: Array<string | null> = [];
+        const setItem = Storage.prototype.setItem;
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+          if (key === CREDENTIALS_KEY) heldAtSave.push(locks.held());
+          setItem.call(this, key, value);
+        });
+
+        let result;
+        await act(async () => {
+          result = await auth.changePassword(OLD, NEW);
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(heldAtSave).toEqual(['hemoio-setup']);
+      } finally {
+        locks.uninstall();
+      }
     });
 
     it('a change finishes even if the app locks meanwhile', async () => {

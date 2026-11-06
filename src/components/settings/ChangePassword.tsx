@@ -19,7 +19,7 @@ const WRONG_PASSWORD = 'Current password is incorrect';
 const SAME_PASSWORD = 'New password must be different from your current password';
 
 /** 'folder-behind': changed, but the folder copy still carries the old lock */
-type Outcome = 'success' | 'folder-behind' | 'failed' | null;
+type Outcome = 'success' | 'folder-behind' | 'changed-elsewhere' | 'failed' | null;
 
 export function ChangePassword(): React.ReactNode {
   const { changePassword } = useAuth();
@@ -72,6 +72,8 @@ export function ChangePassword(): React.ReactNode {
         setOutcome(folderBehind ? 'folder-behind' : 'success');
       } else if (result.reason === 'wrong_password') {
         setCurrentError(WRONG_PASSWORD);
+      } else if (result.reason === 'changed_elsewhere') {
+        setOutcome('changed-elsewhere');
       } else if (result.reason === 'failed') {
         setOutcome('failed');
       }
@@ -97,6 +99,12 @@ export function ChangePassword(): React.ReactNode {
         <Alert role="status" color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
           Password changed. HemoIO could not update the lock in your folder yet; it will try again
           at the next sync.
+        </Alert>
+      )}
+      {outcome === 'changed-elsewhere' && (
+        <Alert role="alert" color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+          Password not changed: it was changed meanwhile, in another tab or on another computer. Try
+          again with the current password.
         </Alert>
       )}
       {outcome === 'failed' && (
