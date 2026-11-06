@@ -37,7 +37,7 @@ Feature: Folder Sync Safety
     When I add more lab results
     Then my folder should hold a new copy with all of my lab results
     And my folder should keep the copy from before, as the previous copy
-    And only the new copy should hold my password lock, so an old password opens nothing in the folder
+    And only the new copy should hold my password lock; the previous copy should hold none
 
   Scenario: A full copy is not pushed out by smaller ones
     Given my lab results have been synced to my folder
