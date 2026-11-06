@@ -228,41 +228,66 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     []
   );
 
+  /** Another tab finished setup meanwhile: its credentials, and the unlock screen */
+  const showLocked = useCallback((existing: object): SetupOutcome => {
+    setCredentials(existing);
+    setEncryptionKey(null);
+    setStatus('locked');
+    return 'existing-locked';
+  }, []);
+
+  /**
+   * Save new credentials, then unlock with their key. Once saved, the
+   * credentials are never taken back: another tab may already have unlocked
+   * with them and sealed records under this key. So a failed `onSaved` or
+   * `prepare` is logged (`failure`, fixed text: the error could name what
+   * was being stored) and setup goes on; the caller says what was lost.
+   * Before `prepare`: rows set aside earlier that this key opens come back,
+   * and rows it cannot open go aside, so what `prepare` stores neither
+   * duplicates the one nor is hidden by the other.
+   */
+  const saveAndUnlock = useCallback(
+    async (
+      credentials: StoredCredentialsV2,
+      key: CryptoKey,
+      prepare: ((key: CryptoKey) => Promise<void>) | undefined,
+      failure: string,
+      onSaved?: () => Promise<void>
+    ): Promise<SetupOutcome> => {
+      saveStoredCredentials(credentials);
+      setCredentials(credentials);
+      if (onSaved) {
+        try {
+          await onSaved();
+        } catch {
+          logFailure('Could not keep the folder choice');
+        }
+      }
+      await settleStoredRecords(key);
+      try {
+        await prepare?.(key);
+      } catch {
+        logFailure(failure);
+      }
+      setEncryptionKey(key);
+      setStatus('unlocked');
+      return 'created';
+    },
+    []
+  );
+
   const setupPassword = useCallback(
     (password: string, prepare?: (key: CryptoKey) => Promise<void>): Promise<SetupOutcome> =>
       withWebLock(SETUP_LOCK, async (): Promise<SetupOutcome> => {
         // Read again under the lock: another tab may have finished setup meanwhile
         const existing = loadStoredCredentials();
         if (existing) {
-          if (await unlockWith(password, existing, true)) {
-            return 'unlocked-existing';
-          }
-          setCredentials(existing);
-          setEncryptionKey(null);
-          setStatus('locked');
-          return 'existing-locked';
+          return (await unlockWith(password, existing, true)) ? 'unlocked-existing' : showLocked(existing);
         }
-
-        const { credentials: newCredentials, key } = await createCredentialsV2(password);
-        saveStoredCredentials(newCredentials);
-        setCredentials(newCredentials);
-        await settleStoredRecords(key);
-        try {
-          await prepare?.(key);
-        } catch {
-          // Once saved, the credentials are never taken back: another tab may
-          // already have unlocked with them and sealed records under this key.
-          // The setup choices are what is lost; the caller says so itself.
-          // Fixed text: the error could name what was being stored.
-          logFailure('Could not store the setup choices');
-        }
-
-        // Automatically unlock after setup
-        setEncryptionKey(key);
-        setStatus('unlocked');
-        return 'created';
+        const { credentials, key } = await createCredentialsV2(password);
+        return saveAndUnlock(credentials, key, prepare, 'Could not store the setup choices');
       }),
-    [unlockWith]
+    [unlockWith, showLocked, saveAndUnlock]
   );
 
   const recoverFromFolder = useCallback(
@@ -275,38 +300,10 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
       withWebLock(SETUP_LOCK, async (): Promise<SetupOutcome> => {
         // Read again under the lock: another tab may have finished setup meanwhile
         const existing = loadStoredCredentials();
-        if (existing) {
-          setCredentials(existing);
-          setEncryptionKey(null);
-          setStatus('locked');
-          return 'existing-locked';
-        }
-
-        saveStoredCredentials(lock);
-        setCredentials(lock);
-        try {
-          await onSaved?.();
-        } catch {
-          // Fixed text: the error could name the folder
-          logFailure('Could not keep the folder choice');
-        }
-        // Before the restore: rows set aside earlier that this key opens come
-        // back first, and rows it cannot open go aside, so the restore neither
-        // duplicates the one nor is hidden by the other
-        await settleStoredRecords(key);
-        try {
-          await prepare?.(key);
-        } catch {
-          // As in setup: once saved, the credentials are never taken back.
-          // Fixed text: the error could name what was being restored.
-          logFailure('Could not restore the folder copy');
-        }
-
-        setEncryptionKey(key);
-        setStatus('unlocked');
-        return 'created';
+        if (existing) return showLocked(existing);
+        return saveAndUnlock(lock, key, prepare, 'Could not restore the folder copy', onSaved);
       }),
-    []
+    [showLocked, saveAndUnlock]
   );
 
   const unlock = useCallback(

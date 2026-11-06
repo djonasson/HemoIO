@@ -154,9 +154,18 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     }
   }, [activeStep]);
 
+  /** Runs a submit with the storage listener muted: its outcome says itself whether another tab came first */
+  const whileSubmitting = useCallback(async <T,>(submit: () => Promise<T>): Promise<T> => {
+    submittingRef.current = true;
+    try {
+      return await submit();
+    } finally {
+      submittingRef.current = false;
+    }
+  }, []);
+
   const handleComplete = useCallback(async () => {
     if (submittingRef.current) return;
-    submittingRef.current = true;
     setIsSubmitting(true);
     // Set when the choices could not be stored after the password lock was
     // saved: setup still finishes, and says what was not kept
@@ -165,7 +174,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     try {
       // Stored before the app unlocks, so the providers that load at unlock
       // (API key, AI settings) start with them
-      outcome = await setupPassword(password, async (encryptionKey) => {
+      outcome = await whileSubmitting(() => setupPassword(password, async (encryptionKey) => {
         try {
           saveStorageChoice(storageProvider);
 
@@ -184,7 +193,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
         } catch {
           choicesFailed = true;
         }
-      });
+      }));
     } catch {
       // Only before the password lock was saved, so nothing was set up.
       // Fixed text: the error could name the credentials. The wizard stays,
@@ -193,7 +202,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       notifySetupFailed();
       return;
     } finally {
-      submittingRef.current = false;
       setIsSubmitting(false);
     }
 
@@ -210,18 +218,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       notifySetupChoicesNotSaved(unsavedChoicesRef.current);
     }
     onComplete();
-  }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
+  }, [password, setupPassword, whileSubmitting, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
 
   const handleRecover = useCallback(
     async (folderPassword: string): Promise<FolderUnlockProblem | 'existing-locked' | null> => {
-      // The outcome says itself whether another tab came first
-      submittingRef.current = true;
-      let result: FolderUnlockProblem | 'existing-locked' | null;
-      try {
-        result = await folderRecovery.recover(folderPassword);
-      } finally {
-        submittingRef.current = false;
-      }
+      const result = await whileSubmitting(() => folderRecovery.recover(folderPassword));
       if (result === 'existing-locked') {
         // The login screen shows in place of the wizard
         notifySetUpElsewhere(['folder storage'], { unlock: true });
@@ -230,7 +231,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
       }
       return result;
     },
-    [folderRecovery, onComplete]
+    [folderRecovery, whileSubmitting, onComplete]
   );
 
   const handleSubmit = useCallback(

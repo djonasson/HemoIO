@@ -131,14 +131,12 @@ export async function recoverFromFolderCopy({
   let folderKept = true;
   let earlier: EarlierCopyRestored | null = null;
 
-  const onSaved = async (): Promise<void> => {
-    try {
-      await keepFolder();
-    } catch {
+  // AuthContext logs the failure (fixed text) and goes on to unlock
+  const onSaved = (): Promise<void> =>
+    keepFolder().catch((error: unknown) => {
       folderKept = false;
-      logFailure('Could not keep the folder choice');
-    }
-  };
+      throw error;
+    });
 
   // Sees only rows this key opens: the sweep has run
   const prepare = async (sessionKey: CryptoKey): Promise<void> => {

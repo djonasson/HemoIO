@@ -154,9 +154,9 @@ describe('useFolderRecovery', () => {
     exportAllData.mockResolvedValue(FOLDER_DATA);
     hasLabData.mockResolvedValue(false);
     persistDirectory.mockResolvedValue(undefined);
-    // As AuthContext does: save, onSaved, sweep, prepare with the key, then unlock
+    // As AuthContext does: save, onSaved (a failure logged and passed over), sweep, prepare with the key, then unlock
     recoverFromFolder.mockImplementation(async (_lock, key, prepare, onSaved) => {
-      await onSaved?.();
+      await onSaved?.().catch(() => console.error('Could not keep the folder choice'));
       providerAtSweep = localStorage.getItem('hemoio_storage_provider');
       persistedAtSweep = persistDirectory.mock.calls.length > 0;
       await prepare?.(key);
