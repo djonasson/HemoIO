@@ -78,18 +78,20 @@ export function storedCredentials(page: Page): Promise<string | null> {
   return page.evaluate(() => localStorage.getItem('hemoio_credentials'));
 }
 
-/** A file in the folder, as text; null when the folder does not hold it */
-export function folderFileText(page: Page, fileName: string): Promise<string | null> {
+/** A file in the folder (`path` may name a subfolder: `hemoio-backups/<name>`), as text; null when there is none */
+export function folderFileText(page: Page, path: string): Promise<string | null> {
   return page.evaluate(
-    async ({ folderName, fileName }) => {
-      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+    async ({ folderName, path }) => {
       try {
-        return await (await dir.getFileHandle(fileName)).getFile().then((file) => file.text());
+        let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+        const parts = path.split('/');
+        for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+        return await (await dir.getFileHandle(parts.at(-1)!)).getFile().then((file) => file.text());
       } catch {
         return null;
       }
     },
-    { folderName: FOLDER_NAME, fileName }
+    { folderName: FOLDER_NAME, path }
   );
 }
 

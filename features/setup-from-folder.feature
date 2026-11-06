@@ -66,6 +66,7 @@ Feature: Set Up From a Folder Copy
     When I set HemoIO up from my folder copy with my password
     Then HemoIO should open with the previous copy's two lab results on the timeline
     And I should be told the previous copy was restored, and when it was saved
+    And the damaged copy should be kept, as it was, as a dated backup in my folder
     And the folder copy should open again, with my password lock in it and beside it
     And syncing should go on without a warning
     And the password I used should unlock HemoIO
@@ -78,6 +79,7 @@ Feature: Set Up From a Folder Copy
     Then HemoIO should open with the newest backup that opens with my password
     And I should be told which backup was restored, and when it was saved
     And a new folder copy should be written from it
+    And the backup restored should never be removed to make room
 
   # Unit-tested (unlockFolderCopy, useFolderRecovery): a planted lock file is
   # a file anyone with access to the folder could write

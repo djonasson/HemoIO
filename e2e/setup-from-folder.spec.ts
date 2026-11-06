@@ -10,6 +10,7 @@ import { TEST_PASSWORD, completeSetup, setupOrUnlock, unlockApp } from './steps/
 import { lockApp } from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
+  FOLDER_NAME,
   folderCopyHash,
   folderPermissionQueries,
   installFolderPicker,
@@ -32,6 +33,7 @@ import {
 } from './steps/setupFromFolder.steps';
 import { setAsideBanner, writeUnreadableRecords } from './steps/unreadableRecords.steps';
 import { PREVIOUS_FOLDER_COPY, skippedSyncNotice } from './steps/folderSync.steps';
+import { FOLDER_BACKUPS, folderBackupNames } from './steps/otherComputer.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
 
 const LATER_RESULT = {
@@ -180,6 +182,7 @@ test.describe('Set up from a folder copy', () => {
     await expect.poll(() => folderFileText(page, PREVIOUS_FOLDER_COPY)).not.toBeNull();
     await expect.poll(() => folderCopyText(page)).not.toBe(twoResults);
     await damageFolderCopy(page);
+    const damagedCopy = await folderCopyText(page);
     await forgetHemoIO(page, { keepDatabase: false });
 
     await recoverFromFolder(page, TEST_PASSWORD);
@@ -188,6 +191,10 @@ test.describe('Set up from a folder copy', () => {
     await expectBothResults(page);
     await expect(page.getByText('Restored from an earlier copy')).toBeVisible();
     await expect(page.getByText(/HemoIO restored the previous copy saved on/)).toBeVisible();
+    // The damaged copy is kept, as it was, as a dated backup
+    const backups = await folderBackupNames(page, FOLDER_NAME);
+    expect(backups).toHaveLength(1);
+    expect(await folderFileText(page, `${FOLDER_BACKUPS}/${backups[0]}`)).toBe(damagedCopy);
     await settledSync(page);
     await expect(skippedSyncNotice(page)).toHaveCount(0);
     // The folder copy opens again, with my lock in it and beside it
