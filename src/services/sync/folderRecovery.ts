@@ -145,7 +145,7 @@ export async function recoverFromFolderCopy({
       // Data still in this browser is left for the first sync, which asks
       // when it differs from the copy: neither side is replaced unasked
       if (await db.hasLabData()) return;
-      await restoreBackup(db, copy);
+      const { stamp } = await restoreBackup(db, copy);
       // Under the folder-sync lock (nested in setup's, the one order
       // allowed): the lock file, a backup and a replaced copy are folder writes
       await withWebLock(FOLDER_SYNC_LOCK, async () => {
@@ -159,7 +159,8 @@ export async function recoverFromFolderCopy({
           // When nothing was written, the copy restored is the one seen; the first sync tells why
           seen = written ?? revision;
         }
-        await markFolderCopySeen(db, sessionKey, seen);
+        // Only while the data is as restored: a change saved since is written by the first sync
+        await markFolderCopySeen(db, sessionKey, seen, stamp);
       });
     } catch {
       restored = false;

@@ -152,6 +152,7 @@ describe('useFolderRecovery', () => {
     saveBackup.mockResolvedValue(undefined);
     deleteBackup.mockResolvedValue(undefined);
     exportAllData.mockResolvedValue(FOLDER_DATA);
+    vi.mocked(restoreBackup).mockResolvedValue({ labResults: 1, testValues: 0, notes: 0, stamp: 'restored-stamp' });
     hasLabData.mockResolvedValue(false);
     persistDirectory.mockResolvedValue(undefined);
     // As AuthContext does: save, onSaved (a failure logged and passed over), sweep, prepare with the key, then unlock
@@ -186,7 +187,7 @@ describe('useFolderRecovery', () => {
     const key = recoverFromFolder.mock.calls[0][1];
     expect(localStorage.getItem('hemoio_storage_provider')).toBe('filesystem');
     expect(restoreBackup).toHaveBeenCalledWith(db, expect.objectContaining({ labResults: [expect.objectContaining({ labName: 'Quest Diagnostics' })] }));
-    expect(markFolderCopySeen).toHaveBeenCalledWith(db, key, REVISION);
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, key, REVISION, 'restored-stamp');
     // Seen only once restored: the next sync then finds nothing new
     expect(vi.mocked(restoreBackup).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(markFolderCopySeen).mock.invocationCallOrder[0]
@@ -222,7 +223,7 @@ describe('useFolderRecovery', () => {
     expect(reading).toMatchObject({ status: 'readable' });
     const revision = reading.status === 'readable' ? reading.revision : null;
     expect(revision).not.toBe('earlier-rev');
-    expect(markFolderCopySeen).toHaveBeenCalledWith(db, key, revision);
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, key, revision, 'restored-stamp');
     expect(readLockFile(saveLock.mock.calls[0][0])).toEqual(LOCK);
     expect(vi.mocked(saveLock).mock.invocationCallOrder[0]).toBeLessThan(save.mock.invocationCallOrder[0]);
     expect(notifications.show).toHaveBeenCalledWith(
@@ -260,7 +261,7 @@ describe('useFolderRecovery', () => {
 
     expect(save).not.toHaveBeenCalled();
     expect(restoreBackup).toHaveBeenCalled();
-    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev');
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev', 'restored-stamp');
     expect(error).toHaveBeenCalledWith('Could not replace the damaged folder copy');
     expect(JSON.stringify(error.mock.calls)).not.toContain('someone');
     error.mockRestore();
@@ -330,7 +331,7 @@ describe('useFolderRecovery', () => {
     expect(await recover(hook)).toBeNull();
 
     expect(restoreBackup).toHaveBeenCalled();
-    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev');
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev', 'restored-stamp');
     expect(notifications.show).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Folder copy not restored' }));
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.not.stringContaining('It is now your folder copy') })

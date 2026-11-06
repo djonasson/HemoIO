@@ -1014,11 +1014,41 @@ describe('two computers on one folder', () => {
 
   it('markFolderCopySeen saves the digest of the data as it now is', async () => {
     localStorage.clear();
-    const db = { exportAllData: vi.fn().mockResolvedValue(linked(3)) };
+    const db = { exportAllData: vi.fn().mockResolvedValue(linked(3)), storedDataStamp: vi.fn() };
 
     await markFolderCopySeen(db, key, 'r9');
 
     expect(await loadFolderSyncState(key)).toEqual({ revision: 'r9', digest: await digestOf(linked()) });
+    localStorage.clear();
+  });
+
+  it('markFolderCopySeen saves the digest while the data is as the load left it', async () => {
+    localStorage.clear();
+    const db = {
+      exportAllData: vi.fn().mockResolvedValue(linked(3)),
+      storedDataStamp: vi.fn().mockResolvedValue('as-loaded'),
+    };
+
+    await markFolderCopySeen(db, key, 'r9', 'as-loaded');
+
+    expect(await loadFolderSyncState(key)).toEqual({ revision: 'r9', digest: await digestOf(linked()) });
+    localStorage.clear();
+  });
+
+  it('markFolderCopySeen does not record a change saved after the load as seen', async () => {
+    localStorage.clear();
+    // The export holds a change saved since the load, which the stamp shows
+    const db = {
+      exportAllData: vi.fn().mockResolvedValue(linked(4)),
+      storedDataStamp: vi.fn().mockResolvedValue('changed'),
+    };
+
+    await markFolderCopySeen(db, key, 'r9', 'as-loaded');
+
+    const state = await loadFolderSyncState(key);
+    expect(state?.revision).toBe('r9');
+    // The next sync finds the data differs from what was seen, and writes it
+    expect(state?.digest).not.toBe(await digestOf(linked(4)));
     localStorage.clear();
   });
 });

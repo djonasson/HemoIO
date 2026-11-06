@@ -17,8 +17,12 @@ import { folderCopyProblemMessage } from './folderCopyProblemMessage';
 
 export interface FolderRestoreModalProps {
   prompt: FolderRestorePrompt | null;
-  /** Restore the copy into this browser; rejects when the restore failed */
-  onRestore: (data: ParsedBackupData) => Promise<void>;
+  /**
+   * Restore the copy into this browser; rejects when the restore failed.
+   * False when the data changed while the user decided: nothing was
+   * restored, and the question is asked again.
+   */
+  onRestore: (data: ParsedBackupData) => Promise<boolean>;
   /**
    * Keep the folder copy as a dated backup, so that the sync may write over
    * it; rejects, choosing nothing, when the backup cannot be saved
@@ -55,8 +59,9 @@ export function FolderRestoreModal({
   const handleRestore = async (data: ParsedBackupData): Promise<void> => {
     setIsRestoring(true);
     setRestoreFailed(false);
+    let restored: boolean;
     try {
-      await onRestore(data);
+      restored = await onRestore(data);
     } catch {
       setRestoreFailed(true);
       return;
@@ -64,7 +69,7 @@ export function FolderRestoreModal({
       setIsRestoring(false);
     }
     // Only now: the first write to the folder then holds the restored data
-    decide('sync');
+    if (restored) decide('sync');
   };
 
   const handleReplace = async (): Promise<void> => {

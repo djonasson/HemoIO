@@ -19,8 +19,18 @@ describe('EncryptedDb.replaceLabData with a stamp', () => {
     await db.addLabResult(result('Here'));
     const stamp = await db.storedDataStamp();
 
-    expect(await db.replaceLabData(restored, stamp)).toEqual({ labResults: 1, testValues: 0, notes: 0 });
+    expect(await db.replaceLabData(restored, stamp)).toMatchObject({ labResults: 1, testValues: 0, notes: 0 });
     expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['From the folder']);
+  });
+
+  it('gives the stamp the replace left, which a later change alters', async () => {
+    const { db } = await openTestDb();
+
+    const replaced = await db.replaceLabData(restored);
+
+    expect(replaced.stamp).toBe(await db.storedDataStamp());
+    await db.addLabResult(result('Saved after the load'));
+    expect(await db.storedDataStamp()).not.toBe(replaced.stamp);
   });
 
   it('replaces nothing when a change was saved after the stamp', async () => {

@@ -27,11 +27,12 @@ const OFFER: FolderRestorePrompt = {
   revision: 'r1',
   folderName: 'Health',
   replacesBrowserData: false,
+  stamp: 'stamp-1',
 };
 
 function renderModal(
   prompt: FolderRestorePrompt | null = OFFER,
-  onRestore = vi.fn(async () => {}),
+  onRestore = vi.fn(async (): Promise<boolean> => true),
   onReplace = vi.fn(async () => {})
 ) {
   const onDecide = vi.fn();
@@ -80,7 +81,7 @@ describe('FolderRestoreModal', () => {
   });
 
   it('counts in the singular and names no folder it does not know', () => {
-    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false });
+    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false, stamp: 's' });
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('1 lab result');
@@ -92,7 +93,7 @@ describe('FolderRestoreModal', () => {
 
   it('restores the copy, and only then lets sync go ahead', async () => {
     let finish: () => void = () => {};
-    const onRestore = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    const onRestore = vi.fn(() => new Promise<boolean>((resolve) => (finish = () => resolve(true))));
     const { onDecide } = renderModal(OFFER, onRestore);
 
     await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
@@ -104,7 +105,7 @@ describe('FolderRestoreModal', () => {
   });
 
   it('stays open when the restore fails, and keeps sync held', async () => {
-    const onRestore = vi.fn(async () => {
+    const onRestore = vi.fn(async (): Promise<boolean> => {
       throw new Error('Quota exceeded');
     });
     const { onDecide } = renderModal(OFFER, onRestore);
@@ -114,6 +115,16 @@ describe('FolderRestoreModal', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The restore did not complete');
     expect(onDecide).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Restore' })).toBeEnabled();
+  });
+
+  it('lets sync go ahead only once restored: data changed meanwhile is asked about again', async () => {
+    const onRestore = vi.fn(async (): Promise<boolean> => false);
+    const { onDecide } = renderModal(OFFER, onRestore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalled());
+    expect(onDecide).not.toHaveBeenCalled();
   });
 
   it('"Not now" holds sync, from the keyboard too', async () => {

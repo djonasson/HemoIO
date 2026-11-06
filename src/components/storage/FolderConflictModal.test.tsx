@@ -115,7 +115,7 @@ describe('FolderConflictModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Load the folder copy' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Nothing was changed: the backup could not be saved to your folder.'
+      'Your data was not changed: the backup could not be saved to your folder, or the folder copy could not be loaded. Try again, or decide later.'
     );
     expect(dialog()).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Load the folder copy' })).toBeEnabled();

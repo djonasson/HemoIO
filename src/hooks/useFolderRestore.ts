@@ -28,6 +28,11 @@ export type FolderRestorePrompt =
       folderName: string | null;
       /** The browser gained data since unlock, which a restore replaces */
       replacesBrowserData: boolean;
+      /**
+       * The stored data as the question found it (EncryptedDb.storedDataStamp):
+       * a restore replaces only that, never a change saved since
+       */
+      stamp: string;
     }
   | { kind: 'unreadable'; reason: FolderCopyProblem; folderName: string | null };
 
@@ -45,6 +50,8 @@ export interface UseFolderRestoreResult {
   /** Folder storage is on but nothing reaches the folder: no access yet, or "Not now" */
   syncHeld: boolean;
   decide: (decision: FolderRestoreDecision) => void;
+  /** Look at the folder and this browser again, as when folder access changes */
+  recheck: () => void;
 }
 
 /** Checking, sync allowed, held after "Not now", or asking the user */
@@ -59,14 +66,12 @@ export function useFolderRestore(): UseFolderRestoreResult {
   // Whether this session's database was empty when first checked
   const emptyAtUnlock = useRef<{ db: unknown; empty: boolean }>({ db: null, empty: false });
 
-  useEffect(
-    () =>
-      onFolderAccessChanged(() => {
-        setStatus('checking');
-        setGeneration((g) => g + 1);
-      }),
-    []
-  );
+  const recheck = useCallback(() => {
+    setStatus('checking');
+    setGeneration((g) => g + 1);
+  }, []);
+
+  useEffect(() => onFolderAccessChanged(recheck), [recheck]);
 
   useEffect(() => {
     if (!isFolderStorageOn() || !db || !isReady || !encryptionKey) return;
@@ -74,7 +79,10 @@ export function useFolderRestore(): UseFolderRestoreResult {
 
     async function check(database: NonNullable<typeof db>, key: CryptoKey): Promise<void> {
       let browserHasData: boolean;
+      let stamp: string;
       try {
+        // Stamped first: a change saved after it is never replaced by the offer
+        stamp = await database.storedDataStamp();
         browserHasData = await database.hasLabData();
       } catch {
         // Not logged with the error, which could name stored data. Sync stays held.
@@ -119,6 +127,7 @@ export function useFolderRestore(): UseFolderRestoreResult {
                 revision: assessment.revision,
                 folderName,
                 replacesBrowserData: browserHasData,
+                stamp,
               }
             : { kind: 'unreadable', reason: assessment.reason, folderName }
       );
@@ -145,5 +154,6 @@ export function useFolderRestore(): UseFolderRestoreResult {
     prompt: typeof status === 'object' ? status : null,
     syncHeld: isFolderStorageOn() && (status === 'checking' || status === 'held'),
     decide,
+    recheck,
   };
 }

@@ -117,7 +117,8 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
           <Text size="sm">The side you don&apos;t choose is kept as a dated backup in your folder.</Text>
           {failed && (
             <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
-              Nothing was changed: the backup could not be saved to your folder.
+              Your data was not changed: the backup could not be saved to your folder, or the
+              folder copy could not be loaded. Try again, or decide later.
             </Alert>
           )}
           <Group justify="flex-end">

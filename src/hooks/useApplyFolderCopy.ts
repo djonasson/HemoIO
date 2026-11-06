@@ -15,9 +15,11 @@ import { useEncryptedDb } from './useEncryptedDb';
 
 /**
  * Replace this browser's data with a folder copy. Given a stamp, only while
- * the data is as stamped: false, loading nothing, otherwise.
+ * the data is as stamped: null, loading nothing, otherwise. Resolves the
+ * stamp the load left (EncryptedDb.storedDataStamp), so that the copy is
+ * recorded as seen only while the data is still as loaded.
  */
-export type ApplyFolderCopy = (data: ParsedBackupData, unchangedSince?: string) => Promise<boolean>;
+export type ApplyFolderCopy = (data: ParsedBackupData, unchangedSince?: string) => Promise<string | null>;
 
 export function useApplyFolderCopy(): ApplyFolderCopy {
   const { db, isReady } = useEncryptedDb();
@@ -28,8 +30,11 @@ export function useApplyFolderCopy(): ApplyFolderCopy {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
-      if (unchangedSince === undefined) await restoreBackup(db, data);
-      else if ((await restoreBackupIfUnchanged(db, data, unchangedSince)) === null) return false;
+      const restored =
+        unchangedSince === undefined
+          ? await restoreBackup(db, data)
+          : await restoreBackupIfUnchanged(db, data, unchangedSince);
+      if (restored === null) return null;
       announceDataReplaced();
       const { steps, failed } = await afterRestore('showing the updated results');
       if (failed.length > 0) {
@@ -39,7 +44,7 @@ export function useApplyFolderCopy(): ApplyFolderCopy {
           color: 'yellow',
         });
       }
-      return true;
+      return restored.stamp;
     },
     [db, isReady, afterRestore]
   );

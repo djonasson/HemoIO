@@ -56,10 +56,11 @@ describe('loadNewerFolderCopy', () => {
     const lastSeen = { revision: 'r1', digest: await exportDigest(test.db) };
     const session = { db: test.db, key: test.key };
     // As AppShell applies a copy: only while the data is as stamped, when given a stamp
-    const apply = async (data: ParsedBackupData, unchangedSince?: string): Promise<boolean> =>
-      unchangedSince === undefined
-        ? (await restoreBackup(test.db, data), true)
-        : (await restoreBackupIfUnchanged(test.db, data, unchangedSince)) !== null;
+    const apply = async (data: ParsedBackupData, unchangedSince?: string): Promise<string | null> =>
+      (unchangedSince === undefined
+        ? await restoreBackup(test.db, data)
+        : await restoreBackupIfUnchanged(test.db, data, unchangedSince)
+      )?.stamp ?? null;
     return { ...test, lastSeen, session, apply };
   }
 
@@ -74,6 +75,28 @@ describe('loadNewerFolderCopy', () => {
     expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['From the folder']);
     expect(onLoaded).toHaveBeenCalled();
     expect((await loadFolderSyncState(key))?.revision).toBe('r2');
+  });
+
+  it('does not record a change saved right after the load as seen', async () => {
+    const { db, key, lastSeen, session, apply } = await setUp();
+    const onLoaded = vi.fn();
+    // Saved in another tab between the load and its record
+    const applyThenChange = async (data: ParsedBackupData, unchangedSince: string) => {
+      const loaded = await apply(data, unchangedSince);
+      await db.addLabResult(result('Saved after the load'));
+      return loaded;
+    };
+
+    await loadNewerFolderCopy(session, backupStore(), NEWER, lastSeen, {
+      apply: applyThenChange,
+      isCurrent: () => true,
+      onLoaded,
+    });
+
+    const seen = await loadFolderSyncState(key);
+    expect(seen?.revision).toBe('r2');
+    // The next sync finds this computer's data differs from what it saw, and writes it
+    expect(seen?.digest).not.toBe(await exportDigest(db));
   });
 
   it('loses no change saved after the backup: nothing is loaded, and the next sync decides', async () => {

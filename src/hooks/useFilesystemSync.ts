@@ -36,6 +36,7 @@ import { withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
+import type { ApplyFolderCopy } from './useApplyFolderCopy';
 import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from '@services/sync';
 
 /** The notice that this browser took on a password changed on another computer */
@@ -70,11 +71,12 @@ export interface UseFilesystemSyncOptions {
   /**
    * Replace this browser's data with a folder copy and reload what shows it.
    * Given a stamp (EncryptedDb.storedDataStamp), only while the stored data
-   * is as stamped: resolves false, replacing nothing, when it changed.
+   * is as stamped: resolves null, replacing nothing, when it changed.
+   * Otherwise resolves the stamp the load left.
    * Runs inside a sync, which holds the folder-sync lock: it must never wait
    * for another sync (syncNow), which would wait for it in turn.
    */
-  applyFolderCopy: (data: ParsedBackupData, unchangedSince?: string) => Promise<boolean>;
+  applyFolderCopy: ApplyFolderCopy;
 }
 
 /** A conflict waiting for the user: the copy and its bytes as the sync found them */
@@ -99,11 +101,16 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   held: boolean;
   /**
    * Carry out the user's choice. Rejects when the backup of the side not
-   * chosen cannot be saved; nothing is replaced then, and the question stays.
+   * chosen cannot be saved, or the folder copy cannot be loaded; nothing is
+   * replaced then, and the question stays.
    */
   resolveConflict: (choice: FolderConflictChoice) => Promise<void>;
-  /** Record a folder copy restored into this browser as seen, so its next sync finds no conflict */
-  acknowledgeFolderCopy: (revision: string | null) => Promise<void>;
+  /**
+   * Record a folder copy restored into this browser as seen, so its next
+   * sync finds no conflict: only while the data is as the restore left it
+   * (its stamp); a change saved since is written by the next sync
+   */
+  acknowledgeFolderCopy: (revision: string | null, loadedStamp: string) => Promise<void>;
   /**
    * "Replace folder copy" from the restore question: keeps the copy in the
    * folder as a backup, then the next sync writes over it without asking.
@@ -319,25 +326,25 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
           const stamp = await session.db.storedDataStamp();
           // This browser's data first, as a dated backup: if that fails, nothing is replaced
           await keepBrowserData(backups, { kind: 'conflict' });
-          resolved();
-          let loaded: boolean;
+          let loaded: string | null;
           try {
             loaded = await applyRef.current(pending.copy, stamp);
-          } catch {
+          } catch (error) {
             // Fixed text: the error could name stored data. Both sides are as
-            // they were, so the next sync asks again.
+            // they were: the question stays, and says nothing was changed.
             logFailure('Failed to load the folder copy');
-            setIssue('failed');
-            return;
+            throw error;
           }
-          if (!loaded) {
+          // Only once the data is replaced, or found changed: until then the question stays
+          resolved();
+          if (loaded === null) {
             // Changed meanwhile: nothing was replaced. Asked again, with both
             // sides as they are now; a failure is told by the sync.
             await syncOnce(session).catch(() => undefined);
             return;
           }
           try {
-            await markFolderCopySeen(session.db, session.key, pending.revision);
+            await markFolderCopySeen(session.db, session.key, pending.revision, loaded);
           } catch {
             // The copy is loaded: the next sync finds the same data on both
             // sides and records it. Fixed text: the error could name stored data.
@@ -375,10 +382,10 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   );
 
   const acknowledgeFolderCopy = useCallback(
-    async (revision: string | null): Promise<void> => {
+    async (revision: string | null, loadedStamp: string): Promise<void> => {
       const session = unlockedRef.current;
       if (!session) return;
-      await afterSyncs(() => markFolderCopySeen(session.db, session.key, revision));
+      await afterSyncs(() => markFolderCopySeen(session.db, session.key, revision, loadedStamp));
     },
     [afterSyncs]
   );

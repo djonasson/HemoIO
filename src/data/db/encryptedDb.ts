@@ -212,11 +212,16 @@ interface ReplacedLabData {
   userPreferences?: Omit<UserPreferences, 'id'>;
 }
 
-/** How many records replaceLabData stored */
+/** How many records replaceLabData stored, and the data's stamp as it left them */
 interface ReplacedCounts {
   labResults: number;
   testValues: number;
   notes: number;
+  /**
+   * storedDataStamp as the replace left the data, read in its transaction:
+   * a change saved after it, by this tab or another, gives another stamp
+   */
+  stamp: string;
 }
 
 /** A sealed row's IV, as the base64 that starts its ciphertext: 12 bytes are 16 characters */
@@ -803,6 +808,7 @@ export class EncryptedDb {
         labResults: labResults.length,
         testValues: linkedValues.length,
         notes: userNotes.length,
+        stamp: await this.readStamp(),
       };
     });
     if (movedAside.length > 0) notifySetAsideChanged({ movedAside });

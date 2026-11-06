@@ -294,16 +294,27 @@ export async function exportDigest(db: Pick<EncryptedDb, 'exportAllData'>): Prom
   return digestFolderData(folderDataJson(await db.exportAllData()));
 }
 
+/** Saved as the digest when the data changed after a load: no export digests to it */
+const CHANGED_SINCE_LOAD = 'changed-since-load';
+
 /**
  * The one place that records "this browser has read or written this
- * revision": exports the data as it now is, digests it, and saves both
+ * revision": exports the data as it now is, digests it, and saves both.
+ *
+ * Given the stamp a load left (EncryptedDb.storedDataStamp), the digest is
+ * saved only while the data is still as the load left it, checked after the
+ * export: a change saved since, in this tab or another, is not recorded as
+ * seen, and the next sync writes it.
  */
 export async function markFolderCopySeen(
-  db: Pick<EncryptedDb, 'exportAllData'>,
+  db: Pick<EncryptedDb, 'exportAllData' | 'storedDataStamp'>,
   key: CryptoKey,
-  revision: string | null
+  revision: string | null,
+  loadedStamp?: string
 ): Promise<void> {
-  await saveFolderSyncState({ revision, digest: await exportDigest(db) }, key);
+  const digest = await exportDigest(db);
+  const changed = loadedStamp !== undefined && (await db.storedDataStamp()) !== loadedStamp;
+  await saveFolderSyncState({ revision, digest: changed ? CHANGED_SINCE_LOAD : digest }, key);
 }
 
 /** The data sealed as a folder copy, under a new revision */

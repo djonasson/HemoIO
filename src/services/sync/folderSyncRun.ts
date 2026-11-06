@@ -106,10 +106,10 @@ export async function recordFolderCopySeen(
 export interface LoadNewerCopyOptions {
   /**
    * Replace this browser's data with the copy, only while the stored data
-   * is as `unchangedSince` stamps it (EncryptedDb.storedDataStamp); false
-   * when it changed, and nothing was replaced
+   * is as `unchangedSince` stamps it (EncryptedDb.storedDataStamp): the
+   * stamp the load left, or null when it changed and nothing was replaced
    */
-  apply: (data: ParsedBackupData, unchangedSince: string) => Promise<boolean>;
+  apply: (data: ParsedBackupData, unchangedSince: string) => Promise<string | null>;
   /** False once the session ended or the hold began: nothing more is done then */
   isCurrent: () => boolean;
   /** The data was replaced: told before the copy is recorded as seen */
@@ -138,8 +138,9 @@ export async function loadNewerFolderCopy(
     { kind: 'before-load', unchangedSince: lastSeen.digest }
   );
   if (!kept || !isCurrent()) return;
-  if (!(await apply(outcome.copy, stamp))) return;
+  const loaded = await apply(outcome.copy, stamp);
+  if (loaded === null) return;
   // Told first: the data is replaced, whatever happens to the record of it
   onLoaded();
-  await markFolderCopySeen(session.db, session.key, outcome.revision);
+  await markFolderCopySeen(session.db, session.key, outcome.revision, loaded);
 }

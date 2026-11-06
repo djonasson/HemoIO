@@ -33,7 +33,8 @@ vi.mock('@services/sync', () => ({
 const hasLabData = vi.fn<() => Promise<boolean>>();
 const KEY = {} as CryptoKey;
 // The same instance on every render, as the real hook memoizes it
-const DB = { hasLabData };
+const storedDataStamp = vi.fn(async () => 'stamp-1');
+const DB = { hasLabData, storedDataStamp };
 
 vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: () => ({ db: DB, isReady: true }),
@@ -112,6 +113,7 @@ describe('useFolderRestore', () => {
         revision: 'r1',
         folderName: 'Health',
         replacesBrowserData: false,
+        stamp: 'stamp-1',
       })
     );
     expect(result.current.syncAllowed).toBe(false);

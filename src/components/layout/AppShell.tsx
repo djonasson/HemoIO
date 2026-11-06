@@ -58,10 +58,10 @@ import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@compon
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
-import { failedStepsMessage, restoreAISettings, restoreBackup } from '@services/import';
+import { failedStepsMessage, restoreAISettings, restoreBackup, restoreBackupIfUnchanged } from '@services/import';
 import { HEADER_HEIGHT } from './headerHeight';
 import { logFailure } from '@/utils/logFailure';
-import type { ParsedBackupData } from '@services/import';
+import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 import type { AppView, ViewFocus } from '@hooks';
 
@@ -219,7 +219,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   const handleRestore = useCallback(
     // Callers show a failure themselves, where the restore was asked for
-    async (data: ParsedBackupData, options: RestoreOptions) => {
+    // Given `unchangedSince` (EncryptedDb.storedDataStamp), only while the
+    // data is as stamped: null, restoring nothing, when a change was saved since
+    async (
+      data: ParsedBackupData,
+      options: RestoreOptions & { unchangedSince?: string }
+    ): Promise<RestoreSummary | null> => {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
@@ -227,7 +232,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setIsRestoring(true);
 
       try {
-        const restored = await restoreBackup(db, data);
+        const restored =
+          options.unchangedSince === undefined
+            ? await restoreBackup(db, data)
+            : await restoreBackupIfUnchanged(db, data, options.unchangedSince);
+        if (restored === null) return null;
         // Other tabs of this browser hold the old IDs: they reload
         announceDataReplaced();
 
@@ -277,6 +286,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
         // Navigate to timeline to show restored data
         openView('timeline');
+        return restored;
       } catch (err) {
         notifySaveFailed('Restore failed', err, 'Your data was not changed.');
         throw err;
@@ -299,23 +309,46 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     ]
   );
 
+  // Settings shows a failed restore itself; what was restored is told here
+  const handleSettingsRestore = useCallback(
+    async (data: ParsedBackupData, options: RestoreOptions): Promise<void> => {
+      await handleRestore(data, options);
+    },
+    [handleRestore]
+  );
+
   // A restore from a backup file in Settings is left as a change made here:
   // the next sync writes it over the copy it last saw, or asks when that copy
   // changed on another computer meanwhile. The folder copy restored here is
   // the one now in the browser, so it is recorded as seen.
-  const offeredRevision = folderRestore.prompt?.kind === 'offer' ? folderRestore.prompt.revision : null;
+  const offer = folderRestore.prompt?.kind === 'offer' ? folderRestore.prompt : null;
+  const offeredRevision = offer?.revision ?? null;
+  const offeredStamp = offer?.stamp;
+  const { recheck: recheckFolderRestore } = folderRestore;
   const handleFolderRestore = useCallback(
-    async (data: ParsedBackupData) => {
-      // The folder copy has no AI configuration to restore
-      await handleRestore(data, { restoreAISettings: false });
+    async (data: ParsedBackupData): Promise<boolean> => {
+      // The folder copy has no AI configuration to restore. Only while the
+      // data is as when the question was asked: a change saved since (in
+      // another tab) is not replaced unasked.
+      const restored = await handleRestore(data, { restoreAISettings: false, unchangedSince: offeredStamp });
+      if (restored === null) {
+        notifications.show({
+          title: 'Your Data Changed',
+          message: 'Your data changed while you decided, so nothing was restored. HemoIO asks again.',
+          color: 'yellow',
+        });
+        recheckFolderRestore();
+        return false;
+      }
       try {
-        await acknowledgeFolderCopy(offeredRevision);
+        await acknowledgeFolderCopy(offeredRevision, restored.stamp);
       } catch {
         // The restore is done; the next sync compares the data with the copy instead
         logFailure('Could not record the restored folder copy as seen');
       }
+      return true;
     },
-    [handleRestore, acknowledgeFolderCopy, offeredRevision]
+    [handleRestore, acknowledgeFolderCopy, offeredRevision, offeredStamp, recheckFolderRestore]
   );
 
   // "Replace folder copy": the copy is kept as a backup first, and the next
@@ -455,7 +488,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               focus={focus}
               visit={visit}
               onOpen={openView}
-              onRestore={handleRestore}
+              onRestore={handleSettingsRestore}
               isRestoring={isRestoring}
             />
           )}

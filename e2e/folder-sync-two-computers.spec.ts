@@ -393,7 +393,7 @@ test.describe('Two computers on one folder', () => {
     await dialog.getByRole('button', { name: 'Load the folder copy' }).click();
 
     await expect(dialog.getByRole('alert')).toHaveText(
-      'Nothing was changed: the backup could not be saved to your folder.'
+      'Your data was not changed: the backup could not be saved to your folder, or the folder copy could not be loaded. Try again, or decide later.'
     );
     await expect(dialog).toBeVisible();
     expect(await folderCopyHash(page, TEST_FOLDER_NAME)).toBe(folderCopy);

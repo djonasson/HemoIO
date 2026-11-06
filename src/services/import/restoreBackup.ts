@@ -35,6 +35,8 @@ export interface RestoreSummary {
   labResults: number;
   testValues: number;
   notes: number;
+  /** The stored data's stamp as the restore left it (EncryptedDb.storedDataStamp) */
+  stamp: string;
 }
 
 /**

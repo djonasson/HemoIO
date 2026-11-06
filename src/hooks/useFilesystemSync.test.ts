@@ -52,7 +52,7 @@ vi.mock('@data/storage/folderSyncState', () => ({
 }));
 
 /** Replaces this browser's data with a folder copy, as AppShell does */
-const applyFolderCopy = vi.fn<(data: ParsedBackupData, unchangedSince?: string) => Promise<boolean>>();
+const applyFolderCopy = vi.fn<(data: ParsedBackupData, unchangedSince?: string) => Promise<string | null>>();
 
 // Storage provider mock
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
@@ -146,7 +146,7 @@ describe('useFilesystemSync', () => {
     vi.mocked(keepFolderCopy).mockResolvedValue(undefined);
     vi.mocked(keepCurrentFolderCopy).mockResolvedValue(FOLDER_BYTES);
     vi.mocked(folderCopyId).mockImplementation(async (_bytes, revision) => revision ?? 'sha256:bytes');
-    applyFolderCopy.mockResolvedValue(true);
+    applyFolderCopy.mockResolvedValue('loaded-stamp');
     mockGetPermissionState.mockResolvedValue('granted');
     mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
     auth.encryptionKey = mockKey;
@@ -646,7 +646,7 @@ describe('useFilesystemSync', () => {
 
       renderHook(() => useFilesystemSync({ applyFolderCopy }));
 
-      await waitFor(() => expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2'));
+      await waitFor(() => expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2', 'loaded-stamp'));
       expect(keepBrowserData).toHaveBeenCalledWith(
         { db: mockDb, key: mockKey, backups: expect.anything() },
         { kind: 'before-load', unchangedSince: STATE.digest }
@@ -703,7 +703,7 @@ describe('useFilesystemSync', () => {
 
     it('tells nothing and records nothing when a change saved meanwhile stopped the load', async () => {
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
-      applyFolderCopy.mockResolvedValue(false);
+      applyFolderCopy.mockResolvedValue(null);
       vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
 
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
@@ -720,7 +720,7 @@ describe('useFilesystemSync', () => {
       let applied = false;
       applyFolderCopy.mockImplementation(async () => {
         applied = true;
-        return true;
+        return 'loaded-stamp';
       });
       vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
@@ -831,14 +831,14 @@ describe('useFilesystemSync', () => {
           vi.mocked(keepBrowserData).mock.invocationCallOrder[0]
         );
         expect(applyFolderCopy).toHaveBeenCalledWith(COPY, 'stamp-1');
-        expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2');
+        expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r2', 'loaded-stamp');
         expect(result.current.conflict).toBeNull();
         expect(result.current.held).toBe(false);
       });
 
       it('asks again, loading nothing, when a change was saved after the backup was kept', async () => {
         const { result } = await inConflict();
-        applyFolderCopy.mockResolvedValueOnce(false);
+        applyFolderCopy.mockResolvedValueOnce(null);
         vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(true, 'r2'));
 
         await act(() => result.current.resolveConflict('folder'));
@@ -847,6 +847,32 @@ describe('useFilesystemSync', () => {
         expect(writeFolderCopy).toHaveBeenCalledTimes(2);
         expect(result.current.conflict).not.toBeNull();
         expect(result.current.issue).toBeNull();
+      });
+
+      it('a failed load keeps the question, and rejects so that it says nothing changed', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { result } = await inConflict();
+        applyFolderCopy.mockRejectedValueOnce(new Error('Quota'));
+
+        await expect(act(() => result.current.resolveConflict('folder'))).rejects.toThrow('Quota');
+
+        expect(markFolderCopySeen).not.toHaveBeenCalled();
+        expect(result.current.conflict).not.toBeNull();
+        expect(result.current.held).toBe(true);
+      });
+
+      it('the question stays until the copy is loaded', async () => {
+        const { result } = await inConflict();
+        let conflictWhileLoading: unknown = 'not loaded';
+        applyFolderCopy.mockImplementationOnce(async () => {
+          conflictWhileLoading = result.current.conflict;
+          return 'loaded-stamp';
+        });
+
+        await act(() => result.current.resolveConflict('folder'));
+
+        expect(conflictWhileLoading).not.toBeNull();
+        expect(result.current.conflict).toBeNull();
       });
 
       it('a copy loaded but not recorded as seen is not called a failed load', async () => {
@@ -966,9 +992,10 @@ describe('useFilesystemSync', () => {
     it('acknowledges a restored copy, even while syncs are held', async () => {
       const { result } = renderHook(() => useFilesystemSync({ enabled: false, applyFolderCopy }));
 
-      await act(() => result.current.acknowledgeFolderCopy('r5'));
+      await act(() => result.current.acknowledgeFolderCopy('r5', 'restored-stamp'));
 
-      expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r5');
+      // Recorded only while the data is as the restore left it
+      expect(markFolderCopySeen).toHaveBeenCalledWith(mockDb, mockKey, 'r5', 'restored-stamp');
       expect(writeFolderCopy).not.toHaveBeenCalled();
     });
 

@@ -24,12 +24,14 @@ describe('useApplyFolderCopy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     afterRestore.mockResolvedValue({ steps: [], failed: [] });
+    vi.mocked(restoreBackup).mockResolvedValue({ labResults: 0, testValues: 0, notes: 0, stamp: 'loaded-stamp' });
   });
 
   it('loads the copy, tells the other tabs, then reloads what this tab shows', async () => {
     const { result } = renderHook(() => useApplyFolderCopy());
 
-    expect(await result.current(COPY)).toBe(true);
+    // The stamp the load left, which records the copy as seen only while the data is as loaded
+    expect(await result.current(COPY)).toBe('loaded-stamp');
 
     expect(restoreBackup).toHaveBeenCalledWith(DB, COPY);
     expect(announceDataReplaced).toHaveBeenCalled();
@@ -41,7 +43,7 @@ describe('useApplyFolderCopy', () => {
     vi.mocked(restoreBackupIfUnchanged).mockResolvedValue(null);
     const { result } = renderHook(() => useApplyFolderCopy());
 
-    expect(await result.current(COPY, 'stamp')).toBe(false);
+    expect(await result.current(COPY, 'stamp')).toBeNull();
 
     expect(restoreBackupIfUnchanged).toHaveBeenCalledWith(DB, COPY, 'stamp');
     expect(announceDataReplaced).not.toHaveBeenCalled();
@@ -53,7 +55,7 @@ describe('useApplyFolderCopy', () => {
     afterRestore.mockResolvedValue({ steps, failed: ['loading your preferences'] });
     const { result } = renderHook(() => useApplyFolderCopy());
 
-    expect(await result.current(COPY)).toBe(true);
+    expect(await result.current(COPY)).toBe('loaded-stamp');
 
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
