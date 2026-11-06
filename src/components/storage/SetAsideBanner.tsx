@@ -6,29 +6,65 @@
  * delete the user confirms first.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconLockQuestion, IconTrash } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { recordCount } from './setAsideCopy';
+import type { SealedDownload } from '@hooks/useSetAsideRecords';
 
 export interface SetAsideBannerProps {
   /** How many records are kept aside; the banner shows only when there are some */
   total: number;
-  onDownload: () => Promise<void>;
-  onDelete: () => Promise<void>;
+  onDownload: () => Promise<SealedDownload>;
+  /** The user says a plain download saved: the rows of that file */
+  onConfirmSaved: (ids: number[]) => Promise<void>;
+  /** The IDs set aside now, which the delete confirmation counts */
+  onSnapshot: () => Promise<number[]>;
+  /** Delete the rows the confirmation counted, and no others */
+  onDelete: (ids: number[]) => Promise<void>;
 }
 
-export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerProps): React.ReactNode {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+/**
+ * Where focus goes once the banner's delete is done: the main content, which
+ * every view has (a view's first heading may be one of its sections)
+ */
+function focusMainContent(main: HTMLElement | null): void {
+  if (!main) return;
+  if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
+  main.focus();
+}
+
+export function SetAsideBanner({
+  total,
+  onDownload,
+  onConfirmSaved,
+  onSnapshot,
+  onDelete,
+}: SetAsideBannerProps): React.ReactNode {
+  // The rows the open delete confirmation counts; null while it is closed
+  const [deleteIds, setDeleteIds] = useState<number[] | null>(null);
+  // The rows of a plain download, until the user says whether it saved
+  const [unconfirmedIds, setUnconfirmedIds] = useState<number[] | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [justDeleted, setJustDeleted] = useState(false);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!justDeleted || deleteIds !== null) return;
+    setJustDeleted(false);
+    // The banner, and the button that opened the confirmation, may be gone
+    focusMainContent(mainRef.current);
+  }, [justDeleted, deleteIds]);
 
   const handleDownload = async (): Promise<void> => {
     setIsDownloading(true);
     try {
-      await onDownload();
+      const result = await onDownload();
+      setUnconfirmedIds(result.outcome === 'unconfirmed' ? result.ids : null);
     } catch {
       // Fixed text: the error could name stored data
       notifications.show({
@@ -41,11 +77,34 @@ export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerPr
     }
   };
 
+  const handleConfirmSaved = async (): Promise<void> => {
+    if (!unconfirmedIds) return;
+    try {
+      await onConfirmSaved(unconfirmedIds);
+      setUnconfirmedIds(null);
+    } catch (err) {
+      notifySaveFailed('Not marked as saved', err);
+    }
+  };
+
+  const handleOpenDelete = async (): Promise<void> => {
+    mainRef.current = bannerRef.current?.closest('main') ?? null;
+    try {
+      const ids = await onSnapshot();
+      if (ids.length > 0) setDeleteIds(ids);
+    } catch {
+      console.error('Could not list the records kept aside');
+    }
+  };
+
   const handleDelete = async (): Promise<void> => {
+    if (!deleteIds) return;
     setIsDeleting(true);
     try {
-      await onDelete();
-      setConfirmingDelete(false);
+      await onDelete(deleteIds);
+      setUnconfirmedIds(null);
+      setJustDeleted(true);
+      setDeleteIds(null);
     } catch (err) {
       notifySaveFailed('Unreadable records not deleted', err, 'They are still kept aside.');
     } finally {
@@ -53,7 +112,7 @@ export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerPr
     }
   };
 
-  if (total === 0 && !confirmingDelete) return null;
+  if (total === 0 && deleteIds === null) return null;
 
   return (
     <>
@@ -61,6 +120,7 @@ export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerPr
         // The title is a child, not Alert's title: Alert would name the
         // region by its title, over the aria-label
         <Alert
+          ref={bannerRef}
           role="region"
           aria-label="Unreadable records"
           color="yellow"
@@ -91,21 +151,37 @@ export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerPr
                 variant="subtle"
                 color="red"
                 leftSection={<IconTrash size={14} />}
-                onClick={() => setConfirmingDelete(true)}
+                onClick={handleOpenDelete}
               >
                 Delete…
               </Button>
             </Group>
+            {/* The browser does not say whether a download was kept */}
+            <div role="status">
+              {unconfirmedIds && (
+                <Group gap="sm">
+                  <Text size="sm">Did the file save?</Text>
+                  <Button size="xs" variant="light" onClick={handleConfirmSaved}>
+                    Yes, I saved it
+                  </Button>
+                  <Button size="xs" variant="subtle" onClick={() => setUnconfirmedIds(null)}>
+                    Not yet
+                  </Button>
+                </Group>
+              )}
+            </div>
           </Stack>
         </Alert>
       )}
 
       <Modal
-        opened={confirmingDelete}
+        opened={deleteIds !== null}
         onClose={() => {
-          if (!isDeleting) setConfirmingDelete(false);
+          if (!isDeleting) setDeleteIds(null);
         }}
         title="Delete unreadable records?"
+        // After a delete, focus goes to the main content instead
+        returnFocus={!justDeleted}
         centered
       >
         <Stack gap="md">
@@ -116,14 +192,14 @@ export function SetAsideBanner({ total, onDownload, onDelete }: SetAsideBannerPr
           <Group justify="flex-end" gap="sm">
             <Button
               variant="default"
-              onClick={() => setConfirmingDelete(false)}
+              onClick={() => setDeleteIds(null)}
               disabled={isDeleting}
               data-autofocus
             >
               Cancel
             </Button>
             <Button color="red" onClick={handleDelete} loading={isDeleting}>
-              Delete {recordCount(total)}
+              Delete {recordCount(deleteIds?.length ?? 0)}
             </Button>
           </Group>
         </Stack>

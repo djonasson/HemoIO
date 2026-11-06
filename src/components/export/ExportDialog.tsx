@@ -4,7 +4,7 @@
  * Modal dialog for exporting lab data to various formats.
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useId, useRef } from 'react';
 import {
   Modal,
   Stack,
@@ -111,6 +111,7 @@ export function ExportDialog({
   const [confirmingLeftOut, setConfirmingLeftOut] = useState(false);
   const cancelLeftOutRef = useRef<HTMLButtonElement>(null);
   const exportButtonRef = useRef<HTMLButtonElement>(null);
+  const leftOutId = useId();
   // Focus follows the step, as the button that opened it is gone
   const stepShown = useRef(false);
   useEffect(() => {
@@ -238,14 +239,24 @@ export function ExportDialog({
     >
       {confirmingLeftOut ? (
         <Stack gap="md">
-          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-            {setAsideLeftOutLine(setAsideCount)}
+          {/* Announced as it appears, and read again with the button focused */}
+          <Alert color="yellow" role="alert" icon={<IconAlertCircle size={16} />}>
+            <span id={leftOutId}>{setAsideLeftOutLine(setAsideCount)}</span>
           </Alert>
           <Group justify="flex-end" gap="sm">
-            <Button ref={cancelLeftOutRef} variant="default" onClick={() => setConfirmingLeftOut(false)}>
+            <Button
+              ref={cancelLeftOutRef}
+              variant="default"
+              onClick={() => setConfirmingLeftOut(false)}
+              aria-describedby={leftOutId}
+            >
               Cancel
             </Button>
-            <Button leftSection={<IconDownload size={16} />} onClick={() => void runExport()}>
+            <Button
+              leftSection={<IconDownload size={16} />}
+              onClick={() => void runExport()}
+              aria-describedby={leftOutId}
+            >
               Export anyway
             </Button>
           </Group>

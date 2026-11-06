@@ -6,21 +6,30 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { SetAsideBanner } from './SetAsideBanner';
+import { SetAsideBanner, type SetAsideBannerProps } from './SetAsideBanner';
+import type { SealedDownload } from '@hooks/useSetAsideRecords';
 
 vi.mock('@mantine/notifications', () => ({
   notifications: { show: vi.fn(), hide: vi.fn() },
 }));
 
-function renderBanner(total: number) {
+function renderBanner(total: number, overrides: Partial<SetAsideBannerProps> = {}) {
   const props = {
     total,
-    onDownload: vi.fn().mockResolvedValue(undefined),
-    onDelete: vi.fn().mockResolvedValue(undefined),
+    onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'saved' }),
+    onConfirmSaved: vi.fn<(ids: number[]) => Promise<void>>().mockResolvedValue(undefined),
+    onSnapshot: vi
+      .fn<() => Promise<number[]>>()
+      .mockResolvedValue(Array.from({ length: total }, (_, i) => i + 1)),
+    onDelete: vi.fn<(ids: number[]) => Promise<void>>().mockResolvedValue(undefined),
+    ...overrides,
   };
   render(
     <MantineProvider env="test">
-      <SetAsideBanner {...props} />
+      <main>
+        <h2>Timeline</h2>
+        <SetAsideBanner {...props} />
+      </main>
     </MantineProvider>
   );
   return props;
@@ -46,6 +55,45 @@ describe('SetAsideBanner', () => {
 
     await userEvent.click(within(banner).getByRole('button', { name: 'Download sealed file' }));
     expect(onDownload).toHaveBeenCalledTimes(1);
+    // Written through the save picker: nothing to ask
+    expect(screen.queryByText('Did the file save?')).not.toBeInTheDocument();
+  });
+
+  it('after a plain download, marks the rows saved only when I say the file saved', async () => {
+    const { onConfirmSaved } = renderBanner(2, {
+      onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'unconfirmed', ids: [4, 5] }),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download sealed file' }));
+
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('Did the file save?')).toBeInTheDocument();
+    expect(onConfirmSaved).not.toHaveBeenCalled();
+    await userEvent.click(within(status).getByRole('button', { name: 'Yes, I saved it' }));
+    expect(onConfirmSaved).toHaveBeenCalledWith([4, 5]);
+    await waitFor(() => expect(screen.queryByText('Did the file save?')).not.toBeInTheDocument());
+  });
+
+  it('"Not yet" leaves the rows unsaved', async () => {
+    const { onConfirmSaved } = renderBanner(2, {
+      onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'unconfirmed', ids: [4, 5] }),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download sealed file' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Not yet' }));
+
+    expect(screen.queryByText('Did the file save?')).not.toBeInTheDocument();
+    expect(onConfirmSaved).not.toHaveBeenCalled();
+  });
+
+  it('a cancelled save picker asks nothing', async () => {
+    renderBanner(2, {
+      onDownload: vi.fn<() => Promise<SealedDownload>>().mockResolvedValue({ outcome: 'cancelled' }),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download sealed file' }));
+
+    expect(screen.queryByText('Did the file save?')).not.toBeInTheDocument();
   });
 
   it('delete asks first, focusing Cancel', async () => {
@@ -58,8 +106,23 @@ describe('SetAsideBanner', () => {
     expect(onDelete).not.toHaveBeenCalled();
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete 1 record' }));
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledWith([1]);
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // The button that opened it may be gone: focus goes to the main content
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+  });
+
+  it('deletes only the records the confirmation counted', async () => {
+    // Three are set aside now, but the confirmation opened on two
+    const { onDelete } = renderBanner(3, {
+      onSnapshot: vi.fn<() => Promise<number[]>>().mockResolvedValue([7, 8]),
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete unreadable records?' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete 2 records' }));
+
+    expect(onDelete).toHaveBeenCalledWith([7, 8]);
   });
 
   it('cancelling the delete keeps the records', async () => {

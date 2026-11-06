@@ -91,7 +91,7 @@ export function RestoreConfirmation({
       ))}
 
       <Group justify="flex-end" gap="sm">
-        <Button variant="subtle" onClick={onCancel}>
+        <Button variant="subtle" onClick={onCancel} data-autofocus>
           Cancel
         </Button>
         <Button color="red" onClick={onConfirm} loading={isRestoring}>

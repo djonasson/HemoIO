@@ -285,11 +285,36 @@ describe('EncryptedDb: the set-aside rows', () => {
     await addResultWithValues(db, 'This key');
     await db.settleUnreadable();
 
-    expect(await db.deleteSetAside()).toBe(3);
+    expect(await db.deleteSetAside(await db.setAsideIds())).toBe(3);
 
     expect(await db.countSetAside()).toEqual({ total: 0, unsaved: 0 });
     expect(await db.getAllTestValues()).toHaveLength(2);
     expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['This key']);
+  });
+
+  it('deleteSetAside keeps a row set aside after the IDs were taken', async () => {
+    const { db, other } = await twoKeys();
+    await addResultWithValues(other, 'First');
+    await db.settleUnreadable();
+    const confirmed = await db.setAsideIds();
+    expect(confirmed).toHaveLength(3);
+
+    // Set aside while the confirmation is open
+    await other.savePreferences(preferences('dark'));
+    await db.updatePreferences(() => ({ theme: 'light' }));
+    expect((await db.countSetAside()).total).toBe(4);
+
+    expect(await db.deleteSetAside(confirmed)).toBe(3);
+    expect((await db.exportSetAside()).map((entry) => entry.table)).toEqual(['userPreferences']);
+  });
+
+  it('deleteSetAside with no IDs deletes nothing', async () => {
+    const { db, other } = await twoKeys();
+    await addResultWithValues(other, 'First');
+    await db.settleUnreadable();
+
+    expect(await db.deleteSetAside([])).toBe(0);
+    expect((await db.countSetAside()).total).toBe(3);
   });
 
   it('markSetAsideSaved makes unsaved 0', async () => {
@@ -319,7 +344,7 @@ describe('EncryptedDb: the set-aside rows', () => {
     await vi.waitFor(() => expect(changes).toHaveLength(2));
     await db.markSetAsideSaved((await db.exportSetAside()).map((r) => r.id!));
     await vi.waitFor(() => expect(changes).toHaveLength(3));
-    await db.deleteSetAside();
+    await db.deleteSetAside(await db.setAsideIds());
     await vi.waitFor(() => expect(changes).toHaveLength(4));
     stop();
 

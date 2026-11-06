@@ -24,7 +24,13 @@ export {
   type ExportDataSources,
 } from './jsonExport';
 
-export { buildSetAsideFile, setAsideFileName, SET_ASIDE_FILE_FORMAT } from './setAsideExport';
+export {
+  buildSetAsideFile,
+  saveSealedFile,
+  setAsideFileName,
+  SET_ASIDE_FILE_FORMAT,
+  type SealedFileSave,
+} from './setAsideExport';
 
 export {
   exportToEncryptedJson,

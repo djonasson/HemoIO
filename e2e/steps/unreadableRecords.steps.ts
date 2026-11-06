@@ -154,3 +154,94 @@ export async function openDeleteConfirmation(page: Page): Promise<Locator> {
   await expect(dialog).toBeVisible();
   return dialog;
 }
+
+/**
+ * Given my browser has no save picker (as Firefox and Safari): the sealed
+ * file is a plain download. Call before the page loads.
+ */
+export async function withoutSavePicker(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true });
+  });
+}
+
+/**
+ * Given my browser has a save picker, in which I save the file or cancel:
+ * the file written is kept in the page. Call before the page loads.
+ */
+export async function withSavePicker(page: Page, choice: 'save' | 'cancel'): Promise<void> {
+  await page.addInitScript((cancel) => {
+    const target = window as unknown as { sealedFileWritten?: string };
+    Object.defineProperty(window, 'showSaveFilePicker', {
+      configurable: true,
+      value: async () => {
+        if (cancel) throw new DOMException('The user aborted a request.', 'AbortError');
+        let content = '';
+        return {
+          createWritable: async () => ({
+            write: async (data: string) => {
+              content += data;
+            },
+            close: async () => {
+              target.sealedFileWritten = content;
+            },
+          }),
+        };
+      },
+    });
+  }, choice === 'cancel');
+}
+
+/** The sealed file the save picker wrote, if any */
+export async function sealedFileWritten(page: Page): Promise<string | undefined> {
+  return page.evaluate(() => (window as unknown as { sealedFileWritten?: string }).sealedFileWritten);
+}
+
+/** Whether each set-aside row is marked as saved in a downloaded file */
+export async function setAsideSavedFlags(page: Page): Promise<number[]> {
+  return page.evaluate(
+    () =>
+      new Promise<number[]>((resolve, reject) => {
+        const open = indexedDB.open('HemoIO');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          const request = database.transaction('setAside', 'readonly').objectStore('setAside').getAll();
+          request.onsuccess = () => {
+            database.close();
+            resolve((request.result as Array<{ savedToFile: number }>).map((row) => row.savedToFile));
+          };
+          request.onerror = () => {
+            database.close();
+            reject(request.error);
+          };
+        };
+      })
+  );
+}
+
+/**
+ * A record set aside by another tab while this one shows the banner: written
+ * straight into the set-aside store, so this tab does not count it yet
+ */
+export async function writeSetAsideRow(page: Page): Promise<void> {
+  await page.evaluate(
+    (id) =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('HemoIO');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          const transaction = database.transaction('setAside', 'readwrite');
+          const encrypted = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(64))));
+          transaction.objectStore('setAside').add({ table: 'labResults', row: { id, encrypted }, savedToFile: 0 });
+          transaction.oncomplete = () => {
+            database.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+    FIRST_UNREADABLE_ID + 500
+  );
+}

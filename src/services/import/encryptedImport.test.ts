@@ -13,6 +13,7 @@ import {
 } from './encryptedImport';
 import { exportToEncryptedJson } from '../export/encryptedExport';
 import { exportToJson } from '../export/jsonExport';
+import { buildSetAsideFile } from '../export/setAsideExport';
 import type { ExportDataSources } from '../export/jsonExport';
 import { UNKNOWN_KEY_BACKUP_MESSAGE } from './jsonImport';
 import type { Settings } from '@/types';
@@ -78,6 +79,19 @@ describe('encryptedImport', () => {
       expect(result.success).toBe(true);
       expect(result.encryptedBackup).toBeDefined();
       expect(result.encryptedBackup?.type).toBe(ENCRYPTED_BACKUP_TYPE_ID);
+    });
+
+    it('refuses the sealed file of unreadable records, saying it is not a backup', () => {
+      const sealed = buildSetAsideFile(
+        [{ id: 1, table: 'labResults', row: { id: 1000, encrypted: 'c2VhbGVk' }, savedToFile: 0 }],
+        new Date()
+      );
+
+      expect(detectBackupType(sealed)).toEqual({
+        type: 'standard',
+        success: false,
+        error: 'This file holds records HemoIO could not read. It is not a backup and cannot be restored.',
+      });
     });
 
     it('should detect standard backup', () => {

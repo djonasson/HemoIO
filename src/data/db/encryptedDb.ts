@@ -998,17 +998,26 @@ export class EncryptedDb {
     notifySetAsideChanged();
   }
 
+  /** The IDs of the set-aside rows now: what a delete confirmation shows */
+  async setAsideIds(): Promise<number[]> {
+    const ids = await this.db.setAside.toCollection().primaryKeys();
+    return ids.filter((id): id is number => id !== undefined);
+  }
+
   /**
-   * Delete every set-aside row, at the user's explicit request
+   * Delete the set-aside rows the user confirmed, by ID: a row set aside
+   * after the confirmation opened is kept
    *
    * @returns How many were deleted
    */
-  async deleteSetAside(): Promise<number> {
+  async deleteSetAside(ids: number[]): Promise<number> {
+    // An empty bulk call would commit the write transaction early
+    if (ids.length === 0) return 0;
     const table = this.db.setAside;
     const deleted = await this.write(table, async () => {
-      const count = await table.count();
-      await table.clear();
-      return count;
+      const present = (await table.bulkGet(ids)).filter((entry) => entry !== undefined).length;
+      await table.bulkDelete(ids);
+      return present;
     });
     notifySetAsideChanged();
     return deleted;

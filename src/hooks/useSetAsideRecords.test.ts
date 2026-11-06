@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { notifications } from '@mantine/notifications';
 import { notifySetAsideChanged } from '@data/db/setAsideEvents';
-import { downloadJson } from '@services/export';
+import { saveSealedFile } from '@services/export';
 import { useSetAsideRecords } from './useSetAsideRecords';
 import type { SetAsideRow } from '@data/db';
 
@@ -16,7 +16,7 @@ vi.mock('@mantine/notifications', () => ({
 
 vi.mock('@services/export', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@services/export')>()),
-  downloadJson: vi.fn(),
+  saveSealedFile: vi.fn(),
 }));
 
 const session = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ const mockDb = {
   exportSetAside: vi.fn(),
   markSetAsideSaved: vi.fn(),
   deleteSetAside: vi.fn(),
+  setAsideIds: vi.fn(),
 };
 
 vi.mock('@contexts/useAuth', () => ({
@@ -48,6 +49,7 @@ describe('useSetAsideRecords', () => {
     mockDb.countSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
     mockDb.markSetAsideSaved.mockResolvedValue(undefined);
     mockDb.deleteSetAside.mockResolvedValue(0);
+    vi.mocked(saveSealedFile).mockResolvedValue('written');
   });
 
   it('refreshes when set-aside rows change', async () => {
@@ -61,21 +63,68 @@ describe('useSetAsideRecords', () => {
     await waitFor(() => expect(result.current.summary).toEqual({ total: 3, unsaved: 0 }));
   });
 
-  it('download marks the rows saved', async () => {
-    const rows: SetAsideRow[] = [
-      { id: 4, table: 'labResults', row: { id: 1000, encrypted: 'x' }, savedToFile: 0 },
-      { id: 5, table: 'testValues', row: { id: 1000, labResultId: 1000, encrypted: 'y' }, savedToFile: 0 },
-    ];
+  const rows: SetAsideRow[] = [
+    { id: 4, table: 'labResults', row: { id: 1000, encrypted: 'x' }, savedToFile: 0 },
+    { id: 5, table: 'testValues', row: { id: 1000, labResultId: 1000, encrypted: 'y' }, savedToFile: 0 },
+  ];
+
+  it('download marks the rows saved once the save picker wrote the file', async () => {
     mockDb.exportSetAside.mockResolvedValue(rows);
     const { result } = renderHook(() => useSetAsideRecords());
 
-    await act(() => result.current.download());
+    expect(await act(() => result.current.download())).toEqual({ outcome: 'saved' });
 
-    expect(downloadJson).toHaveBeenCalledTimes(1);
-    const [content, fileName] = vi.mocked(downloadJson).mock.calls[0];
+    const [content, fileName] = vi.mocked(saveSealedFile).mock.calls[0];
     expect(JSON.parse(content).records).toHaveLength(2);
     expect(fileName).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}\.json$/);
     expect(mockDb.markSetAsideSaved).toHaveBeenCalledWith([4, 5]);
+  });
+
+  it('a cancelled save picker leaves the rows unsaved', async () => {
+    mockDb.exportSetAside.mockResolvedValue(rows);
+    vi.mocked(saveSealedFile).mockResolvedValue('cancelled');
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    expect(await act(() => result.current.download())).toEqual({ outcome: 'cancelled' });
+    expect(mockDb.markSetAsideSaved).not.toHaveBeenCalled();
+  });
+
+  it('a plain download marks the rows saved only once I confirm', async () => {
+    mockDb.exportSetAside.mockResolvedValue(rows);
+    vi.mocked(saveSealedFile).mockResolvedValue('downloaded');
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    expect(await act(() => result.current.download())).toEqual({ outcome: 'unconfirmed', ids: [4, 5] });
+    expect(mockDb.markSetAsideSaved).not.toHaveBeenCalled();
+
+    await act(() => result.current.confirmSaved([4, 5]));
+    expect(mockDb.markSetAsideSaved).toHaveBeenCalledWith([4, 5]);
+  });
+
+  it('deletes only the rows of the snapshot', async () => {
+    mockDb.setAsideIds.mockResolvedValue([4, 5]);
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    const ids = await act(() => result.current.snapshot());
+    await act(() => result.current.remove(ids));
+
+    expect(mockDb.deleteSetAside).toHaveBeenCalledWith([4, 5]);
+  });
+
+  it('counts once for every hook of the session', async () => {
+    renderHook(() => {
+      useSetAsideRecords();
+      useSetAsideRecords();
+      return useSetAsideRecords();
+    });
+    await waitFor(() => expect(mockDb.countSetAside).toHaveBeenCalledTimes(1));
+
+    act(() => notifySetAsideChanged());
+
+    await waitFor(() => expect(mockDb.countSetAside).toHaveBeenCalledTimes(2));
+    // Give any other count a chance to start
+    await act(() => Promise.resolve());
+    expect(mockDb.countSetAside).toHaveBeenCalledTimes(2);
   });
 
   it('summary is empty while locked', () => {
@@ -104,8 +153,11 @@ describe('useSetAsideRecords', () => {
         title: 'Earlier preferences kept aside',
         message:
           "Your saved preferences couldn't be opened, so HemoIO kept them aside and saved your change.",
+        // Told once: it stays until dismissed
+        autoClose: false,
       })
     );
+    // One count to start, and one for each change
     await waitFor(() => expect(mockDb.countSetAside).toHaveBeenCalledTimes(4));
   });
 });

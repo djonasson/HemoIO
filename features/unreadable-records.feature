@@ -59,19 +59,24 @@ Feature: Unreadable Records
     When I download them as a sealed file
     Then the file should hold the records exactly as they were stored, still sealed
     And its name should hold only the date
+    And they should count as saved only once the file is written, or once I say it saved
+    # A browser with a save picker says when the file is written; after a plain
+    # download HemoIO asks "Did the file save?"
 
   Scenario: The downloaded file cannot be restored as a backup
     Given I downloaded the unreadable records as a sealed file
     When I try to restore that file as a backup
-    Then I should be told it is not a backup
+    Then I should be told it holds records HemoIO could not read and is not a backup
     And my data should be unchanged
 
   Scenario: I can delete the unreadable records after confirming
     Given the records HemoIO cannot open are kept aside
     When I choose to delete them
     Then I should be asked to confirm, with Cancel as the default choice
+    And the confirmation should count the records kept aside when it opened
     When I confirm the delete
-    Then the records kept aside should be gone
+    Then the records it counted should be gone
+    And a record set aside after it opened should still be kept aside
     And my other records should be unchanged
 
   Scenario: A backup export tells me what it leaves out and asks first

@@ -414,6 +414,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           <SetAsideBanner
             total={setAsideRecords.summary.total}
             onDownload={setAsideRecords.download}
+            onConfirmSaved={setAsideRecords.confirmSaved}
+            onSnapshot={setAsideRecords.snapshot}
             onDelete={setAsideRecords.remove}
           />
           {children ?? (

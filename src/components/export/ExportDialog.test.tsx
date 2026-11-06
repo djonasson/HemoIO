@@ -330,12 +330,17 @@ describe('ExportDialog', () => {
       await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
       await screen.findByText(LEFT_OUT);
 
-      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      // Focus on the safe choice, which says why it is asked
+      const cancel = screen.getByRole('button', { name: 'Cancel' });
+      await waitFor(() => expect(cancel).toHaveFocus());
+      expect(cancel).toHaveAccessibleDescription(LEFT_OUT);
+      expect(screen.getByRole('alert')).toHaveTextContent(LEFT_OUT);
+      await userEvent.click(cancel);
 
       expect(downloadJson).not.toHaveBeenCalled();
-      // Back to the export's options
+      // Back to the export's options, focus on Export
       expect(screen.queryByText(LEFT_OUT)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^Export$/ })).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Export$/ })).toHaveFocus());
     });
 
     it('a CSV says what it leaves out, with no extra step', async () => {

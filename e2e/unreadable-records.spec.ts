@@ -19,7 +19,12 @@ import {
   downloadSealedFile,
   openDeleteConfirmation,
   setAsideBanner,
+  sealedFileWritten,
   setAsideRowCount,
+  setAsideSavedFlags,
+  withSavePicker,
+  withoutSavePicker,
+  writeSetAsideRow,
   setAsideTables,
   storeUndecryptableApiKey,
   writeUnreadableRecords,
@@ -148,6 +153,8 @@ test.describe('Unreadable records: the banner', () => {
   const TITLE = "3 stored records can't be opened";
 
   test.beforeEach(async ({ page }) => {
+    // A plain download, as in Firefox and Safari; the save picker is tested below
+    await withoutSavePicker(page);
     await page.goto('/');
     await setupOrUnlock(page);
     await seedLabData(page);
@@ -189,8 +196,14 @@ test.describe('Unreadable records: the banner', () => {
     for (const name of new Set(SEED_TEST_VALUES.map((value) => value.rawText))) {
       expect(content).not.toContain(name);
     }
-    // Saved: the banner stays, as the records are still kept aside
-    await expect(setAsideBanner(page)).toBeVisible();
+    // Still kept aside, and not counted as saved until I say the file saved
+    const banner = setAsideBanner(page);
+    await expect(banner).toBeVisible();
+    await expect(banner.getByRole('status')).toContainText('Did the file save?');
+    expect(await setAsideSavedFlags(page)).toEqual([0, 0, 0]);
+    await banner.getByRole('button', { name: 'Yes, I saved it' }).click();
+    await expect.poll(() => setAsideSavedFlags(page)).toEqual([1, 1, 1]);
+    await expect(banner.getByText('Did the file save?')).toHaveCount(0);
   });
 
   test('a sealed file cannot be restored as a backup', async ({ page }) => {
@@ -205,7 +218,9 @@ test.describe('Unreadable records: the banner', () => {
       buffer: fs.readFileSync(filePath),
     });
 
-    await expect(page.getByText('Unrecognized backup file format')).toBeVisible();
+    await expect(
+      page.getByText('This file holds records HemoIO could not read. It is not a backup and cannot be restored.')
+    ).toBeVisible();
     await expect(page.getByRole('dialog', { name: 'Restore from Backup' })).toHaveCount(0);
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(2);
@@ -226,8 +241,22 @@ test.describe('Unreadable records: the banner', () => {
 
     await expect(setAsideBanner(page)).toHaveCount(0);
     expect(await setAsideRowCount(page)).toBe(0);
+    // The banner is gone: focus goes to the main content, not to the page itself
+    await expect(page.getByRole('main')).toBeFocused();
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(2);
+  });
+
+  test('keeps a record set aside after the delete confirmation opened', async ({ page }) => {
+    // Scenario: I can delete the unreadable records after confirming
+    const dialog = await openDeleteConfirmation(page);
+    // Another tab sets one more record aside meanwhile
+    await writeSetAsideRow(page);
+
+    await dialog.getByRole('button', { name: 'Delete 3 records' }).click();
+
+    await expect(setAsideBanner(page).getByText("1 stored record can't be opened")).toBeVisible();
+    expect(await setAsideRowCount(page)).toBe(1);
   });
 
   test('a backup export says what it leaves out, and saves nothing unless I confirm', async ({ page }) => {
@@ -320,5 +349,41 @@ test.describe('Unreadable records: preferences', () => {
 
     await expect.poll(() => setAsideTables(page)).toEqual(['userPreferences', 'userPreferences']);
     await expect(notice).toHaveCount(0);
+  });
+});
+
+test.describe('Unreadable records: the save picker', () => {
+  test('a file the save picker wrote counts as saved', async ({ page }) => {
+    // Scenario: I can download the unreadable records as a sealed file
+    await withSavePicker(page, 'save');
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
+
+    await setAsideBanner(page).getByRole('button', { name: 'Download sealed file' }).click();
+
+    await expect.poll(() => setAsideSavedFlags(page)).toEqual([1, 1, 1]);
+    const file = JSON.parse((await sealedFileWritten(page))!);
+    expect(file.format).toBe('hemoio-unreadable-records');
+    expect(file.records).toHaveLength(3);
+    await expect(setAsideBanner(page).getByText('Did the file save?')).toHaveCount(0);
+  });
+
+  test('a cancelled save picker leaves the records unsaved', async ({ page }) => {
+    // Scenario: I can download the unreadable records as a sealed file
+    await withSavePicker(page, 'cancel');
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
+    const button = setAsideBanner(page).getByRole('button', { name: 'Download sealed file' });
+
+    await button.click();
+
+    // Done once the button stops loading
+    await expect(button).toBeEnabled();
+    await expect(button).not.toHaveAttribute('data-loading');
+    expect(await setAsideSavedFlags(page)).toEqual([0, 0, 0]);
+    expect(await sealedFileWritten(page)).toBeUndefined();
+    await expect(setAsideBanner(page).getByText('Did the file save?')).toHaveCount(0);
   });
 });

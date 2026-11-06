@@ -366,6 +366,8 @@ describe('BackupRestore', () => {
       expect(
         within(dialog).getByText("2 records that can't be opened are kept aside and are not affected.")
       ).toBeInTheDocument();
+      // Focus on the safe choice
+      await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus());
     });
   });
 });

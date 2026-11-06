@@ -19,6 +19,7 @@ import {
 } from '@/types/backup';
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
 import { isValidBackupData } from '../export/jsonExport';
+import { SET_ASIDE_FILE_FORMAT } from '../export/setAsideExport';
 import { assertKnownTestKeys, assertSupportedBackupVersion } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
@@ -31,6 +32,9 @@ export interface ParsedEncryptedBackupData extends ParsedBackupData {
   /** Whether this was an encrypted backup */
   wasEncrypted: boolean;
 }
+
+export const SET_ASIDE_FILE_REFUSED =
+  'This file holds records HemoIO could not read. It is not a backup and cannot be restored.';
 
 /**
  * Detects the type of backup file from its content
@@ -57,6 +61,11 @@ export function detectBackupType(content: string): BackupTypeDetectionResult {
         type: 'standard',
         success: true,
       };
+    }
+
+    // The sealed file of unreadable records is easily taken for a backup
+    if (typeof data === 'object' && data !== null && data.format === SET_ASIDE_FILE_FORMAT) {
+      return { type: 'standard', success: false, error: SET_ASIDE_FILE_REFUSED };
     }
 
     return {

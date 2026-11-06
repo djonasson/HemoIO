@@ -2,9 +2,15 @@
  * Tests for the sealed file of records HemoIO cannot open
  */
 
-import { describe, it, expect } from 'vitest';
-import { buildSetAsideFile, setAsideFileName, SET_ASIDE_FILE_FORMAT } from './setAsideExport';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { downloadJson } from './jsonExport';
+import { buildSetAsideFile, saveSealedFile, setAsideFileName, SET_ASIDE_FILE_FORMAT } from './setAsideExport';
 import type { SetAsideRow } from '@data/db';
+
+vi.mock('./jsonExport', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./jsonExport')>()),
+  downloadJson: vi.fn(),
+}));
 
 describe('setAsideExport', () => {
   it('the file holds the rows as stored and no plaintext', () => {
@@ -37,5 +43,46 @@ describe('setAsideExport', () => {
     const savedAt = new Date(2026, 0, 5, 23, 59);
 
     expect(setAsideFileName(savedAt)).toBe('hemoio-unreadable-records-2026-01-05.json');
+  });
+
+  describe('saveSealedFile', () => {
+    afterEach(() => {
+      vi.clearAllMocks();
+      // jsdom has no save picker; the tests that need one add it
+      delete (window as Partial<Window>).showSaveFilePicker;
+    });
+
+    it('writes the file through the save picker where there is one', async () => {
+      const written: string[] = [];
+      const writable = {
+        write: vi.fn(async (data: string) => void written.push(data)),
+        close: vi.fn(async () => undefined),
+      };
+      const picker = vi.fn(async () => ({ createWritable: async () => writable }));
+      window.showSaveFilePicker = picker as unknown as Window['showSaveFilePicker'];
+
+      expect(await saveSealedFile('{"sealed":true}', 'hemoio-unreadable-records-2026-11-06.json')).toBe('written');
+
+      expect(picker).toHaveBeenCalledWith(
+        expect.objectContaining({ suggestedName: 'hemoio-unreadable-records-2026-11-06.json' })
+      );
+      expect(written).toEqual(['{"sealed":true}']);
+      expect(writable.close).toHaveBeenCalled();
+      expect(downloadJson).not.toHaveBeenCalled();
+    });
+
+    it('says when the save picker was cancelled', async () => {
+      window.showSaveFilePicker = vi.fn(async () => {
+        throw new DOMException('The user aborted a request.', 'AbortError');
+      }) as unknown as Window['showSaveFilePicker'];
+
+      expect(await saveSealedFile('{}', 'f.json')).toBe('cancelled');
+      expect(downloadJson).not.toHaveBeenCalled();
+    });
+
+    it('downloads the file where there is no save picker', async () => {
+      expect(await saveSealedFile('{}', 'f.json')).toBe('downloaded');
+      expect(downloadJson).toHaveBeenCalledWith('{}', 'f.json');
+    });
   });
 });

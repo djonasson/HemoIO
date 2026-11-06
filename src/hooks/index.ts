@@ -18,5 +18,5 @@ export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';
 export { useSaveImport } from './useSaveImport';
 export { useFolderRestore, type UseFolderRestoreResult, type FolderRestorePrompt, type FolderRestoreDecision } from './useFolderRestore';
-export { useSetAsideRecords, type UseSetAsideRecordsResult } from './useSetAsideRecords';
+export { useSetAsideRecords, type UseSetAsideRecordsResult, type SealedDownload } from './useSetAsideRecords';
 export { useNavigation, type UseNavigationResult, type AppView, type ViewFocus, type Destination } from './useNavigation';
