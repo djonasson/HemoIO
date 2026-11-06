@@ -106,6 +106,30 @@ describe('EncryptedDb.settleUnreadable', () => {
     expect(await other.getTestValuesByLabResult(asideId)).toHaveLength(0);
   });
 
+  it('returns only the first of two set-aside rows that share an original ID', async () => {
+    const { db, other, database } = await twoKeys();
+    const sharedId = await addResultWithValues(other, 'First');
+    await db.settleUnreadable();
+    // The other key stores a second result under the same ID, without values
+    const secondId = await other.addLabResult(result('Second'));
+    const second = (await database.labResults.get(secondId))!;
+    await database.labResults.delete(secondId);
+    await database.labResults.put({ ...second, id: sharedId });
+    await db.settleUnreadable();
+
+    expect(await other.settleUnreadable()).toEqual({ returned: 3, setAside: 0 });
+    expect((await other.getAllLabResults()).map((r) => [r.labName, r.id])).toEqual([['First', sharedId]]);
+    expect(await other.getTestValuesByLabResult(sharedId)).toHaveLength(2);
+    expect(await other.countSetAside()).toEqual({ total: 1, unsaved: 1 });
+
+    // At the next unlock its ID is taken, so it returns under a new one
+    expect(await other.settleUnreadable()).toEqual({ returned: 1, setAside: 0 });
+    const returned = (await other.getAllLabResults()).find((r) => r.labName === 'Second')!;
+    expect(returned.id).not.toBe(sharedId);
+    expect(await other.getTestValuesByLabResult(returned.id!)).toHaveLength(0);
+    expect(await other.getTestValuesByLabResult(sharedId)).toHaveLength(2);
+  });
+
   it('returns preferences sealed under the recovered key at the same unlock', async () => {
     const { db, other, database } = await twoKeys();
     await other.savePreferences(preferences('dark'));
@@ -231,6 +255,26 @@ describe('EncryptedDb.hasLabData with rows this key cannot open', () => {
 
     expect(await db.hasLabData()).toBe(false);
     expect(await other.hasLabData()).toBe(true);
+  });
+
+  it('reads no further than the first row that opens', async () => {
+    const { db, database } = await openTestDb();
+    for (let i = 0; i < 10; i++) await db.addLabResult(result(`Lab ${i}`));
+    const decrypt = vi.spyOn(crypto.subtle, 'decrypt');
+    const where = vi.spyOn(database.labResults, 'where');
+
+    expect(await db.hasLabData()).toBe(true);
+
+    expect(decrypt).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
+  });
+
+  it('finds a readable row behind many that do not open', async () => {
+    const { db, other } = await twoKeys();
+    for (let i = 0; i < 20; i++) await other.addLabResult(result(`Other ${i}`));
+    await db.addLabResult(result('Readable'));
+
+    expect(await db.hasLabData()).toBe(true);
   });
 });
 

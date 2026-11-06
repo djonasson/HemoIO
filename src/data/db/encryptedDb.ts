@@ -180,6 +180,9 @@ function newestFirst<T extends { id?: number }>(date: (record: T) => Date) {
     date(b).getTime() - date(a).getTime() || (b.id ?? 0) - (a.id ?? 0);
 }
 
+/** How many rows hasLabData decrypts at a time after the first */
+const HAS_DATA_BATCH = 16;
+
 /**
  * How long a write may take, from the call to its commit, before it is
  * cancelled. Generous: a write waits for the database to open, and a large
@@ -625,14 +628,24 @@ export class EncryptedDb {
 
   /**
    * Whether any lab result, test value or note this key can open is stored.
-   * Rows are tried one by one until one opens, so usually only the first is
-   * decrypted; rows that do not open are never counted, even when the sweep
-   * at unlock failed or another tab wrote them since.
+   * Rows that do not open are never counted, even when the sweep at unlock
+   * failed or another tab wrote them since. Rows are read in ID order and
+   * the reading stops at the first that opens: the first row alone, then
+   * small batches decrypted in parallel, so usually one row is read and
+   * decrypted and no table is loaded whole.
    */
   async hasLabData(): Promise<boolean> {
     for (const name of LAB_TABLES) {
-      for (const row of await this.table(name).toArray()) {
-        if (await opens(row, name, this.key)) return true;
+      const table = this.table(name);
+      let after = -Infinity;
+      let size = 1;
+      for (;;) {
+        const rows = await table.where(':id').above(after).limit(size).toArray();
+        if (rows.length === 0) break;
+        const opened = await Promise.all(rows.map((row) => opens(row, name, this.key)));
+        if (opened.includes(true)) return true;
+        after = rows[rows.length - 1].id!;
+        size = HAS_DATA_BATCH;
       }
     }
     return false;
@@ -910,7 +923,18 @@ export class EncryptedDb {
       let back: SetAsideRow[] = [];
       if (returnable.length > 0) {
         const current = await this.db.setAside.bulkGet(returnable.map((entry) => entry.id!));
-        back = current.filter((entry): entry is SetAsideRow => entry !== undefined);
+        // Two set-aside rows of a table can share an original ID (another tab
+        // restored a backup that reused it): links to that ID could not tell
+        // them apart, so only the first returns and the others wait for the
+        // next unlock, where its ID is taken and they are re-IDed
+        const seen = new Set<string>();
+        back = current.filter((entry): entry is SetAsideRow => {
+          if (entry === undefined) return false;
+          const original = `${entry.table}:${String(entry.row.id)}`;
+          if (seen.has(original)) return false;
+          seen.add(original);
+          return true;
+        });
       }
       const of = (name: SealedTable): SetAsideRow[] => back.filter((entry) => entry.table === name);
       const relink = (ids: Map<unknown, number>, id: unknown): unknown => ids.get(id) ?? id;
