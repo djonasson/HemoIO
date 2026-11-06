@@ -203,6 +203,28 @@ describe('runFolderSync', () => {
     expect(takeReplaces).not.toHaveBeenCalled();
   });
 
+  it('counts the records set aside after the export: one moved aside while it ran is never left out unannounced', async () => {
+    const { db, key } = await openTestDb();
+    await db.addLabResult(result('Here'));
+    let exported = false;
+    const exportAllData = db.exportAllData.bind(db);
+    vi.spyOn(db, 'exportAllData').mockImplementation(async (onSkipped) => {
+      const data = await exportAllData(onSkipped);
+      exported = true;
+      return data;
+    });
+    // Another tab moves a row aside while the export runs
+    vi.spyOn(db, 'countSetAside').mockImplementation(async () =>
+      exported ? { total: 1, unsaved: 1 } : { total: 0, unsaved: 0 }
+    );
+    const store = folder();
+
+    const run = await runFolderSync({ db, key }, store, { lock: null, takeReplaces: () => undefined, isEnabled: () => true });
+
+    expect(run?.outcome).toMatchObject({ status: 'protected', reason: 'set-aside' });
+    expect(store.save).not.toHaveBeenCalled();
+  });
+
   it('keeps the choice to replace a copy while set-aside records keep the folder from being read', async () => {
     const { db, key } = await openTestDb();
     vi.spyOn(db, 'countSetAside').mockResolvedValue({ total: 1, unsaved: 1 });

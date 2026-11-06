@@ -64,14 +64,15 @@ export async function runFolderSync(
   // another key) protect the copy as set-aside ones do: saved without them,
   // it would lose them on the other computers too
   let skipped = 0;
-  // Read together: none depends on another
-  const [data, setAside, lastSeen] = await Promise.all([
+  // The state is read beside the export; the set-aside count after it, so
+  // a row another tab moves aside while the export runs is counted
+  const [data, lastSeen] = await Promise.all([
     session.db.exportAllData((count) => {
       skipped += count;
     }),
-    session.db.countSetAside(),
     loadFolderSyncState(session.key),
   ]);
+  const setAside = await session.db.countSetAside();
   const unsaved = setAside.unsaved + skipped;
   // The hold may begin while this sync is under way: checked here, so a
   // held sync does not decrypt the folder copy, and again at the save
