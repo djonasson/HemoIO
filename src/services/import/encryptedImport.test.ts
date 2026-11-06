@@ -258,6 +258,27 @@ describe('encryptedImport', () => {
       expect(result.exportedAt).toBeInstanceOf(Date);
     });
 
+    it('reads dates as a plain backup does: an undated result stays undated, a bad stamp is repaired', async () => {
+      const password = 'SecurePassword123!';
+      const undated = { ...mockDataSources.labResults[0], date: new Date(NaN) };
+      const plain = JSON.parse(exportToJson({ ...mockDataSources, labResults: [undated] }));
+      // A note whose creation stamp cannot be read
+      plain.userNotes[0].createdAt = 'not a date';
+      const { payload, metadata } = await encryptForBackup(JSON.stringify(plain), password);
+      const encrypted = JSON.stringify({
+        type: ENCRYPTED_BACKUP_TYPE_ID,
+        version: ENCRYPTED_BACKUP_SCHEMA_VERSION,
+        encryption: metadata,
+        payload,
+      });
+
+      const result = await parseEncryptedBackup(encrypted, password);
+
+      // Listed under "No date", never on 1 January 1970
+      expect(Number.isNaN(result.labResults[0].date.getTime())).toBe(true);
+      expect(result.userNotes[0].createdAt).toEqual(new Date('2024-01-15'));
+    });
+
     it('refuses a backup made before tests were identified by LOINC', async () => {
       const password = 'SecurePassword123!';
       const v1Payload = {

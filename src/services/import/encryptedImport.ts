@@ -20,7 +20,7 @@ import {
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
 import { isValidBackupData } from '../export/jsonExport';
 import { SET_ASIDE_FILE_FORMAT } from '../export/setAsideExport';
-import { assertKnownTestKeys, assertSupportedBackupVersion } from './jsonImport';
+import { parseBackupData } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
@@ -163,31 +163,10 @@ export async function parseEncryptedBackup(
     throw new Error('Invalid backup data structure');
   }
 
-  assertSupportedBackupVersion(backupData.schemaVersion);
-  assertKnownTestKeys(backupData);
-
-  // Deserialize dates
+  // Read as a plain backup is: the version and keys checked, and dates
+  // parsed so that an undated result stays undated and a bad stamp is repaired
   return {
-    labResults: backupData.labResults.map((lr) => ({
-      ...lr,
-      date: new Date(lr.date as unknown as string),
-      createdAt: new Date(lr.createdAt as unknown as string),
-      updatedAt: new Date(lr.updatedAt as unknown as string),
-    })),
-    testValues: backupData.testValues.map((tv) => ({
-      ...tv,
-      createdAt: new Date(tv.createdAt as unknown as string),
-      updatedAt: new Date(tv.updatedAt as unknown as string),
-    })),
-    userNotes: backupData.userNotes.map((note) => ({
-      ...note,
-      createdAt: new Date(note.createdAt as unknown as string),
-      updatedAt: new Date(note.updatedAt as unknown as string),
-    })),
-    settings: backupData.settings,
-    userPreferences: backupData.userPreferences,
-    schemaVersion: backupData.schemaVersion,
-    exportedAt: new Date(backupData.exportedAt),
+    ...parseBackupData(backupData),
     // Include full settings with API key
     fullSettings: backupData.fullSettings
       ? {
