@@ -41,36 +41,35 @@ export function buildSetAsideFile(rows: SetAsideRow[], savedAt: Date): string {
   );
 }
 
-/** 'hemoio-unreadable-records-YYYY-MM-DD.json', the day as the user sees it */
+/**
+ * 'hemoio-unreadable-records-YYYY-MM-DD-HHmm.json', the day and time as the
+ * user sees them: a second save the same day suggests a name of its own
+ */
 export function setAsideFileName(savedAt: Date): string {
-  return `${SET_ASIDE_FILE_FORMAT}-${toLocalDayString(savedAt)}.json`;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const time = `${pad(savedAt.getHours())}${pad(savedAt.getMinutes())}`;
+  return `${SET_ASIDE_FILE_FORMAT}-${toLocalDayString(savedAt)}-${time}.json`;
 }
 
 /**
  * How saving the file went: written through the save picker, cancelled in
- * it, handed to the browser as a download, which says nothing of whether
- * the file was kept, or nothing to save once the content was gathered
+ * it, or handed to the browser as a download, which says nothing of whether
+ * the file was kept
  */
-export type SealedFileSave = 'written' | 'cancelled' | 'downloaded' | 'nothing';
+export type SealedFileSave = 'written' | 'cancelled' | 'downloaded';
 
 /**
  * Save the sealed file, through the save picker where the browser has one.
  *
- * The picker opens first and the content is gathered after: gathering can
- * take long enough for the click's user activation to expire, and the picker
- * needs it. Should the picker still refuse for that reason (SecurityError),
- * the file is downloaded instead. A write that fails is aborted, so no empty
- * or partial file is left where the user chose.
- *
- * @param content - The file's content, or null when there is nothing to save
+ * The content is gathered before the picker opens (P43): a picker opened
+ * first would empty the file the user chose before there is anything to
+ * write in it. Gathering can take long enough for the click's user
+ * activation to expire; the picker then refuses (SecurityError), and the
+ * file is downloaded instead. A write that fails is aborted, so no partial
+ * file is left where the user chose.
  */
-export async function saveSealedFile(
-  fileName: string,
-  content: () => Promise<string | null>
-): Promise<SealedFileSave> {
-  const download = async (): Promise<SealedFileSave> => {
-    const text = await content();
-    if (text === null) return 'nothing';
+export async function saveSealedFile(fileName: string, text: string): Promise<SealedFileSave> {
+  const download = (): SealedFileSave => {
     downloadJson(text, fileName);
     return 'downloaded';
   };
@@ -86,8 +85,6 @@ export async function saveSealedFile(
     if (err instanceof DOMException && err.name === 'SecurityError') return download();
     throw err;
   }
-  const text = await content();
-  if (text === null) return 'nothing';
   const writable = await handle.createWritable();
   try {
     await writable.write(text);

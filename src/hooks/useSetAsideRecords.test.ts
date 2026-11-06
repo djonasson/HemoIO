@@ -49,10 +49,7 @@ describe('useSetAsideRecords', () => {
     mockDb.countSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
     mockDb.markSetAsideSaved.mockResolvedValue(undefined);
     mockDb.deleteSetAside.mockResolvedValue(0);
-    // As the save picker does: the content is gathered once a file was chosen
-    vi.mocked(saveSealedFile).mockImplementation(async (_fileName, content) =>
-      (await content()) === null ? 'nothing' : 'written'
-    );
+    vi.mocked(saveSealedFile).mockResolvedValue('written');
   });
 
   it('refreshes when set-aside rows change', async () => {
@@ -78,8 +75,8 @@ describe('useSetAsideRecords', () => {
     expect(await act(() => result.current.download())).toEqual({ outcome: 'saved' });
 
     const [fileName, content] = vi.mocked(saveSealedFile).mock.calls[0];
-    expect(JSON.parse((await content())!).records).toHaveLength(2);
-    expect(fileName).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(JSON.parse(content).records).toHaveLength(2);
+    expect(fileName).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}-\d{4}\.json$/);
     expect(mockDb.markSetAsideSaved).toHaveBeenCalledWith([4, 5]);
   });
 
@@ -91,12 +88,30 @@ describe('useSetAsideRecords', () => {
     expect(await act(() => result.current.download())).toEqual({ outcome: 'unrecorded' });
   });
 
-  it('saves nothing when no rows are set aside by the time the file is chosen', async () => {
+  it('saves nothing, opening no save picker, when no rows are set aside', async () => {
     mockDb.exportSetAside.mockResolvedValue([]);
     const { result } = renderHook(() => useSetAsideRecords());
 
     expect(await act(() => result.current.download())).toEqual({ outcome: 'nothing' });
+    expect(saveSealedFile).not.toHaveBeenCalled();
     expect(mockDb.markSetAsideSaved).not.toHaveBeenCalled();
+  });
+
+  it('gathers the sealed file before the save picker opens, so no chosen file is left empty', async () => {
+    const order: string[] = [];
+    mockDb.exportSetAside.mockImplementation(async () => {
+      order.push('gathered');
+      return rows;
+    });
+    vi.mocked(saveSealedFile).mockImplementation(async () => {
+      order.push('picker');
+      return 'written';
+    });
+    const { result } = renderHook(() => useSetAsideRecords());
+
+    await act(() => result.current.download());
+
+    expect(order).toEqual(['gathered', 'picker']);
   });
 
   it('a cancelled save picker leaves the rows unsaved', async () => {
@@ -110,10 +125,7 @@ describe('useSetAsideRecords', () => {
 
   it('a plain download marks the rows saved only once I confirm', async () => {
     mockDb.exportSetAside.mockResolvedValue(rows);
-    vi.mocked(saveSealedFile).mockImplementation(async (_fileName, content) => {
-      await content();
-      return 'downloaded';
-    });
+    vi.mocked(saveSealedFile).mockResolvedValue('downloaded');
     const { result } = renderHook(() => useSetAsideRecords());
 
     expect(await act(() => result.current.download())).toEqual({ outcome: 'unconfirmed', ids: [4, 5] });

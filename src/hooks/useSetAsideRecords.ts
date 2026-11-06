@@ -139,14 +139,11 @@ export function useSetAsideRecords(): UseSetAsideRecordsResult {
   const download = useCallback(async (): Promise<SealedDownload> => {
     if (!db) return { outcome: 'nothing' };
     const savedAt = new Date();
-    let ids: number[] = [];
-    // The rows are read once the save picker has opened, which needs the click
-    const saved = await saveSealedFile(setAsideFileName(savedAt), async () => {
-      const rows = await db.exportSetAside();
-      ids = rows.map((row) => row.id!);
-      return rows.length > 0 ? buildSetAsideFile(rows, savedAt) : null;
-    });
-    if (saved === 'nothing') return { outcome: 'nothing' };
+    // Gathered before the save picker opens: it empties the file chosen
+    const rows = await db.exportSetAside();
+    if (rows.length === 0) return { outcome: 'nothing' };
+    const ids = rows.map((row) => row.id!);
+    const saved = await saveSealedFile(setAsideFileName(savedAt), buildSetAsideFile(rows, savedAt));
     if (saved === 'cancelled') return { outcome: 'cancelled' };
     if (saved === 'downloaded') return { outcome: 'unconfirmed', ids };
     try {

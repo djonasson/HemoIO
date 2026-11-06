@@ -185,7 +185,7 @@ test.describe('Unreadable records: the banner', () => {
     // Scenario: I can download the unreadable records as a sealed file
     const download = await downloadSealedFile(page);
 
-    expect(download.suggestedFilename()).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(download.suggestedFilename()).toMatch(/^hemoio-unreadable-records-\d{4}-\d{2}-\d{2}-\d{4}\.json$/);
     const content = fs.readFileSync(await download.path(), 'utf-8');
     const file = JSON.parse(content);
     expect(file.format).toBe('hemoio-unreadable-records');

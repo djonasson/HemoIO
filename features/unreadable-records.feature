@@ -58,8 +58,9 @@ Feature: Unreadable Records
     Given the records HemoIO cannot open are kept aside
     When I download them as a sealed file
     Then the file should hold the records exactly as they were stored, still sealed
-    And its name should hold only the date
+    And its name should hold only the date and time
     And they should count as saved only once the file is written, or once I say it saved
+    And the file I choose in the save picker should never be left empty
     # A browser with a save picker says when the file is written; after a plain
     # download HemoIO asks "Did the file save?"
 
@@ -71,6 +72,14 @@ Feature: Unreadable Records
     But HemoIO cannot record that they were saved
     Then I should be told the file was saved but not recorded, and to download them again
     And I should not be told the file could not be downloaded
+
+  # Unit-tested: setAsideEvents.test.ts
+  Scenario: Another open tab learns the records were saved
+    Given the records HemoIO cannot open are kept aside
+    And HemoIO is open in another tab
+    When I download them as a sealed file in one tab
+    Then the other tab should count them as saved too
+    And folder sync should go on in both tabs
 
   Scenario: The downloaded file cannot be restored as a backup
     Given I downloaded the unreadable records as a sealed file

@@ -38,11 +38,12 @@ describe('setAsideExport', () => {
     });
   });
 
-  it('file name uses the local date', () => {
+  it('file name uses the local date and time, so two saves in a day do not share a name', () => {
     // Late in the evening, local time: the UTC date may already be the next day
     const savedAt = new Date(2026, 0, 5, 23, 59);
 
-    expect(setAsideFileName(savedAt)).toBe('hemoio-unreadable-records-2026-01-05.json');
+    expect(setAsideFileName(savedAt)).toBe('hemoio-unreadable-records-2026-01-05-2359.json');
+    expect(setAsideFileName(new Date(2026, 0, 5, 7, 4))).toBe('hemoio-unreadable-records-2026-01-05-0704.json');
   });
 
   describe('saveSealedFile', () => {
@@ -61,7 +62,7 @@ describe('setAsideExport', () => {
       const picker = vi.fn(async () => ({ createWritable: async () => writable }));
       window.showSaveFilePicker = picker as unknown as Window['showSaveFilePicker'];
 
-      expect(await saveSealedFile('hemoio-unreadable-records-2026-11-06.json', async () => '{"sealed":true}')).toBe('written');
+      expect(await saveSealedFile('hemoio-unreadable-records-2026-11-06.json', '{"sealed":true}')).toBe('written');
 
       expect(picker).toHaveBeenCalledWith(
         expect.objectContaining({ suggestedName: 'hemoio-unreadable-records-2026-11-06.json' })
@@ -76,29 +77,13 @@ describe('setAsideExport', () => {
         throw new DOMException('The user aborted a request.', 'AbortError');
       }) as unknown as Window['showSaveFilePicker'];
 
-      expect(await saveSealedFile('f.json', async () => '{}')).toBe('cancelled');
+      expect(await saveSealedFile('f.json', '{}')).toBe('cancelled');
       expect(downloadJson).not.toHaveBeenCalled();
     });
 
     it('downloads the file where there is no save picker', async () => {
-      expect(await saveSealedFile('f.json', async () => '{}')).toBe('downloaded');
+      expect(await saveSealedFile('f.json', '{}')).toBe('downloaded');
       expect(downloadJson).toHaveBeenCalledWith('{}', 'f.json');
-    });
-
-    it('opens the save picker before gathering the content, while the click still counts', async () => {
-      const order: string[] = [];
-      const writable = { write: vi.fn(async () => undefined), close: vi.fn(async () => undefined) };
-      window.showSaveFilePicker = vi.fn(async () => {
-        order.push('picker');
-        return { createWritable: async () => writable };
-      }) as unknown as Window['showSaveFilePicker'];
-
-      await saveSealedFile('f.json', async () => {
-        order.push('content');
-        return '{}';
-      });
-
-      expect(order).toEqual(['picker', 'content']);
     });
 
     it('downloads the file when the save picker refuses for lack of a recent click', async () => {
@@ -106,7 +91,7 @@ describe('setAsideExport', () => {
         throw new DOMException('Must be handling a user gesture.', 'SecurityError');
       }) as unknown as Window['showSaveFilePicker'];
 
-      expect(await saveSealedFile('f.json', async () => '{}')).toBe('downloaded');
+      expect(await saveSealedFile('f.json', '{}')).toBe('downloaded');
       expect(downloadJson).toHaveBeenCalledWith('{}', 'f.json');
     });
 
@@ -122,14 +107,10 @@ describe('setAsideExport', () => {
         createWritable: async () => writable,
       })) as unknown as Window['showSaveFilePicker'];
 
-      await expect(saveSealedFile('f.json', async () => '{}')).rejects.toThrow('Disk full');
+      await expect(saveSealedFile('f.json', '{}')).rejects.toThrow('Disk full');
       expect(writable.abort).toHaveBeenCalled();
       expect(writable.close).not.toHaveBeenCalled();
     });
 
-    it('saves nothing when there is nothing to save', async () => {
-      expect(await saveSealedFile('f.json', async () => null)).toBe('nothing');
-      expect(downloadJson).not.toHaveBeenCalled();
-    });
   });
 });
