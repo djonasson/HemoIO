@@ -59,7 +59,7 @@ describe('FolderConflictModal', () => {
     renderModal({ ...CONFLICT, reason: 'not-newer' });
 
     expect(dialog()).toHaveTextContent(
-      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, or one saved at the same time as this computer's."
+      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, one saved at the same time as this computer's, or one this computer has not seen the steps to."
     );
     expect(dialog()).not.toHaveTextContent('this computer has changes of its own');
   });

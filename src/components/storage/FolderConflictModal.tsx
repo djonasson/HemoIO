@@ -98,8 +98,8 @@ export function FolderConflictModal({ conflict, onResolve }: FolderConflictModal
           {shown.reason === 'not-newer' ? (
             <Text size="sm">
               The folder copy is not a newer version of the one this computer last saw. It may be an
-              older copy put back, or one saved at the same time as this computer&apos;s. Choose which
-              data to keep.
+              older copy put back, one saved at the same time as this computer&apos;s, or one this
+              computer has not seen the steps to. Choose which data to keep.
             </Text>
           ) : (
             <Text size="sm">

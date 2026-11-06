@@ -31,7 +31,8 @@ Feature: Two computers on one folder
 
   # A copy loads by itself only when it was built on the one this computer last
   # saw. Clocks are not trusted: an older copy put back (from a cloud drive's
-  # history, say) or one saved at the same moment is asked about instead
+  # history, say), one saved at the same moment, or one this computer has not
+  # seen the steps to is asked about instead
   Scenario: An older folder copy put back is asked about, never loaded
     Given a newer folder copy was loaded onto this computer
     When the folder copy from before is put back in my folder
@@ -60,6 +61,7 @@ Feature: Two computers on one folder
     Given I was asked which data to keep
     When I choose to keep this computer's data
     Then my folder copy should be replaced with this computer's data
+    And the new folder copy should be built on both the folder copy and the one this computer last saw, so my other computer loads it without asking
     And my folder should hold one dated backup, which is the folder copy from before
     And the dated backup should hold no password lock
 

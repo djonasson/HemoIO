@@ -932,6 +932,54 @@ describe('useFilesystemSync', () => {
         expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).not.toHaveProperty('replaces');
       });
 
+      it.each([
+        ['the app locks', () => (auth.encryptionKey = null)],
+        ['another session begins', () => (auth.encryptionKey = { other: true } as unknown as CryptoKey)],
+        ['the folder changes', () => notifyFolderAccessChanged()],
+      ])('drops the choice when %s before the sync it was for', async (_, change) => {
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+        await act(() => result.current.replaceFolderCopy('r7'));
+
+        act(() => {
+          change();
+        });
+        rerender({ enabled: false });
+        auth.encryptionKey = mockKey;
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replaces');
+      });
+
+      it('drops the choice when the app locks while the folder copy is being kept', async () => {
+        let kept!: (bytes: ArrayBuffer) => void;
+        vi.mocked(keepCurrentFolderCopy).mockImplementationOnce(
+          () => new Promise<ArrayBuffer>((resolve) => (kept = resolve))
+        );
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+        let replaced!: Promise<void>;
+        act(() => {
+          replaced = result.current.replaceFolderCopy('r7');
+        });
+        await waitFor(() => expect(keepCurrentFolderCopy).toHaveBeenCalled());
+
+        auth.encryptionKey = null;
+        rerender({ enabled: false });
+        await act(async () => {
+          kept(new ArrayBuffer(4));
+          await replaced;
+        });
+        auth.encryptionKey = mockKey;
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replaces');
+      });
+
       it('chooses nothing when the backup cannot be saved', async () => {
         vi.mocked(keepCurrentFolderCopy).mockRejectedValue(new Error('Disk full'));
         const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {

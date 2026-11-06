@@ -152,8 +152,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   const heldForRef = useRef<CryptoKey | null>(null);
   const [heldFor, setHeldFor] = useState<CryptoKey | null>(null);
   const pendingRef = useRef<PendingConflict | null>(null);
-  // The copy the user chose to replace from the restore question, for the next sync
-  const replaceNextRef = useRef<string | null>(null);
+  // The copy the user chose to replace from the restore question, for the
+  // next sync of the session it was chosen in
+  const replaceNextRef = useRef<{ key: CryptoKey; id: string } | null>(null);
   // Held, the folder is looked at again: what the last sync found no longer applies
   if (!enabled && issue !== null) setIssue(null);
   // A ref, so a sync asked for before the hold began is held too. Set before
@@ -226,8 +227,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             enabledRef.current ? provider.save(bytes, previous) : Promise.reject(new SyncHeld()),
         };
         // Taken once: a later sync asks again rather than replace another copy
-        const replacing = replaces ?? replaceNextRef.current ?? undefined;
+        const chosen = replaceNextRef.current;
         replaceNextRef.current = null;
+        const replacing = replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
         const outcome = await writeFolderCopy(store, data, session.key, {
           lock: lockRef.current,
           setAsideUnsaved: unsaved,
@@ -387,8 +389,11 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
       await afterSyncs(async () => {
         const provider = new FileSystemStorageProvider();
         const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
+        const id = bytes && (await folderCopyId(bytes, revision));
+        // Locked meanwhile: the choice was for a session that has ended
+        if (unlockedRef.current?.key !== session.key) return;
         // The sync that the hold's end starts writes over the copy kept
-        replaceNextRef.current = bytes && (await folderCopyId(bytes, revision));
+        replaceNextRef.current = id === null ? null : { key: session.key, id };
       });
     },
     [afterSyncs]
@@ -409,10 +414,20 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     () =>
       onFolderAccessChanged(() => {
         pendingRef.current = null;
+        replaceNextRef.current = null;
         setAsked(null);
         holdFor(null);
       }),
     [holdFor]
+  );
+
+  // A choice to replace the folder copy holds for the session it was made in:
+  // locking, or another session, drops it
+  useEffect(
+    () => () => {
+      replaceNextRef.current = null;
+    },
+    [encryptionKey]
   );
 
   // Sync on unlock and every 30 seconds as a backup. Whether folder storage

@@ -5,6 +5,7 @@ import { loadFolderSyncState, type FolderSyncState } from '@data/storage/folderS
 import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
 import {
   FOLDER_SYNC_FILE_VERSION,
+  MAX_FOLDER_ANCESTORS,
   digestFolderData,
   folderCopyId,
   folderDataJson,
@@ -572,7 +573,7 @@ describe('two computers on one folder', () => {
   async function ancestryOf(bytes: ArrayBuffer | null): Promise<string[]> {
     if (!bytes) return [];
     const body = JSON.parse(await plainOf(bytes, key));
-    return [body.revision, ...(body.ancestors ?? [])].slice(0, 50);
+    return [body.revision, ...(body.ancestors ?? [])].slice(0, MAX_FOLDER_ANCESTORS);
   }
 
   /**
@@ -781,10 +782,10 @@ describe('two computers on one folder', () => {
     ).toMatchObject({ status: 'written' });
   });
 
-  it('a written copy records what it was built on, newest first, keeping 50', async () => {
+  it('a written copy records what it was built on, newest first, keeping 200', async () => {
     let lastSeen: FolderSyncState | null = null;
     const revisions: string[] = [];
-    for (let n = 1; n <= 55; n++) {
+    for (let n = 1; n <= 205; n++) {
       const outcome = await writeFolderCopy(store, withResults(n), key, context(lastSeen));
       if (outcome.status !== 'written') throw new Error('expected a write');
       lastSeen = outcome.state;
@@ -792,9 +793,57 @@ describe('two computers on one folder', () => {
     }
 
     const { ancestors } = JSON.parse(await plainOf(store.copy, key));
-    expect(ancestors).toHaveLength(50);
-    expect(ancestors[0]).toBe(revisions[53]);
-    expect(ancestors).toEqual(revisions.slice(4, 54).reverse());
+    expect(ancestors).toHaveLength(200);
+    expect(ancestors[0]).toBe(revisions[203]);
+    expect(ancestors).toEqual(revisions.slice(4, 204).reverse());
+  });
+
+  it("a copy written to resolve a conflict is built on both sides, so the other computer's next sync loads it", async () => {
+    const mine = await writeFolderCopy(store, withResults(1), key, context(null));
+    if (mine.status !== 'written') throw new Error('expected a write');
+    // A copy that does not name this browser's (an older one, or one whose steps it never saw)
+    const theirs = await writtenElsewhere(withResults(3), ['older']);
+    const local = withResults(2);
+    expect(await writeFolderCopy(store, local, key, context(mine.state))).toMatchObject({ reason: 'both-changed' });
+
+    const kept = await writeFolderCopy(store, local, key, context(mine.state, { replaces: theirs }));
+
+    if (kept.status !== 'written') throw new Error('expected a write');
+    expect(JSON.parse(await plainOf(store.copy, key)).ancestors).toEqual([theirs, mine.state.revision, 'older']);
+    // A computer that last saw this browser's copy, with nothing changed, loads the result
+    expect(await writeFolderCopy(store, withResults(1), key, context(mine.state))).toMatchObject({
+      status: 'changed-elsewhere',
+      reason: 'newer',
+    });
+  });
+
+  it("names this browser's copy once when the copy replaced was already built on it", async () => {
+    const mine = await writeFolderCopy(store, withResults(1), key, context(null));
+    if (mine.status !== 'written') throw new Error('expected a write');
+    const theirs = await writtenElsewhere(withResults(3));
+
+    await writeFolderCopy(store, withResults(2), key, context(mine.state, { replaces: theirs }));
+
+    expect(JSON.parse(await plainOf(store.copy, key)).ancestors).toEqual([theirs, mine.state.revision]);
+  });
+
+  it.each([
+    ['a string', 'REV'],
+    ['a list holding other things', ['REV', 5]],
+    ['an object', { 0: 'REV' }],
+  ])('a copy whose ancestors are %s is asked about, never loaded', async (_, malformed) => {
+    const mine = await writeFolderCopy(store, withResults(1), key, context(null));
+    if (mine.status !== 'written') throw new Error('expected a write');
+    const named = JSON.parse(JSON.stringify(malformed).replaceAll('REV', mine.state.revision!));
+    store.copy = await sealed(
+      { version: FOLDER_SYNC_FILE_VERSION, exportedAt: '2024-01-01T00:00:00.000Z', revision: 'theirs', ancestors: named, data: withResults(3) },
+      key
+    );
+
+    expect(await writeFolderCopy(store, withResults(1), key, context(mine.state))).toMatchObject({
+      status: 'changed-elsewhere',
+      reason: 'not-newer',
+    });
   });
 
 

@@ -115,7 +115,11 @@ test.describe('Two computers on one folder', () => {
    * Given I was asked which data to keep: the other computer saved a copy
    * with another result, and this one gained two results before it synced
    */
-  async function askedWhichToKeep(page: Page): Promise<{ otherRevision: string | null }> {
+  async function askedWhichToKeep(
+    page: Page
+  ): Promise<{ otherRevision: string | null; lastSeenRevision: string | null }> {
+    // The copy this computer last saw: the one written in the background
+    const lastSeenRevision = await folderFileRevision(page, FOLDER_COPY, TEST_PASSWORD);
     // Both change before the next sync looks
     const release = await holdFolderSyncs(page);
     await otherComputerSaves(page, [...SEED_LAB_RESULTS, OTHER_RESULT]);
@@ -123,7 +127,7 @@ test.describe('Two computers on one folder', () => {
     await seedLabData(page, { labResults: [...SEED_LAB_RESULTS, ...THIS_RESULTS] });
     await release();
     await expect(conflictDialog(page)).toBeVisible();
-    return { otherRevision };
+    return { otherRevision, lastSeenRevision };
   }
 
   test('a newer folder copy loads when I have no changes', async ({ page }) => {
@@ -182,7 +186,7 @@ test.describe('Two computers on one folder', () => {
     await periodicSync(page);
 
     await expect(conflictDialog(page)).toContainText(
-      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, or one saved at the same time as this computer's."
+      "The folder copy is not a newer version of the one this computer last saw. It may be an older copy put back, one saved at the same time as this computer's, or one this computer has not seen the steps to."
     );
     await expect(page.getByText('Other Computer Clinic')).toBeVisible();
     expect(await readFolderCopyText(page)).toBe(older);
@@ -230,7 +234,7 @@ test.describe('Two computers on one folder', () => {
 
   test("keeping my computer's data keeps the folder copy as a dated backup", async ({ page }) => {
     // Scenario: Keeping my computer's data keeps the folder copy as a dated backup
-    const { otherRevision } = await askedWhichToKeep(page);
+    const { otherRevision, lastSeenRevision } = await askedWhichToKeep(page);
 
     await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
 
@@ -241,6 +245,8 @@ test.describe('Two computers on one folder', () => {
       )
       .toContain('This Computer Clinic');
     await expect(page.getByText('This Computer Clinic').first()).toBeVisible();
+    const { ancestors } = await folderFileBody(page, FOLDER_COPY, TEST_PASSWORD);
+    expect(ancestors?.slice(0, 2)).toEqual([otherRevision, lastSeenRevision]);
     const names = await folderBackupNames(page);
     expect(names).toHaveLength(1);
     expect(names[0]).toMatch(BACKUP_NAME);

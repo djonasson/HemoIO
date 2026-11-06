@@ -43,7 +43,7 @@ export interface FolderSyncFile {
 }
 
 /** How many revisions a copy records as built on: a browser that missed more writes is asked */
-export const MAX_FOLDER_ANCESTORS = 50;
+export const MAX_FOLDER_ANCESTORS = 200;
 
 /** What a sync knows besides the data */
 export interface FolderWriteContext {
@@ -324,6 +324,15 @@ export async function folderCopyId(bytes: ArrayBuffer, revision: string | null):
   return `sha256:${arrayBufferToBase64(await crypto.subtle.digest('SHA-256', bytes))}`;
 }
 
+/**
+ * The revisions a copy says it was built on. Anything but a list of strings
+ * names none: such a copy is then never loaded without asking.
+ */
+function ancestorsOf(file: Pick<FolderSyncFile, 'ancestors'> | undefined): string[] {
+  const value: unknown = file?.ancestors;
+  return Array.isArray(value) && value.every((a) => typeof a === 'string') ? value : [];
+}
+
 /** A folder copy's records as a restore reads them, with dates; throws when they cannot be read */
 export function parseFolderCopyData(file: {
   version: number;
@@ -404,18 +413,15 @@ export async function writeFolderCopy(
   const lockIsLater = context.lock !== null && isLaterLock(context.lock, folderLock);
   const revision = typeof existing?.file.revision === 'string' ? existing.file.revision : null;
   // What the copy was built on; a copy without a revision is no ancestor to name
-  const ancestors =
-    revision === null
-      ? []
-      : [revision, ...(existing?.file.ancestors ?? []).filter((a): a is string => typeof a === 'string')];
+  const ancestors = revision === null ? [] : [revision, ...ancestorsOf(existing?.file)];
 
   /**
    * Seal and save, as built on the copy there now; `keepPrevious`: keep that
    * copy as the previous copy when it should be (not for a lock-only rewrite)
    */
-  const write = async (keepPrevious: boolean): Promise<FolderSyncOutcome> => {
+  const write = async (keepPrevious: boolean, builtOn: string[] = ancestors): Promise<FolderSyncOutcome> => {
     const lock = lockIsLater || folderLock === null ? context.lock : folderLock;
-    const sealed = await sealFolderCopy(data, key, lock, ancestors);
+    const sealed = await sealFolderCopy(data, key, lock, builtOn);
     const replaced = keepPrevious ? existing : null;
     const keep = replaced !== null && (await keepsAsPrevious(store, replaced.file, key));
     // Only the current copy carries the lock. A password change re-wraps the
@@ -435,13 +441,13 @@ export async function writeFolderCopy(
   const sameData = local === copyJson;
 
   /** The rules for a copy this browser may write over: never with nothing, keeping the previous copy */
-  const writeOver = (): Promise<FolderSyncOutcome> | FolderSyncOutcome => {
+  const writeOver = (builtOn: string[] = ancestors): Promise<FolderSyncOutcome> | FolderSyncOutcome => {
     if (sameData && !lockIsLater) return unchanged;
     if (!sameData && healthRecords(copy.file.data) > 0 && healthRecords(data) === 0) {
       return { status: 'protected', reason: 'empty', folderLock };
     }
     // Only the lock changed: the previous copy stays the one from before the last change of data
-    return write(!sameData);
+    return write(!sameData, builtOn);
   };
 
   /** The copy is to be loaded ('newer'), or the user is to choose */
@@ -469,7 +475,11 @@ export async function writeFolderCopy(
   // The user chose to replace this very copy (a copy without a revision by its bytes)
   const { replaces } = context;
   if (typeof replaces === 'string' && replaces === (await folderCopyId(encrypted as ArrayBuffer, revision))) {
-    return writeOver();
+    // Built on both sides of the conflict: so the copy this browser saw last
+    // is an ancestor too, and a computer that saw it loads the result by itself
+    const own = context.lastSeen?.revision;
+    const builtOn = typeof own === 'string' ? [...new Set([...ancestors.slice(0, 1), own, ...ancestors])] : ancestors;
+    return writeOver(builtOn);
   }
 
   const { lastSeen } = context;
