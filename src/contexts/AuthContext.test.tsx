@@ -17,7 +17,10 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
+import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
+import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { installFakeWebLocks } from '@/test/fakeWebLocks';
+import { withWebLock } from '@/utils/withWebLock';
 
 // The sweep that sets unreadable records aside reads the database: tested in
 // encryptedDb.setAside.test.ts, here only when and how it is called
@@ -26,6 +29,13 @@ const { settleUnreadable } = vi.hoisted(() => ({
 }));
 vi.mock('@data/db', () => ({
   createEncryptedDb: vi.fn(() => ({ settleUnreadable })),
+}));
+
+// Start over clears the database and storage: tested in storedRows.test.ts,
+// here only when, and under which locks, it is called
+vi.mock('@data/db/storedRows', () => ({
+  clearStoredData: vi.fn(),
+  clearLocalHemoIOStorage: vi.fn(),
 }));
 
 // Counted where two setups must make one data key; otherwise the real one
@@ -106,6 +116,12 @@ describe('AuthContext', () => {
     localStorage.clear();
     settleUnreadable.mockReset();
     settleUnreadable.mockResolvedValue({ returned: 0, setAside: 0 });
+    vi.mocked(clearStoredData).mockReset();
+    vi.mocked(clearStoredData).mockResolvedValue();
+    vi.mocked(clearLocalHemoIOStorage).mockReset();
+    vi.mocked(clearLocalHemoIOStorage).mockImplementation(async () => {
+      localStorage.removeItem(CREDENTIALS_KEY);
+    });
   });
 
   afterEach(() => {
@@ -874,6 +890,143 @@ describe('AuthContext', () => {
 
       expect(result).toEqual({ ok: true });
       expect(await unlock(NEW)).toBe(true);
+    });
+  });
+
+  describe('startOver', () => {
+    async function startOver(): Promise<void> {
+      await act(async () => {
+        await auth.startOver();
+      });
+    }
+
+    it('startOver returns to setup', async () => {
+      await setUp();
+
+      await startOver();
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
+      expect(auth.storedLock).toBeNull();
+    });
+
+    it('startOver clears every local store and never touches the folder', async () => {
+      const folderWrites = [
+        vi.spyOn(FileSystemStorageProvider.prototype, 'save'),
+        vi.spyOn(FileSystemStorageProvider.prototype, 'saveBackup'),
+        vi.spyOn(FileSystemStorageProvider.prototype, 'deleteBackup'),
+      ];
+      await setUp();
+
+      await startOver();
+
+      expect(clearStoredData).toHaveBeenCalledTimes(1);
+      expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(clearStoredData).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]
+      );
+      for (const write of folderWrites) expect(write).not.toHaveBeenCalled();
+    });
+
+    it('drops the key first, then clears holding the setup and folder-sync locks', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        // Held by a setup in another tab until released, so the order shows
+        let releaseSetup = (): void => {};
+        const otherSetup = withWebLock(
+          'hemoio-setup',
+          () => new Promise<void>((resolve) => (releaseSetup = resolve))
+        );
+        locks.requests.length = 0;
+        const seen: string[] = [];
+        const record = (what: string) => async () => {
+          seen.push(`${what} holding ${locks.heldNames().join(' + ')}`);
+        };
+        vi.mocked(clearStoredData).mockImplementation(record('clearStoredData'));
+        vi.mocked(clearLocalHemoIOStorage).mockImplementation(record('clearLocalHemoIOStorage'));
+
+        let pending: Promise<void> = Promise.resolve();
+        await act(async () => {
+          pending = auth.startOver();
+        });
+        // The key left before either lock was held
+        expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+        expect(auth.encryptionKey).toBeNull();
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup']);
+        expect(seen).toEqual([]);
+
+        await act(async () => {
+          releaseSetup();
+          await otherSetup;
+          await pending;
+        });
+
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup', 'hemoio-folder-sync']);
+        expect(seen).toEqual([
+          'clearStoredData holding hemoio-setup + hemoio-folder-sync',
+          'clearLocalHemoIOStorage holding hemoio-setup + hemoio-folder-sync',
+        ]);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('a sync in flight finishes before the clear', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        const seen: string[] = [];
+        vi.mocked(clearStoredData).mockImplementation(async () => {
+          seen.push('cleared');
+        });
+        let finishSync = (): void => {};
+        const sync = withWebLock('hemoio-folder-sync', async () => {
+          await new Promise<void>((resolve) => {
+            finishSync = resolve;
+          });
+          seen.push('sync written');
+        });
+
+        let pending: Promise<void> = Promise.resolve();
+        await act(async () => {
+          pending = auth.startOver();
+        });
+        // The key is gone at once, but nothing is cleared while the sync runs
+        expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+        expect(clearStoredData).not.toHaveBeenCalled();
+
+        await act(async () => {
+          finishSync();
+          await sync;
+          await pending;
+        });
+
+        expect(seen).toEqual(['sync written', 'cleared']);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('a failed clear logs a fixed message and stays in setup', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await setUp();
+      vi.mocked(clearStoredData).mockRejectedValue(new Error('labResults row 7 secret'));
+
+      let failed = false;
+      await act(async () => {
+        await auth.startOver().catch(() => {
+          failed = true;
+        });
+      });
+
+      expect(failed).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      // The credentials still go, so setup offers to deal with the rows left
+      expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith('Could not clear the data stored in this browser');
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('secret');
     });
   });
 });

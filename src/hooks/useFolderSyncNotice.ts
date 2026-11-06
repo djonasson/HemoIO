@@ -30,7 +30,8 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
     title: SKIPPED,
     message:
       "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. " +
-      'Choose a different folder in Settings > Data to keep syncing.',
+      'Choose a different folder in Settings > Data, or use Start over in Settings > Security ' +
+      'to set up from that copy.',
   },
   newer: {
     title: SKIPPED,

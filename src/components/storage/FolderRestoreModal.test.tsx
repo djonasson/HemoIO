@@ -238,12 +238,12 @@ describe('FolderRestoreModal', () => {
     expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument();
   });
 
-  it('explains a folder from another setup', async () => {
+  it('explains a folder from another setup, and the another-setup message points to Start over', async () => {
     const { onDecide } = renderModal({ kind: 'unreadable', reason: 'another-setup', folderName: 'Health' });
 
     const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
     expect(dialog).toHaveTextContent(
-      "The copy in “Health” belongs to another HemoIO setup, made with a different key. HemoIO won't write over it. To use that folder on this computer, HemoIO must be set up again from that folder's copy."
+      "The copy in “Health” belongs to another HemoIO setup, made with a different key. HemoIO won't write over it. To use that folder on this computer, HemoIO must be set up again from that folder's copy: in Settings > Security, choose Start over, then \"I already have a folder copy\"."
     );
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Replace folder copy/ })).not.toBeInTheDocument();

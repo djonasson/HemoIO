@@ -37,6 +37,45 @@ export const FOLDER_BACKUPS_DIR_NAME = 'hemoio-backups';
 
 const HANDLE_STORAGE_KEY = 'hemoio_filesystem_handle';
 
+/** The database that keeps the chosen folder's handle; the folder itself is elsewhere */
+const HANDLE_DATABASE_NAME = 'HemoIO-FileSystemHandles';
+const HANDLE_STORE_NAME = 'handles';
+
+function openHandleDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DATABASE_NAME, 1);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(HANDLE_STORE_NAME)) {
+        db.createObjectStore(HANDLE_STORE_NAME);
+      }
+    };
+  });
+}
+
+/**
+ * Forgets which folder was chosen: empties the handle store. The folder and
+ * its files are not touched. Rejects when the store cannot be emptied.
+ */
+export async function clearFolderHandleStore(): Promise<void> {
+  const db = await openHandleDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+      transaction.objectStore(HANDLE_STORE_NAME).clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 /**
  * Permission state for directory access
  */
@@ -331,8 +370,8 @@ export class FileSystemStorageProvider implements StorageProvider {
   private async persistHandle(handle: FileSystemDirectoryHandle): Promise<void> {
     const db = await this.openIndexedDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction('handles', 'readwrite');
-      const store = transaction.objectStore('handles');
+      const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(HANDLE_STORE_NAME);
       const request = store.put(handle, HANDLE_STORAGE_KEY);
 
       request.onsuccess = () => resolve();
@@ -349,8 +388,8 @@ export class FileSystemStorageProvider implements StorageProvider {
     try {
       const db = await this.openIndexedDB();
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction('handles', 'readonly');
-        const store = transaction.objectStore('handles');
+        const transaction = db.transaction(HANDLE_STORE_NAME, 'readonly');
+        const store = transaction.objectStore(HANDLE_STORE_NAME);
         const request = store.get(HANDLE_STORAGE_KEY);
 
         request.onsuccess = () => {
@@ -372,8 +411,8 @@ export class FileSystemStorageProvider implements StorageProvider {
     try {
       const db = await this.openIndexedDB();
       return new Promise((resolve, reject) => {
-        const transaction = db.transaction('handles', 'readwrite');
-        const store = transaction.objectStore('handles');
+        const transaction = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(HANDLE_STORE_NAME);
         const request = store.delete(HANDLE_STORAGE_KEY);
 
         request.onsuccess = () => resolve();
@@ -390,18 +429,6 @@ export class FileSystemStorageProvider implements StorageProvider {
    * Open IndexedDB for handle storage
    */
   private openIndexedDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('HemoIO-FileSystemHandles', 1);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains('handles')) {
-          db.createObjectStore('handles');
-        }
-      };
-    });
+    return openHandleDatabase();
   }
 }

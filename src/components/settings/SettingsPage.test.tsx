@@ -107,7 +107,7 @@ vi.mock('@hooks', () => ({
 // The Security tab's form reads the auth context
 vi.mock('@contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@contexts')>()),
-  useAuth: () => ({ changePassword: vi.fn() }),
+  useAuth: () => ({ changePassword: vi.fn(), startOver: vi.fn() }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -247,6 +247,21 @@ describe('SettingsPage', () => {
       expect(securityTab).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('heading', { name: 'Change password' })).toBeInTheDocument();
       expect(screen.getByLabelText('Current password')).toBeInTheDocument();
+    });
+
+    it('offers Start over on the Security tab, whose export link opens the Data tab', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<SettingsPage {...defaultProps} />);
+      await waitForSettingsToLoad();
+      await user.click(screen.getByRole('tab', { name: 'Security' }));
+      expect(screen.getByRole('heading', { name: 'Start over' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Export a backup' }));
+
+      const dataTab = screen.getByRole('tab', { name: 'Data' });
+      expect(dataTab).toHaveAttribute('aria-selected', 'true');
+      expect(dataTab).toHaveFocus();
+      expect(screen.queryByRole('heading', { name: 'Start over' })).not.toBeInTheDocument();
     });
 
     it('should switch to AI Configuration tab when clicked', async () => {

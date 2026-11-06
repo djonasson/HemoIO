@@ -19,7 +19,8 @@ import {
   type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
 import { createEncryptedDb } from '@data/db';
-import { withWebLock } from '@/utils/withWebLock';
+import { clearLocalHemoIOStorage, clearStoredData } from '@data/db/storedRows';
+import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import {
   CREDENTIALS_STORAGE_KEY,
   SETUP_LOCK,
@@ -79,6 +80,14 @@ export interface AuthContextValue {
    * the session key: the next unlock needs that password. Whether it did.
    */
   adoptFolderLock: (lock: StoredCredentialsV2) => boolean;
+  /**
+   * Deletes this browser's HemoIO data and returns to first run: the key
+   * leaves memory at once, then, once any folder sync in flight is done,
+   * every table and every HemoIO key in localStorage are cleared. Never
+   * touches the folder. Rejects when something could not be cleared; setup
+   * then finds what is left.
+   */
+  startOver: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -343,6 +352,41 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     return true;
   }, []);
 
+  const startOver = useCallback(async (): Promise<void> => {
+    // First, so no sync or decryption starts with the key from here on
+    setEncryptionKey(null);
+    setCredentials(null);
+    setStatus('needs_setup');
+
+    // The setup lock, then the folder-sync lock, nested in that order: waits
+    // for a setup in another tab, and for a sync in flight, which may still
+    // write its state or the folder copy. No sync writes after the clear.
+    const cleared = await withWebLock(SETUP_LOCK, () =>
+      withWebLock(FOLDER_SYNC_LOCK, async (): Promise<boolean> => {
+        let ok = true;
+        try {
+          await clearStoredData();
+        } catch {
+          ok = false;
+        }
+        // Even when the rows stay: without the credentials, setup offers to
+        // keep them aside or delete them. Removed, never overwritten, so
+        // other tabs return to setup too.
+        try {
+          await clearLocalHemoIOStorage();
+        } catch {
+          ok = false;
+        }
+        return ok;
+      })
+    );
+    if (!cleared) {
+      // Fixed text: the error could name stored data
+      console.error('Could not clear the data stored in this browser');
+      throw new Error('Start over did not finish');
+    }
+  }, []);
+
   const changePassword = useCallback(
     async (current: string, next: string): Promise<ChangePasswordResult> => {
       if (current === next) {
@@ -386,6 +430,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     isSetupComplete,
     storedLock,
     adoptFolderLock,
+    startOver,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

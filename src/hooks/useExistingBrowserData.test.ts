@@ -41,6 +41,24 @@ describe('useExistingBrowserData', () => {
     expect(result.current.rows).toBe(0);
   });
 
+  it('counts under the setup lock, so a start over already clearing finishes first', async () => {
+    const locks = installFakeWebLocks();
+    try {
+      let heldWhileCounting: string | null = null;
+      vi.mocked(countStoredRows).mockImplementation(async () => {
+        heldWhileCounting = locks.held();
+        return 0;
+      });
+
+      const { result } = renderHook(() => useExistingBrowserData());
+
+      await waitFor(() => expect(result.current.rows).toBe(0));
+      expect(heldWhileCounting).toBe('hemoio-setup');
+    } finally {
+      locks.uninstall();
+    }
+  });
+
   it('clears under the setup lock', async () => {
     const locks = installFakeWebLocks();
     try {

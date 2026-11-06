@@ -18,6 +18,7 @@ import {
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { BackupRestore } from './BackupRestore';
 import { ChangePassword } from './ChangePassword';
+import { StartOver } from './StartOver';
 import { DisplaySettings } from './DisplaySettings';
 import { AISettings } from './AISettings';
 import { PersonalTargets } from './PersonalTargets';
@@ -112,6 +113,14 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     [setAnthropicModel]
   );
   const [aiTestInProgress, setAiTestInProgress] = useState(false);
+  // Controlled, so a section can send the user to another tab
+  const [activeTab, setActiveTab] = useState<string | null>('data');
+  const dataTabRef = useRef<HTMLButtonElement>(null);
+  const openDataTab = useCallback(() => {
+    setActiveTab('data');
+    // The section that sent the user leaves with its tab: focus goes to the new one
+    dataTabRef.current?.focus();
+  }, []);
 
   // Display Settings state
   // Until the stored theme is read, the one in use (the stored one when it cannot be read)
@@ -296,9 +305,9 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     <Stack gap="lg">
       <Title order={2}>Settings</Title>
 
-      <Tabs defaultValue="data" keepMounted={false}>
+      <Tabs value={activeTab} onChange={setActiveTab} keepMounted={false}>
         <Tabs.List>
-          <Tabs.Tab value="data" leftSection={<IconDatabase size={16} />}>
+          <Tabs.Tab value="data" ref={dataTabRef} leftSection={<IconDatabase size={16} />}>
             Data
           </Tabs.Tab>
           <Tabs.Tab value="security" leftSection={<IconLock size={16} />}>
@@ -339,7 +348,10 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
         </Tabs.Panel>
 
         <Tabs.Panel value="security" pt="md">
-          <ChangePassword />
+          <Stack gap="xl">
+            <ChangePassword />
+            <StartOver onExportBackup={openDataTab} />
+          </Stack>
         </Tabs.Panel>
 
         <Tabs.Panel value="ai" pt="md">

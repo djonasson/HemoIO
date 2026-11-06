@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clearStoredData, countStoredRows } from './storedRows';
+import { clearLocalHemoIOStorage, clearStoredData, countStoredRows } from './storedRows';
 import { openTestDb } from './testDb';
 
 const at = new Date('2024-01-15T10:00:00Z');
@@ -49,4 +49,51 @@ describe('storedRows', () => {
     );
     expect(counts).toEqual(database.tables.map(() => 0));
   });
+
+  it('clearLocalHemoIOStorage removes only hemoio_ keys and the handle store', async () => {
+    localStorage.setItem('hemoio_credentials', '{"version":2}');
+    localStorage.setItem('hemoio_folder_sync_state', 'sealed');
+    localStorage.setItem('hemoio_storage_provider', 'filesystem');
+    localStorage.setItem('mantine-color-scheme-value', 'dark');
+    localStorage.setItem('hemoio', 'not a HemoIO key: no underscore');
+    await putInHandleStore('hemoio_filesystem_handle', { name: 'Health' });
+
+    await clearLocalHemoIOStorage();
+
+    expect(Object.keys(localStorage).sort()).toEqual(['hemoio', 'mantine-color-scheme-value']);
+    expect(await handleStoreKeys()).toEqual([]);
+    localStorage.clear();
+  });
 });
+
+/** FileSystemStorageProvider's handle store, as it keeps it */
+function openHandleStore(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('HemoIO-FileSystemHandles', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('handles');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function putInHandleStore(key: string, value: unknown): Promise<void> {
+  const database = await openHandleStore();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction('handles', 'readwrite');
+    transaction.objectStore('handles').put(value, key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
+
+async function handleStoreKeys(): Promise<IDBValidKey[]> {
+  const database = await openHandleStore();
+  const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
+    const request = database.transaction('handles', 'readonly').objectStore('handles').getAllKeys();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  return keys;
+}

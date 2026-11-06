@@ -59,7 +59,7 @@ Feature: Folder Sync Safety
     Given my folder holds a copy that my current password cannot open
     When I add lab results
     Then I should see that the folder sync was skipped because the folder copy cannot be read
-    And I should be told to choose a different folder to keep syncing
+    And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
     And the copy in my folder should be left as it was
 
   Scenario: Choosing a different folder lets the sync start again
@@ -118,5 +118,5 @@ Feature: Folder Sync Safety
     Given my folder holds a copy made by another HemoIO setup, with a different key
     When I add lab results
     Then I should see that the folder sync was skipped because my folder holds another setup's copy
-    And I should be told to choose a different folder to keep syncing
+    And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
     And the copy in my folder should be left as it was

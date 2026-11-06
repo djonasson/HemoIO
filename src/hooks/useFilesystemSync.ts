@@ -29,7 +29,7 @@ import {
   markFolderCopySeen,
   writeFolderCopy,
 } from '@services/sync';
-import { withWebLock } from '@/utils/withWebLock';
+import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { ParsedBackupData } from '@services/import';
@@ -43,8 +43,6 @@ import type {
 /** The notice that this browser took on a password changed on another computer */
 const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
 
-/** Syncs, and the choices that write to the folder, run one at a time across this origin's tabs */
-const FOLDER_SYNC_LOCK = 'hemoio-folder-sync';
 
 /** What the user is told about the folder sync: why it held back, or that it failed */
 export type FolderSyncIssue = FolderProtectionReason | 'failed';

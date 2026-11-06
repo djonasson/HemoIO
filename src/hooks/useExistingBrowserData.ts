@@ -24,7 +24,9 @@ export function useExistingBrowserData(): UseExistingBrowserDataResult {
 
   useEffect(() => {
     let current = true;
-    countStoredRows().then(
+    // Under the setup lock, so a Start over still clearing (which holds it)
+    // finishes first, and the count is of what it left
+    withWebLock(SETUP_LOCK, () => countStoredRows()).then(
       (count) => {
         if (current) setRows(count);
       },

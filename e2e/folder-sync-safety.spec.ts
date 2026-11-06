@@ -369,7 +369,9 @@ test.describe('Folder Sync Safety', () => {
 
     await expect(skippedSyncNotice(page)).toBeVisible();
     await expect(skippedSyncNotice(page)).toContainText("another HemoIO setup's copy");
-    await expect(skippedSyncNotice(page)).toContainText('Choose a different folder in Settings > Data');
+    await expect(skippedSyncNotice(page)).toContainText(
+      'Choose a different folder in Settings > Data, or use Start over in Settings > Security to set up from that copy.'
+    );
     expect(await folderCopyHash(page, folder.name)).toBe(foreign);
   });
 });

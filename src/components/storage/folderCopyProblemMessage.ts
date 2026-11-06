@@ -14,11 +14,11 @@ export function folderCopyProblemMessage(reason: FolderCopyProblem, folder: stri
         'different password or by an earlier setup of HemoIO, or the file is damaged.'
       );
     case 'another-setup':
-      // Task 9b adds where that setup is made
       return (
         `The copy in ${folder} belongs to another HemoIO setup, made with a different key. ` +
         "HemoIO won't write over it. To use that folder on this computer, HemoIO must be " +
-        "set up again from that folder's copy."
+        "set up again from that folder's copy: in Settings > Security, choose Start over, " +
+        'then "I already have a folder copy".'
       );
     case 'not-a-copy':
       return `The file in ${folder} isn't a folder copy HemoIO can read, or it is damaged.`;
