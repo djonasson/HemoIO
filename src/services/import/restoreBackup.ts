@@ -28,7 +28,7 @@ export interface RestoreTarget {
 
 /** A database that can restore only while nothing changed its data (implemented by EncryptedDb) */
 export interface GuardedRestoreTarget {
-  replaceLabDataIfUnchanged(data: RestoredData, stamp: string): Promise<RestoreSummary | null>;
+  replaceLabData(data: RestoredData, stamp: string): Promise<RestoreSummary | null>;
 }
 
 export interface RestoreSummary {
@@ -61,7 +61,7 @@ export async function restoreBackupIfUnchanged(
   data: ParsedBackupData,
   stamp: string
 ): Promise<RestoreSummary | null> {
-  return db.replaceLabDataIfUnchanged(restoredData(data), stamp);
+  return db.replaceLabData(restoredData(data), stamp);
 }
 
 function restoredData(data: ParsedBackupData): RestoredData {

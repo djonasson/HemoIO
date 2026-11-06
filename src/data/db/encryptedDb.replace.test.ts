@@ -13,13 +13,13 @@ const restored = {
   userNotes: [],
 };
 
-describe('EncryptedDb.replaceLabDataIfUnchanged', () => {
+describe('EncryptedDb.replaceLabData with a stamp', () => {
   it('replaces the data while the stored rows are as stamped', async () => {
     const { db } = await openTestDb();
     await db.addLabResult(result('Here'));
     const stamp = await db.storedDataStamp();
 
-    expect(await db.replaceLabDataIfUnchanged(restored, stamp)).toEqual({ labResults: 1, testValues: 0, notes: 0 });
+    expect(await db.replaceLabData(restored, stamp)).toEqual({ labResults: 1, testValues: 0, notes: 0 });
     expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['From the folder']);
   });
 
@@ -30,7 +30,7 @@ describe('EncryptedDb.replaceLabDataIfUnchanged', () => {
     // Saved while the folder copy was being loaded
     await db.addLabResult(result('Saved meanwhile'));
 
-    expect(await db.replaceLabDataIfUnchanged(restored, stamp)).toBeNull();
+    expect(await db.replaceLabData(restored, stamp)).toBeNull();
     expect((await db.getAllLabResults()).map((r) => r.labName).sort()).toEqual(['Here', 'Saved meanwhile']);
   });
 
@@ -39,7 +39,7 @@ describe('EncryptedDb.replaceLabDataIfUnchanged', () => {
     const stamp = await db.storedDataStamp();
     await db.updatePreferences(() => ({ theme: 'dark' }));
 
-    expect(await db.replaceLabDataIfUnchanged(restored, stamp)).toBeNull();
+    expect(await db.replaceLabData(restored, stamp)).toBeNull();
     expect(await db.getAllLabResults()).toEqual([]);
   });
 

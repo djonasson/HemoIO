@@ -582,10 +582,7 @@ export class EncryptedDb {
         )
       ));
     const movedAside = stored !== undefined && opened === undefined;
-    if (movedAside) {
-      await this.keepAside([['userPreferences', [stored]]]);
-      await table.delete(stored.id!);
-    }
+    if (movedAside) await this.moveAside([['userPreferences', [stored]]]);
     const current = opened?.preferences;
     // Under the stored record's ID only when it opened: an unreadable one is aside
     const next = {
@@ -704,43 +701,15 @@ export class EncryptedDb {
    * tables are cleared), so references between them are rewritten from the
    * given IDs to the new ones. Values whose result is not given are skipped.
    */
-  async replaceLabData(data: ReplacedLabData): Promise<ReplacedCounts> {
-    return (await this.replaceLabDataGuarded(data))!;
-  }
-
+  async replaceLabData(data: ReplacedLabData): Promise<ReplacedCounts>;
   /**
-   * As replaceLabData, but only while the stored lab data and preferences
-   * are still as they were when `stamp` was taken (storedDataStamp). Checked
-   * inside the replacing transaction, so a change saved at any moment before
-   * is never lost: then nothing is replaced, and it resolves null.
+   * Given a stamp, only while the stored lab data and preferences are still
+   * as they were when it was taken (storedDataStamp). Checked inside the
+   * replacing transaction, so a change saved at any moment before is never
+   * lost: then nothing is replaced, and it resolves null.
    */
-  async replaceLabDataIfUnchanged(data: ReplacedLabData, stamp: string): Promise<ReplacedCounts | null> {
-    return this.replaceLabDataGuarded(data, stamp);
-  }
-
-  /**
-   * The stored rows of the lab tables and the preferences, as one string.
-   * Every save seals afresh under a new IV, so it is equal only while
-   * nothing was written, by this tab or another.
-   */
-  async storedDataStamp(): Promise<string> {
-    return this.db.transaction('r', this.stampedTables(), () => this.readStamp());
-  }
-
-  private stampedTables(): Table[] {
-    return SEALED_TABLES.map((name) => this.table(name));
-  }
-
-  /**
-   * Makes IndexedDB requests only, so it may run inside a write transaction:
-   * an await that makes none would commit the transaction early
-   */
-  private async readStamp(): Promise<string> {
-    const rows = await Promise.all(this.stampedTables().map((table) => table.toArray()));
-    return JSON.stringify(rows);
-  }
-
-  private async replaceLabDataGuarded(data: ReplacedLabData, stamp?: string): Promise<ReplacedCounts | null> {
+  async replaceLabData(data: ReplacedLabData, stamp: string): Promise<ReplacedCounts | null>;
+  async replaceLabData(data: ReplacedLabData, stamp?: string): Promise<ReplacedCounts | null> {
     // Sealed up front: a transaction ends at the first await outside IndexedDB.
     // The links between records stay readable, so they are rewritten sealed.
     const sealAll = <T extends { id?: number }>(name: SealedTable, records: T[]) =>
@@ -783,7 +752,7 @@ export class EncryptedDb {
         this.db.userNotes.clear(),
       ]);
 
-      // Empty bulk calls are skipped: see keepAside
+      // Empty bulk calls are skipped: see moveAside
       const resultIds = idMap(
         labResults,
         labResults.length === 0 ? [] : await this.table('labResults').bulkAdd(
@@ -837,18 +806,45 @@ export class EncryptedDb {
     return counts;
   }
 
+  /**
+   * The stored rows of the lab tables and the preferences, as one string.
+   * Every save seals afresh under a new IV, so it is equal only while
+   * nothing was written, by this tab or another.
+   */
+  async storedDataStamp(): Promise<string> {
+    return this.db.transaction('r', this.stampedTables(), () => this.readStamp());
+  }
+
+  private stampedTables(): Table[] {
+    return SEALED_TABLES.map((name) => this.table(name));
+  }
+
+  /**
+   * Makes IndexedDB requests only, so it may run inside a write transaction:
+   * an await that makes none would commit the transaction early
+   */
+  private async readStamp(): Promise<string> {
+    const rows = await Promise.all(this.stampedTables().map((table) => table.toArray()));
+    return JSON.stringify(rows);
+  }
+
   // ============ Set-aside records ============
 
   /**
-   * Keep stored rows aside, inside the caller's transaction, which must
-   * include setAside. Callers skip it when there are none: awaiting an async
-   * function that made no IndexedDB request loses Dexie's transaction, and
-   * the next request fails as committed too early.
+   * Keep stored rows aside and delete them from their tables, inside the
+   * caller's transaction, which must include those tables and setAside.
+   * Called with at least one row, each table's list never empty: an empty
+   * bulk call, or awaiting an async function that made no IndexedDB
+   * request, loses Dexie's transaction, and the next request fails as
+   * committed too early.
    */
-  private async keepAside(rows: Array<[SealedTable, SealedRecord[]]>): Promise<void> {
+  private async moveAside(moving: Array<[SealedTable, SealedRecord[]]>): Promise<void> {
     await this.db.setAside.bulkAdd(
-      rows.flatMap(([table, stored]) => stored.map((row) => ({ table, row, savedToFile: 0 as const })))
+      moving.flatMap(([table, stored]) => stored.map((row) => ({ table, row, savedToFile: 0 as const })))
     );
+    for (const [name, rows] of moving) {
+      await this.table(name).bulkDelete(rows.map((row) => row.id!));
+    }
   }
 
   /**
@@ -871,10 +867,7 @@ export class EncryptedDb {
       const rows = stored.filter((_, i) => !readable[i]);
       if (rows.length > 0) unreadable.push([name, rows]);
     }
-    if (unreadable.length > 0) await this.keepAside(unreadable);
-    for (const [name, rows] of unreadable) {
-      await this.table(name).bulkDelete(rows.map((row) => row.id!));
-    }
+    if (unreadable.length > 0) await this.moveAside(unreadable);
     return {
       movedAside: unreadable.map(([name]) => name),
       count: unreadable.reduce((sum, [, rows]) => sum + rows.length, 0),
@@ -885,7 +878,7 @@ export class EncryptedDb {
    * Add set-aside rows back to a table, inside the caller's transaction.
    * Each keeps its ID when that is free; one whose ID is taken gets a new
    * ID, and its old ID → the new one is returned, for the links to it.
-   * Called with at least one row: see keepAside.
+   * Called with at least one row: see moveAside.
    */
   private async addBack(
     name: SealedTable,
@@ -928,32 +921,13 @@ export class EncryptedDb {
    */
   async settleUnreadable(): Promise<{ returned: number; setAside: number }> {
     const tables = [...SEALED_TABLES.map((name) => this.table(name)), this.db.setAside];
-    const [stored, setAsideRows] = await this.db.transaction('r', tables, () =>
-      Promise.all([
-        Promise.all(SEALED_TABLES.map((name) => this.table(name).toArray())),
-        this.db.setAside.toArray(),
-      ])
-    );
-
-    const unreadableRows = await Promise.all(
-      SEALED_TABLES.map(async (name, i) => {
-        const opened = await Promise.all(stored[i].map((row) => opens(row, name, this.key)));
-        return stored[i].filter((_, j) => !opened[j]);
-      })
-    );
-    // In table order, so the tables moved from are reported in it
-    const unreadable = new Map<SealedTable, SealedRecord[]>(
-      SEALED_TABLES.flatMap((name, i) =>
-        unreadableRows[i].length > 0 ? [[name, unreadableRows[i]] as const] : []
-      )
-    );
-    const openedAside = await Promise.all(
-      setAsideRows.map((entry) => opens(entry.row as SealedRecord, entry.table, this.key))
-    );
-    const returnable = setAsideRows.filter((_, i) => openedAside[i]);
+    const { unreadable, returnable } = await this.findUnreadable(tables);
     if (unreadable.size === 0 && returnable.length === 0) return { returned: 0, setAside: 0 };
 
-    // Every await in the body is an IndexedDB request: see keepAside
+    // Every await in the body is an IndexedDB request, or an async helper
+    // whose first await is one (see moveAside). Returning the rows stays
+    // here: moved into a helper that awaits addBack first, it loses Dexie's
+    // transaction, as the tests show.
     const { movedAside, setAside, returned } = await this.write(tables, async () => {
       const moving: Array<[SealedTable, SealedRecord[]]> = [];
       for (const [name, rows] of unreadable) {
@@ -963,26 +937,12 @@ export class EncryptedDb {
         );
         if (still.length > 0) moving.push([name, still]);
       }
-      if (moving.length > 0) await this.keepAside(moving);
-      for (const [name, rows] of moving) {
-        await this.table(name).bulkDelete(rows.map((row) => row.id!));
-      }
+      if (moving.length > 0) await this.moveAside(moving);
 
       let back: SetAsideRow[] = [];
       if (returnable.length > 0) {
         const current = await this.db.setAside.bulkGet(returnable.map((entry) => entry.id!));
-        // Two set-aside rows of a table can share an original ID (another tab
-        // restored a backup that reused it): links to that ID could not tell
-        // them apart, so only the first returns and the others wait for the
-        // next unlock, where its ID is taken and they are re-IDed
-        const seen = new Set<string>();
-        back = current.filter((entry): entry is SetAsideRow => {
-          if (entry === undefined) return false;
-          const original = `${entry.table}:${String(entry.row.id)}`;
-          if (seen.has(original)) return false;
-          seen.add(original);
-          return true;
-        });
+        back = this.pickReturnable(current);
       }
       const of = (name: SealedTable): SetAsideRow[] => back.filter((entry) => entry.table === name);
       const relink = (ids: Map<unknown, number>, id: unknown): unknown => ids.get(id) ?? id;
@@ -1022,6 +982,58 @@ export class EncryptedDb {
     });
     if (returned > 0 || setAside > 0) notifySetAsideChanged({ movedAside });
     return { returned, setAside };
+  }
+
+  /**
+   * The stored rows this key cannot open, by table, and the set-aside rows
+   * it now opens: read in one read-only pass, then decrypted outside any
+   * transaction
+   */
+  private async findUnreadable(tables: Table[]): Promise<{
+    unreadable: Map<SealedTable, SealedRecord[]>;
+    returnable: SetAsideRow[];
+  }> {
+    const [stored, setAsideRows] = await this.db.transaction('r', tables, () =>
+      Promise.all([
+        Promise.all(SEALED_TABLES.map((name) => this.table(name).toArray())),
+        this.db.setAside.toArray(),
+      ])
+    );
+
+    const unreadableRows = await Promise.all(
+      SEALED_TABLES.map(async (name, i) => {
+        const opened = await Promise.all(stored[i].map((row) => opens(row, name, this.key)));
+        return stored[i].filter((_, j) => !opened[j]);
+      })
+    );
+    // In table order, so the tables moved from are reported in it
+    const unreadable = new Map<SealedTable, SealedRecord[]>(
+      SEALED_TABLES.flatMap((name, i) =>
+        unreadableRows[i].length > 0 ? [[name, unreadableRows[i]] as const] : []
+      )
+    );
+    const openedAside = await Promise.all(
+      setAsideRows.map((entry) => opens(entry.row as SealedRecord, entry.table, this.key))
+    );
+    return { unreadable, returnable: setAsideRows.filter((_, i) => openedAside[i]) };
+  }
+
+  /**
+   * The set-aside rows to return, of those still there. Two set-aside rows
+   * of a table can share an original ID (another tab restored a backup that
+   * reused it): links to that ID could not tell them apart, so only the
+   * first returns and the others wait for the next unlock, where its ID is
+   * taken and they are re-IDed.
+   */
+  private pickReturnable(current: Array<SetAsideRow | undefined>): SetAsideRow[] {
+    const seen = new Set<string>();
+    return current.filter((entry): entry is SetAsideRow => {
+      if (entry === undefined) return false;
+      const original = `${entry.table}:${String(entry.row.id)}`;
+      if (seen.has(original)) return false;
+      seen.add(original);
+      return true;
+    });
   }
 
   /** How many rows are kept aside, and how many are not yet in a downloaded file */
