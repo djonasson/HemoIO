@@ -136,6 +136,14 @@ Feature: Folder Sync Safety
     When I lock HemoIO or switch folder storage off on this tab meanwhile
     Then this tab should not write to my folder once the other tab is done
 
+  # Unit-tested: folderAccessEvents.test.ts, useFilesystemSync.test.ts
+  Scenario: Choosing another folder in one tab is heard in the others
+    Given HemoIO is open in two tabs of this browser
+    And one tab asks me what to do about the copy in my folder
+    When I choose another folder in the other tab
+    Then the question about the old folder should go away
+    And the next sync should look at the new folder
+
   Scenario: A folder from another setup is explained
     Given my folder holds a copy made by another HemoIO setup, with a different key
     When I add lab results
