@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { DATA_CHANNEL_NAME, announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { SaveError } from '@data/db/saveError';
 import { useNotes } from './useNotes';
 import { useEncryptedDb } from './useEncryptedDb';
@@ -104,6 +105,32 @@ describe('useNotes', () => {
 
       expect(mockDb.getAllNotes).not.toHaveBeenCalled();
       expect(result.current.notes).toEqual([]);
+    });
+  });
+
+  describe('data replaced', () => {
+    it('reloads the notes when this tab replaces the data, under new IDs', async () => {
+      const { result, unmount } = renderHook(() => useNotes());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      mockDb.getAllNotes.mockResolvedValue([createMockNote(7)]);
+
+      act(() => announceDataReplaced());
+
+      await waitFor(() => expect(result.current.notes.map((n) => n.id)).toEqual([7]));
+      unmount();
+    });
+
+    it('reloads the notes when another tab replaces the data', async () => {
+      const otherTab = new BroadcastChannel(DATA_CHANNEL_NAME);
+      const { result, unmount } = renderHook(() => useNotes());
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      mockDb.getAllNotes.mockResolvedValue([createMockNote(8)]);
+
+      otherTab.postMessage({ type: 'replaced' });
+
+      await waitFor(() => expect(result.current.notes.map((n) => n.id)).toEqual([8]));
+      unmount();
+      otherTab.close();
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { DATA_CHANNEL_NAME, announceDataReplaced, onDataReplacedElsewhere } from './dataReplacedEvents';
+import { DATA_CHANNEL_NAME, announceDataReplaced, onDataReplaced, onDataReplacedElsewhere } from './dataReplacedEvents';
 
 /** Another tab of this browser, on the same channel */
 let otherTab: BroadcastChannel | null = null;
@@ -56,5 +56,23 @@ describe('dataReplacedEvents', () => {
 
     expect(listener).not.toHaveBeenCalled();
     stop();
+  });
+
+  it('hears the data replaced in this tab or in another, until it stops listening', async () => {
+    const { tab } = openOtherTab();
+    const listener = vi.fn();
+    const stop = onDataReplaced(listener);
+
+    announceDataReplaced();
+    expect(listener).toHaveBeenCalledTimes(1);
+    tab.postMessage({ type: 'replaced' });
+    await delivered();
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    stop();
+    announceDataReplaced();
+    tab.postMessage({ type: 'replaced' });
+    await delivered();
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });

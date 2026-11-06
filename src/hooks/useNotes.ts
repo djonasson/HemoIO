@@ -9,6 +9,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { SaveError } from '@data/db/saveError';
 import { trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
+import { useDataReplaced } from './useDataReplacedElsewhere';
 import { useEncryptedDb } from './useEncryptedDb';
 import type { UserNote } from '@/types';
 
@@ -166,6 +167,14 @@ export function useNotes(initialFilters: NoteFilters = {}): UseNotesResult {
   useEffect(() => {
     fetchNotes();
   }, [fetchNotes]);
+
+  // A restore here or in another tab gives every note a new ID: one kept
+  // on screen would be edited or deleted under an ID that no longer exists
+  useDataReplaced(
+    useCallback(() => {
+      void fetchNotes();
+    }, [fetchNotes])
+  );
 
   /**
    * Create a new note

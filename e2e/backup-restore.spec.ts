@@ -371,6 +371,31 @@ test.describe('Restore Flow', () => {
     await second.close();
   });
 
+  test('another open tab shows the restored notes without my reloading it', async ({ page }) => {
+    // Scenario: Another open tab shows the restored data without my reloading it
+    await page.goto('/');
+    await setupOrUnlock(page);
+    const second = await page.context().newPage();
+    await second.goto('/');
+    await unlockApp(second);
+    const secondNotes = await goToNotes(second);
+    await expect(noteCards(secondNotes)).toHaveCount(0);
+
+    await page.bringToFront();
+    await navigateToSettings(page);
+    const backupPath = createBackupFile(createValidBackupData());
+    try {
+      await uploadBackupFile(page, backupPath);
+      await page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByText(/Restore Complete/i)).toBeVisible({ timeout: 10000 });
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
+
+    await expect(noteCards(secondNotes)).toHaveCount(MOCK_USER_NOTES.length);
+    await second.close();
+  });
+
   test('should cancel restore when clicking cancel', async ({ page }) => {
     await page.goto('/');
     await setupOrUnlock(page);

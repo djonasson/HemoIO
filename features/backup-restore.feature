@@ -111,6 +111,7 @@ Feature: Backup and Restore
     Given HemoIO is open and unlocked in a second tab, showing the timeline
     When I restore from a backup file in the first tab
     Then the second tab should show the backup's lab results, without reloading the page
+    And its notes should be the backup's notes, without reloading the page
 
   # Restoring from Encrypted Backup
   Scenario: Encrypted backup auto-detected

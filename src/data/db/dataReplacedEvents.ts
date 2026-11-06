@@ -7,6 +7,9 @@
  * would lose its link and an edit would fail. They are told on a
  * BroadcastChannel, and reload their data from the database. The message
  * says only that the data was replaced: it carries no data.
+ *
+ * What every view reloads for itself (the notes) listens with
+ * onDataReplaced, which hears this tab's replacements too.
  */
 
 export const DATA_CHANNEL_NAME = 'hemoio-data';
@@ -15,7 +18,10 @@ interface DataReplacedMessage {
   type: 'replaced';
 }
 
-const listeners = new Set<() => void>();
+/** Told of a replacement in another tab */
+const elsewhereListeners = new Set<() => void>();
+/** Told of a replacement in this tab or another */
+const anyListeners = new Set<() => void>();
 /** Open while this tab listens; a channel never hears its own messages */
 let channel: BroadcastChannel | null = null;
 
@@ -25,6 +31,7 @@ function isReplacedMessage(data: unknown): data is DataReplacedMessage {
 
 /** Tell the other tabs of this browser that this tab replaced the data */
 export function announceDataReplaced(): void {
+  anyListeners.forEach((each) => each());
   if (typeof BroadcastChannel === 'undefined') return;
   const message: DataReplacedMessage = { type: 'replaced' };
   // From the channel this tab listens on, so it does not hear itself
@@ -37,21 +44,31 @@ export function announceDataReplaced(): void {
   once.close();
 }
 
-/** Listen for another tab replacing the data; returns the function that stops listening */
-export function onDataReplacedElsewhere(listener: () => void): () => void {
-  if (typeof BroadcastChannel === 'undefined') return () => undefined;
-  if (!channel) {
+function listen(listeners: Set<() => void>, listener: () => void): () => void {
+  listeners.add(listener);
+  if (!channel && typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel(DATA_CHANNEL_NAME);
     channel.onmessage = (event: MessageEvent) => {
-      if (isReplacedMessage(event.data)) listeners.forEach((each) => each());
+      if (!isReplacedMessage(event.data)) return;
+      elsewhereListeners.forEach((each) => each());
+      anyListeners.forEach((each) => each());
     };
   }
-  listeners.add(listener);
   return () => {
     listeners.delete(listener);
-    if (listeners.size === 0 && channel) {
+    if (elsewhereListeners.size === 0 && anyListeners.size === 0 && channel) {
       channel.close();
       channel = null;
     }
   };
+}
+
+/** Listen for another tab replacing the data; returns the function that stops listening */
+export function onDataReplacedElsewhere(listener: () => void): () => void {
+  return listen(elsewhereListeners, listener);
+}
+
+/** Listen for the data replaced in this tab or another; returns the function that stops listening */
+export function onDataReplaced(listener: () => void): () => void {
+  return listen(anyListeners, listener);
 }
