@@ -1,0 +1,132 @@
+/**
+ * One folder sync, outside React
+ *
+ * What useFilesystemSync runs while holding the folder-sync lock: export,
+ * compare with the folder copy and write it when that loses nothing, and
+ * load a newer copy written elsewhere. The hook keeps what belongs to the
+ * session and the screen: which session is current, the hold, the question
+ * to the user and the notices.
+ */
+
+import { loadFolderSyncState, saveFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
+import { keepBrowserData } from './folderConflict';
+import { markFolderCopySeen, writeFolderCopy } from './folderSync';
+import type { EncryptedDb } from '@data/db/encryptedDb';
+import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import type { ParsedBackupData } from '@services/import';
+import type { FolderBackupStore } from './folderBackups';
+import type { FolderCopyStore, FolderSyncOutcome } from './folderSync';
+
+/** The unlocked database and the key a sync seals with */
+export interface SyncSession {
+  db: EncryptedDb;
+  key: CryptoKey;
+}
+
+export type ChangedElsewhere = Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>;
+
+/** What one sync found, and what this browser had seen of the folder before it */
+export interface FolderSyncRun {
+  outcome: FolderSyncOutcome;
+  lastSeen: FolderSyncState | null;
+}
+
+export interface RunFolderSyncOptions {
+  /** This browser's lock, written beside the copy */
+  lock: StoredCredentialsV2 | null;
+  /**
+   * The copy the user chose to replace, if any. Asked for once the sync is
+   * past the hold's first check, so a choice is used up only by a sync that
+   * goes on to read the folder.
+   */
+  takeReplaces: () => string | null | undefined;
+  /** False once the hold begins: checked before the folder copy is decrypted, and at the save */
+  isEnabled: () => boolean;
+}
+
+/** Thrown by a save the hold stopped: the sync ends without a word, as one never started would */
+class SyncHeld extends Error {}
+
+/**
+ * Write this browser's data to the folder copy, unless that could lose data
+ * there (writeFolderCopy decides). Resolves null when the hold began while
+ * the sync was under way: nothing was written then.
+ */
+export async function runFolderSync(
+  session: SyncSession,
+  folder: FolderCopyStore,
+  { lock, takeReplaces, isEnabled }: RunFolderSyncOptions
+): Promise<FolderSyncRun | null> {
+  const data = await session.db.exportAllData();
+  const { unsaved } = await session.db.countSetAside();
+  // The hold may begin while this sync is under way: checked here, so a
+  // held sync does not decrypt the folder copy, and again at the save
+  if (!isEnabled()) return null;
+  const lastSeen = await loadFolderSyncState(session.key);
+  const store: FolderCopyStore = {
+    loadCurrent: () => folder.loadCurrent(),
+    loadPrevious: () => folder.loadPrevious(),
+    save: (bytes, previous) => (isEnabled() ? folder.save(bytes, previous) : Promise.reject(new SyncHeld())),
+  };
+  const replaces = takeReplaces();
+  try {
+    const outcome = await writeFolderCopy(store, data, session.key, {
+      lock,
+      setAsideUnsaved: unsaved,
+      lastSeen,
+      ...(replaces !== undefined && { replaces }),
+    });
+    return { outcome, lastSeen };
+  } catch (error) {
+    if (error instanceof SyncHeld) return null;
+    throw error;
+  }
+}
+
+/**
+ * Record the copy a sync wrote, or found unchanged, as the one this browser
+ * has seen. Saved again only when it changed: every save is a new
+ * ciphertext in localStorage.
+ */
+export async function recordFolderCopySeen(
+  state: FolderSyncState,
+  lastSeen: FolderSyncState | null,
+  key: CryptoKey
+): Promise<void> {
+  if (state.revision !== lastSeen?.revision || state.digest !== lastSeen.digest) {
+    await saveFolderSyncState(state, key);
+  }
+}
+
+export interface LoadNewerCopyOptions {
+  /** Replace this browser's data with the copy */
+  apply: (data: ParsedBackupData) => Promise<void>;
+  /** False once the session ended or the hold began: nothing more is done then */
+  isCurrent: () => boolean;
+  /** The data was replaced: told before the copy is recorded as seen */
+  onLoaded: () => void;
+}
+
+/**
+ * Load a newer copy written elsewhere, after keeping this browser's data as
+ * a backup; a failed backup loads nothing. Nothing either when this browser
+ * changed something while the copy was read: the next sync asks instead.
+ */
+export async function loadNewerFolderCopy(
+  session: SyncSession,
+  backups: FolderBackupStore,
+  outcome: ChangedElsewhere,
+  lastSeen: FolderSyncState,
+  { apply, isCurrent, onLoaded }: LoadNewerCopyOptions
+): Promise<void> {
+  if (!isCurrent()) return;
+  const kept = await keepBrowserData(
+    { db: session.db, key: session.key, backups },
+    { kind: 'before-load', unchangedSince: lastSeen.digest }
+  );
+  if (!kept || !isCurrent()) return;
+  await apply(outcome.copy);
+  // Told first: the data is replaced, whatever happens to the record of it
+  onLoaded();
+  await markFolderCopySeen(session.db, session.key, outcome.revision);
+}

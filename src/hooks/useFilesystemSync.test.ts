@@ -29,11 +29,17 @@ vi.mock('@/utils/fileSystemSupport', () => ({
   isFileSystemAccessSupported: vi.fn(() => true),
 }));
 
-// What the folder copy may be replaced with is the service's decision
-vi.mock('@services/sync', () => ({
+// What the folder copy may be replaced with is the service's decision. The
+// modules that decide are mocked, so the sync run (folderSyncRun) that calls
+// them is the real one.
+vi.mock('@services/sync/folderSync', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@services/sync/folderSync')>()),
   writeFolderCopy: vi.fn(),
   markFolderCopySeen: vi.fn(),
   folderCopyId: vi.fn(),
+}));
+vi.mock('@services/sync/folderConflict', () => ({
+  canKeepFolderCopy: vi.fn(),
   keepBrowserData: vi.fn(),
   keepFolderCopy: vi.fn(),
   keepCurrentFolderCopy: vi.fn(),

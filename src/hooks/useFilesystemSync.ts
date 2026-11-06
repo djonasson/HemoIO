@@ -14,11 +14,6 @@ import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
-import {
-  loadFolderSyncState,
-  saveFolderSyncState,
-  type FolderSyncState,
-} from '@data/storage/folderSyncState';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { onSetAsideChanged } from '@data/db/setAsideEvents';
 import {
@@ -27,18 +22,17 @@ import {
   keepCurrentFolderCopy,
   keepFolderCopy,
   markFolderCopySeen,
-  writeFolderCopy,
 } from '@services/sync';
+import {
+  loadNewerFolderCopy,
+  recordFolderCopySeen,
+  runFolderSync,
+  type SyncSession,
+} from '@services/sync/folderSyncRun';
 import { FOLDER_SYNC_LOCK, withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
-import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { ParsedBackupData } from '@services/import';
-import type {
-  FolderCopyStore,
-  FolderProtectionReason,
-  FolderSide,
-  FolderSyncOutcome,
-} from '@services/sync';
+import type { FolderProtectionReason, FolderSide } from '@services/sync';
 
 /** The notice that this browser took on a password changed on another computer */
 const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
@@ -76,11 +70,6 @@ export interface UseFilesystemSyncOptions {
   applyFolderCopy: (data: ParsedBackupData) => Promise<void>;
 }
 
-interface SyncSession {
-  db: EncryptedDb;
-  key: CryptoKey;
-}
-
 /** A conflict waiting for the user: the copy and its bytes as the sync found them */
 interface PendingConflict {
   session: SyncSession;
@@ -88,11 +77,6 @@ interface PendingConflict {
   revision: string | null;
   bytes: ArrayBuffer;
 }
-
-type ChangedElsewhere = Extract<FolderSyncOutcome, { status: 'changed-elsewhere' }>;
-
-/** Thrown by a save the hold stopped: the sync ends without a word, as one never started would */
-class SyncHeld extends Error {}
 
 /**
  * Hook that syncs database changes to the filesystem when filesystem storage is enabled
@@ -167,39 +151,6 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     setHeldFor(key);
   }, []);
 
-  /**
-   * Load a newer copy written elsewhere, after keeping this browser's data as
-   * a backup; a failed backup loads nothing. Nothing either when this browser
-   * changed something while the copy was read: the next sync asks instead.
-   */
-  const loadNewerCopy = useCallback(
-    async (
-      session: SyncSession,
-      provider: FileSystemStorageProvider,
-      outcome: ChangedElsewhere,
-      lastSeen: FolderSyncState
-    ) => {
-      if (sessionRef.current !== session || !enabledRef.current) return;
-      const kept = await keepBrowserData(
-        { db: session.db, key: session.key, backups: provider },
-        { kind: 'before-load', unchangedSince: lastSeen.digest }
-      );
-      if (!kept || sessionRef.current !== session || !enabledRef.current) return;
-      await applyRef.current(outcome.copy);
-      const { exportedAt } = outcome.copy;
-      // Told first: the data is replaced, whatever happens to the record of it
-      notifications.show({
-        title: 'Updated from the folder',
-        // A copy whose date cannot be read is loaded all the same
-        message: Number.isNaN(exportedAt.getTime())
-          ? 'Loaded the copy saved on your other computer.'
-          : `Saved on ${formatDateTime(exportedAt)}`,
-      });
-      await markFolderCopySeen(session.db, session.key, outcome.revision);
-    },
-    []
-  );
-
   /** One sync, run while holding the folder-sync lock; `replaces` is the revision the user chose to replace */
   const syncOnce = useCallback(
     async (session: SyncSession, replaces?: string | null) => {
@@ -212,28 +163,18 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
           return;
         }
 
-        const data = await session.db.exportAllData();
-        const { unsaved } = await session.db.countSetAside();
-        // The hold may begin while this sync is under way: checked here, so a
-        // held sync does not decrypt the folder copy, and again at the save
-        if (!enabledRef.current) return;
-        const lastSeen = await loadFolderSyncState(session.key);
-        const store: FolderCopyStore = {
-          loadCurrent: () => provider.loadCurrent(),
-          loadPrevious: () => provider.loadPrevious(),
-          save: (bytes, previous) =>
-            enabledRef.current ? provider.save(bytes, previous) : Promise.reject(new SyncHeld()),
-        };
-        // Taken once: a later sync asks again rather than replace another copy
-        const chosen = replaceNextRef.current;
-        replaceNextRef.current = null;
-        const replacing = replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
-        const outcome = await writeFolderCopy(store, data, session.key, {
+        const run = await runFolderSync(session, provider, {
           lock: lockRef.current,
-          setAsideUnsaved: unsaved,
-          lastSeen,
-          ...(replacing !== undefined && { replaces: replacing }),
+          takeReplaces: () => {
+            // Taken once: a later sync asks again rather than replace another copy
+            const chosen = replaceNextRef.current;
+            replaceNextRef.current = null;
+            return replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
+          },
+          isEnabled: () => enabledRef.current,
         });
+        if (!run) return;
+        const { outcome, lastSeen } = run;
         // A password changed on another computer: adopted when later than this
         // one's, and only for the session whose key opened the copy
         if (outcome.folderLock && sessionRef.current === session && adoptRef.current(outcome.folderLock)) {
@@ -247,15 +188,10 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
 
         switch (outcome.status) {
           case 'written':
-          case 'unchanged': {
-            const { state } = outcome;
-            // Saved again only when it changed: every save is a new ciphertext in localStorage
-            if (state.revision !== lastSeen?.revision || state.digest !== lastSeen.digest) {
-              await saveFolderSyncState(state, session.key);
-            }
+          case 'unchanged':
+            await recordFolderCopySeen(outcome.state, lastSeen, session.key);
             setIssue(null);
             return;
-          }
           case 'protected':
             setIssue(outcome.reason);
             return;
@@ -263,7 +199,20 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             setIssue(null);
             if (!enabledRef.current || sessionRef.current !== session) return;
             if (outcome.reason === 'newer' && lastSeen) {
-              await loadNewerCopy(session, provider, outcome, lastSeen);
+              await loadNewerFolderCopy(session, provider, outcome, lastSeen, {
+                apply: (copy) => applyRef.current(copy),
+                isCurrent: () => sessionRef.current === session && enabledRef.current,
+                onLoaded: () => {
+                  const { exportedAt } = outcome.copy;
+                  notifications.show({
+                    title: 'Updated from the folder',
+                    // A copy whose date cannot be read is loaded all the same
+                    message: Number.isNaN(exportedAt.getTime())
+                      ? 'Loaded the copy saved on your other computer.'
+                      : `Saved on ${formatDateTime(exportedAt)}`,
+                  });
+                },
+              });
               return;
             }
             pendingRef.current = {
@@ -284,14 +233,13 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             });
         }
       } catch (error) {
-        if (error instanceof SyncHeld) return;
         // Fixed text: the error could name stored data
         console.error('Failed to sync to the folder');
         setIssue('failed');
         throw error;
       }
     },
-    [holdFor, loadNewerCopy]
+    [holdFor]
   );
 
   const runSync = useCallback(async () => {
