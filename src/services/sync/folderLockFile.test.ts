@@ -63,6 +63,23 @@ describe('folder lock file', () => {
     expect(readLockFile(read())).toEqual(next.credentials);
   });
 
+  it('never puts back an older lock over a later one another computer wrote', async () => {
+    const older = await createCredentialsV2('Old-Passw0rd!', 1000);
+    const later = await createCredentialsV2('New-Passw0rd!', 1000);
+    const olderLock = { ...older.credentials, changedAt: '2026-11-05T09:00:00.000Z' };
+    const laterLock = { ...later.credentials, changedAt: '2026-11-06T09:00:00.000Z' };
+    const { store, read } = folderWith(null);
+    await keepLockFile(store, laterLock);
+    store.saveLock.mockClear();
+
+    await keepLockFile(store, olderLock);
+    // A lock from before changes were dated counts as the oldest
+    await keepLockFile(store, { ...older.credentials, changedAt: undefined });
+
+    expect(store.saveLock).not.toHaveBeenCalled();
+    expect(readLockFile(read())).toEqual(laterLock);
+  });
+
   it('writes the lock when the file cannot be read, and rejects when it cannot be written', async () => {
     const { credentials } = await createCredentialsV2('Passw0rd!', 1000);
     const { store, read } = folderWith(null);

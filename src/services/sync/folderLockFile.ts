@@ -13,7 +13,7 @@
  * under it, which AES-GCM authenticates.
  */
 
-import { isCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { isCredentialsV2, isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { cleanLock } from './folderEnvelope';
 
 export const FOLDER_LOCK_FORMAT = 'hemoio-folder-lock';
@@ -47,7 +47,8 @@ export function readLockFile(bytes: ArrayBuffer | null): StoredCredentialsV2 | n
 
 /**
  * Make the lock file hold this lock. Written only when it holds anything
- * else, so a sync that finds it current does not touch the folder. Rejects
+ * else, so a sync that finds it current does not touch the folder, and
+ * never over a later lock (isLaterLock). Rejects
  * when the file cannot be written.
  */
 export async function keepLockFile(store: FolderLockStore, lock: StoredCredentialsV2): Promise<void> {
@@ -59,5 +60,9 @@ export async function keepLockFile(store: FolderLockStore, lock: StoredCredentia
     // Unread is rewritten: the write says whether the folder can be used
   }
   if (current !== null && new TextDecoder().decode(current) === text) return;
+  // Never back: the cloud may bring the lock file of a password change on
+  // another computer before its copy, and the copy's older lock must not undo it
+  const held = readLockFile(current);
+  if (held !== null && isLaterLock(held, lock)) return;
   await store.saveLock(new TextEncoder().encode(text).buffer as ArrayBuffer);
 }

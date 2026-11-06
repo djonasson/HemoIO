@@ -144,6 +144,13 @@ Feature: Folder Sync Safety
     Then the question about the old folder should go away
     And the next sync should look at the new folder
 
+  # Unit-tested: folderLockFile.test.ts
+  Scenario: The lock file never goes back to an older password
+    Given I changed my password on another computer
+    And its lock file reached this computer before its folder copy
+    When this computer syncs and finds the folder copy unchanged
+    Then the lock file should keep the newer password lock
+
   Scenario: A folder from another setup is explained
     Given my folder holds a copy made by another HemoIO setup, with a different key
     When I add lab results
