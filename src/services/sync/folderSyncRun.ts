@@ -99,8 +99,12 @@ export async function recordFolderCopySeen(
 }
 
 export interface LoadNewerCopyOptions {
-  /** Replace this browser's data with the copy */
-  apply: (data: ParsedBackupData) => Promise<void>;
+  /**
+   * Replace this browser's data with the copy, only while the stored data
+   * is as `unchangedSince` stamps it (EncryptedDb.storedDataStamp); false
+   * when it changed, and nothing was replaced
+   */
+  apply: (data: ParsedBackupData, unchangedSince: string) => Promise<boolean>;
   /** False once the session ended or the hold began: nothing more is done then */
   isCurrent: () => boolean;
   /** The data was replaced: told before the copy is recorded as seen */
@@ -110,7 +114,8 @@ export interface LoadNewerCopyOptions {
 /**
  * Load a newer copy written elsewhere, after keeping this browser's data as
  * a backup; a failed backup loads nothing. Nothing either when this browser
- * changed something while the copy was read: the next sync asks instead.
+ * changed something while the copy was read, or while it was kept or
+ * loaded: the next sync asks instead.
  */
 export async function loadNewerFolderCopy(
   session: SyncSession,
@@ -120,12 +125,15 @@ export async function loadNewerFolderCopy(
   { apply, isCurrent, onLoaded }: LoadNewerCopyOptions
 ): Promise<void> {
   if (!isCurrent()) return;
+  // Stamped before the backup's export: a change saved at any moment after
+  // it, even after the export was checked, stops the load in its transaction
+  const stamp = await session.db.storedDataStamp();
   const kept = await keepBrowserData(
     { db: session.db, key: session.key, backups },
     { kind: 'before-load', unchangedSince: lastSeen.digest }
   );
   if (!kept || !isCurrent()) return;
-  await apply(outcome.copy);
+  if (!(await apply(outcome.copy, stamp))) return;
   // Told first: the data is replaced, whatever happens to the record of it
   onLoaded();
   await markFolderCopySeen(session.db, session.key, outcome.revision);

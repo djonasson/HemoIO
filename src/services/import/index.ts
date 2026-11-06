@@ -31,7 +31,13 @@ export {
   type ParsedEncryptedBackupData,
 } from './encryptedImport';
 
-export { restoreBackup, type RestoreTarget, type RestoreSummary } from './restoreBackup';
+export {
+  restoreBackup,
+  restoreBackupIfUnchanged,
+  type GuardedRestoreTarget,
+  type RestoreTarget,
+  type RestoreSummary,
+} from './restoreBackup';
 export {
   describeBackupAISettings,
   restoreAISettings,

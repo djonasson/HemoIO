@@ -64,10 +64,12 @@ export interface UseFilesystemSyncOptions {
   enabled?: boolean;
   /**
    * Replace this browser's data with a folder copy and reload what shows it.
+   * Given a stamp (EncryptedDb.storedDataStamp), only while the stored data
+   * is as stamped: resolves false, replacing nothing, when it changed.
    * Runs inside a sync, which holds the folder-sync lock: it must never wait
    * for another sync (syncNow), which would wait for it in turn.
    */
-  applyFolderCopy: (data: ParsedBackupData) => Promise<void>;
+  applyFolderCopy: (data: ParsedBackupData, unchangedSince?: string) => Promise<boolean>;
 }
 
 /** A conflict waiting for the user: the copy and its bytes as the sync found them */
@@ -200,7 +202,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             if (!enabledRef.current || sessionRef.current !== session) return;
             if (outcome.reason === 'newer' && lastSeen) {
               await loadNewerFolderCopy(session, provider, outcome, lastSeen, {
-                apply: (copy) => applyRef.current(copy),
+                apply: (copy, stamp) => applyRef.current(copy, stamp),
                 isCurrent: () => sessionRef.current === session && enabledRef.current,
                 onLoaded: () => {
                   const { exportedAt } = outcome.copy;

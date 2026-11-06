@@ -6,6 +6,7 @@ import {
   backupFileName,
   backupKind,
   keepFolderBackup,
+  protectFolderBackup,
   sealedForBackup,
   type FolderBackupStore,
 } from './folderBackups';
@@ -121,6 +122,41 @@ describe('folder backups', () => {
     expect(store.files.has(backupFileName(at(11)))).toBe(true);
     // Up to 11 for now: the next save prunes down once nothing is protected
     expect(store.files.size).toBe(11);
+  });
+
+  it('never deletes a backup shown for restoring, whoever keeps another meanwhile', async () => {
+    const store = new MemoryBackups();
+    for (let minute = 1; minute <= 10; minute++) {
+      await keepFolderBackup(store, bytes(minute), { kind: 'before-load', at: at(minute) });
+    }
+    const shown = backupFileName(at(1), 'before-load');
+    const release = protectFolderBackup(shown);
+
+    // A sync keeps a backup while the restore confirmation is open
+    await keepFolderBackup(store, bytes(11), { kind: 'before-load', at: at(11) });
+    expect(store.files.has(shown)).toBe(true);
+
+    // Once the confirmation closes, the next backup prunes it as usual
+    release();
+    await keepFolderBackup(store, bytes(12), { kind: 'before-load', at: at(12) });
+    expect(store.files.has(shown)).toBe(false);
+  });
+
+  it('keeps a backup protected while any confirmation still shows it', async () => {
+    const store = new MemoryBackups();
+    for (let minute = 1; minute <= 10; minute++) {
+      await keepFolderBackup(store, bytes(minute), { kind: 'conflict', at: at(minute) });
+    }
+    const shown = backupFileName(at(1));
+    const releaseFirst = protectFolderBackup(shown);
+    const releaseSecond = protectFolderBackup(shown);
+    releaseFirst();
+    releaseFirst();
+
+    await keepFolderBackup(store, bytes(11), { kind: 'conflict', at: at(11) });
+
+    expect(store.files.has(shown)).toBe(true);
+    releaseSecond();
   });
 
   it('names each kind apart, and reads both back', () => {

@@ -33,16 +33,22 @@ const KEEP_FAILED_MESSAGE = 'Nothing was changed: the current folder copy could 
 
 const HEADING_ID = 'folder-backups-heading';
 
+/** The backup a restore confirmation shows */
+interface PendingRestore {
+  name: string;
+  data: ParsedBackupData;
+  /** Whether the current folder copy can be kept first */
+  keepsCurrent: boolean;
+  /** Whether it has been kept for this confirmation: a retry must not keep again */
+  kept: boolean;
+}
+
 export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsProps): React.ReactNode {
-  const { backups, read, canKeepCurrentCopy, keepCurrentCopy } = useFolderBackups();
-  const [pending, setPending] = useState<{
-    name: string;
-    data: ParsedBackupData;
-    /** Whether the current folder copy can be kept first */
-    keepsCurrent: boolean;
-    /** Whether it has been kept for this confirmation: a retry must not keep again */
-    kept: boolean;
-  } | null>(null);
+  const { backups, read, canKeepCurrentCopy, keepCurrentCopy, protectShown } = useFolderBackups();
+  const [pending, setPending] = useState<PendingRestore | null>(null);
+  // While the confirmation shows a backup, no backup kept meanwhile prunes it
+  const shownName = pending?.name ?? null;
+  useEffect(() => (shownName === null ? undefined : protectShown(shownName)), [shownName, protectShown]);
   const [opening, setOpening] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);

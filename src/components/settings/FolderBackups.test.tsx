@@ -38,9 +38,11 @@ const read = vi.fn();
 const keepCurrentCopy = vi.fn();
 const canKeepCurrentCopy = vi.fn();
 const onRestore = vi.fn();
+const release = vi.fn();
+const protectShown = vi.fn(() => release);
 
 function renderBackups(backups: FolderBackupEntry[] = [NEWER, OLDER]) {
-  useFolderBackups.mockReturnValue({ backups, read, keepCurrentCopy, canKeepCurrentCopy });
+  useFolderBackups.mockReturnValue({ backups, read, keepCurrentCopy, canKeepCurrentCopy, protectShown });
   return render(
     <MantineProvider env="test">
       <FolderBackups onRestore={onRestore} />
@@ -242,6 +244,19 @@ describe('FolderBackups', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
 
     await waitFor(() => expect(keepCurrentCopy).toHaveBeenCalledWith([OLDER.name]));
+  });
+
+  it('protects the backup shown from pruning while the confirmation is open', async () => {
+    const user = userEvent.setup();
+    renderBackups();
+
+    await user.click(screen.getAllByRole('button', { name: /^Restore the backup saved/ })[1]);
+    const dialog = await screen.findByRole('dialog');
+    expect(protectShown).toHaveBeenCalledWith(OLDER.name);
+    expect(release).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(release).toHaveBeenCalledTimes(1));
   });
 
   it('when the current copy cannot be opened, says it is left as it is, keeps nothing and restores', async () => {

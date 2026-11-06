@@ -15,6 +15,7 @@ import {
   backupKind,
   canKeepFolderCopy,
   keepCurrentFolderCopy,
+  protectFolderBackup,
   readFolderCopy,
   type FolderBackupKind,
   type FolderCopyReading,
@@ -45,6 +46,11 @@ export interface UseFolderBackupsResult {
    * `protect`ed backups; rejects when it cannot
    */
   keepCurrentCopy: (protect?: string[]) => Promise<void>;
+  /**
+   * Keep a backup from being pruned while it is shown for restoring, by any
+   * backup kept meanwhile (a sync's included). Returns the release.
+   */
+  protectShown: (name: string) => () => void;
 }
 
 export function useFolderBackups(): UseFolderBackupsResult {
@@ -116,5 +122,5 @@ export function useFolderBackups(): UseFolderBackupsResult {
     [folder, encryptionKey]
   );
 
-  return { backups, read, canKeepCurrentCopy, keepCurrentCopy };
+  return { backups, read, canKeepCurrentCopy, keepCurrentCopy, protectShown: protectFolderBackup };
 }

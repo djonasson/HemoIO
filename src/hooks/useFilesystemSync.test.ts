@@ -52,7 +52,7 @@ vi.mock('@data/storage/folderSyncState', () => ({
 }));
 
 /** Replaces this browser's data with a folder copy, as AppShell does */
-const applyFolderCopy = vi.fn<(data: ParsedBackupData) => Promise<void>>();
+const applyFolderCopy = vi.fn<(data: ParsedBackupData, unchangedSince?: string) => Promise<boolean>>();
 
 // Storage provider mock
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
@@ -85,7 +85,11 @@ const mockExportAllData = vi.fn().mockResolvedValue({
 
 // The same db and key on every render, as the providers give them
 const mockCountSetAside = vi.fn();
-const mockDb = { exportAllData: mockExportAllData, countSetAside: mockCountSetAside };
+const mockDb = {
+  exportAllData: mockExportAllData,
+  countSetAside: mockCountSetAside,
+  storedDataStamp: vi.fn(async () => 'stamp-1'),
+};
 const mockKey = {} as CryptoKey;
 
 vi.mock('./useEncryptedDb', () => ({
@@ -142,7 +146,7 @@ describe('useFilesystemSync', () => {
     vi.mocked(keepFolderCopy).mockResolvedValue(undefined);
     vi.mocked(keepCurrentFolderCopy).mockResolvedValue(FOLDER_BYTES);
     vi.mocked(folderCopyId).mockImplementation(async (_bytes, revision) => revision ?? 'sha256:bytes');
-    applyFolderCopy.mockResolvedValue(undefined);
+    applyFolderCopy.mockResolvedValue(true);
     mockGetPermissionState.mockResolvedValue('granted');
     mockCountSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
     auth.encryptionKey = mockKey;
@@ -647,7 +651,8 @@ describe('useFilesystemSync', () => {
         { db: mockDb, key: mockKey, backups: expect.anything() },
         { kind: 'before-load', unchangedSince: STATE.digest }
       );
-      expect(applyFolderCopy).toHaveBeenCalledWith(COPY);
+      // Only while the data is as it was stamped before the backup
+      expect(applyFolderCopy).toHaveBeenCalledWith(COPY, 'stamp-1');
       const order = (fn: { mock: { invocationCallOrder: number[] } }): number => fn.mock.invocationCallOrder[0];
       expect(order(vi.mocked(keepBrowserData))).toBeLessThan(order(applyFolderCopy));
       // Told before the load is recorded as seen, which could fail
@@ -696,11 +701,26 @@ describe('useFilesystemSync', () => {
       expect(markFolderCopySeen).not.toHaveBeenCalled();
     });
 
+    it('tells nothing and records nothing when a change saved meanwhile stopped the load', async () => {
+      vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
+      applyFolderCopy.mockResolvedValue(false);
+      vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
+
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+      await waitFor(() => expect(applyFolderCopy).toHaveBeenCalled());
+      await act(() => result.current.syncNow());
+
+      expect(notifications.show).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Updated from the folder' }));
+      expect(markFolderCopySeen).not.toHaveBeenCalled();
+      expect(result.current.issue).toBeNull();
+    });
+
     it('loading a newer copy does not start another sync', async () => {
       vi.mocked(loadFolderSyncState).mockResolvedValue(STATE);
       let applied = false;
       applyFolderCopy.mockImplementation(async () => {
         applied = true;
+        return true;
       });
       vi.mocked(writeFolderCopy).mockResolvedValueOnce(changedElsewhere(false));
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));

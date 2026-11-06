@@ -26,6 +26,8 @@ class MemoryStore implements FolderCopyStore {
   copy: ArrayBuffer | null = null;
   previous: ArrayBuffer | null = null;
   saves = 0;
+  /** How many saves also wrote the previous copy */
+  previousSaves = 0;
 
   async loadCurrent(): Promise<ArrayBuffer | null> {
     return this.copy;
@@ -36,7 +38,10 @@ class MemoryStore implements FolderCopyStore {
   }
 
   async save(data: ArrayBuffer, previous?: ArrayBuffer): Promise<void> {
-    if (previous) this.previous = previous;
+    if (previous) {
+      this.previous = previous;
+      this.previousSaves++;
+    }
     this.copy = data;
     this.saves++;
   }
@@ -348,6 +353,8 @@ describe('writeFolderCopy', () => {
 
       expect(store.saves).toBe(3);
       expect(store.previous).toBe(previous);
+      // Only the second write kept a previous copy
+      expect(store.previousSaves).toBe(1);
     });
 
     it('keeps the previous copy in the same format, without a lock', async () => {
@@ -480,10 +487,15 @@ describe('writeFolderCopy', () => {
       await write(store, withResults(6), key, context);
       const full = await plainOf(store.copy, key);
       await write(store, withResults(1), key, context);
+      const kept = store.previous;
+      const previousSaves = store.previousSaves;
 
       await write(store, withResults(2), key, context);
 
       expect(await plainOf(store.previous, key)).toBe(full);
+      // Left untouched, not written again with the same content
+      expect(store.previous).toBe(kept);
+      expect(store.previousSaves).toBe(previousSaves);
     });
 
     it('is not pushed out by a copy without health data', async () => {
@@ -494,6 +506,7 @@ describe('writeFolderCopy', () => {
       await write(store, withResults(), key, context);
 
       expect(store.previous).toBe(previous);
+      expect(store.previousSaves).toBe(0);
     });
 
     it('is replaced when it cannot be read: it is no copy to undo to', async () => {

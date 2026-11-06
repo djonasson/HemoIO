@@ -52,7 +52,6 @@ import { AlertsView } from '@components/alerts';
 import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
-import { HEADER_HEIGHT } from './headerHeight';
 import { DictionaryView } from '@components/dictionary';
 import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@components/storage';
 import { modelForProvider } from '@services/ai';
@@ -62,9 +61,11 @@ import {
   afterRestoreAdvice,
   restoreAISettings,
   restoreBackup,
+  restoreBackupIfUnchanged,
   runAfterRestore,
   type AfterRestoreStep,
 } from '@services/import';
+import { HEADER_HEIGHT } from './headerHeight';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
 import type { AppView, FolderConflictChoice, FolderRestoreDecision, ViewFocus } from '@hooks';
@@ -161,13 +162,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   // A folder copy saved on another computer replaces this browser's data. It
   // runs inside a folder sync, so it never starts one (that would wait for
-  // this one to end) and leaves telling the user to the sync.
+  // this one to end) and leaves telling the user to the sync. Given a stamp,
+  // only while the data is as stamped: false, loading nothing, otherwise.
   const applyFolderCopy = useCallback(
-    async (data: ParsedBackupData) => {
+    async (data: ParsedBackupData, unchangedSince?: string): Promise<boolean> => {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
-      await restoreBackup(db, data);
+      if (unchangedSince === undefined) await restoreBackup(db, data);
+      else if ((await restoreBackupIfUnchanged(db, data, unchangedSince)) === null) return false;
       const steps: AfterRestoreStep[] = [
         { name: 'loading your preferences', run: reloadPreferences },
         { name: 'loading your alert acknowledgements', run: reloadAlertState },
@@ -181,6 +184,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
           color: 'yellow',
         });
       }
+      return true;
     },
     [db, isReady, reloadPreferences, reloadAlertState, refreshLabResults]
   );

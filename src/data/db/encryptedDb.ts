@@ -204,6 +204,21 @@ export interface LabResultWithValues {
 /**
  * Encrypted database operations wrapper
  */
+/** What replaceLabData stores */
+export interface ReplacedLabData {
+  labResults: LabResult[];
+  testValues: TestValue[];
+  userNotes: UserNote[];
+  userPreferences?: Omit<UserPreferences, 'id'>;
+}
+
+/** How many records replaceLabData stored */
+export interface ReplacedCounts {
+  labResults: number;
+  testValues: number;
+  notes: number;
+}
+
 export class EncryptedDb {
   private key: CryptoKey;
   private db: HemoIODatabase;
@@ -689,12 +704,43 @@ export class EncryptedDb {
    * tables are cleared), so references between them are rewritten from the
    * given IDs to the new ones. Values whose result is not given are skipped.
    */
-  async replaceLabData(data: {
-    labResults: LabResult[];
-    testValues: TestValue[];
-    userNotes: UserNote[];
-    userPreferences?: Omit<UserPreferences, 'id'>;
-  }): Promise<{ labResults: number; testValues: number; notes: number }> {
+  async replaceLabData(data: ReplacedLabData): Promise<ReplacedCounts> {
+    return (await this.replaceLabDataGuarded(data))!;
+  }
+
+  /**
+   * As replaceLabData, but only while the stored lab data and preferences
+   * are still as they were when `stamp` was taken (storedDataStamp). Checked
+   * inside the replacing transaction, so a change saved at any moment before
+   * is never lost: then nothing is replaced, and it resolves null.
+   */
+  async replaceLabDataIfUnchanged(data: ReplacedLabData, stamp: string): Promise<ReplacedCounts | null> {
+    return this.replaceLabDataGuarded(data, stamp);
+  }
+
+  /**
+   * The stored rows of the lab tables and the preferences, as one string.
+   * Every save seals afresh under a new IV, so it is equal only while
+   * nothing was written, by this tab or another.
+   */
+  async storedDataStamp(): Promise<string> {
+    return this.db.transaction('r', this.stampedTables(), () => this.readStamp());
+  }
+
+  private stampedTables(): Table[] {
+    return SEALED_TABLES.map((name) => this.table(name));
+  }
+
+  /**
+   * Makes IndexedDB requests only, so it may run inside a write transaction:
+   * an await that makes none would commit the transaction early
+   */
+  private async readStamp(): Promise<string> {
+    const rows = await Promise.all(this.stampedTables().map((table) => table.toArray()));
+    return JSON.stringify(rows);
+  }
+
+  private async replaceLabDataGuarded(data: ReplacedLabData, stamp?: string): Promise<ReplacedCounts | null> {
     // Sealed up front: a transaction ends at the first await outside IndexedDB.
     // The links between records stay readable, so they are rewritten sealed.
     const sealAll = <T extends { id?: number }>(name: SealedTable, records: T[]) =>
@@ -727,6 +773,8 @@ export class EncryptedDb {
     ];
     const movedAside: SealedTable[] = [];
     const counts = await this.write(tables, async () => {
+      // Read first, before this transaction changes anything
+      if (stamp !== undefined && (await this.readStamp()) !== stamp) return null;
       // Rows this key cannot open are kept aside, not cleared with the rest
       movedAside.push(...(await this.moveUnreadableAside(LAB_TABLES)).movedAside);
       await Promise.all([

@@ -70,9 +70,33 @@ export interface KeepFolderBackupOptions {
 }
 
 /**
+ * Backups shown for restoring in this tab, by how many confirmations show
+ * them: no backup kept meanwhile, by a sync or a choice, prunes them
+ */
+const shownForRestore = new Map<string, number>();
+
+/**
+ * Protect a backup from pruning while a restore confirmation shows it.
+ * Returns the release, which only the first call undoes.
+ */
+export function protectFolderBackup(name: string): () => void {
+  shownForRestore.set(name, (shownForRestore.get(name) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const count = (shownForRestore.get(name) ?? 1) - 1;
+    if (count > 0) shownForRestore.set(name, count);
+    else shownForRestore.delete(name);
+  };
+}
+
+/**
  * Saves the bytes as a dated backup of its kind, then deletes the oldest
  * others of that kind, so that MAX_FOLDER_BACKUPS are left, the new one
- * among them (protected ones are not deleted, so a few more may be left). A failed save deletes nothing. Returns the name.
+ * among them. Protected backups, and those shown for restoring, are not
+ * deleted, so a few more may be left. A failed save deletes nothing.
+ * Returns the name.
  */
 export async function keepFolderBackup(
   store: FolderBackupStore,
@@ -93,7 +117,7 @@ export async function keepFolderBackup(
     .map((backup) => ({ backup, date: backupDate(backup)! }))
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   for (const { backup } of othersNewestFirst.slice(MAX_FOLDER_BACKUPS - 1)) {
-    if (protect.includes(backup)) continue;
+    if (protect.includes(backup) || shownForRestore.has(backup)) continue;
     try {
       await store.deleteBackup(backup);
     } catch {
