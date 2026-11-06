@@ -7,7 +7,7 @@
 
 import { expect, type Page, type Route } from '@playwright/test';
 import { removeTempFile, writeTempFile } from './tempFiles';
-import { openSettingsTab } from './app.steps';
+import { openSettingsTab, startNewSetup } from './app.steps';
 import { goToImport } from './importWizard.steps';
 
 export const TEST_PASSWORD = 'TestPassword123!';
@@ -139,6 +139,7 @@ export async function completeFreshSetup(page: Page): Promise<void> {
   );
   await page.reload();
 
+  await startNewSetup(page);
   await page.getByPlaceholder(/enter your password/i).fill(TEST_PASSWORD);
   await page.getByPlaceholder(/confirm your password/i).fill(TEST_PASSWORD);
   await page.getByRole('button', { name: 'Go to next step' }).click();

@@ -540,6 +540,85 @@ describe('AuthContext', () => {
     });
   });
 
+  describe('recoverFromFolder', () => {
+    it('recoverFromFolder saves the lock, sweeps before prepare, and unlocks', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        renderAuth();
+        const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+        const order: string[] = [];
+        let statusDuringPrepare = '';
+        let heldDuringPrepare: string | null = null;
+        settleUnreadable.mockImplementation(async () => {
+          order.push('sweep started');
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          order.push('sweep done');
+          return { returned: 2, setAside: 1 };
+        });
+        const prepare = vi.fn(async (preparedWith: CryptoKey) => {
+          order.push('prepare');
+          expect(preparedWith).toBe(key);
+          expect(storedCredentials()).toEqual(lock);
+          statusDuringPrepare = screen.getByTestId('status').textContent ?? '';
+          heldDuringPrepare = locks.held();
+        });
+
+        let outcome: string | undefined;
+        await act(async () => {
+          outcome = await auth.recoverFromFolder(lock, key, prepare);
+        });
+
+        expect(order).toEqual(['sweep started', 'sweep done', 'prepare']);
+        expect(createEncryptedDb).toHaveBeenLastCalledWith(key);
+        expect(statusDuringPrepare).toBe('needs_setup');
+        expect(heldDuringPrepare).toBe('hemoio-setup');
+        expect(outcome).toBe('created');
+        expect(storedCredentials()).toEqual(lock);
+        expect(auth.storedLock).toEqual(lock);
+        expect(auth.encryptionKey).toBe(key);
+        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('recoverFromFolder defers to credentials another tab saved', async () => {
+      renderAuth();
+      const theirs = (await createCredentialsV2(NEW, 1000)).credentials;
+      store(theirs);
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+      const prepare = vi.fn().mockResolvedValue(undefined);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, prepare);
+      });
+
+      expect(outcome).toBe('existing-locked');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(settleUnreadable).not.toHaveBeenCalled();
+      expect(auth.encryptionKey).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+    });
+
+    it('a failed restore keeps the saved lock and unlocks, logging no detail', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, () => Promise.reject(new Error('Glucose 95')));
+      });
+
+      expect(outcome).toBe('created');
+      expect(storedCredentials()).toEqual(lock);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('Glucose');
+    });
+  });
+
   describe('the lock in the folder', () => {
     /** The lock another computer made when it changed the password to NEW */
     async function lockChangedTo(password: string, changedAt: string): Promise<StoredCredentialsV2> {

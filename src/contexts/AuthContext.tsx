@@ -53,6 +53,18 @@ export interface AuthContextValue {
     password: string,
     prepare?: (key: CryptoKey) => Promise<void>
   ) => Promise<SetupOutcome>;
+  /**
+   * Sets up from a folder copy: saves the lock found beside it as the
+   * credentials, keeping its password, and unlocks with the data key it
+   * wraps. Records are settled against that key before `prepare` runs (to
+   * restore the copy), so it sees only rows the key opens. If another tab
+   * saved credentials first, stores nothing and goes to the login screen.
+   */
+  recoverFromFolder: (
+    lock: StoredCredentialsV2,
+    key: CryptoKey,
+    prepare?: (key: CryptoKey) => Promise<void>
+  ) => Promise<SetupOutcome>;
   /** Re-wraps the data key under a new password; never throws */
   changePassword: (current: string, next: string) => Promise<ChangePasswordResult>;
   isSetupComplete: () => boolean;
@@ -216,6 +228,43 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     [unlockWith]
   );
 
+  const recoverFromFolder = useCallback(
+    (
+      lock: StoredCredentialsV2,
+      key: CryptoKey,
+      prepare?: (key: CryptoKey) => Promise<void>
+    ): Promise<SetupOutcome> =>
+      withWebLock(SETUP_LOCK, async (): Promise<SetupOutcome> => {
+        // Read again under the lock: another tab may have finished setup meanwhile
+        const existing = loadStoredCredentials();
+        if (existing) {
+          setCredentials(existing);
+          setEncryptionKey(null);
+          setStatus('locked');
+          return 'existing-locked';
+        }
+
+        saveStoredCredentials(lock);
+        setCredentials(lock);
+        // Before the restore: rows set aside earlier that this key opens come
+        // back first, and rows it cannot open go aside, so the restore neither
+        // duplicates the one nor is hidden by the other
+        await settleStoredRecords(key);
+        try {
+          await prepare?.(key);
+        } catch {
+          // As in setup: once saved, the credentials are never taken back.
+          // Fixed text: the error could name what was being restored.
+          console.error('Could not restore the folder copy');
+        }
+
+        setEncryptionKey(key);
+        setStatus('unlocked');
+        return 'created';
+      }),
+    []
+  );
+
   const unlock = useCallback(
     async (password: string): Promise<boolean> => {
       // Storage first: another tab may have changed the password since this one loaded
@@ -322,6 +371,7 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     unlock,
     lock,
     setupPassword,
+    recoverFromFolder,
     changePassword,
     isSetupComplete,
     storedLock,

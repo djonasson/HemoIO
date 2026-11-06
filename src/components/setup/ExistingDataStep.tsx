@@ -3,12 +3,14 @@
  *
  * The first setup screen when the browser already holds HemoIO data whose
  * password lock is gone: setup never goes ahead over it without saying so.
- * Keeping it aside is the default; clearing it is confirmed first.
+ * Keeping it aside is the default; clearing it is confirmed first. Where
+ * folders can be used, setup can also start from a folder copy: rows its key
+ * opens become readable again, and the rest are kept aside.
  */
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text, Title } from '@mantine/core';
-import { IconAlertCircle, IconArchive, IconTrash } from '@tabler/icons-react';
+import { IconAlertCircle, IconArchive, IconFolderOpen, IconTrash } from '@tabler/icons-react';
 
 export const EXISTING_DATA_TITLE = 'This browser already holds HemoIO data';
 
@@ -17,9 +19,11 @@ export interface ExistingDataStepProps {
   onKeep: () => void;
   /** Delete the old rows, once the user has confirmed; throws if it fails */
   onClear: () => Promise<void>;
+  /** Set up from a folder copy; offered only when given (where folders can be used) */
+  onFolderCopy?: () => void;
 }
 
-export function ExistingDataStep({ onKeep, onClear }: ExistingDataStepProps): React.ReactNode {
+export function ExistingDataStep({ onKeep, onClear, onFolderCopy }: ExistingDataStepProps): React.ReactNode {
   const headingId = useId();
   const keepRef = useRef<HTMLButtonElement>(null);
   const [confirming, setConfirming] = useState(false);
@@ -76,6 +80,15 @@ export function ExistingDataStep({ onKeep, onClear }: ExistingDataStepProps): Re
           >
             Clear it and set up anew…
           </Button>
+          {onFolderCopy && (
+            <Button
+              variant="default"
+              leftSection={<IconFolderOpen size={16} aria-hidden />}
+              onClick={onFolderCopy}
+            >
+              I already have a folder copy
+            </Button>
+          )}
         </Group>
       </Stack>
 

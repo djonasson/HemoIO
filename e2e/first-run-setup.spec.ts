@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { completeSetup, TEST_PASSWORD } from './steps/app.steps';
+import { completeSetup, startNewSetup, TEST_PASSWORD } from './steps/app.steps';
 import { readStoredRows } from './steps/dataAtRest.steps';
 import {
   existingDataStep,
@@ -30,169 +30,175 @@ test.describe('First-Run Setup Wizard', () => {
     await expect(page.getByText("Let's set up your secure lab results tracker")).toBeVisible();
   });
 
-  test('setup wizard shows all steps', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Step 1: Security/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Step 2: Storage/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Step 3: AI Setup/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Step 4: Complete/i })).toBeVisible();
-  });
+  test.describe('on the password step', () => {
+    test.beforeEach(async ({ page }) => {
+      await startNewSetup(page);
+    });
 
-  test('password requirements are displayed', async ({ page }) => {
-    await expect(page.getByText('At least 8 characters')).toBeVisible();
-    await expect(page.getByText('At least one uppercase letter')).toBeVisible();
-    await expect(page.getByText('At least one lowercase letter')).toBeVisible();
-    await expect(page.getByText('At least one number')).toBeVisible();
-    await expect(page.getByText('At least one special character')).toBeVisible();
-  });
+    test('setup wizard shows all steps', async ({ page }) => {
+      await expect(page.getByRole('button', { name: /Step 1: Security/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Step 2: Storage/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Step 3: AI Setup/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Step 4: Complete/i })).toBeVisible();
+    });
 
-  test('next button is disabled with weak password', async ({ page }) => {
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
+    test('password requirements are displayed', async ({ page }) => {
+      await expect(page.getByText('At least 8 characters')).toBeVisible();
+      await expect(page.getByText('At least one uppercase letter')).toBeVisible();
+      await expect(page.getByText('At least one lowercase letter')).toBeVisible();
+      await expect(page.getByText('At least one number')).toBeVisible();
+      await expect(page.getByText('At least one special character')).toBeVisible();
+    });
 
-    // Type a weak password
-    await passwordInput.fill('weak');
-    await confirmInput.fill('weak');
+    test('next button is disabled with weak password', async ({ page }) => {
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    await expect(nextButton).toBeDisabled();
-  });
+      // Type a weak password
+      await passwordInput.fill('weak');
+      await confirmInput.fill('weak');
 
-  test('shows error when passwords do not match', async ({ page }) => {
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
+      await expect(nextButton).toBeDisabled();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('DifferentPass456!');
+    test('shows error when passwords do not match', async ({ page }) => {
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
 
-    await expect(page.getByText('Passwords do not match')).toBeVisible();
-  });
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('DifferentPass456!');
 
-  test('password strength indicator shows strong for valid password', async ({ page }) => {
-    const passwordInput = page.getByPlaceholder('Enter your password');
+      await expect(page.getByText('Passwords do not match')).toBeVisible();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
+    test('password strength indicator shows strong for valid password', async ({ page }) => {
+      const passwordInput = page.getByPlaceholder('Enter your password');
 
-    await expect(page.getByText('Password strength:')).toBeVisible();
-    await expect(page.getByText(/Strong/)).toBeVisible();
-  });
+      await passwordInput.fill('MySecurePass123!');
 
-  test('can proceed to storage step with valid password', async ({ page }) => {
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
+      await expect(page.getByText('Password strength:')).toBeVisible();
+      await expect(page.getByText(/Strong/)).toBeVisible();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('MySecurePass123!');
+    test('can proceed to storage step with valid password', async ({ page }) => {
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    await expect(nextButton).toBeEnabled();
-    await nextButton.click();
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('MySecurePass123!');
 
-    // Should be on storage step
-    await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
-    await expect(page.getByText('Local Storage')).toBeVisible();
-  });
+      await expect(nextButton).toBeEnabled();
+      await nextButton.click();
 
-  test('local storage is selected by default', async ({ page }) => {
-    // Navigate to storage step
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
+      // Should be on storage step
+      await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
+      await expect(page.getByText('Local Storage')).toBeVisible();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('MySecurePass123!');
-    await nextButton.click();
+    test('local storage is selected by default', async ({ page }) => {
+      // Navigate to storage step
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    // Local storage should be checked
-    const localStorageRadio = page.getByRole('radio', { name: /Local Storage/i });
-    await expect(localStorageRadio).toBeChecked();
-  });
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('MySecurePass123!');
+      await nextButton.click();
 
-  test('cloud storage options are disabled', async ({ page }) => {
-    // Navigate to storage step
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
+      // Local storage should be checked
+      const localStorageRadio = page.getByRole('radio', { name: /Local Storage/i });
+      await expect(localStorageRadio).toBeChecked();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('MySecurePass123!');
-    await nextButton.click();
+    test('cloud storage options are disabled', async ({ page }) => {
+      // Navigate to storage step
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    await expect(page.getByText('Coming soon').first()).toBeVisible();
-  });
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('MySecurePass123!');
+      await nextButton.click();
 
-  test('can navigate through all steps and complete setup', async ({ page }) => {
-    // Step 1: Password
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    let nextButton = page.getByRole('button', { name: 'Go to next step' });
+      await expect(page.getByText('Coming soon').first()).toBeVisible();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('MySecurePass123!');
-    await nextButton.click();
+    test('can navigate through all steps and complete setup', async ({ page }) => {
+      // Step 1: Password
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      let nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    // Step 2: Storage
-    await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
-    nextButton = page.getByRole('button', { name: 'Go to next step' });
-    await nextButton.click();
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('MySecurePass123!');
+      await nextButton.click();
 
-    // Step 3: AI Configuration
-    await expect(page.getByText('HemoIO uses AI to automatically extract values')).toBeVisible();
-    nextButton = page.getByRole('button', { name: 'Go to next step' });
-    await nextButton.click();
+      // Step 2: Storage
+      await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
+      nextButton = page.getByRole('button', { name: 'Go to next step' });
+      await nextButton.click();
 
-    // Step 4: Completion
-    await expect(page.getByRole('heading', { name: "You're all set!" })).toBeVisible();
-    await expect(page.getByText('Password Protection')).toBeVisible();
-    await expect(page.getByText('Local Storage')).toBeVisible();
-    await expect(page.getByText('AI not configured')).toBeVisible();
+      // Step 3: AI Configuration
+      await expect(page.getByText('HemoIO uses AI to automatically extract values')).toBeVisible();
+      nextButton = page.getByRole('button', { name: 'Go to next step' });
+      await nextButton.click();
 
-    // Complete setup
-    const getStartedButton = page.getByRole('button', { name: 'Complete setup and get started' });
-    await getStartedButton.click();
+      // Step 4: Completion
+      await expect(page.getByRole('heading', { name: "You're all set!" })).toBeVisible();
+      await expect(page.getByText('Password Protection')).toBeVisible();
+      await expect(page.getByText('Local Storage')).toBeVisible();
+      await expect(page.getByText('AI not configured')).toBeVisible();
 
-    // Should be on dashboard
-    await expect(page.getByRole('heading', { name: 'HemoIO', level: 3 })).toBeVisible();
-    await expect(page.getByRole('navigation').getByText('Timeline')).toBeVisible();
-  });
+      // Complete setup
+      const getStartedButton = page.getByRole('button', { name: 'Complete setup and get started' });
+      await getStartedButton.click();
 
-  test('back button returns to previous step', async ({ page }) => {
-    // Navigate to storage step
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
+      // Should be on dashboard
+      await expect(page.getByRole('heading', { name: 'HemoIO', level: 3 })).toBeVisible();
+      await expect(page.getByRole('navigation').getByText('Timeline')).toBeVisible();
+    });
 
-    await passwordInput.fill('MySecurePass123!');
-    await confirmInput.fill('MySecurePass123!');
-    await nextButton.click();
+    test('back button returns to previous step', async ({ page }) => {
+      // Navigate to storage step
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
 
-    // Click back
-    const backButton = page.getByRole('button', { name: 'Go to previous step' });
-    await backButton.click();
+      await passwordInput.fill('MySecurePass123!');
+      await confirmInput.fill('MySecurePass123!');
+      await nextButton.click();
 
-    // Should be back on password step with password fields visible
-    await expect(page.getByPlaceholder('Enter your password')).toBeVisible();
-  });
+      // Click back
+      const backButton = page.getByRole('button', { name: 'Go to previous step' });
+      await backButton.click();
 
-  test('setup is accessible via keyboard navigation', async ({ page }) => {
-    // Tab to password field (should be auto-focused)
-    const passwordInput = page.getByPlaceholder('Enter your password');
-    await expect(passwordInput).toBeFocused();
+      // Should be back on password step with password fields visible
+      await expect(page.getByPlaceholder('Enter your password')).toBeVisible();
+    });
 
-    // Type password
-    await passwordInput.fill('MySecurePass123!');
+    test('setup is accessible via keyboard navigation', async ({ page }) => {
+      // Tab to password field (should be auto-focused)
+      const passwordInput = page.getByPlaceholder('Enter your password');
+      await expect(passwordInput).toBeFocused();
 
-    // Tab to confirm password field and fill it
-    const confirmInput = page.getByPlaceholder('Confirm your password');
-    await confirmInput.click();
-    await confirmInput.fill('MySecurePass123!');
+      // Type password
+      await passwordInput.fill('MySecurePass123!');
 
-    // Click next button with keyboard - focus and press
-    const nextButton = page.getByRole('button', { name: 'Go to next step' });
-    await nextButton.focus();
-    await page.keyboard.press('Enter');
+      // Tab to confirm password field and fill it
+      const confirmInput = page.getByPlaceholder('Confirm your password');
+      await confirmInput.click();
+      await confirmInput.fill('MySecurePass123!');
 
-    // Should be on storage step
-    await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
+      // Click next button with keyboard - focus and press
+      const nextButton = page.getByRole('button', { name: 'Go to next step' });
+      await nextButton.focus();
+      await page.keyboard.press('Enter');
+
+      // Should be on storage step
+      await expect(page.getByText('Choose where to store your encrypted lab data')).toBeVisible();
+    });
   });
 });
 
@@ -272,6 +278,7 @@ test.describe('First-run setup: tabs and existing data', () => {
     // Scenario: A tab still on setup leaves it once another tab has finished
     const other = await context.newPage();
     await other.goto('/');
+    await startNewSetup(other);
     await other.getByPlaceholder(/enter your password/i).fill('OtherPassword456!');
 
     await completeSetup(page);

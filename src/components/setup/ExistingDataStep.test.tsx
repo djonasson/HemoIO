@@ -6,11 +6,14 @@ import { ExistingDataStep } from './ExistingDataStep';
 
 const TITLE = 'This browser already holds HemoIO data';
 
-function renderStep(onClear: () => Promise<void> = vi.fn().mockResolvedValue(undefined)) {
+function renderStep(
+  onClear: () => Promise<void> = vi.fn().mockResolvedValue(undefined),
+  onFolderCopy?: () => void
+) {
   const onKeep = vi.fn();
   render(
     <MantineProvider env="test">
-      <ExistingDataStep onKeep={onKeep} onClear={onClear} />
+      <ExistingDataStep onKeep={onKeep} onClear={onClear} onFolderCopy={onFolderCopy} />
     </MantineProvider>
   );
   return { onKeep, onClear };
@@ -82,5 +85,23 @@ describe('ExistingDataStep', () => {
     expect(alert).toHaveTextContent('The data could not be cleared. Nothing was changed.');
     expect(alert).not.toHaveTextContent('detail');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+  it('offers the folder copy when it can be used, keeping focus on keeping the data aside', async () => {
+    const user = userEvent.setup();
+    const onFolderCopy = vi.fn();
+    renderStep(undefined, onFolderCopy);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Keep it aside and set up anew' })).toHaveFocus()
+    );
+    await user.click(screen.getByRole('button', { name: 'I already have a folder copy' }));
+
+    expect(onFolderCopy).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no folder copy where it cannot be used', () => {
+    renderStep();
+
+    expect(screen.queryByRole('button', { name: 'I already have a folder copy' })).not.toBeInTheDocument();
   });
 });

@@ -35,6 +35,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -54,6 +55,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -74,6 +76,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -95,6 +98,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -124,6 +128,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -140,6 +145,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     rerender();
@@ -161,6 +167,7 @@ describe('useEncryptedDb', () => {
       isSetupComplete: vi.fn(),
       storedLock: null,
       adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
     });
 
     const { result } = renderHook(() => useEncryptedDb());

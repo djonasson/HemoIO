@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page, Route } from '@playwright/test';
-import { openSettingsTab } from './steps/app.steps';
+import { openSettingsTab, startNewSetup } from './steps/app.steps';
 
 // Mock Ollama API responses
 const mockOllamaModels = {
@@ -100,6 +100,7 @@ async function setupOllamaMocks(
 
 // Helper to navigate to AI step in setup wizard
 async function navigateToAIStep(page: Page) {
+  await startNewSetup(page);
   const passwordInput = page.getByPlaceholder('Enter your password');
   const confirmInput = page.getByPlaceholder('Confirm your password');
   let nextButton = page.getByRole('button', { name: 'Go to next step' });

@@ -3,7 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
-import { completeSetup } from './app.steps';
+import { completeSetup, startNewSetup } from './app.steps';
 import { forgetCredentials, writeUnreadableRecords } from './unreadableRecords.steps';
 
 /** The setup screen that says the browser already holds HemoIO data */
@@ -53,6 +53,7 @@ export async function storageKeysWritten(page: Page): Promise<string[]> {
 
 /** Go through the setup steps up to the completion step, without completing */
 export async function goToCompletionStep(page: Page, password: string): Promise<void> {
+  await startNewSetup(page);
   await page.getByPlaceholder(/enter your password/i).fill(password);
   await page.getByPlaceholder(/confirm your password/i).fill(password);
   await page.getByRole('button', { name: 'Go to next step' }).click();

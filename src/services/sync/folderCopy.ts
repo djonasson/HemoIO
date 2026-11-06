@@ -9,7 +9,7 @@
 import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
 import { FOLDER_SYNC_FILE_VERSION, parseFolderCopyData } from './folderSync';
-import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { isCredentialsV2, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 export type FolderCopyProblem =
   /** A copy without a lock, under another key (another password or an earlier setup), or damaged: AES-GCM cannot tell */
@@ -106,6 +106,63 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   } catch {
     return { status: 'unreadable', reason: 'not-a-copy' };
   }
+}
+
+/** Why a folder copy could not be opened with a password alone */
+export type FolderUnlockProblem =
+  /** The folder holds no copy */
+  | 'no-copy'
+  /** A copy without the lock beside it: only a browser with its key can open it */
+  | 'no-lock'
+  | 'wrong-password'
+  // With the password a lock opens, the copy is this setup's: never another's
+  | Exclude<FolderCopyProblem, 'another-setup'>;
+
+export type FolderUnlockResult =
+  | {
+      ok: true;
+      /** The data key, unwrapped from the lock */
+      key: CryptoKey;
+      lock: StoredCredentialsV2;
+      copy: ParsedBackupData;
+      revision: string | null;
+    }
+  | { ok: false; problem: FolderUnlockProblem };
+
+/**
+ * Open a folder copy with the password that made the lock beside it, as a
+ * browser without credentials does. It succeeds only when the body opens with
+ * the unwrapped key and the header as additional data, so a lock swapped into
+ * the file is never accepted. Stores nothing, and never throws or logs: the
+ * password, the key and the content stay out of errors.
+ */
+export async function unlockFolderCopy(
+  bytes: ArrayBuffer | null,
+  password: string
+): Promise<FolderUnlockResult> {
+  if (bytes === null) return { ok: false, problem: 'no-copy' };
+  const header = readEnvelopeHeader(bytes);
+  if (header === 'damaged') return { ok: false, problem: 'not-a-copy' };
+  const lock = header?.lock ?? null;
+  if (lock === null) return { ok: false, problem: 'no-lock' };
+  // Checked again here: this lock is about to become the stored credentials
+  if (!isCredentialsV2(lock)) return { ok: false, problem: 'not-a-copy' };
+
+  let key: CryptoKey | null;
+  try {
+    key = await unlockV2(password, lock);
+  } catch {
+    // A lock whose fields do not decode: no password opens it
+    return { ok: false, problem: 'cannot-decrypt' };
+  }
+  if (!key) return { ok: false, problem: 'wrong-password' };
+
+  const reading = await readFolderCopy(bytes, key);
+  if (reading.status === 'unreadable') {
+    // The lock opened, but the body did not open with it: damaged, or a lock put beside another body
+    return { ok: false, problem: reading.reason === 'another-setup' ? 'cannot-decrypt' : reading.reason };
+  }
+  return { ok: true, key, lock, copy: reading.data, revision: reading.revision };
 }
 
 /** The folder file, as the folder storage provider reads it */

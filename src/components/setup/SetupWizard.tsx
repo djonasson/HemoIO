@@ -25,6 +25,8 @@ import {
 } from '@tabler/icons-react';
 import { PasswordStep } from './PasswordStep';
 import { ExistingDataStep } from './ExistingDataStep';
+import { FolderRecoveryStep } from './FolderRecoveryStep';
+import { SetupStartStep } from './SetupStartStep';
 import { notifySetUpElsewhere, notifySetupChoicesNotSaved, notifySetupFailed } from './setupNotices';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
@@ -32,6 +34,7 @@ import { useAuth } from '@contexts';
 import { loadStoredCredentials, mayChangeCredentials } from '@contexts/credentialsStorage';
 import { useFormKeyboardSubmit } from '@hooks';
 import { useExistingBrowserData } from '@hooks/useExistingBrowserData';
+import { useFolderRecovery } from '@hooks/useFolderRecovery';
 import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
 import type { StorageProviderType, AIProviderType } from '@/types';
 import type { SetupOutcome } from '@contexts/AuthContext';
@@ -40,6 +43,8 @@ import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
 import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import type { FolderUnlockProblem } from '@services/sync';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -50,6 +55,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const existingData = useExistingBrowserData();
   // Kept aside or cleared: the wizard goes on to its first step
   const [existingDataSettled, setExistingDataSettled] = useState(false);
+  const folderRecovery = useFolderRecovery();
+  // A folder copy can be used only where the browser can open folders
+  const [foldersSupported] = useState(isFileSystemAccessSupported);
+  // The first screen (the existing data, or where folders can be used, the
+  // choice of how to start), recovery from a folder copy, or the wizard
+  const [screen, setScreen] = useState<'start' | 'folder' | 'wizard'>('start');
 
   // Responsive stepper orientation - vertical on small screens
   const stepperOrientation = useMatches({
@@ -90,6 +101,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const startedRef = useRef(false);
   startedRef.current =
     existingDataSettled ||
+    screen === 'folder' ||
     clearConfirmedRef.current ||
     activeStep > 0 ||
     password !== '' ||
@@ -199,6 +211,27 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     onComplete();
   }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
 
+  const handleRecover = useCallback(
+    async (folderPassword: string): Promise<FolderUnlockProblem | 'existing-locked' | null> => {
+      // The outcome says itself whether another tab came first
+      submittingRef.current = true;
+      let result: FolderUnlockProblem | 'existing-locked' | null;
+      try {
+        result = await folderRecovery.recover(folderPassword);
+      } finally {
+        submittingRef.current = false;
+      }
+      if (result === 'existing-locked') {
+        // The login screen shows in place of the wizard
+        notifySetUpElsewhere(['folder storage'], { unlock: true });
+      } else if (result === null) {
+        onComplete();
+      }
+      return result;
+    },
+    [folderRecovery, onComplete]
+  );
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
@@ -282,25 +315,55 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     );
   }
 
+  const firstScreen = (content: React.ReactNode): React.ReactNode => (
+    <Container size="sm" py="xl">
+      <Stack gap="xl">
+        {welcome}
+        <Paper withBorder shadow="sm" p="xl" radius="md">
+          {content}
+        </Paper>
+      </Stack>
+    </Container>
+  );
+
+  if (screen === 'folder') {
+    return firstScreen(
+      <FolderRecoveryStep
+        folderName={folderRecovery.folderName}
+        onChooseFolder={folderRecovery.chooseFolder}
+        onRecover={handleRecover}
+        onBack={() => setScreen('start')}
+      />
+    );
+  }
+
+  const openFolderCopy = foldersSupported ? () => setScreen('folder') : undefined;
+
   if (existingData.rows > 0 && !existingDataSettled) {
-    return (
-      <Container size="sm" py="xl">
-        <Stack gap="xl">
-          {welcome}
-          <Paper withBorder shadow="sm" p="xl" radius="md">
-            <ExistingDataStep
-              onKeep={() => setExistingDataSettled(true)}
-              onClear={async () => {
-                clearConfirmedRef.current = true;
-                startedRef.current = true;
-                // Not cleared when another tab finished setup meanwhile:
-                // that tab's storage event takes this one to the login screen
-                if (await existingData.clear()) setExistingDataSettled(true);
-              }}
-            />
-          </Paper>
-        </Stack>
-      </Container>
+    return firstScreen(
+      <ExistingDataStep
+        onKeep={() => {
+          setExistingDataSettled(true);
+          setScreen('wizard');
+        }}
+        onClear={async () => {
+          clearConfirmedRef.current = true;
+          startedRef.current = true;
+          // Not cleared when another tab finished setup meanwhile:
+          // that tab's storage event takes this one to the login screen
+          if (await existingData.clear()) {
+            setExistingDataSettled(true);
+            setScreen('wizard');
+          }
+        }}
+        onFolderCopy={openFolderCopy}
+      />
+    );
+  }
+
+  if (openFolderCopy && screen === 'start') {
+    return firstScreen(
+      <SetupStartStep onSetUp={() => setScreen('wizard')} onFolderCopy={openFolderCopy} />
     );
   }
 

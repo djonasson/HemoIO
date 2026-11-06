@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { SetupWizard } from './SetupWizard';
@@ -32,6 +32,24 @@ const existing = vi.hoisted(() => ({
 vi.mock('@hooks/useExistingBrowserData', () => ({
   useExistingBrowserData: () => ({ rows: existing.rows, clear: existing.clear }),
 }));
+
+// Recovering from a folder copy: tested in useFolderRecovery.test.ts
+const recovery = vi.hoisted(() => ({
+  folderName: 'Lab Folder' as string | null,
+  chooseFolder: vi.fn<() => Promise<void>>(),
+  recover: vi.fn<(password: string) => Promise<string | null>>(),
+}));
+vi.mock('@hooks/useFolderRecovery', () => ({
+  useFolderRecovery: () => recovery,
+}));
+
+/** Where the browser can open folders, as Chromium can; jsdom cannot */
+function withFolderSupport(): () => void {
+  Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(), configurable: true });
+  return () => {
+    delete (window as { showDirectoryPicker?: unknown }).showDirectoryPicker;
+  };
+}
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -190,6 +208,7 @@ describe('SetupWizard', () => {
       isSetupComplete: () => false,
       storedLock: null,
       adoptFolderLock: () => false,
+      recoverFromFolder: vi.fn(),
       // Unlocks once the setup step has run, as AuthProvider does
       setupPassword: vi.fn(async (_password: string, prepare?: (key: CryptoKey) => Promise<void>) => {
         const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
@@ -257,6 +276,7 @@ describe('SetupWizard', () => {
         isSetupComplete: () => false,
         storedLock: null,
         adoptFolderLock: () => false,
+        recoverFromFolder: vi.fn(),
         setupPassword,
       } satisfies AuthContextValue;
       render(
@@ -503,6 +523,104 @@ describe('SetupWizard', () => {
 
       expect(existing.clear).toHaveBeenCalledTimes(1);
       expect(await screen.findByPlaceholderText('Enter your password')).toBeInTheDocument();
+    });
+  });
+  describe('the folder copy', () => {
+    const FOLDER_COPY = 'I already have a folder copy';
+    const TITLE = 'This browser already holds HemoIO data';
+    let removeFolderSupport: () => void = () => {};
+
+    afterEach(() => removeFolderSupport());
+
+    it('offers the folder copy only where folders are supported', async () => {
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      // Without folders, setup starts on the password step, as before
+      expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: FOLDER_COPY })).not.toBeInTheDocument();
+      cleanup();
+
+      existing.rows = 3;
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      expect(screen.getByRole('region', { name: TITLE })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: FOLDER_COPY })).not.toBeInTheDocument();
+      cleanup();
+
+      removeFolderSupport = withFolderSupport();
+      existing.rows = 0;
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      const setUp = screen.getByRole('button', { name: 'Set up HemoIO' });
+      expect(screen.getByRole('button', { name: FOLDER_COPY })).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Enter your password')).not.toBeInTheDocument();
+      await waitFor(() => expect(setUp).toHaveFocus());
+      cleanup();
+
+      existing.rows = 3;
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+      const region = screen.getByRole('region', { name: TITLE });
+      expect(within(region).getByRole('button', { name: FOLDER_COPY })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(within(region).getByRole('button', { name: 'Keep it aside and set up anew' })).toHaveFocus()
+      );
+    });
+
+    it('"Set up HemoIO" goes on to the password step', async () => {
+      removeFolderSupport = withFolderSupport();
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      await user.click(screen.getByRole('button', { name: 'Set up HemoIO' }));
+
+      expect(screen.getByPlaceholderText('Enter your password')).toBeInTheDocument();
+    });
+
+    it('goes back from the folder copy step to the screen before it', async () => {
+      removeFolderSupport = withFolderSupport();
+      const user = userEvent.setup();
+      existing.rows = 3;
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      await user.click(screen.getByRole('button', { name: FOLDER_COPY }));
+      expect(screen.getByRole('region', { name: 'Restore from your folder copy' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Back' }));
+
+      expect(screen.getByRole('region', { name: TITLE })).toBeInTheDocument();
+    });
+
+    it('a recovered copy finishes setup', async () => {
+      removeFolderSupport = withFolderSupport();
+      recovery.recover.mockResolvedValue(null);
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      await user.click(screen.getByRole('button', { name: FOLDER_COPY }));
+      await user.type(screen.getByLabelText('Password you used'), 'Folder-Passw0rd!');
+      await user.click(screen.getByRole('button', { name: 'Unlock and restore' }));
+
+      await waitFor(() => expect(mockOnComplete).toHaveBeenCalledTimes(1));
+      expect(recovery.recover).toHaveBeenCalledWith('Folder-Passw0rd!');
+    });
+
+    it('says to unlock when another tab set up first', async () => {
+      removeFolderSupport = withFolderSupport();
+      const show = vi.spyOn(notifications, 'show').mockReturnValue('');
+      recovery.recover.mockResolvedValue('existing-locked');
+      const user = userEvent.setup();
+      renderWithProviders(<SetupWizard onComplete={mockOnComplete} />);
+
+      await user.click(screen.getByRole('button', { name: FOLDER_COPY }));
+      await user.type(screen.getByLabelText('Password you used'), 'Folder-Passw0rd!');
+      await user.click(screen.getByRole('button', { name: 'Unlock and restore' }));
+
+      await waitFor(() =>
+        expect(show).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: 'Already set up',
+            message: expect.stringContaining('HemoIO was set up in another tab. Unlock with that password.'),
+          })
+        )
+      );
+      expect(mockOnComplete).not.toHaveBeenCalled();
+      show.mockRestore();
     });
   });
 });

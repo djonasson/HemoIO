@@ -37,7 +37,10 @@ export { canKeepFolderCopy, keepBrowserData, keepCurrentFolderCopy, keepFolderCo
 export {
   assessFolderCopy,
   readFolderCopy,
+  unlockFolderCopy,
   type FolderCopyProblem,
+  type FolderUnlockProblem,
+  type FolderUnlockResult,
   type FolderCopySource,
   type FolderCopyAssessment,
   type FolderCopyReading,

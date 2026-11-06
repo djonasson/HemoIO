@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { encrypt } from '@data/encryption';
+import { decrypt, encrypt } from '@data/encryption';
 import { createCredentialsV2 } from '@data/encryption/keyWrapping';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
-import { assessFolderCopy, readFolderCopy, type FolderCopySource } from './folderCopy';
+import { assessFolderCopy, readFolderCopy, unlockFolderCopy, type FolderCopySource } from './folderCopy';
 import { sealEnvelope } from './folderEnvelope';
 import { FOLDER_SYNC_FILE_VERSION as SYNC_FILE_VERSION } from './folderSync';
 
@@ -281,5 +281,79 @@ describe('assessFolderCopy', () => {
     expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed' });
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
+  });
+});
+
+describe('unlockFolderCopy', () => {
+  const PASSWORD = 'Folder-Passw0rd!';
+
+  /** A copy as folder sync writes it: the body sealed with the data key, the lock beside it */
+  async function lockedCopy(password = PASSWORD) {
+    const { credentials, key } = await createCredentialsV2(password, 1000);
+    const enveloped = await sealEnvelope(
+      new TextEncoder().encode(JSON.stringify({ ...(copy() as object), revision: 'r9' })),
+      key,
+      credentials
+    );
+    return { bytes: enveloped, credentials, key };
+  }
+
+  it('unlocks a copy with the password that made its lock', async () => {
+    const { bytes, credentials, key } = await lockedCopy();
+
+    const result = await unlockFolderCopy(bytes, PASSWORD);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lock).toEqual(credentials);
+    expect(result.revision).toBe('r9');
+    expect(result.copy.labResults).toHaveLength(1);
+    expect(result.key.extractable).toBe(false);
+    // The key the copy's records were sealed with
+    const probe = await encrypt(new TextEncoder().encode('probe').buffer as ArrayBuffer, key);
+    expect(new TextDecoder().decode(await decrypt(probe, result.key))).toBe('probe');
+  });
+
+  it('a wrong password is wrong-password', async () => {
+    const { bytes } = await lockedCopy();
+
+    expect(await unlockFolderCopy(bytes, 'Not-The-Passw0rd!')).toEqual({ ok: false, problem: 'wrong-password' });
+  });
+
+  it('a legacy copy is no-lock', async () => {
+    const legacy = await sealed(copy(), await newKey());
+    const lockless = await sealEnvelope(new TextEncoder().encode(JSON.stringify(copy())), await newKey(), null);
+
+    expect(await unlockFolderCopy(legacy, PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
+    expect(await unlockFolderCopy(lockless, PASSWORD)).toEqual({ ok: false, problem: 'no-lock' });
+  });
+
+  it('no bytes is no-copy', async () => {
+    expect(await unlockFolderCopy(null, PASSWORD)).toEqual({ ok: false, problem: 'no-copy' });
+  });
+
+  it('a damaged body under a valid lock is cannot-decrypt', async () => {
+    const { bytes } = await lockedCopy();
+    const file = JSON.parse(new TextDecoder().decode(bytes)) as { sealed: string };
+    // Another body under the same lock: valid base64, but not what the lock was sealed with
+    const other = await sealed(copy(), await newKey());
+    const swapped = { ...file, sealed: btoa(String.fromCharCode(...new Uint8Array(other))) };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(swapped)).buffer as ArrayBuffer, PASSWORD);
+
+    expect(result).toEqual({ ok: false, problem: 'cannot-decrypt' });
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('a damaged header is not-a-copy, and a lock that is not v2 is never tried', async () => {
+    const { bytes } = await lockedCopy();
+    const file = JSON.parse(new TextDecoder().decode(bytes)) as { lock: object };
+    const badLock = { ...file, lock: { ...file.lock, version: 3 } };
+
+    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(badLock)).buffer as ArrayBuffer, PASSWORD);
+
+    expect(result).toEqual({ ok: false, problem: 'not-a-copy' });
   });
 });
