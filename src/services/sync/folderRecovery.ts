@@ -20,7 +20,7 @@ import { withWebLock } from '@/utils/withWebLock';
 import { logFailure } from '@/utils/logFailure';
 import { keepFolderBackup, type FolderBackupStore } from './folderBackups';
 import { unlockFolderCopy, type FolderCopyOrigin, type FolderRecoverySource, type FolderUnlockProblem } from './folderCopy';
-import { sealDamagedCopy } from './folderEnvelope';
+import { openEnvelope, sealDamagedCopy } from './folderEnvelope';
 import { keepLockFile, type FolderLockStore } from './folderLockFile';
 import { markFolderCopySeen, sealFolderCopy } from './folderSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
@@ -85,7 +85,7 @@ export interface RecoverFromFolderCopyOptions {
  * just restored as the copy, carrying the lock, built on the one restored.
  * The backup restored from is never pruned to make room. Returns the new
  * copy's revision, or null when nothing was written: a failed backup writes
- * no copy.
+ * no copy, and a copy that opens by now is left as it is.
  */
 async function replaceDamagedCopy(
   folder: RecoveryFolder,
@@ -97,6 +97,9 @@ async function replaceDamagedCopy(
 ): Promise<string | null> {
   try {
     const damaged = await folder.loadCurrent();
+    // Read again under the lock: a copy that opens now was written meanwhile
+    // (by another computer), and is no longer damaged. Left to the first sync.
+    if (damaged !== null && (await opensWith(damaged, key))) return null;
     if (damaged !== null) {
       await keepFolderBackup(folder, await sealDamagedCopy(damaged, key), {
         kind: 'conflict',
@@ -115,6 +118,16 @@ async function replaceDamagedCopy(
   } catch {
     logFailure('Could not replace the damaged folder copy');
     return null;
+  }
+}
+
+/** Whether the key opens the file as a folder copy envelope */
+async function opensWith(bytes: ArrayBuffer, key: CryptoKey): Promise<boolean> {
+  try {
+    await openEnvelope(bytes, key);
+    return true;
+  } catch {
+    return false;
   }
 }
 

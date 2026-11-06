@@ -277,6 +277,20 @@ describe('useFolderRecovery', () => {
     }
   });
 
+  it('a copy that opens by the time it is replaced is left to the first sync: nothing kept, nothing written', async () => {
+    // Another computer wrote a good copy while recovery restored the previous one
+    loadCurrent.mockResolvedValueOnce(damaged(COPY)).mockResolvedValue(COPY);
+    loadPrevious.mockResolvedValue(await withoutLock(DATA_KEY));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(restoreBackup).toHaveBeenCalled();
+    expect(saveBackup).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(markFolderCopySeen).toHaveBeenCalledWith(db, expect.any(Object), 'earlier-rev', 'restored-stamp');
+  });
+
   it('a damaged copy that cannot be kept as a backup is not written over', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     loadCurrent.mockResolvedValue(damaged(COPY));

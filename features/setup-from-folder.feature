@@ -72,6 +72,14 @@ Feature: Set Up From a Folder Copy
     And syncing should go on without a warning
     And the password I used should unlock HemoIO
 
+  # Unit-tested: useFolderRecovery.test.ts
+  Scenario: A good copy that arrives during recovery is not replaced
+    Given my folder copy is damaged and recovery restores the previous copy
+    And my other computer writes a good folder copy meanwhile
+    When recovery would replace the damaged copy
+    Then the good copy should be left as it is, and no backup kept of it
+    And the first sync should decide between the two
+
   # Unit-tested: FolderBackups.test.tsx, useFolderRecovery.test.ts
   Scenario: The kept damaged copy is listed but cannot be restored
     Given a damaged folder copy was kept as a dated backup when I set HemoIO up from my folder
