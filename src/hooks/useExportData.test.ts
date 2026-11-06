@@ -73,7 +73,7 @@ describe('useExportData', () => {
     await waitFor(() => expect(result.current.setAside).toEqual({ total: 0, unsaved: 0 }));
   });
 
-  it('does not offer a test that only undated results hold', async () => {
+  it('offers a test that only undated results hold, as the CSV holds them too', async () => {
     const dated = { id: 1, date: new Date('2024-01-15'), labName: 'A', createdAt: new Date(), updatedAt: new Date() };
     const undated = { ...dated, id: 2, date: new Date('garbage') };
     mockDb.getAllLabResults.mockResolvedValue([dated, undated]);
@@ -87,8 +87,8 @@ describe('useExportData', () => {
     const { result } = renderHook(() => useExportData());
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    // The CSV holds dated results only: a test with no dated value would export nothing
-    expect(result.current.biomarkerOptions.map((option) => option.value)).toEqual(['marker-1']);
+    // With no date range the CSV holds undated results, so their tests are offered too
+    expect(result.current.biomarkerOptions.map((option) => option.value)).toEqual(['marker-1', 'marker-2']);
     // The backup still holds every value
     expect(result.current.dataSources.testValues).toHaveLength(3);
   });
@@ -133,7 +133,7 @@ describe('useExportData', () => {
     await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(2));
   });
 
-  it('keeps a lab result without a valid date in the backup but not in the CSV rows', async () => {
+  it('keeps a lab result without a valid date in the backup and in the CSV rows', async () => {
     const dated = { id: 1, date: new Date('2024-01-15'), labName: 'A', createdAt: new Date(), updatedAt: new Date() };
     const undated = { ...dated, id: 2, date: new Date('garbage') };
     mockDb.getAllLabResults.mockResolvedValue([dated, undated]);
@@ -144,7 +144,7 @@ describe('useExportData', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.dataSources.labResults).toHaveLength(2);
-    expect(result.current.labResultsData.map((r) => r.labResult.id)).toEqual([1]);
+    expect(result.current.labResultsData.map((r) => r.labResult.id)).toEqual([1, 2]);
   });
 
   it('should return empty data sources when db returns empty arrays', async () => {

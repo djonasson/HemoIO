@@ -20,8 +20,12 @@ export function endOfDay(date: Date): Date {
   return end;
 }
 
-/** Whether a moment falls on or between two days; a missing bound is open */
+/**
+ * Whether a moment falls on or between two days; a missing bound is open.
+ * A missing date (an invalid Date) falls within no range, only within no bounds.
+ */
 export function isWithinDays(date: Date, startDay: Date | null, endDay: Date | null): boolean {
+  if ((startDay || endDay) && Number.isNaN(date.getTime())) return false;
   if (startDay && date.getTime() < startDay.getTime()) return false;
   if (endDay && date.getTime() > endOfDay(endDay).getTime()) return false;
   return true;

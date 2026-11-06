@@ -36,7 +36,7 @@ import {
   type ExportDataSources,
 } from '@services/export';
 import { setAsideLeftOutLine } from '@components/storage/setAsideCopy';
-import { toLocalDay } from '@/utils/localDate';
+import { isWithinDays, toLocalDay } from '@/utils/localDate';
 
 /**
  * Export format options
@@ -147,19 +147,10 @@ export function ExportDialog({
 
   // Calculate export preview counts
   const previewCounts = useMemo(() => {
-    let filteredResults = labResultsData;
-
-    // Apply date filter
-    if (effectiveDateRange.start) {
-      filteredResults = filteredResults.filter(
-        (r) => r.labResult.date >= effectiveDateRange.start!
-      );
-    }
-    if (effectiveDateRange.end) {
-      filteredResults = filteredResults.filter(
-        (r) => r.labResult.date <= effectiveDateRange.end!
-      );
-    }
+    // As the CSV filters: by whole days, and a result without a date only with no range
+    const filteredResults = labResultsData.filter((r) =>
+      isWithinDays(r.labResult.date, effectiveDateRange.start, effectiveDateRange.end)
+    );
 
     // Count test values
     let testValueCount = 0;

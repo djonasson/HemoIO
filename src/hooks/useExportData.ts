@@ -29,7 +29,7 @@ export interface UseExportDataResult {
   dataSources: ExportDataSources;
   /** Lab results with test values and biomarker names for CSV export */
   labResultsData: LabResultForExport[];
-  /** Available biomarker options for filtering, one per test with a dated value */
+  /** Available biomarker options for filtering, one per test with a value */
   biomarkerOptions: ExportBiomarkerOption[];
   /** Records HemoIO cannot open, which no export holds */
   setAside: SetAsideSummary;
@@ -130,17 +130,10 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         testValuesByLabResult.set(tv.labResultId, existing);
       }
 
-      // The CSV and the date filters work on dated results
-      const datedResults = labResults.filter((labResult) => !Number.isNaN(labResult.date.getTime()));
-      const datedIds = new Set(datedResults.map((labResult) => labResult.id));
-
-      // Name each test as every view does, and offer each test once,
-      // whatever codes of its trend group its values were saved under.
-      // Only tests with a dated value: the CSV of any other would be empty.
       const biomarkerNames = new Map<string, string>();
       const tests = new Map<string, ExportBiomarkerOption>();
       for (const tv of testValues) {
-        if (!datedIds.has(tv.labResultId) || biomarkerNames.has(tv.biomarkerKey)) continue;
+        if (biomarkerNames.has(tv.biomarkerKey)) continue;
         const name = testDisplayName(catalog, tv);
         biomarkerNames.set(tv.biomarkerKey, name);
         const test = trendCode(catalog, tv.biomarkerKey);
@@ -154,7 +147,7 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         tests.set(test, option);
       }
 
-      const resultsData: LabResultForExport[] = datedResults.map((labResult) => ({
+      const resultsData: LabResultForExport[] = labResults.map((labResult) => ({
         labResult,
         testValues: testValuesByLabResult.get(labResult.id!) || [],
         biomarkerNames,
