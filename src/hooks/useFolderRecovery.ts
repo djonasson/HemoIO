@@ -1,6 +1,6 @@
 /**
  * Setting HemoIO up from a folder copy: the folder and the password that
- * made the lock beside the copy are all it needs, on this browser after it
+ * made the lock saved in the copy are all it needs, on this browser after it
  * forgot HemoIO or on another computer that sees the same synced folder.
  *
  * Nothing is stored until the copy has opened with the password: a wrong
@@ -30,13 +30,14 @@ export interface UseFolderRecoveryResult {
 
 export function useFolderRecovery(): UseFolderRecoveryResult {
   const { recoverFromFolder } = useAuth();
-  // The one provider that chose the folder: it persists the handle, as
-  // Settings does, so folder sync uses this folder once HemoIO opens
+  // The one provider that chose the folder. It keeps the handle to itself
+  // until the copy has opened, then stores it where Settings does, so folder
+  // sync uses this folder once HemoIO opens; a failed attempt changes nothing.
   const [folder] = useState(() => new FileSystemStorageProvider());
   const [folderName, setFolderName] = useState<string | null>(null);
 
   const chooseFolder = useCallback(async (): Promise<void> => {
-    const handle = await folder.selectDirectory();
+    const handle = await folder.selectDirectory({ persist: false });
     if (handle) setFolderName(handle.name);
   }, [folder]);
 
@@ -54,9 +55,22 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
 
       const { lock, key, copy, revision } = opened;
       let restored = true;
-      const outcome = await recoverFromFolder(lock, key, async (sessionKey) => {
+      // Kept as soon as the lock is saved, before the sweep and the restore:
+      // a reload then still finds folder storage on, and the first sync
+      // offers the copy. Not before: another tab may have set up meanwhile.
+      const keepFolder = async (): Promise<void> => {
         try {
           localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+          await folder.persistDirectory();
+        } catch {
+          restored = false;
+          // Fixed text: the error could name the folder's path
+          console.error('Could not keep the folder choice');
+        }
+      };
+      // Sees only rows this key opens: the sweep has run
+      const restoreCopy = async (sessionKey: CryptoKey): Promise<void> => {
+        try {
           const db = createEncryptedDb(sessionKey);
           // Data still in this browser is left for the first sync, which asks
           // when it differs from the copy: neither side is replaced unasked
@@ -69,7 +83,8 @@ export function useFolderRecovery(): UseFolderRecoveryResult {
           // Fixed text: the error could name the records being restored
           console.error('Could not restore the folder copy');
         }
-      });
+      };
+      const outcome = await recoverFromFolder(lock, key, restoreCopy, keepFolder);
       if (outcome === 'existing-locked') return 'existing-locked';
       if (!restored) {
         notifications.show({

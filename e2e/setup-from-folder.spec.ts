@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { TEST_PASSWORD, setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, completeSetup, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { lockApp } from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
@@ -16,7 +16,7 @@ import {
   switchToFolderStorage,
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
-import { existingDataStep } from './steps/setup.steps';
+import { existingDataStep, keepExistingDataAside } from './steps/setup.steps';
 import {
   damageFolderCopy,
   folderCopyText,
@@ -192,6 +192,29 @@ test.describe('Set up from a folder copy', () => {
     await expect(page.getByRole('dialog', { name: 'Your folder copy changed on another computer' })).toBeVisible();
     // Nothing was replaced unasked: the folder copy is still the older one
     expect(await folderCopyText(page)).toBe(twoResults);
+  });
+
+  test("records set aside earlier come back when the folder's key opens them", async ({ page }) => {
+    // Scenario: Records set aside earlier come back when the folder's key opens them
+    const hash = await folderWithCopy(page);
+    // The lock is lost, and a new setup keeps this setup's records aside
+    await forgetHemoIO(page, { keepDatabase: true });
+    await keepExistingDataAside(page);
+    await completeSetup(page, 'Other-Passw0rd1!');
+    await expect(setAsideBanner(page)).toBeVisible();
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(0);
+
+    // Then that lock is lost too, and I set up from the folder
+    await forgetHemoIO(page, { keepDatabase: true });
+    await expect(existingDataStep(page)).toBeVisible();
+    await recoverFromFolder(page, TEST_PASSWORD);
+
+    await expectBothResults(page);
+    await settledSync(page);
+    await expect(setAsideBanner(page)).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Your folder copy changed on another computer' })).toHaveCount(0);
+    expect(await folderCopyHash(page)).toBe(hash);
   });
 
   test('leftover data of another setup is kept aside when I restore from my folder', async ({ page }) => {

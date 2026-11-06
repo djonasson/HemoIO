@@ -3,7 +3,7 @@ Feature: Set Up From a Folder Copy
   I want to set HemoIO up from that folder with the password I used
   So that I get my data back after this browser forgot HemoIO, or on another computer
 
-  The folder copy carries its password lock beside it: the folder and the
+  The folder copy carries its password lock saved in it: the folder and the
   password are all HemoIO needs to open it. Folders need the File System
   Access API, so this is offered only where the browser supports it.
 
@@ -49,7 +49,7 @@ Feature: Set Up From a Folder Copy
     And nothing should have been stored
 
   Scenario: An old copy without a lock is explained
-    Given I am restoring from a folder whose copy was saved before HemoIO kept the password lock beside it
+    Given I am restoring from a folder whose copy was saved before HemoIO kept the password lock in it
     When I enter my password and choose "Unlock and restore"
     Then I should be told that only the browser that saved it can restore it
     And nothing should have been stored

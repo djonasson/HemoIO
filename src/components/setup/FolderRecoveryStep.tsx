@@ -2,7 +2,7 @@
  * FolderRecoveryStep Component
  *
  * Setting HemoIO up from a folder copy: choose the folder, enter the password
- * that made the copy, and HemoIO opens it with the lock kept beside it. The
+ * that made the copy, and HemoIO opens it with the password lock saved in it. The
  * password stays the same. A copy that does not open is explained, and
  * nothing is stored.
  */
@@ -49,6 +49,8 @@ function problemMessage(problem: FolderUnlockProblem, folderName: string | null)
 interface Shown {
   message: string;
   focus: 'password' | 'alert';
+  /** Each attempt's alert is a new one, so the same message is announced again */
+  attempt: number;
 }
 
 export function FolderRecoveryStep({
@@ -64,6 +66,7 @@ export function FolderRecoveryStep({
   const [password, setPassword] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
+  const attempts = useRef(0);
   // Guards against a second submit before React re-renders the disabled button
   const recoveringRef = useRef(false);
 
@@ -79,13 +82,18 @@ export function FolderRecoveryStep({
   }, [shown]);
 
   // No loading state: a disabled button would drop focus, and the picker is modal anyway
+  const show = (message: string, focus: Shown['focus']): void => {
+    attempts.current += 1;
+    setShown({ message, focus, attempt: attempts.current });
+  };
+
   const handleChoose = async (): Promise<void> => {
     try {
       await onChooseFolder();
       setShown(null);
     } catch {
       // Fixed text: the error could name the folder's path
-      setShown({ message: CHOOSE_FAILED, focus: 'alert' });
+      show(CHOOSE_FAILED, 'alert');
     }
   };
 
@@ -100,13 +108,10 @@ export function FolderRecoveryStep({
       const result = await onRecover(password);
       if (result === null || result === 'existing-locked') return;
       if (result === 'wrong-password') setPassword('');
-      setShown({
-        message: problemMessage(result, folderName),
-        focus: result === 'wrong-password' ? 'password' : 'alert',
-      });
+      show(problemMessage(result, folderName), result === 'wrong-password' ? 'password' : 'alert');
     } catch {
       // Fixed text: never the error, which could carry key material
-      setShown({ message: RECOVER_FAILED, focus: 'alert' });
+      show(RECOVER_FAILED, 'alert');
     } finally {
       recoveringRef.current = false;
       setIsRecovering(false);
@@ -122,7 +127,7 @@ export function FolderRecoveryStep({
           </Title>
           <Text>
             Choose the folder HemoIO kept its copy in, and enter the password you used. HemoIO opens
-            the copy with the password lock kept beside it. Your password stays the same.
+            the copy with the password lock saved in it. Your password stays the same.
           </Text>
 
           <Group gap="sm">
@@ -157,6 +162,7 @@ export function FolderRecoveryStep({
 
           {shown && (
             <Alert
+              key={shown.attempt}
               ref={alertRef}
               role="alert"
               tabIndex={-1}

@@ -155,6 +155,14 @@ describe('keyWrapping', () => {
       expect(isCredentialsV1(null)).toBe(false);
       expect(isCredentialsV2('v2')).toBe(false);
     });
+
+    it('rejects a lock whose iterations no setup would use, so a planted one cannot hang unlocking', async () => {
+      const { credentials: v2 } = await createCredentialsV2('Old-Passw0rd!', FAST);
+
+      expect(isCredentialsV2({ ...v2, iterations: 10 * KEK_PBKDF2_ITERATIONS })).toBe(true);
+      expect(isCredentialsV2({ ...v2, iterations: 10 * KEK_PBKDF2_ITERATIONS + 1 })).toBe(false);
+      expect(isCredentialsV2({ ...v2, iterations: 1e10 })).toBe(false);
+    });
   });
 
   describe('keyMatchesCredentials', () => {

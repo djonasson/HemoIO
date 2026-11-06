@@ -4,21 +4,33 @@ import { encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { markFolderCopySeen, sealFolderCopy, type FolderUnlockProblem } from '@services/sync';
 import { restoreBackup } from '@services/import';
+import { notifications } from '@mantine/notifications';
 import { useFolderRecovery } from './useFolderRecovery';
 import type { SetupOutcome } from '@contexts/AuthContext';
 
-const selectDirectory = vi.fn<() => Promise<{ name: string } | null>>();
+const selectDirectory = vi.fn<(options?: { persist?: boolean }) => Promise<{ name: string } | null>>();
 const loadCurrent = vi.fn<() => Promise<ArrayBuffer | null>>();
+const persistDirectory = vi.fn<() => Promise<void>>();
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
     selectDirectory = selectDirectory;
     loadCurrent = loadCurrent;
+    persistDirectory = persistDirectory;
   },
+}));
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: vi.fn() },
 }));
 
 const recoverFromFolder =
   vi.fn<
-    (lock: StoredCredentialsV2, key: CryptoKey, prepare?: (key: CryptoKey) => Promise<void>) => Promise<SetupOutcome>
+    (
+      lock: StoredCredentialsV2,
+      key: CryptoKey,
+      prepare?: (key: CryptoKey) => Promise<void>,
+      onSaved?: () => Promise<void>
+    ) => Promise<SetupOutcome>
   >();
 vi.mock('@contexts', () => ({
   useAuth: () => ({ recoverFromFolder }),
@@ -59,6 +71,8 @@ const FOLDER_DATA = {
 };
 
 let LOCK: StoredCredentialsV2;
+let providerAtSweep: string | null = null;
+let persistedAtSweep = false;
 let COPY: ArrayBuffer;
 let REVISION: string;
 
@@ -94,8 +108,12 @@ describe('useFolderRecovery', () => {
     selectDirectory.mockResolvedValue({ name: 'Lab Folder' });
     loadCurrent.mockResolvedValue(COPY);
     hasLabData.mockResolvedValue(false);
-    // As AuthContext does: prepare with the key, then unlock
-    recoverFromFolder.mockImplementation(async (_lock, key, prepare) => {
+    persistDirectory.mockResolvedValue(undefined);
+    // As AuthContext does: save, onSaved, sweep, prepare with the key, then unlock
+    recoverFromFolder.mockImplementation(async (_lock, key, prepare, onSaved) => {
+      await onSaved?.();
+      providerAtSweep = localStorage.getItem('hemoio_storage_provider');
+      persistedAtSweep = persistDirectory.mock.calls.length > 0;
       await prepare?.(key);
       return 'created';
     });
@@ -119,7 +137,7 @@ describe('useFolderRecovery', () => {
 
     expect(await recover(hook)).toBeNull();
 
-    expect(recoverFromFolder).toHaveBeenCalledWith(LOCK, expect.any(Object), expect.any(Function));
+    expect(recoverFromFolder).toHaveBeenCalledWith(LOCK, expect.any(Object), expect.any(Function), expect.any(Function));
     const key = recoverFromFolder.mock.calls[0][1];
     expect(localStorage.getItem('hemoio_storage_provider')).toBe('filesystem');
     expect(restoreBackup).toHaveBeenCalledWith(db, expect.objectContaining({ labResults: [expect.objectContaining({ labName: 'Quest Diagnostics' })] }));
@@ -128,6 +146,33 @@ describe('useFolderRecovery', () => {
     expect(vi.mocked(restoreBackup).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(markFolderCopySeen).mock.invocationCallOrder[0]
     );
+  });
+
+  it('chooses folder storage and keeps the folder before the sweep, once the copy has opened', async () => {
+    const hook = await chosen();
+    expect(selectDirectory).toHaveBeenCalledWith({ persist: false });
+    expect(persistDirectory).not.toHaveBeenCalled();
+
+    expect(await recover(hook)).toBeNull();
+
+    // So a reload during the sweep or the restore leaves HemoIO on this folder
+    expect(providerAtSweep).toBe('filesystem');
+    expect(persistedAtSweep).toBe(true);
+  });
+
+  it('a failed restore says so, logging no detail', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(restoreBackup).mockRejectedValueOnce(new Error('Glucose 95 mg/dL'));
+    const hook = await chosen();
+
+    expect(await recover(hook)).toBeNull();
+
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Folder copy not restored', autoClose: false })
+    );
+    expect(markFolderCopySeen).not.toHaveBeenCalled();
+    expect(JSON.stringify(error.mock.calls)).not.toContain('Glucose');
+    error.mockRestore();
   });
 
   it('leaves browser data for the conflict check', async () => {
@@ -165,6 +210,7 @@ describe('useFolderRecovery', () => {
       expect(recoverFromFolder).not.toHaveBeenCalled();
       expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
       expect(localStorage.getItem('hemoio_storage_provider')).toBeNull();
+      expect(persistDirectory).not.toHaveBeenCalled();
     });
 
     it('wrong-password', async () => {
@@ -173,6 +219,7 @@ describe('useFolderRecovery', () => {
       expect(await recover(hook, 'Not-The-Passw0rd!')).toBe('wrong-password');
 
       expect(recoverFromFolder).not.toHaveBeenCalled();
+      expect(persistDirectory).not.toHaveBeenCalled();
       expect(localStorage.getItem(CREDENTIALS_KEY)).toBeNull();
     });
 
@@ -209,5 +256,7 @@ describe('useFolderRecovery', () => {
     expect(await recover(hook)).toBe('existing-locked');
 
     expect(restoreBackup).not.toHaveBeenCalled();
+    // The other tab's folder choice is left as it is
+    expect(persistDirectory).not.toHaveBeenCalled();
   });
 });

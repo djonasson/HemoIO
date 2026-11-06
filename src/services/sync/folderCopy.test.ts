@@ -347,6 +347,19 @@ describe('unlockFolderCopy', () => {
     error.mockRestore();
   });
 
+  it('a lock with more iterations than any setup uses is not-a-copy, and never tried', async () => {
+    const { bytes } = await lockedCopy();
+    const file = JSON.parse(new TextDecoder().decode(bytes)) as { lock: object };
+    const planted = { ...file, lock: { ...file.lock, iterations: 1e10 } };
+    const unwrap = vi.spyOn(crypto.subtle, 'deriveKey');
+
+    const result = await unlockFolderCopy(new TextEncoder().encode(JSON.stringify(planted)).buffer as ArrayBuffer, PASSWORD);
+
+    expect(result).toEqual({ ok: false, problem: 'not-a-copy' });
+    expect(unwrap).not.toHaveBeenCalled();
+    unwrap.mockRestore();
+  });
+
   it('a damaged header is not-a-copy, and a lock that is not v2 is never tried', async () => {
     const { bytes } = await lockedCopy();
     const file = JSON.parse(new TextDecoder().decode(bytes)) as { lock: object };

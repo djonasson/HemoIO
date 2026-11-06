@@ -26,6 +26,12 @@ import {
 /** PBKDF2 iterations for new key-encryption keys */
 export const KEK_PBKDF2_ITERATIONS = 600_000;
 
+/**
+ * The most iterations a lock may ask for: a lock planted in a folder copy
+ * with billions would keep unlocking busy until the page is reloaded
+ */
+const MAX_KEK_PBKDF2_ITERATIONS = 10 * KEK_PBKDF2_ITERATIONS;
+
 /** Credentials with a password-wrapped data key */
 export interface StoredCredentialsV2 {
   version: 2;
@@ -64,7 +70,8 @@ function isoTime(value: string): number {
 
 /**
  * Whether stored credentials are v2. Any other `version` is rejected, and so
- * is a `changedAt` that is there but not an ISO date.
+ * are more iterations than any setup uses, and a `changedAt` that is there
+ * but not an ISO date.
  */
 export function isCredentialsV2(creds: unknown): creds is StoredCredentialsV2 {
   return (
@@ -75,6 +82,7 @@ export function isCredentialsV2(creds: unknown): creds is StoredCredentialsV2 {
     typeof creds.wrappedKey === 'string' &&
     Number.isInteger(creds.iterations) &&
     (creds.iterations as number) > 0 &&
+    (creds.iterations as number) <= MAX_KEK_PBKDF2_ITERATIONS &&
     (creds.changedAt === undefined ||
       (typeof creds.changedAt === 'string' && !Number.isNaN(isoTime(creds.changedAt))))
   );

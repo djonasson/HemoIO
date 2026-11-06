@@ -112,7 +112,7 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
 export type FolderUnlockProblem =
   /** The folder holds no copy */
   | 'no-copy'
-  /** A copy without the lock beside it: only a browser with its key can open it */
+  /** A copy without the lock saved in it: only a browser with its key can open it */
   | 'no-lock'
   | 'wrong-password'
   // With the password a lock opens, the copy is this setup's: never another's
@@ -130,7 +130,7 @@ export type FolderUnlockResult =
   | { ok: false; problem: FolderUnlockProblem };
 
 /**
- * Open a folder copy with the password that made the lock beside it, as a
+ * Open a folder copy with the password that made the lock saved in it, as a
  * browser without credentials does. It succeeds only when the body opens with
  * the unwrapped key and the header as additional data, so a lock swapped into
  * the file is never accepted. Stores nothing, and never throws or logs: the

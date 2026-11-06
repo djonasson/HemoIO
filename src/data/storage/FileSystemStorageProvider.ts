@@ -214,9 +214,11 @@ export class FileSystemStorageProvider implements StorageProvider {
   }
 
   /**
-   * Show the directory picker and store the selected handle
+   * Show the directory picker and store the selected handle. With
+   * `persist: false` it is kept in this provider only, until
+   * persistDirectory: so a choice that is not taken up changes nothing.
    */
-  async selectDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  async selectDirectory({ persist = true }: { persist?: boolean } = {}): Promise<FileSystemDirectoryHandle | null> {
     try {
       const handle = await window.showDirectoryPicker({
         mode: 'readwrite',
@@ -224,7 +226,7 @@ export class FileSystemStorageProvider implements StorageProvider {
       });
 
       this.directoryHandle = handle;
-      await this.persistHandle(handle);
+      if (persist) await this.persistHandle(handle);
 
       return handle;
     } catch (error) {
@@ -239,6 +241,14 @@ export class FileSystemStorageProvider implements StorageProvider {
       }
       throw error;
     }
+  }
+
+  /** Store the directory chosen with `persist: false`, as the one HemoIO uses */
+  async persistDirectory(): Promise<void> {
+    if (!this.directoryHandle) {
+      throw new Error('No directory selected. Please select a folder first.');
+    }
+    await this.persistHandle(this.directoryHandle);
   }
 
   /**

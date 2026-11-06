@@ -3,12 +3,34 @@ Feature: First-Run Setup Wizard
   I want to configure my HemoIO application
   So that I can start securely storing my lab results
 
+  Where the browser can open folders (the File System Access API), first run
+  begins by asking how to start: set HemoIO up anew, or from a folder copy
+  (see setup-from-folder.feature). The password step is then reached by
+  choosing "Set up HemoIO". Elsewhere setup begins on the password step.
+
   Scenario: New user sees setup wizard on first launch
     Given I am a new user
     And the application has no existing data
     When I open the application
     Then I should see the setup wizard
     And I should see a welcome message
+
+  Scenario: Where folders can be used, first run asks how to start
+    Given I am a new user
+    And the browser supports the File System Access API
+    When I open the application
+    Then I should be asked "How would you like to start?"
+    And I should be offered "Set up HemoIO" and "I already have a folder copy"
+    And "Set up HemoIO" should have focus
+    When I choose "Set up HemoIO"
+    Then I should be on the password step of the setup wizard
+
+  Scenario: Where folders cannot be used, setup starts on the password step
+    Given I am a new user
+    And the browser does not support the File System Access API
+    When I open the application
+    Then I should be on the password step of the setup wizard
+    And I should not be offered "I already have a folder copy"
 
   Scenario: User creates a password
     Given I am on the password step of the setup wizard
@@ -116,6 +138,7 @@ Feature: First-Run Setup Wizard
     Then before anything else I should see "This browser already holds HemoIO data"
     And I should be told "It was saved by an earlier setup whose password lock is gone, so this setup can't open it."
     And "Keep it aside and set up anew" should be the default choice
+    And, where folders can be used, I should also be offered "I already have a folder copy"
 
   Scenario: I can keep the existing data aside and set up anew
     Given setup tells me this browser already holds HemoIO data

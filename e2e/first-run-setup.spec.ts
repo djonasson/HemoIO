@@ -30,6 +30,30 @@ test.describe('First-Run Setup Wizard', () => {
     await expect(page.getByText("Let's set up your secure lab results tracker")).toBeVisible();
   });
 
+  test('where folders can be used, first run asks how to start', async ({ page, browserName }) => {
+    // Scenario: Where folders can be used, first run asks how to start
+    test.skip(browserName !== 'chromium', 'Only Chromium can open folders');
+    await expect(page.getByRole('heading', { name: 'How would you like to start?' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'I already have a folder copy' })).toBeVisible();
+    const setUp = page.getByRole('button', { name: 'Set up HemoIO' });
+    await expect(setUp).toBeFocused();
+
+    await setUp.click();
+
+    await expect(page.getByPlaceholder('Enter your password')).toBeVisible();
+  });
+
+  test('where folders cannot be used, setup starts on the password step', async ({ page }) => {
+    // Scenario: Where folders cannot be used, setup starts on the password step
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true });
+    });
+    await page.reload();
+
+    await expect(page.getByPlaceholder('Enter your password')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'I already have a folder copy' })).toHaveCount(0);
+  });
+
   test.describe('on the password step', () => {
     test.beforeEach(async ({ page }) => {
       await startNewSetup(page);
@@ -293,7 +317,7 @@ test.describe('First-run setup: tabs and existing data', () => {
     ).toBeVisible();
   });
 
-  test('setup tells me when this browser already holds data', async ({ page }) => {
+  test('setup tells me when this browser already holds data', async ({ page, browserName }) => {
     // Scenario: Setup tells me when this browser already holds data
     await seedDataWithoutLock(page);
 
@@ -305,6 +329,9 @@ test.describe('First-run setup: tabs and existing data', () => {
     // Before anything else: the password step is not shown yet
     await expect(page.getByPlaceholder(/enter your password/i)).toHaveCount(0);
     await expect(step.getByRole('button', { name: 'Keep it aside and set up anew' })).toBeFocused();
+    await expect(step.getByRole('button', { name: 'I already have a folder copy' })).toHaveCount(
+      browserName === 'chromium' ? 1 : 0
+    );
   });
 
   test('I can keep the existing data aside and set up anew', async ({ page }) => {

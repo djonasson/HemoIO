@@ -86,6 +86,20 @@ describe('FolderRecoveryStep', () => {
     expect(password()).toHaveValue('');
   });
 
+  it('announces the same wrong password again, with a new alert', async () => {
+    const user = userEvent.setup();
+    renderStep({ onRecover: vi.fn<Recover>().mockResolvedValue('wrong-password') });
+
+    await user.type(password(), 'Wrong-Passw0rd!');
+    await user.click(submit());
+    const first = await screen.findByRole('alert');
+    await user.type(password(), 'Wrong-Passw0rd!');
+    await user.click(submit());
+
+    await waitFor(() => expect(screen.getByRole('alert')).not.toBe(first));
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
   it('moves focus to any other problem, which is announced', async () => {
     const user = userEvent.setup();
     renderStep({ onRecover: vi.fn<Recover>().mockResolvedValue('no-copy') });

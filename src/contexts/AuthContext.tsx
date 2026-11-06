@@ -54,16 +54,19 @@ export interface AuthContextValue {
     prepare?: (key: CryptoKey) => Promise<void>
   ) => Promise<SetupOutcome>;
   /**
-   * Sets up from a folder copy: saves the lock found beside it as the
+   * Sets up from a folder copy: saves the copy's password lock as the
    * credentials, keeping its password, and unlocks with the data key it
    * wraps. Records are settled against that key before `prepare` runs (to
-   * restore the copy), so it sees only rows the key opens. If another tab
+   * restore the copy), so it sees only rows the key opens. `onSaved` runs
+   * right after the lock is saved, before the sweep: what must hold even if
+   * the page reloads before the restore (the folder choice). If another tab
    * saved credentials first, stores nothing and goes to the login screen.
    */
   recoverFromFolder: (
     lock: StoredCredentialsV2,
     key: CryptoKey,
-    prepare?: (key: CryptoKey) => Promise<void>
+    prepare?: (key: CryptoKey) => Promise<void>,
+    onSaved?: () => Promise<void>
   ) => Promise<SetupOutcome>;
   /** Re-wraps the data key under a new password; never throws */
   changePassword: (current: string, next: string) => Promise<ChangePasswordResult>;
@@ -232,7 +235,8 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
     (
       lock: StoredCredentialsV2,
       key: CryptoKey,
-      prepare?: (key: CryptoKey) => Promise<void>
+      prepare?: (key: CryptoKey) => Promise<void>,
+      onSaved?: () => Promise<void>
     ): Promise<SetupOutcome> =>
       withWebLock(SETUP_LOCK, async (): Promise<SetupOutcome> => {
         // Read again under the lock: another tab may have finished setup meanwhile
@@ -246,6 +250,12 @@ export function AuthProvider({ children }: AuthProviderProps): ReactNode {
 
         saveStoredCredentials(lock);
         setCredentials(lock);
+        try {
+          await onSaved?.();
+        } catch {
+          // Fixed text: the error could name the folder
+          console.error('Could not keep the folder choice');
+        }
         // Before the restore: rows set aside earlier that this key opens come
         // back first, and rows it cannot open go aside, so the restore neither
         // duplicates the one nor is hidden by the other

@@ -582,21 +582,60 @@ describe('AuthContext', () => {
       }
     });
 
+    it('recoverFromFolder runs onSaved right after saving the lock, before the sweep', async () => {
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+      const order: string[] = [];
+      settleUnreadable.mockImplementation(async () => {
+        order.push('sweep');
+        return { returned: 0, setAside: 0 };
+      });
+      const onSaved = vi.fn(async () => {
+        order.push('saved');
+        expect(storedCredentials()).toEqual(lock);
+      });
+
+      await act(async () => {
+        await auth.recoverFromFolder(lock, key, async () => void order.push('prepare'), onSaved);
+      });
+
+      expect(order).toEqual(['saved', 'sweep', 'prepare']);
+    });
+
+    it('a failed onSaved still unlocks, logging no detail', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, undefined, () =>
+          Promise.reject(new Error('/home/someone/Health'))
+        );
+      });
+
+      expect(outcome).toBe('created');
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('Health');
+    });
+
     it('recoverFromFolder defers to credentials another tab saved', async () => {
       renderAuth();
       const theirs = (await createCredentialsV2(NEW, 1000)).credentials;
       store(theirs);
       const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
       const prepare = vi.fn().mockResolvedValue(undefined);
+      const onSaved = vi.fn().mockResolvedValue(undefined);
 
       let outcome: string | undefined;
       await act(async () => {
-        outcome = await auth.recoverFromFolder(lock, key, prepare);
+        outcome = await auth.recoverFromFolder(lock, key, prepare, onSaved);
       });
 
       expect(outcome).toBe('existing-locked');
       expect(storedCredentials()).toEqual(theirs);
       expect(prepare).not.toHaveBeenCalled();
+      expect(onSaved).not.toHaveBeenCalled();
       expect(settleUnreadable).not.toHaveBeenCalled();
       expect(auth.encryptionKey).toBeNull();
       expect(screen.getByTestId('status')).toHaveTextContent('locked');
