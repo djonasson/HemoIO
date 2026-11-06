@@ -205,7 +205,7 @@ export interface LabResultWithValues {
  * Encrypted database operations wrapper
  */
 /** What replaceLabData stores */
-export interface ReplacedLabData {
+interface ReplacedLabData {
   labResults: LabResult[];
   testValues: TestValue[];
   userNotes: UserNote[];
@@ -213,7 +213,7 @@ export interface ReplacedLabData {
 }
 
 /** How many records replaceLabData stored */
-export interface ReplacedCounts {
+interface ReplacedCounts {
   labResults: number;
   testValues: number;
   notes: number;

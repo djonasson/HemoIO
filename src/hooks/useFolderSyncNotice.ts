@@ -5,6 +5,7 @@
 
 import { useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
+import { showPersistentNotice } from '@components/common/showPersistentNotice';
 import type { FolderSyncIssue } from './useFilesystemSync';
 
 export const FOLDER_SYNC_NOTICE_ID = 'folder-sync';
@@ -68,12 +69,7 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null): void {
   useEffect(() => {
     if (!issue) return;
 
-    notifications.show({
-      id: FOLDER_SYNC_NOTICE_ID,
-      ...NOTICES[issue],
-      color: 'yellow',
-      autoClose: false,
-    });
+    showPersistentNotice({ id: FOLDER_SYNC_NOTICE_ID, ...NOTICES[issue], color: 'yellow' });
     return () => {
       notifications.hide(FOLDER_SYNC_NOTICE_ID);
     };

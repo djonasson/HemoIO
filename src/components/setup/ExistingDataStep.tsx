@@ -12,7 +12,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Button, Group, Modal, Stack, Text, Title } from '@mantine/core';
 import { IconAlertCircle, IconArchive, IconFolderOpen, IconTrash } from '@tabler/icons-react';
 
-export const EXISTING_DATA_TITLE = 'This browser already holds HemoIO data';
+const EXISTING_DATA_TITLE = 'This browser already holds HemoIO data';
 
 export interface ExistingDataStepProps {
   /** Set up anew; the unlock sweep keeps the old rows aside */

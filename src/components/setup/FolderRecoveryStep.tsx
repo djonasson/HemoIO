@@ -11,9 +11,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Alert, Button, Group, PasswordInput, Stack, Text, Title } from '@mantine/core';
 import { IconAlertCircle, IconArrowLeft, IconFolderOpen, IconLockOpen } from '@tabler/icons-react';
 import { folderCopyProblemMessage } from '@components/storage/folderCopyProblemMessage';
+import { useFocusOnShow } from '@hooks/useFocusOnShow';
 import type { FolderUnlockProblem } from '@services/sync';
 
-export const FOLDER_RECOVERY_TITLE = 'Restore from your folder copy';
+const FOLDER_RECOVERY_TITLE = 'Restore from your folder copy';
 
 const CHOOSE_FAILED = "HemoIO couldn't open that folder. Choose it again.";
 const RECOVER_FAILED = "HemoIO couldn't be set up from this copy. Nothing was stored. Please try again.";
@@ -61,11 +62,12 @@ export function FolderRecoveryStep({
 }: FolderRecoveryStepProps): React.ReactNode {
   const headingId = useId();
   const chooseRef = useRef<HTMLButtonElement>(null);
-  const passwordRef = useRef<HTMLInputElement>(null);
-  const alertRef = useRef<HTMLDivElement>(null);
   const [password, setPassword] = useState('');
   const [isRecovering, setIsRecovering] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
+  // Each new problem moves focus: to the password to try again, else to the explanation
+  const passwordRef = useFocusOnShow<HTMLInputElement>(shown?.focus === 'password' ? shown : null);
+  const alertRef = useFocusOnShow<HTMLDivElement>(shown?.focus === 'password' ? null : shown);
   const attempts = useRef(0);
   // Guards against a second submit before React re-renders the disabled button
   const recoveringRef = useRef(false);
@@ -74,12 +76,6 @@ export function FolderRecoveryStep({
   useEffect(() => {
     chooseRef.current?.focus();
   }, []);
-
-  // Each new problem moves focus: to the password to try again, else to the explanation
-  useEffect(() => {
-    if (!shown) return;
-    (shown.focus === 'password' ? passwordRef : alertRef).current?.focus();
-  }, [shown]);
 
   // No loading state: a disabled button would drop focus, and the picker is modal anyway
   const show = (message: string, focus: Shown['focus']): void => {

@@ -11,6 +11,7 @@ import { Alert, List, Button, Modal, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { folderCopyProblemMessage } from '@components/storage/folderCopyProblemMessage';
 import { useFolderBackups, type FolderBackupEntry, type FolderBackupReading } from '@hooks/useFolderBackups';
+import { useFocusOnShow } from '@hooks/useFocusOnShow';
 import { formatDateTime } from '@/utils/formatDateTime';
 import type { ParsedBackupData } from '@services/import';
 import { RestoreConfirmation } from './RestoreConfirmation';
@@ -71,12 +72,8 @@ export function FolderBackups({ onRestore, setAsideCount = 0 }: FolderBackupsPro
   // Mantine returns focus to the opener of a modal; the read happens before it
   // opens, so name the opener for it
   const opener = useRef<HTMLElement | null>(null);
-  const failureAlert = useRef<HTMLDivElement>(null);
-
   // A screen reader user is at the buttons: take them to what went wrong
-  useEffect(() => {
-    if (failure) failureAlert.current?.focus();
-  }, [failure]);
+  const failureAlert = useFocusOnShow<HTMLDivElement>(failure);
 
   const open = async (entry: FolderBackupEntry, button: HTMLElement): Promise<void> => {
     opener.current = button;

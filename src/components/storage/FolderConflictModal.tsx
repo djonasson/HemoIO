@@ -11,6 +11,7 @@ import { useId, useState } from 'react';
 import { Alert, Button, Group, List, Modal, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { pluralize } from '@/utils/pluralize';
 import type { FolderConflict, FolderConflictChoice } from '@hooks';
 import type { FolderSide } from '@services/sync';
 
@@ -21,10 +22,6 @@ export interface FolderConflictModalProps {
 }
 
 const TITLE = 'Your folder copy changed on another computer';
-
-function count(n: number, singular: string): string {
-  return `${n} ${singular}${n === 1 ? '' : 's'}`;
-}
 
 interface SideProps {
   heading: string;
@@ -42,9 +39,9 @@ function Side({ heading, side, dateLabel }: SideProps): React.ReactNode {
           {heading}
         </Title>
         <List size="sm">
-          <List.Item>{count(side.labResults, 'lab result')}</List.Item>
-          <List.Item>{count(side.testValues, 'test value')}</List.Item>
-          <List.Item>{count(side.notes, 'note')}</List.Item>
+          <List.Item>{pluralize(side.labResults, 'lab result')}</List.Item>
+          <List.Item>{pluralize(side.testValues, 'test value')}</List.Item>
+          <List.Item>{pluralize(side.notes, 'note')}</List.Item>
         </List>
         {side.savedAt && (
           <Text size="sm">

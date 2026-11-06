@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@contexts';
+import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
@@ -132,6 +133,8 @@ export function useFolderRestore(): UseFolderRestoreResult {
     if (decision === 'sync') {
       // Decided: from now on the browser's own data is what counts
       emptyAtUnlock.current = { ...emptyAtUnlock.current, empty: false };
+    } else {
+      notifyFolderSyncPaused();
     }
     setStatus(decision === 'sync' ? 'sync' : 'held');
   }, []);

@@ -950,6 +950,8 @@ describe('useFilesystemSync', () => {
 
         expect(result.current.conflict).toBeNull();
         expect(result.current.held).toBe(true);
+        // The hold says so itself
+        expect(notifications.show).toHaveBeenCalledWith(expect.objectContaining({ title: 'Folder Sync Paused' }));
         await act(() => result.current.syncNow());
         expect(writeFolderCopy).toHaveBeenCalledTimes(1);
         expect(keepFolderCopy).not.toHaveBeenCalled();

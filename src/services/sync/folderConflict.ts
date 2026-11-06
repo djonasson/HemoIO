@@ -13,7 +13,7 @@ import { digestFolderData, folderDataJson, sealFolderCopy } from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderCopySource } from './folderCopy';
 
-export interface BrowserDataBackup {
+interface BrowserDataBackup {
   db: Pick<EncryptedDb, 'exportAllData'>;
   key: CryptoKey;
   backups: FolderBackupStore;

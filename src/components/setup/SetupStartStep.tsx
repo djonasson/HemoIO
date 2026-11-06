@@ -10,7 +10,7 @@ import { useEffect, useId, useRef } from 'react';
 import { Button, Group, Stack, Text, Title } from '@mantine/core';
 import { IconFolderOpen, IconRocket } from '@tabler/icons-react';
 
-export const SETUP_START_TITLE = 'How would you like to start?';
+const SETUP_START_TITLE = 'How would you like to start?';
 
 export interface SetupStartStepProps {
   /** Set up anew, from the password step */

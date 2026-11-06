@@ -3,9 +3,11 @@
  * the records hold
  */
 
+import { pluralize } from '@/utils/pluralize';
+
 /** "1 record", "3 records" */
 export function recordCount(count: number): string {
-  return `${count} record${count === 1 ? '' : 's'}`;
+  return pluralize(count, 'record');
 }
 
 function verb(count: number, singular: string, plural: string): string {

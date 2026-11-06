@@ -11,6 +11,7 @@ import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconLockQuestion, IconTrash } from '@tabler/icons-react';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
+import { pluralize } from '@/utils/pluralize';
 import { recordCount } from './setAsideCopy';
 import type { SealedDownload } from '@hooks/useSetAsideRecords';
 
@@ -160,7 +161,7 @@ export function SetAsideBanner({
         >
           <Stack gap="xs">
             <Text fw={700} size="sm">
-              {`${total} stored record${total === 1 ? '' : 's'} can't be opened`}
+              {`${pluralize(total, 'stored record')} can't be opened`}
             </Text>
             <Text size="sm">
               They were saved with a different key, or are damaged. HemoIO keeps them aside and

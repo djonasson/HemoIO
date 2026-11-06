@@ -10,6 +10,8 @@
 
 import { useEffect, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
+import { showPersistentNotice } from '@components/common/showPersistentNotice';
+import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useAuth } from '@contexts';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
@@ -181,11 +183,10 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         // A password changed on another computer: adopted when later than this
         // one's, and only for the session whose key opened the copy
         if (outcome.folderLock && sessionRef.current === session && adoptRef.current(outcome.folderLock)) {
-          notifications.show({
+          showPersistentNotice({
             id: FOLDER_LOCK_ADOPTED_NOTICE_ID,
             title: 'Password changed on another computer',
             message: 'Use the new password the next time you unlock HemoIO.',
-            autoClose: false,
           });
         }
 
@@ -290,6 +291,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         // Syncs stay held for the session, as after "Not now"
         pendingRef.current = null;
         setAsked(null);
+        notifyFolderSyncPaused();
         return;
       }
       const { session } = pending;

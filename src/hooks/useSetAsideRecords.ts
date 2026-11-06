@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useSyncExternalStore } from 'react';
-import { notifications } from '@mantine/notifications';
+import { showPersistentNotice } from '@components/common/showPersistentNotice';
 import { useAuth } from '@contexts/useAuth';
 import { onSetAsideChanged } from '@data/db/setAsideEvents';
 import { buildSetAsideFile, saveSealedFile, setAsideFileName } from '@services/export';
@@ -40,7 +40,7 @@ export interface UseSetAsideRecordsResult {
 
 const NOTHING_SET_ASIDE: SetAsideSummary = { total: 0, unsaved: 0 };
 
-export const PREFERENCES_SET_ASIDE_NOTICE_ID = 'preferences-set-aside';
+const PREFERENCES_SET_ASIDE_NOTICE_ID = 'preferences-set-aside';
 
 /**
  * The sessions already told their preferences were kept aside, by session
@@ -82,14 +82,13 @@ function startCount(key: CryptoKey, db: EncryptedDb): SharedCount {
     recount();
     if (movedAside.includes('userPreferences') && !toldPreferencesSetAside.has(key)) {
       toldPreferencesSetAside.add(key);
-      notifications.show({
+      // Told once a session: it stays until dismissed
+      showPersistentNotice({
         id: PREFERENCES_SET_ASIDE_NOTICE_ID,
         title: 'Earlier preferences kept aside',
         message:
           "Your saved preferences couldn't be opened, so HemoIO kept them aside and saved your change.",
         color: 'yellow',
-        // Told once a session: it stays until dismissed
-        autoClose: false,
       });
     }
   });

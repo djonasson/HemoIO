@@ -70,19 +70,11 @@ import {
 import { HEADER_HEIGHT } from './headerHeight';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { AppView, FolderConflictChoice, FolderRestoreDecision, ViewFocus } from '@hooks';
+import type { AppView, ViewFocus } from '@hooks';
 
 interface AppShellProps {
   children?: React.ReactNode;
 }
-
-/** Told when the user holds folder sync: after "Not now", or "Decide later" */
-const FOLDER_SYNC_PAUSED_NOTICE = {
-  title: 'Folder Sync Paused',
-  message:
-    'Nothing is saved to your folder for now, and the copy there is unchanged. HemoIO asks again when you next unlock, or when you grant folder access or choose a folder in Settings.',
-  color: 'yellow',
-} as const;
 
 const NAV_ITEMS: Array<{
   view: AppView;
@@ -381,34 +373,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [replaceFolderCopy, offeredRevision]
   );
 
-  const handleConflictChoice = useCallback(
-    async (choice: FolderConflictChoice) => {
-      await resolveConflict(choice);
-      if (choice === 'later') notifications.show(FOLDER_SYNC_PAUSED_NOTICE);
-    },
-    [resolveConflict]
-  );
-
-  const { decide: decideFolderRestore } = folderRestore;
-  const handleFolderDecision = useCallback(
-    (decision: FolderRestoreDecision) => {
-      decideFolderRestore(decision);
-      if (decision === 'hold') {
-        notifications.show(FOLDER_SYNC_PAUSED_NOTICE);
-      }
-    },
-    [decideFolderRestore]
-  );
-
   return (
     <>
       <FolderRestoreModal
         prompt={folderRestore.prompt}
         onRestore={handleFolderRestore}
         onReplace={handleFolderReplace}
-        onDecide={handleFolderDecision}
+        onDecide={folderRestore.decide}
       />
-      <FolderConflictModal conflict={folderConflict} onResolve={handleConflictChoice} />
+      <FolderConflictModal conflict={folderConflict} onResolve={resolveConflict} />
 
       <MantineAppShell
         header={{ height: HEADER_HEIGHT }}

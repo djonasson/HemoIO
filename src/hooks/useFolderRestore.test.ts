@@ -4,6 +4,9 @@ import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { assessFolderCopy, type FolderCopyAssessment } from '@services/sync';
 import type { ParsedBackupData } from '@services/import';
 import { useFolderRestore } from './useFolderRestore';
+import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
+
+vi.mock('@components/storage/notifyFolderSyncPaused', () => ({ notifyFolderSyncPaused: vi.fn() }));
 
 vi.mock('@/utils/fileSystemSupport', () => ({
   isFileSystemAccessSupported: vi.fn(() => true),
@@ -143,6 +146,8 @@ describe('useFolderRestore', () => {
 
     expect(result.current.prompt).toBeNull();
     expect(result.current.syncAllowed).toBe(false);
+    // The hold says so itself
+    expect(notifyFolderSyncPaused).toHaveBeenCalledTimes(1);
   });
 
   it('waits for folder access, then checks', async () => {

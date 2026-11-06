@@ -5,6 +5,7 @@
  */
 
 import { notifications } from '@mantine/notifications';
+import { showPersistentNotice } from '@components/common/showPersistentNotice';
 
 const SETUP_NOTICE_ID = 'setup-outcome';
 
@@ -12,19 +13,16 @@ const SETUP_NOTICE_ID = 'setup-outcome';
  * One setup notice at a time, the latest: Mantine ignores a show() whose id
  * is already on screen, so the earlier one is hidden first
  */
-function showSetupNotice(notice: Omit<Parameters<typeof notifications.show>[0], 'id'>): void {
+function showSetupNotice(notice: { title: string; message: string; color: string }): void {
   notifications.hide(SETUP_NOTICE_ID);
-  notifications.show({
-    ...notice,
-    id: SETUP_NOTICE_ID,
-    // Stays until dismissed, announced as an alert
-    autoClose: false,
-  });
+  // Stays until dismissed, announced as an alert
+  showPersistentNotice({ ...notice, id: SETUP_NOTICE_ID });
 }
 
-/** "The choices made here", naming them when there are some */
-function choicesMadeHere(choices: string[]): string {
-  return choices.length > 0 ? `the choices made here (${listOf(choices)})` : 'the choices made here';
+/** "the choices made here", naming them when there are some; `article` starts a sentence with "The" */
+function choicesMadeHere(choices: string[], article: 'the' | 'The' = 'the'): string {
+  const made = `${article} choices made here`;
+  return choices.length > 0 ? `${made} (${listOf(choices)})` : made;
 }
 
 /** "a", "a and b", "a, b and c" */
@@ -40,13 +38,12 @@ function listOf(items: string[]): string {
  * that the login screen takes that tab's password.
  */
 export function notifySetUpElsewhere(choices: string[], { unlock = false } = {}): void {
-  const made = choicesMadeHere(choices);
   showSetupNotice({
     title: 'Already set up',
     message:
       'HemoIO was set up in another tab.' +
       (unlock ? ' Unlock with that password.' : '') +
-      ` ${made.charAt(0).toUpperCase()}${made.slice(1)} were not saved; set them in Settings.`,
+      ` ${choicesMadeHere(choices, 'The')} were not saved; set them in Settings.`,
     color: 'yellow',
   });
 }

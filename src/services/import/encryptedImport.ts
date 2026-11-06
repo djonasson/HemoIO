@@ -33,7 +33,7 @@ export interface ParsedEncryptedBackupData extends ParsedBackupData {
   wasEncrypted: boolean;
 }
 
-export const SET_ASIDE_FILE_REFUSED =
+const SET_ASIDE_FILE_REFUSED =
   'This file holds records HemoIO could not read. It is not a backup and cannot be restored.';
 
 /**

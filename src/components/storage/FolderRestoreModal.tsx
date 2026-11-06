@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Alert, Button, Group, List, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { pluralize } from '@/utils/pluralize';
 import type { FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
 import { folderCopyProblemMessage } from './folderCopyProblemMessage';
@@ -29,10 +30,6 @@ export interface FolderRestoreModalProps {
 const OFFER_TITLE = 'Restore your data from the folder?';
 const UNREADABLE_TITLE = "The folder copy can't be read";
 const REPLACE_TITLE = 'Replace the folder copy?';
-
-function count(n: number, singular: string): string {
-  return `${n} ${singular}${n === 1 ? '' : 's'}`;
-}
 
 export function FolderRestoreModal({
   prompt,
@@ -154,9 +151,9 @@ export function FolderRestoreModal({
             : `This browser has no lab data, but ${folder} has a copy:`}
         </Text>
         <List size="sm">
-          <List.Item>{count(labResults.length, 'lab result')}</List.Item>
-          <List.Item>{count(testValues.length, 'test value')}</List.Item>
-          <List.Item>{count(userNotes.length, 'note')}</List.Item>
+          <List.Item>{pluralize(labResults.length, 'lab result')}</List.Item>
+          <List.Item>{pluralize(testValues.length, 'test value')}</List.Item>
+          <List.Item>{pluralize(userNotes.length, 'note')}</List.Item>
         </List>
         <Text size="sm">
           {Number.isNaN(exportedAt.getTime()) ? 'Save date unknown' : `Saved ${formatDateTime(exportedAt)}`}
