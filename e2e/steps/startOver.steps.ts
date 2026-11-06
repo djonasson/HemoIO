@@ -4,6 +4,7 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openSettingsTab } from './app.steps';
+import { writeFolderFile } from './folderSync.steps';
 import { FOLDER_BACKUPS } from './otherComputer.steps';
 
 export const CONFIRMATION_WORD = 'START OVER';
@@ -67,21 +68,18 @@ export async function expectFirstRun(page: Page): Promise<void> {
 
 /** The localStorage keys HemoIO wrote that are still there */
 export function hemoioStorageKeys(page: Page): Promise<string[]> {
-  return page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('hemoio_')));
+  return page.evaluate(
+    (prefix) => Object.keys(localStorage).filter((key) => key.startsWith(prefix)),
+    LOCAL_STORAGE_PREFIX
+  );
 }
 
+/** Mirrors LOCAL_STORAGE_PREFIX in src/data/db/storedRows.ts */
+const LOCAL_STORAGE_PREFIX = 'hemoio_';
+
 /** And the folder holds dated backups — a file in its backups folder */
-export async function putFolderBackup(page: Page, folderName: string, name: string): Promise<void> {
-  await page.evaluate(
-    async ({ folderName, backups, name }) => {
-      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      const dir = await folder.getDirectoryHandle(backups, { create: true });
-      const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
-      await writable.write(new Uint8Array([1, 2, 3, 4]));
-      await writable.close();
-    },
-    { folderName, backups: FOLDER_BACKUPS, name }
-  );
+export function putFolderBackup(page: Page, folderName: string, name: string): Promise<void> {
+  return writeFolderFile(page, folderName, `${FOLDER_BACKUPS}/${name}`, [1, 2, 3, 4]);
 }
 
 /** How many folder handles HemoIO keeps, to find the chosen folder again */

@@ -14,7 +14,8 @@
 
 import type { Page } from '@playwright/test';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, type SeedData } from './data.steps';
-import { FOLDER_COPY, TEST_FOLDER_NAME } from './folderSync.steps';
+import { FOLDER_COPY, TEST_FOLDER_NAME, readFolderFile, writeFolderFile } from './folderSync.steps';
+import { CREDENTIALS_KEY, storedCredentials } from './app.steps';
 
 export interface OtherComputerCopy {
   /** The password this browser's lock opens with, which the other computer knows too */
@@ -57,7 +58,7 @@ export async function writeEnvelopeCopy(
     ...(data.userPreferences ? { preferences: data.userPreferences } : {}),
   };
   await page.evaluate(
-    async ({ source, body, folderName, fileName, ancestors }) => {
+    async ({ source, body, folderName, fileName, ancestors, credentialsKey }) => {
       const toBase64 = (bytes: Uint8Array): string => {
         let binary = '';
         for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -111,7 +112,7 @@ export async function writeEnvelopeCopy(
         // Cheap to make; nobody unwraps it here
         lock = await wrap(dataKey, 'Another-Setup-Passw0rd!', 1000, new Date().toISOString());
       } else {
-        const stored = JSON.parse(localStorage.getItem('hemoio_credentials') ?? 'null') as Lock;
+        const stored = JSON.parse(localStorage.getItem(credentialsKey) ?? 'null') as Lock;
         const kek = await kekFor(source.password, fromBase64(stored.kekSalt), stored.iterations);
         dataKey = await crypto.subtle.unwrapKey(
           'raw',
@@ -171,7 +172,7 @@ export async function writeEnvelopeCopy(
       await writable.write(JSON.stringify({ ...header, sealed: toBase64(sealed) }));
       await writable.close();
     },
-    { source, body, folderName, fileName: FOLDER_COPY, ancestors }
+    { source, body, folderName, fileName: FOLDER_COPY, ancestors, credentialsKey: CREDENTIALS_KEY }
   );
 }
 
@@ -207,22 +208,19 @@ export function readFolderEnvelope(
 }
 
 /** The folder copy's text, as anyone opening the file would see it */
-export function readFolderCopyText(page: Page, folderName: string = TEST_FOLDER_NAME): Promise<string> {
-  return page.evaluate(
-    async ({ folderName, fileName }) => {
-      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      return (await (await folder.getFileHandle(fileName)).getFile()).text();
-    },
-    { folderName, fileName: FOLDER_COPY }
-  );
+export async function readFolderCopyText(page: Page, folderName: string = TEST_FOLDER_NAME): Promise<string> {
+  const text = await readFolderFile(page, folderName, FOLDER_COPY);
+  if (text === null) throw new Error('No folder copy');
+  return text;
 }
 
 /** The changedAt of this browser's stored lock */
-export function storedLockChangedAt(page: Page): Promise<string | undefined> {
-  return page.evaluate(
-    () => (JSON.parse(localStorage.getItem('hemoio_credentials') ?? '{}') as { changedAt?: string }).changedAt
-  );
+export async function storedLockChangedAt(page: Page): Promise<string | undefined> {
+  return (JSON.parse((await storedCredentials(page)) ?? '{}') as { changedAt?: string }).changedAt;
 }
+
+/** Mirrors FOLDER_SYNC_LOCK in src/utils/withWebLock.ts */
+const FOLDER_SYNC_LOCK = 'hemoio-folder-sync';
 
 /** Mirrors FOLDER_BACKUPS_DIR_NAME in FileSystemStorageProvider */
 export const FOLDER_BACKUPS = 'hemoio-backups';
@@ -244,10 +242,10 @@ export function folderFileBody(
   data: { labResults: Array<{ labName?: string }>; testValues: unknown[]; userNotes: unknown[]; preferences?: object };
 }> {
   return page.evaluate(
-    async ({ path, password, folderName }) => {
+    async ({ path, password, folderName, credentialsKey }) => {
       const fromBase64 = (text: string): Uint8Array<ArrayBuffer> =>
         Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
-      const stored = JSON.parse(localStorage.getItem('hemoio_credentials') ?? 'null');
+      const stored = JSON.parse(localStorage.getItem(credentialsKey) ?? 'null');
       const kek = await crypto.subtle.deriveKey(
         { name: 'PBKDF2', salt: fromBase64(stored.kekSalt), iterations: stored.iterations, hash: 'SHA-256' },
         await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']),
@@ -291,7 +289,7 @@ export function folderFileBody(
       );
       return JSON.parse(new TextDecoder().decode(plain));
     },
-    { path, password, folderName }
+    { path, password, folderName, credentialsKey: CREDENTIALS_KEY }
   );
 }
 
@@ -380,32 +378,16 @@ export function folderBackupNames(page: Page, folderName: string = TEST_FOLDER_N
 
 /** Given a backup in the folder is damaged — its file now holds bytes that are no folder copy */
 export function corruptFolderBackup(page: Page, name: string, folderName: string = TEST_FOLDER_NAME): Promise<void> {
-  return page.evaluate(
-    async ({ folderName, backups, name }) => {
-      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      const dir = await folder.getDirectoryHandle(backups);
-      const writable = await (await dir.getFileHandle(name)).createWritable();
-      await writable.write(new Uint8Array([7, 7, 7, 7, 7, 7, 7, 7]));
-      await writable.close();
-    },
-    { folderName, backups: FOLDER_BACKUPS, name }
-  );
+  return writeFolderFile(page, folderName, `${FOLDER_BACKUPS}/${name}`, [7, 7, 7, 7, 7, 7, 7, 7]);
 }
 
 /** Given my folder already holds these backups — files of the given names, as HemoIO names them */
-export function putFolderBackups(page: Page, names: string[], folderName: string = TEST_FOLDER_NAME): Promise<void> {
-  return page.evaluate(
-    async ({ folderName, backups, names }) => {
-      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      const dir = await folder.getDirectoryHandle(backups, { create: true });
-      for (const name of names) {
-        const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
-        await writable.write('an older backup');
-        await writable.close();
-      }
-    },
-    { folderName, backups: FOLDER_BACKUPS, names }
-  );
+export async function putFolderBackups(
+  page: Page,
+  names: string[],
+  folderName: string = TEST_FOLDER_NAME
+): Promise<void> {
+  for (const name of names) await writeFolderFile(page, folderName, `${FOLDER_BACKUPS}/${name}`, 'an older backup');
 }
 
 /**
@@ -415,17 +397,18 @@ export function putFolderBackups(page: Page, names: string[], folderName: string
  */
 export async function holdFolderSyncs(page: Page): Promise<() => Promise<void>> {
   await page.evaluate(
-    () =>
+    (lockName) =>
       new Promise<void>((held) => {
         void navigator.locks.request(
-          'hemoio-folder-sync',
+          lockName,
           () =>
             new Promise<void>((release) => {
               (window as unknown as { __e2eReleaseSync: () => void }).__e2eReleaseSync = release;
               held();
             })
         );
-      })
+      }),
+    FOLDER_SYNC_LOCK
   );
   return () => page.evaluate(() => (window as unknown as { __e2eReleaseSync: () => void }).__e2eReleaseSync());
 }

@@ -9,7 +9,8 @@
 
 import { expect, type Locator, type Page } from '@playwright/test';
 import { FOLDER_NAME } from './folderRestore.steps';
-import { FOLDER_COPY } from './folderSync.steps';
+import { FOLDER_COPY, readFolderFile, writeFolderFile } from './folderSync.steps';
+import { readFolderCopyText } from './otherComputer.steps';
 
 /** The lock file HemoIO keeps beside the folder copy */
 export const LOCK_FILE = 'hemoio-lock.json';
@@ -73,57 +74,19 @@ export async function recoverFromFolder(page: Page, password: string): Promise<v
   await unlockFolderCopy(page, password);
 }
 
-/** The stored password lock, or null */
-export function storedCredentials(page: Page): Promise<string | null> {
-  return page.evaluate(() => localStorage.getItem('hemoio_credentials'));
-}
-
 /** A file in the folder (`path` may name a subfolder: `hemoio-backups/<name>`), as text; null when there is none */
 export function folderFileText(page: Page, path: string): Promise<string | null> {
-  return page.evaluate(
-    async ({ folderName, path }) => {
-      try {
-        let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-        const parts = path.split('/');
-        for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
-        return await (await dir.getFileHandle(parts.at(-1)!)).getFile().then((file) => file.text());
-      } catch {
-        return null;
-      }
-    },
-    { folderName: FOLDER_NAME, path }
-  );
-}
-
-/** The folder copy's file, as text */
-export function folderCopyText(page: Page): Promise<string> {
-  return page.evaluate(
-    async ({ folderName, fileName }) => {
-      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      return (await (await dir.getFileHandle(fileName)).getFile()).text();
-    },
-    { folderName: FOLDER_NAME, fileName: FOLDER_COPY }
-  );
+  return readFolderFile(page, FOLDER_NAME, path);
 }
 
 /** Put this text in the folder as the folder copy */
 export function putFolderCopy(page: Page, text: string): Promise<void> {
-  return page.evaluate(
-    async ({ folderName, fileName, text }) => {
-      const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName, {
-        create: true,
-      });
-      const writable = await (await dir.getFileHandle(fileName, { create: true })).createWritable();
-      await writable.write(text);
-      await writable.close();
-    },
-    { folderName: FOLDER_NAME, fileName: FOLDER_COPY, text }
-  );
+  return writeFolderFile(page, FOLDER_NAME, FOLDER_COPY, text);
 }
 
 /** Given the folder copy is damaged: its lock is intact, but its sealed body is not */
 export async function damageFolderCopy(page: Page): Promise<void> {
-  const file = JSON.parse(await folderCopyText(page)) as { sealed: string };
+  const file = JSON.parse(await readFolderCopyText(page)) as { sealed: string };
   const middle = Math.floor(file.sealed.length / 2);
   const flipped = file.sealed[middle] === 'A' ? 'B' : 'A';
   file.sealed = `${file.sealed.slice(0, middle)}${flipped}${file.sealed.slice(middle + 1)}`;

@@ -6,7 +6,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { TEST_PASSWORD, completeSetup, setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, completeSetup, setupOrUnlock, storedCredentials, unlockApp } from './steps/app.steps';
 import { lockApp } from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
@@ -21,7 +21,6 @@ import { existingDataStep, keepExistingDataAside } from './steps/setup.steps';
 import {
   LOCK_FILE,
   damageFolderCopy,
-  folderCopyText,
   folderFileText,
   folderRecoveryStep,
   forgetHemoIO,
@@ -29,11 +28,10 @@ import {
   putFolderCopy,
   recoverFromFolder,
   recoveryPassword,
-  storedCredentials,
 } from './steps/setupFromFolder.steps';
 import { setAsideBanner, writeUnreadableRecords } from './steps/unreadableRecords.steps';
 import { PREVIOUS_FOLDER_COPY, skippedSyncNotice } from './steps/folderSync.steps';
-import { FOLDER_BACKUPS, folderBackupNames } from './steps/otherComputer.steps';
+import { FOLDER_BACKUPS, folderBackupNames, readFolderCopyText } from './steps/otherComputer.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
 
 const LATER_RESULT = {
@@ -103,7 +101,7 @@ test.describe('Set up from a folder copy', () => {
     expect(await page.evaluate(() => localStorage.getItem('hemoio_storage_provider'))).toBe('filesystem');
     // The lock is the folder's: the same password
     const lock = JSON.parse((await storedCredentials(page))!) as unknown;
-    expect(lock).toEqual((JSON.parse(await folderCopyText(page)) as { lock: unknown }).lock);
+    expect(lock).toEqual((JSON.parse(await readFolderCopyText(page)) as { lock: unknown }).lock);
     await settledSync(page);
     expect(await folderCopyHash(page)).toBe(hash);
 
@@ -170,7 +168,7 @@ test.describe('Set up from a folder copy', () => {
   test('a damaged folder copy is recovered from its previous copy', async ({ page }) => {
     // Scenario: A damaged folder copy is recovered from its previous copy
     await folderWithCopy(page);
-    const twoResults = await folderCopyText(page);
+    const twoResults = await readFolderCopyText(page);
     // The lock is kept beside the copy too
     expect((JSON.parse((await folderFileText(page, LOCK_FILE))!) as { lock: unknown }).lock).toEqual(
       (JSON.parse(twoResults) as { lock: unknown }).lock
@@ -180,9 +178,9 @@ test.describe('Set up from a folder copy', () => {
       testValues: SEED_TEST_VALUES,
     });
     await expect.poll(() => folderFileText(page, PREVIOUS_FOLDER_COPY)).not.toBeNull();
-    await expect.poll(() => folderCopyText(page)).not.toBe(twoResults);
+    await expect.poll(() => readFolderCopyText(page)).not.toBe(twoResults);
     await damageFolderCopy(page);
-    const damagedCopy = await folderCopyText(page);
+    const damagedCopy = await readFolderCopyText(page);
     await forgetHemoIO(page, { keepDatabase: false });
 
     await recoverFromFolder(page, TEST_PASSWORD);
@@ -199,7 +197,7 @@ test.describe('Set up from a folder copy', () => {
     await expect(skippedSyncNotice(page)).toHaveCount(0);
     // The folder copy opens again, with my lock in it and beside it
     const lock = JSON.parse((await storedCredentials(page))!) as unknown;
-    expect((JSON.parse(await folderCopyText(page)) as { lock: unknown }).lock).toEqual(lock);
+    expect((JSON.parse(await readFolderCopyText(page)) as { lock: unknown }).lock).toEqual(lock);
     expect((JSON.parse((await folderFileText(page, LOCK_FILE))!) as { lock: unknown }).lock).toEqual(lock);
     await lockApp(page);
     await unlockApp(page, TEST_PASSWORD);
@@ -220,12 +218,12 @@ test.describe('Set up from a folder copy', () => {
   test('data still in this browser becomes readable again, and I choose if it differs', async ({ page }) => {
     // Scenario: Data still in this browser becomes readable again, and I choose if it differs
     await folderWithCopy(page);
-    const twoResults = await folderCopyText(page);
+    const twoResults = await readFolderCopyText(page);
     await seedLabData(page, {
       labResults: [...SEED_LAB_RESULTS, LATER_RESULT],
       testValues: SEED_TEST_VALUES,
     });
-    await expect.poll(() => folderCopyText(page)).not.toBe(twoResults);
+    await expect.poll(() => readFolderCopyText(page)).not.toBe(twoResults);
     // The folder copy is the one from before the third result
     await putFolderCopy(page, twoResults);
     await forgetHemoIO(page, { keepDatabase: true });
@@ -235,7 +233,7 @@ test.describe('Set up from a folder copy', () => {
 
     await expect(page.getByRole('dialog', { name: 'Your folder copy changed on another computer' })).toBeVisible();
     // Nothing was replaced unasked: the folder copy is still the older one
-    expect(await folderCopyText(page)).toBe(twoResults);
+    expect(await readFolderCopyText(page)).toBe(twoResults);
   });
 
   test("records set aside earlier come back when the folder's key opens them", async ({ page }) => {
@@ -290,7 +288,7 @@ test.describe('Set up from a folder copy', () => {
     await expect(recoveryPassword(page)).toBeVisible();
     await expect(choose).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(step.getByText('HemoIO Sync', { exact: true })).toBeVisible();
+    await expect(step.getByText(FOLDER_NAME, { exact: true })).toBeVisible();
     await expect(choose).toBeFocused();
 
     // Tab runs through the step in order

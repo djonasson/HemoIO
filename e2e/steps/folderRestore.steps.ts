@@ -9,11 +9,12 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
-import { FOLDER_COPY } from './folderSync.steps';
+import { FOLDER_COPY, TEST_FOLDER_NAME } from './folderSync.steps';
 import { openSettingsTab } from './app.steps';
 import { writeEnvelopeCopy } from './otherComputer.steps';
 
-export const FOLDER_NAME = 'HemoIO Sync';
+/** The test folder: the same one useTestFolder hands out */
+export const FOLDER_NAME = TEST_FOLDER_NAME;
 const PERMISSION_KEY = 'e2e-folder-permission';
 
 /** Given the browser supports the File System Access API */

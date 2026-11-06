@@ -7,7 +7,7 @@
  */
 
 import { expect, type Download, type Locator, type Page } from '@playwright/test';
-import { unlockApp } from './app.steps';
+import { CREDENTIALS_KEY, storedCredentials, unlockApp } from './app.steps';
 
 /** IDs well above those the app assigns in a test, so they never collide */
 const FIRST_UNREADABLE_ID = 1000;
@@ -113,25 +113,23 @@ export async function storeUndecryptableApiKey(page: Page): Promise<void> {
   );
 }
 
-const CREDENTIALS_STORAGE_KEY = 'hemoio_credentials';
-
 /** The stored credentials, which unlock the key the current records are sealed under */
 export async function saveCredentials(page: Page): Promise<string> {
-  const credentials = await page.evaluate((name) => localStorage.getItem(name), CREDENTIALS_STORAGE_KEY);
+  const credentials = await storedCredentials(page);
   if (!credentials) throw new Error('No stored credentials');
   return credentials;
 }
 
 /** Given the credentials are lost: the next load offers setup, with a new key */
 export async function forgetCredentials(page: Page): Promise<void> {
-  await page.evaluate((name) => localStorage.removeItem(name), CREDENTIALS_STORAGE_KEY);
+  await page.evaluate((name) => localStorage.removeItem(name), CREDENTIALS_KEY);
 }
 
 /** When HemoIO gets the key the records were saved with: those credentials are back */
 export async function restoreCredentials(page: Page, credentials: string): Promise<void> {
   await page.evaluate(
     ([name, value]) => localStorage.setItem(name, value),
-    [CREDENTIALS_STORAGE_KEY, credentials] as const
+    [CREDENTIALS_KEY, credentials] as const
   );
 }
 

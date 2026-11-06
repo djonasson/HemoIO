@@ -10,6 +10,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openSettingsTab } from './app.steps';
 
+/** The one folder the test pickers hand out (FOLDER_NAME in folderRestore.steps.ts is the same) */
 export const TEST_FOLDER_NAME = 'Lab Folder';
 /** Where the picker looks for the folder a test chooses next */
 const NEXT_FOLDER_KEY = 'e2e-next-folder';
@@ -50,6 +51,47 @@ export async function useTestFolder(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Write a file in a test folder (`path` may name a subfolder:
+ * `hemoio-backups/<name>`), creating what is missing. Bytes go as a number
+ * array, which crosses into the page where a Uint8Array would not.
+ */
+export function writeFolderFile(
+  page: Page,
+  folderName: string,
+  path: string,
+  content: string | number[]
+): Promise<void> {
+  return page.evaluate(
+    async ({ folderName, path, content }) => {
+      let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName, { create: true });
+      const parts = path.split('/');
+      for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part, { create: true });
+      const writable = await (await dir.getFileHandle(parts.at(-1)!, { create: true })).createWritable();
+      await writable.write(typeof content === 'string' ? content : new Uint8Array(content));
+      await writable.close();
+    },
+    { folderName, path, content }
+  );
+}
+
+/** A file in a test folder (`path` may name a subfolder), as text; null when there is none */
+export function readFolderFile(page: Page, folderName: string, path: string): Promise<string | null> {
+  return page.evaluate(
+    async ({ folderName, path }) => {
+      try {
+        let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+        const parts = path.split('/');
+        for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+        return await (await dir.getFileHandle(parts.at(-1)!)).getFile().then((file) => file.text());
+      } catch {
+        return null;
+      }
+    },
+    { folderName, path }
+  );
+}
+
 /** The test folder, read and written from the page */
 export class TestFolder {
   constructor(
@@ -77,16 +119,7 @@ export class TestFolder {
 
   /** Put a file there, as another app or another password would have */
   write(fileName: string, text: string): Promise<void> {
-    return this.page.evaluate(
-      async ({ folderName, fileName, text }) => {
-        const root = await navigator.storage.getDirectory();
-        const folder = await root.getDirectoryHandle(folderName, { create: true });
-        const writable = await (await folder.getFileHandle(fileName, { create: true })).createWritable();
-        await writable.write(text);
-        await writable.close();
-      },
-      { folderName: this.name, fileName, text }
-    );
+    return writeFolderFile(this.page, this.name, fileName, text);
   }
 
   /** When my folder is no longer available — deleted, as a moved folder or an unplugged drive is gone */

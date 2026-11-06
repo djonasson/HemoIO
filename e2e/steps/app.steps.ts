@@ -9,6 +9,14 @@ import { expect, type Page, type Route } from '@playwright/test';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 
+/** Mirrors CREDENTIALS_STORAGE_KEY in src/data/encryption: where the password lock is kept */
+export const CREDENTIALS_KEY = 'hemoio_credentials';
+
+/** The stored password lock, as text, or null */
+export function storedCredentials(page: Page): Promise<string | null> {
+  return page.evaluate((name) => localStorage.getItem(name), CREDENTIALS_KEY);
+}
+
 /**
  * When I choose to set HemoIO up anew — where folders can be used, first run
  * starts with a choice between that and a folder copy; elsewhere setup starts
