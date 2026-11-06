@@ -6,9 +6,9 @@
  * app checks whether it holds something worth restoring.
  */
 
-import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
+import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, type FolderEnvelopeHeader } from './folderEnvelope';
-import { FOLDER_SYNC_FILE_VERSION } from './folderSync';
+import { FOLDER_SYNC_FILE_VERSION, parseFolderCopyData } from './folderSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
 export type FolderCopyProblem =
@@ -97,21 +97,9 @@ export async function readFolderCopy(bytes: ArrayBuffer, key: CryptoKey): Promis
   }
 
   try {
-    const { data } = envelope;
-    const parsed = parseBackupData({
-      schemaVersion: envelope.version,
-      exportedAt: envelope.exportedAt,
-      appVersion: 'folder copy',
-      labResults: data.labResults,
-      testValues: data.testValues,
-      userNotes: data.userNotes,
-      userPreferences: data.preferences ?? null,
-      // Storage and AI settings belong to this device, as with a backup
-      settings: null,
-    });
     return {
       status: 'readable',
-      data: parsed,
+      data: parseFolderCopyData(envelope),
       revision: header && typeof envelope.revision === 'string' ? envelope.revision : null,
       lock: header?.lock ?? null,
     };
@@ -130,7 +118,12 @@ export type FolderCopyAssessment =
   /** Nothing in the folder would be lost: sync may write */
   | { kind: 'sync' }
   /** The folder copy has data this browser lacks: ask before sync writes */
-  | { kind: 'offer'; data: ParsedBackupData }
+  | {
+      kind: 'offer';
+      data: ParsedBackupData;
+      /** The copy's revision, for the restore to record as seen; null for a copy without one */
+      revision: string | null;
+    }
   /** The folder copy may have data but cannot be read: ask before sync writes */
   | { kind: 'unreadable'; reason: FolderCopyProblem };
 
@@ -156,6 +149,6 @@ export async function assessFolderCopy(
   }
   const { labResults, userNotes } = reading.data;
   return labResults.length > 0 || userNotes.length > 0
-    ? { kind: 'offer', data: reading.data }
+    ? { kind: 'offer', data: reading.data, revision: reading.revision }
     : { kind: 'sync' };
 }

@@ -21,6 +21,8 @@ export type FolderRestorePrompt =
   | {
       kind: 'offer';
       data: ParsedBackupData;
+      /** The copy's revision: a restore records it as seen, so the next sync finds no conflict */
+      revision: string | null;
       folderName: string | null;
       /** The browser gained data since unlock, which a restore replaces */
       replacesBrowserData: boolean;
@@ -109,7 +111,13 @@ export function useFolderRestore(): UseFolderRestoreResult {
         assessment.kind === 'sync'
           ? 'sync'
           : assessment.kind === 'offer'
-            ? { kind: 'offer', data: assessment.data, folderName, replacesBrowserData: browserHasData }
+            ? {
+                kind: 'offer',
+                data: assessment.data,
+                revision: assessment.revision,
+                folderName,
+                replacesBrowserData: browserHasData,
+              }
             : { kind: 'unreadable', reason: assessment.reason, folderName }
       );
     }

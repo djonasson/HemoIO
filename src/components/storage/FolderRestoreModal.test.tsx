@@ -24,6 +24,7 @@ function copyOf(labResults: number, testValues: number, notes: number): ParsedBa
 const OFFER: FolderRestorePrompt = {
   kind: 'offer',
   data: copyOf(2, 3, 1),
+  revision: 'r1',
   folderName: 'Health',
   replacesBrowserData: false,
 };
@@ -69,7 +70,7 @@ describe('FolderRestoreModal', () => {
   });
 
   it('counts in the singular and names no folder it does not know', () => {
-    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), folderName: null, replacesBrowserData: false });
+    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false });
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('1 lab result');

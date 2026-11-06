@@ -34,6 +34,7 @@ import {
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
 import {
+  currentFolderData,
   folderFileRevision,
   readFolderCopyText,
   readFolderEnvelope,
@@ -311,8 +312,10 @@ test.describe('Folder Sync Safety', () => {
     test.slow();
     await syncResults(page);
     const later = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    // Its sync saves the data it had from the folder again, with the new lock
     await saveCopyAsAnotherComputer(page, {
       password: TEST_PASSWORD,
+      data: await currentFolderData(page, TEST_PASSWORD),
       newPassword: NEW_PASSWORD,
       changedAt: later,
     });
@@ -344,6 +347,7 @@ test.describe('Folder Sync Safety', () => {
     // The other computer's change was made earlier, and reached the folder only now
     await saveCopyAsAnotherComputer(page, {
       password: NEW_PASSWORD,
+      data: await currentFolderData(page, NEW_PASSWORD),
       newPassword: OTHER_PASSWORD,
       changedAt: otherChange,
     });

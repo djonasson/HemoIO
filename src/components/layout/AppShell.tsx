@@ -53,7 +53,7 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { FolderRestoreModal, SetAsideBanner } from '@components/storage';
+import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@components/storage';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
@@ -66,11 +66,19 @@ import {
 } from '@services/import';
 import type { ParsedBackupData } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { AppView, FolderRestoreDecision, ViewFocus } from '@hooks';
+import type { AppView, FolderConflictChoice, FolderRestoreDecision, ViewFocus } from '@hooks';
 
 interface AppShellProps {
   children?: React.ReactNode;
 }
+
+/** Told when the user holds folder sync: after "Not now", or "Decide later" */
+const FOLDER_SYNC_PAUSED_NOTICE = {
+  title: 'Folder Sync Paused',
+  message:
+    'Nothing is saved to your folder for now, and the copy there is unchanged. HemoIO asks again when you next unlock, or when you grant folder access or choose a folder in Settings.',
+  color: 'yellow',
+} as const;
 
 const NAV_ITEMS: Array<{
   view: AppView;
@@ -150,13 +158,47 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   const { reload: reloadPreferences } = usePreferences();
   const { reload: reloadAlertState } = useAlertState();
 
+  // A folder copy saved on another computer replaces this browser's data. It
+  // runs inside a folder sync, so it never starts one (that would wait for
+  // this one to end) and leaves telling the user to the sync.
+  const applyFolderCopy = useCallback(
+    async (data: ParsedBackupData) => {
+      if (!db || !isReady) {
+        throw new Error('Database not available');
+      }
+      await restoreBackup(db, data);
+      const steps: AfterRestoreStep[] = [
+        { name: 'loading your preferences', run: reloadPreferences },
+        { name: 'loading your alert acknowledgements', run: reloadAlertState },
+        { name: 'showing the updated results', run: refreshLabResults },
+      ];
+      const failed = await runAfterRestore(steps);
+      if (failed.length > 0) {
+        notifications.show({
+          title: 'Updated From the Folder, With Problems',
+          message: `Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
+          color: 'yellow',
+        });
+      }
+    },
+    [db, isReady, reloadPreferences, reloadAlertState, refreshLabResults]
+  );
+
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
-  const { syncNow, issue: folderSyncIssue } = useFilesystemSync({
+  const {
+    syncNow,
+    issue: folderSyncIssue,
+    conflict: folderConflict,
+    held: folderConflictHeld,
+    resolveConflict,
+    acknowledgeFolderCopy,
+  } = useFilesystemSync({
     enabled: folderRestore.syncAllowed,
+    applyFolderCopy,
   });
   useFolderSyncNotice(folderSyncIssue);
-  const folderSyncHeld = folderRestore.syncHeld;
+  const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
   const handleNavClick = useCallback(
     (view: AppView) => {
@@ -281,10 +323,31 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     ]
   );
 
+  // A restore from a backup file in Settings is left as a change made here:
+  // the next sync writes it over the copy it last saw, or asks when that copy
+  // changed on another computer meanwhile. The folder copy restored here is
+  // the one now in the browser, so it is recorded as seen.
+  const offeredRevision = folderRestore.prompt?.kind === 'offer' ? folderRestore.prompt.revision : null;
   const handleFolderRestore = useCallback(
-    // The folder copy has no AI configuration to restore
-    (data: ParsedBackupData) => handleRestore(data, { restoreAISettings: false }),
-    [handleRestore]
+    async (data: ParsedBackupData) => {
+      // The folder copy has no AI configuration to restore
+      await handleRestore(data, { restoreAISettings: false });
+      try {
+        await acknowledgeFolderCopy(offeredRevision);
+      } catch {
+        // The restore is done; the next sync compares the data with the copy instead
+        console.error('Could not record the restored folder copy as seen');
+      }
+    },
+    [handleRestore, acknowledgeFolderCopy, offeredRevision]
+  );
+
+  const handleConflictChoice = useCallback(
+    async (choice: FolderConflictChoice) => {
+      await resolveConflict(choice);
+      if (choice === 'later') notifications.show(FOLDER_SYNC_PAUSED_NOTICE);
+    },
+    [resolveConflict]
   );
 
   const { decide: decideFolderRestore } = folderRestore;
@@ -292,12 +355,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     (decision: FolderRestoreDecision) => {
       decideFolderRestore(decision);
       if (decision === 'hold') {
-        notifications.show({
-          title: 'Folder Sync Paused',
-          message:
-            'Nothing is saved to your folder for now, and the copy there is unchanged. HemoIO asks again when you next unlock, or when you grant folder access or choose a folder in Settings.',
-          color: 'yellow',
-        });
+        notifications.show(FOLDER_SYNC_PAUSED_NOTICE);
       }
     },
     [decideFolderRestore]
@@ -310,6 +368,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         onRestore={handleFolderRestore}
         onDecide={handleFolderDecision}
       />
+      <FolderConflictModal conflict={folderConflict} onResolve={handleConflictChoice} />
 
       <MantineAppShell
         header={{ height: 60 }}

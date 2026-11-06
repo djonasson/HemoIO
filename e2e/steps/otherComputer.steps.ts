@@ -216,19 +216,26 @@ export function storedLockChangedAt(page: Page): Promise<string | undefined> {
   );
 }
 
+/** Mirrors FOLDER_BACKUPS_DIR_NAME in FileSystemStorageProvider */
+export const FOLDER_BACKUPS = 'hemoio-backups';
+
 /**
- * The revision sealed inside a folder file: the same however often the copy
- * is sealed again (the previous copy is sealed again without its lock). Opened
- * with the data key, unwrapped from this browser's lock with `password`.
+ * The body sealed inside a folder file — the copy, the previous copy, or a
+ * backup at `hemoio-backups/<name>` — opened with the data key, unwrapped
+ * from this browser's lock with `password`
  */
-export function folderFileRevision(
+export function folderFileBody(
   page: Page,
-  fileName: string,
+  path: string,
   password: string,
   folderName: string = TEST_FOLDER_NAME
-): Promise<string | null> {
+): Promise<{
+  revision?: string;
+  exportedAt?: string;
+  data: { labResults: Array<{ labName?: string }>; testValues: unknown[]; userNotes: unknown[]; preferences?: object };
+}> {
   return page.evaluate(
-    async ({ fileName, password, folderName }) => {
+    async ({ path, password, folderName }) => {
       const fromBase64 = (text: string): Uint8Array<ArrayBuffer> =>
         Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
       const stored = JSON.parse(localStorage.getItem('hemoio_credentials') ?? 'null');
@@ -248,8 +255,10 @@ export function folderFileRevision(
         false,
         ['decrypt']
       );
-      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
-      const file = JSON.parse(await (await (await folder.getFileHandle(fileName)).getFile()).text());
+      let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      const parts = path.split('/');
+      for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+      const file = JSON.parse(await (await (await dir.getFileHandle(parts.at(-1)!)).getFile()).text());
       const { lock } = file;
       const additionalData = new TextEncoder().encode(
         JSON.stringify({
@@ -271,8 +280,116 @@ export function folderFileRevision(
         dataKey,
         sealed.slice(12)
       );
-      return (JSON.parse(new TextDecoder().decode(plain)) as { revision?: string }).revision ?? null;
+      return JSON.parse(new TextDecoder().decode(plain));
     },
-    { fileName, password, folderName }
+    { path, password, folderName }
   );
+}
+
+/**
+ * The data in the folder copy as it is now, for the other computer to save
+ * again: as its sync does when only its password changed
+ */
+export async function currentFolderData(
+  page: Page,
+  password: string,
+  folderName: string = TEST_FOLDER_NAME
+): Promise<SeedData> {
+  const { data } = await folderFileBody(page, FOLDER_COPY, password, folderName);
+  return {
+    labResults: data.labResults,
+    testValues: data.testValues,
+    userNotes: data.userNotes,
+    ...(data.preferences ? { userPreferences: data.preferences } : {}),
+  };
+}
+
+/**
+ * The revision sealed inside a folder file: the same however often the copy
+ * is sealed again (the previous copy is sealed again without its lock). Opened
+ * with the data key, unwrapped from this browser's lock with `password`.
+ */
+export async function folderFileRevision(
+  page: Page,
+  fileName: string,
+  password: string,
+  folderName: string = TEST_FOLDER_NAME
+): Promise<string | null> {
+  return (await folderFileBody(page, fileName, password, folderName)).revision ?? null;
+}
+
+/** The plaintext header of a folder file, at `hemoio-backups/<name>` for a backup */
+export function folderFileHeader(
+  page: Page,
+  path: string,
+  folderName: string = TEST_FOLDER_NAME
+): Promise<{ format?: unknown; lock?: unknown }> {
+  return page.evaluate(
+    async ({ path, folderName }) => {
+      let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      const parts = path.split('/');
+      for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+      const file = JSON.parse(await (await (await dir.getFileHandle(parts.at(-1)!)).getFile()).text());
+      delete file.sealed;
+      return file;
+    },
+    { path, folderName }
+  );
+}
+
+/** The names of the dated backups in the folder, oldest first; none when it holds none */
+export function folderBackupNames(page: Page, folderName: string = TEST_FOLDER_NAME): Promise<string[]> {
+  return page.evaluate(
+    async ({ folderName, backups }) => {
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      let dir: FileSystemDirectoryHandle;
+      try {
+        dir = await folder.getDirectoryHandle(backups);
+      } catch {
+        return [];
+      }
+      const names: string[] = [];
+      for await (const name of (dir as unknown as { keys(): AsyncIterable<string> }).keys()) names.push(name);
+      return names.sort();
+    },
+    { folderName, backups: FOLDER_BACKUPS }
+  );
+}
+
+/** Given my folder already holds these backups — files of the given names, as HemoIO names them */
+export function putFolderBackups(page: Page, names: string[], folderName: string = TEST_FOLDER_NAME): Promise<void> {
+  return page.evaluate(
+    async ({ folderName, backups, names }) => {
+      const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle(folderName);
+      const dir = await folder.getDirectoryHandle(backups, { create: true });
+      for (const name of names) {
+        const writable = await (await dir.getFileHandle(name, { create: true })).createWritable();
+        await writable.write('an older backup');
+        await writable.close();
+      }
+    },
+    { folderName, backups: FOLDER_BACKUPS, names }
+  );
+}
+
+/**
+ * Hold this origin's folder-sync lock, as a sync running in another tab
+ * would: syncs wait until the returned function releases it. Lets a test
+ * change both the folder and this browser before the next sync looks.
+ */
+export async function holdFolderSyncs(page: Page): Promise<() => Promise<void>> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((held) => {
+        void navigator.locks.request(
+          'hemoio-folder-sync',
+          () =>
+            new Promise<void>((release) => {
+              (window as unknown as { __e2eReleaseSync: () => void }).__e2eReleaseSync = release;
+              held();
+            })
+        );
+      })
+  );
+  return () => page.evaluate(() => (window as unknown as { __e2eReleaseSync: () => void }).__e2eReleaseSync());
 }

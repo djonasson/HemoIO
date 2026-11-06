@@ -12,7 +12,13 @@ export { useNotes, type UseNotesResult, type NoteFilters, type CreateNoteInput, 
 export { useExportData, type UseExportDataResult } from './useExportData';
 export { useEncryptedApiKey, type UseEncryptedApiKeyResult } from './useEncryptedApiKey';
 export { useFormKeyboardSubmit, type UseFormKeyboardSubmitOptions, type UseFormKeyboardSubmitResult } from './useFormKeyboardSubmit';
-export { useFilesystemSync, triggerGlobalSync, setGlobalSyncCallback } from './useFilesystemSync';
+export {
+  useFilesystemSync,
+  triggerGlobalSync,
+  setGlobalSyncCallback,
+  type FolderConflict,
+  type FolderConflictChoice,
+} from './useFilesystemSync';
 export { useFolderSyncNotice } from './useFolderSyncNotice';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';

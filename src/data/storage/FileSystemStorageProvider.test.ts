@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  FOLDER_BACKUPS_DIR_NAME,
   FOLDER_DATA_FILE_NAME,
   FOLDER_PREVIOUS_FILE_NAME,
   FileSystemStorageProvider,
 } from './FileSystemStorageProvider';
+import { onFolderBackupsChanged } from './folderAccessEvents';
 
 /**
  * A folder of real (in-memory) files: a write lands only when it is closed,
  * as with the File System Access API
  */
-function createFakeFolder(files: Map<string, ArrayBuffer> = new Map()) {
+function createFakeFolder(
+  files: Map<string, ArrayBuffer> = new Map(),
+  dirs: Map<string, Map<string, ArrayBuffer>> = new Map()
+) {
   const failingWrites = new Set<string>();
   const fileHandle = (name: string) => ({
     name,
@@ -46,10 +51,25 @@ function createFakeFolder(files: Map<string, ArrayBuffer> = new Map()) {
       }
       return fileHandle(name);
     },
+    // Typed loosely: a folder's handle holds the handles of the folders in it
+    getDirectoryHandle: async (name: string, options?: { create?: boolean }): Promise<unknown> => {
+      if (!dirs.has(name)) {
+        if (!options?.create) throw new DOMException('Not found', 'NotFoundError');
+        dirs.set(name, new Map());
+      }
+      return createFakeFolder(dirs.get(name)).handle;
+    },
+    removeEntry: async (name: string) => {
+      if (!files.delete(name)) throw new DOMException('Not found', 'NotFoundError');
+    },
     // A folder that is there can be listed
     keys: () => files.keys(),
+    entries: async function* () {
+      for (const name of files.keys()) yield [name, fileHandle(name)] as const;
+      for (const name of dirs.keys()) yield [name, { name, kind: 'directory' as const }] as const;
+    },
   };
-  return { handle, files, failingWrites };
+  return { handle, files, failingWrites, dirs };
 }
 
 const bytes = (...values: number[]): ArrayBuffer => new Uint8Array(values).buffer;
@@ -321,6 +341,89 @@ describe('FileSystemStorageProvider', () => {
       folder.handle.queryPermission = async () => 'prompt';
 
       await expect((await providerFor(folder)).loadCurrent()).rejects.toThrow('Permission denied');
+    });
+  });
+
+  describe('dated backups', () => {
+    async function providerFor(folder: ReturnType<typeof createFakeFolder>) {
+      window.showDirectoryPicker = vi.fn().mockResolvedValue(folder.handle);
+      await provider.selectDirectory();
+      return provider;
+    }
+
+    it('backups live in hemoio-backups', async () => {
+      expect(FOLDER_BACKUPS_DIR_NAME).toBe('hemoio-backups');
+      const folder = createFakeFolder(new Map([[FOLDER_DATA_FILE_NAME, bytes(9)]]));
+      const store = await providerFor(folder);
+
+      expect(await store.listBackups()).toEqual([]);
+      await store.saveBackup('hemoio-backup-a.encrypted', bytes(1, 2));
+      await store.saveBackup('hemoio-backup-b.encrypted', bytes(3));
+
+      const backups = folder.dirs.get(FOLDER_BACKUPS_DIR_NAME)!;
+      expect(read(backups.get('hemoio-backup-a.encrypted'))).toEqual([1, 2]);
+      // Nothing lands beside the copy
+      expect([...folder.files.keys()]).toEqual([FOLDER_DATA_FILE_NAME]);
+      expect((await store.listBackups()).sort()).toEqual([
+        'hemoio-backup-a.encrypted',
+        'hemoio-backup-b.encrypted',
+      ]);
+      expect(read(await store.loadBackup('hemoio-backup-b.encrypted'))).toEqual([3]);
+
+      await store.deleteBackup('hemoio-backup-a.encrypted');
+      expect(await store.listBackups()).toEqual(['hemoio-backup-b.encrypted']);
+    });
+
+    it('lists only files', async () => {
+      const folder = createFakeFolder(
+        new Map(),
+        new Map([[FOLDER_BACKUPS_DIR_NAME, new Map([['hemoio-backup-a.encrypted', bytes(1)]])]])
+      );
+      const store = await providerFor(folder);
+      await store.saveBackup('x', bytes(1));
+      await store.deleteBackup('x');
+
+      expect(await store.listBackups()).toEqual(['hemoio-backup-a.encrypted']);
+    });
+
+    it('saving or deleting a backup notifies listeners', async () => {
+      const store = await providerFor(createFakeFolder());
+      const listener = vi.fn();
+      const stop = onFolderBackupsChanged(listener);
+      try {
+        await store.saveBackup('hemoio-backup-a.encrypted', bytes(1));
+        expect(listener).toHaveBeenCalledTimes(1);
+        await store.deleteBackup('hemoio-backup-a.encrypted');
+        expect(listener).toHaveBeenCalledTimes(2);
+      } finally {
+        stop();
+      }
+    });
+
+    it('a failed backup write notifies no one and keeps no file', async () => {
+      const folder = createFakeFolder();
+      const store = await providerFor(folder);
+      await store.saveBackup('hemoio-backup-a.encrypted', bytes(1));
+      const listener = vi.fn();
+      const stop = onFolderBackupsChanged(listener);
+      try {
+        // The backups folder is a file: nothing can be written into it
+        folder.dirs.clear();
+        folder.files.set(FOLDER_BACKUPS_DIR_NAME, bytes(0));
+        folder.handle.getDirectoryHandle = async () => {
+          throw new DOMException('Not a folder', 'TypeMismatchError');
+        };
+        await expect(store.saveBackup('hemoio-backup-b.encrypted', bytes(2))).rejects.toThrow();
+        expect(listener).not.toHaveBeenCalled();
+      } finally {
+        stop();
+      }
+    });
+
+    it('fails to load a backup that is not there', async () => {
+      const store = await providerFor(createFakeFolder());
+
+      await expect(store.loadBackup('hemoio-backup-a.encrypted')).rejects.toThrow();
     });
   });
 

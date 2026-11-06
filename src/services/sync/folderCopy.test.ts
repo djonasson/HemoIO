@@ -221,6 +221,21 @@ describe('assessFolderCopy', () => {
     expect(assessment.data.labResults).toHaveLength(1);
   });
 
+  it("the offer carries the copy's revision, null for a copy without the lock beside it", async () => {
+    const key = await newKey();
+    const enveloped = await sealEnvelope(
+      new TextEncoder().encode(JSON.stringify({ ...(copy() as object), revision: 'r7' })),
+      key,
+      null
+    );
+
+    expect(await assessFolderCopy(source(enveloped), key)).toMatchObject({ kind: 'offer', revision: 'r7' });
+    expect(await assessFolderCopy(source(await sealed(copy(), key)), key)).toMatchObject({
+      kind: 'offer',
+      revision: null,
+    });
+  });
+
   it('offers a copy that has only notes', async () => {
     const key = await newKey();
     const notesOnly = {

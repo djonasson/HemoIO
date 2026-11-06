@@ -8,9 +8,11 @@
  * data a person has.
  */
 
+import { arrayBufferToBase64 } from '@data/encryption';
 import { isLaterLock, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import { saveFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
 import { BACKUP_SCHEMA_VERSION } from '@services/export/jsonExport';
-import { isPreLoincBackupVersion } from '@services/import';
+import { isPreLoincBackupVersion, parseBackupData, type ParsedBackupData } from '@services/import';
 import { openEnvelope, readEnvelopeHeader, sealEnvelope } from './folderEnvelope';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 
@@ -40,6 +42,19 @@ export interface FolderWriteContext {
   lock: StoredCredentialsV2 | null;
   /** Records set aside that are not yet saved */
   setAsideUnsaved: number;
+  /** The revision this browser last read or wrote, and its data then; null when it never did */
+  lastSeen: FolderSyncState | null;
+  /** The revision the user chose to replace ("keep this computer's data") */
+  replaces?: string | null;
+}
+
+/** One side of a conflict, as the user is shown it: counts and a date, never values */
+export interface FolderSide {
+  labResults: number;
+  testValues: number;
+  notes: number;
+  /** The folder copy: when it was saved. This browser: its latest change. Null when unknown. */
+  savedAt: Date | null;
 }
 
 /** The folder, as the sync reads and writes it */
@@ -79,9 +94,26 @@ export type FolderProtectionReason =
  * key can have written it.
  */
 export type FolderSyncOutcome =
-  | { status: 'written'; folderLock: StoredCredentialsV2 | null }
-  | { status: 'unchanged'; folderLock: StoredCredentialsV2 | null }
-  | { status: 'protected'; reason: FolderProtectionReason; folderLock?: StoredCredentialsV2 | null };
+  /** `state` is what this browser has now seen: to be saved as its `lastSeen` */
+  | { status: 'written'; state: FolderSyncState; folderLock: StoredCredentialsV2 | null }
+  | { status: 'unchanged'; state: FolderSyncState; folderLock: StoredCredentialsV2 | null }
+  | { status: 'protected'; reason: FolderProtectionReason; folderLock?: StoredCredentialsV2 | null }
+  /**
+   * The folder copy was written elsewhere since this browser last saw it (or
+   * this browser never saw it). Without local changes (`localChanged` false)
+   * it is to be loaded; with them the user chooses. `bytes` are the copy as
+   * it lies in the folder.
+   */
+  | {
+      status: 'changed-elsewhere';
+      copy: ParsedBackupData;
+      revision: string | null;
+      bytes: ArrayBuffer;
+      localChanged: boolean;
+      folder: FolderSide;
+      browser: FolderSide;
+      folderLock: StoredCredentialsV2 | null;
+    };
 
 type CopyProblem = Exclude<FolderProtectionReason, 'empty' | 'set-aside'>;
 
@@ -167,6 +199,142 @@ async function keepsAsPrevious(
   return replacedRecords * 2 >= healthRecords(previous.file.data);
 }
 
+/** JSON with every object's keys sorted, so equal records give equal text however they were built */
+function sortedJson(value: unknown): string {
+  // Dates reach the replacer already as their ISO strings (toJSON runs first)
+  return JSON.stringify(value, (_key, item: unknown) =>
+    item !== null && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.entries(item as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        )
+      : item
+  );
+}
+
+/**
+ * The data in a form that compares equal for the same records however they
+ * are numbered and ordered: a copy loaded from the folder is stored under
+ * new IDs, and same-day results are exported in ID order. Which records
+ * belong together (a value's result, a note's result and value) is kept,
+ * by content rather than by ID. The settings are left out: they belong to
+ * each computer, and loading a folder copy never takes them, so a
+ * difference there is no change to the data the computers share.
+ */
+export function folderDataJson(data: FolderSyncData): string {
+  // An ID set to undefined is left out of the JSON
+  const resultJson = new Map(data.labResults.map((r) => [r.id, sortedJson({ ...r, id: undefined })]));
+  const valueJson = new Map<number | undefined, string>();
+  const valuesOf = new Map<number | undefined, string[]>();
+  const unlinkedValues: string[] = [];
+  for (const value of data.testValues) {
+    const json = sortedJson({ ...value, id: undefined, labResultId: undefined });
+    valueJson.set(value.id, json);
+    if (!resultJson.has(value.labResultId)) unlinkedValues.push(json);
+    else valuesOf.set(value.labResultId, [...(valuesOf.get(value.labResultId) ?? []), json]);
+  }
+  const linkTo = (map: Map<number | undefined, string>, id: number | undefined): string | null =>
+    typeof id !== 'number' ? null : (map.get(id) ?? 'missing');
+
+  return sortedJson({
+    labResults: data.labResults
+      .map((r) => sortedJson({ result: resultJson.get(r.id), values: (valuesOf.get(r.id) ?? []).sort() }))
+      .sort(),
+    unlinkedValues: unlinkedValues.sort(),
+    userNotes: data.userNotes
+      .map((note) =>
+        sortedJson({
+          ...note,
+          id: undefined,
+          labResultId: undefined,
+          testValueId: undefined,
+          labResult: linkTo(resultJson, note.labResultId),
+          testValue: linkTo(valueJson, note.testValueId),
+        })
+      )
+      .sort(),
+    preferences: data.preferences ? { ...data.preferences, id: undefined } : null,
+  });
+}
+
+/** SHA-256 of the data's folderDataJson, base64 */
+export async function digestFolderData(dataJson: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataJson));
+  return arrayBufferToBase64(digest);
+}
+
+/** The digest of this browser's data as it now is */
+export async function exportDigest(db: Pick<EncryptedDb, 'exportAllData'>): Promise<string> {
+  return digestFolderData(folderDataJson(await db.exportAllData()));
+}
+
+/**
+ * The one place that records "this browser has read or written this
+ * revision": exports the data as it now is, digests it, and saves both
+ */
+export async function markFolderCopySeen(
+  db: Pick<EncryptedDb, 'exportAllData'>,
+  key: CryptoKey,
+  revision: string | null
+): Promise<void> {
+  await saveFolderSyncState({ revision, digest: await exportDigest(db) }, key);
+}
+
+/** The data sealed as a folder copy, under a new revision */
+export async function sealFolderCopy(
+  data: FolderSyncData,
+  key: CryptoKey,
+  lock: StoredCredentialsV2 | null
+): Promise<{ bytes: ArrayBuffer; revision: string }> {
+  const revision = crypto.randomUUID();
+  // The version leads: the format is told by it before anything else
+  const file =
+    `{"version":${FOLDER_SYNC_FILE_VERSION},"exportedAt":"${new Date().toISOString()}",` +
+    `"revision":"${revision}","data":${JSON.stringify(data)}}`;
+  return { bytes: await sealEnvelope(new TextEncoder().encode(file), key, lock), revision };
+}
+
+/** A folder copy's records as a restore reads them, with dates; throws when they cannot be read */
+export function parseFolderCopyData(file: {
+  version: number;
+  exportedAt: string;
+  data: { labResults?: unknown; testValues?: unknown; userNotes?: unknown; preferences?: unknown };
+}): ParsedBackupData {
+  const { data } = file;
+  return parseBackupData({
+    schemaVersion: file.version,
+    exportedAt: file.exportedAt,
+    appVersion: 'folder copy',
+    labResults: data.labResults,
+    testValues: data.testValues,
+    userNotes: data.userNotes,
+    userPreferences: data.preferences ?? null,
+    // Storage and AI settings belong to this device, as with a backup
+    settings: null,
+  });
+}
+
+/** When a record was last changed, or null */
+function latestChange(records: Array<{ updatedAt?: unknown }>): Date | null {
+  let latest: number | null = null;
+  for (const { updatedAt } of records) {
+    const time = updatedAt instanceof Date ? updatedAt.getTime() : NaN;
+    if (!Number.isNaN(time) && (latest === null || time > latest)) latest = time;
+  }
+  return latest === null ? null : new Date(latest);
+}
+
+function sideOf(
+  data: { labResults: unknown[]; testValues: unknown[]; userNotes: unknown[] },
+  savedAt: Date | null
+): FolderSide {
+  return {
+    labResults: data.labResults.length,
+    testValues: data.testValues.length,
+    notes: data.userNotes.length,
+    savedAt: savedAt && !Number.isNaN(savedAt.getTime()) ? savedAt : null,
+  };
+}
+
 /**
  * Write the data to the folder copy, unless that could lose data there.
  * A copy with the same data is not rewritten, so the previous copy stays the
@@ -175,9 +343,14 @@ async function keepsAsPrevious(
  * folder. The lock written is the later of the two, so an earlier one never
  * replaces a password change made elsewhere.
  *
+ * A copy written elsewhere since this browser last saw it is never written
+ * over unseen: it is returned as 'changed-elsewhere', to be loaded when this
+ * browser changed nothing since, or for the user to choose when it did.
+ *
  * While records that cannot be opened are set aside and unsaved, the folder
  * copy may be the only place that still holds them, and the export leaves
- * them out: it is left as it is, and not even read.
+ * them out: it is left as it is, and not even read. Nor is a newer copy
+ * loaded over them.
  */
 export async function writeFolderCopy(
   store: FolderCopyStore,
@@ -190,36 +363,89 @@ export async function writeFolderCopy(
   }
   const encrypted = await store.loadCurrent();
   const existing = await open(encrypted, key);
-  // Dates serialise to the ISO strings the decrypted copy holds, so equal data compares equal
-  const dataJson = JSON.stringify(data);
-
   if (typeof existing === 'string') {
     return { status: 'protected', reason: existing };
   }
+
+  const local = folderDataJson(data);
+  const digest = await digestFolderData(local);
   const folderLock = existing?.lock ?? null;
   const lockIsLater = context.lock !== null && isLaterLock(context.lock, folderLock);
-  const sameData = existing !== null && JSON.stringify(existing.file.data) === dataJson;
-  if (sameData && !lockIsLater) {
-    return { status: 'unchanged', folderLock };
-  }
-  if (existing && !sameData && healthRecords(existing.file.data) > 0 && healthRecords(data) === 0) {
-    return { status: 'protected', reason: 'empty', folderLock };
+  const revision = typeof existing?.file.revision === 'string' ? existing.file.revision : null;
+
+  /** Seal and save; `replaced` is the copy written over, kept as the previous copy when it should be */
+  const write = async (replaced: OpenedCopy | null): Promise<FolderSyncOutcome> => {
+    const lock = lockIsLater || folderLock === null ? context.lock : folderLock;
+    const sealed = await sealFolderCopy(data, key, lock);
+    const keep = replaced !== null && (await keepsAsPrevious(store, replaced.file, key));
+    // Only the current copy carries the lock. A password change re-wraps the
+    // same data key, so an older lock left in the previous copy would let an
+    // old password unwrap the key that opens the current copy too. Sealed
+    // before anything is saved: if this fails, both files stay as they are.
+    const previous = keep ? await sealEnvelope(new Uint8Array(replaced.plain), key, null) : undefined;
+    await store.save(sealed.bytes, previous);
+    return { status: 'written', state: { revision: sealed.revision, digest }, folderLock };
+  };
+  const unchanged: FolderSyncOutcome = { status: 'unchanged', state: { revision, digest }, folderLock };
+
+  // An interrupted first write, or none yet: there is nothing to lose
+  if (!existing) return write(null);
+  const copy = existing;
+  const copyJson = folderDataJson(copy.file.data);
+  const sameData = local === copyJson;
+
+  /** The rules for a copy this browser may write over: never with nothing, keeping the previous copy */
+  const writeOver = (): Promise<FolderSyncOutcome> | FolderSyncOutcome => {
+    if (sameData && !lockIsLater) return unchanged;
+    if (!sameData && healthRecords(copy.file.data) > 0 && healthRecords(data) === 0) {
+      return { status: 'protected', reason: 'empty', folderLock };
+    }
+    // Only the lock changed: the previous copy stays the one from before the last change of data
+    return write(sameData ? null : copy);
+  };
+
+  /** The copy is to be loaded, or the user is to choose */
+  const changedElsewhere = (localChanged: boolean): FolderSyncOutcome => {
+    let parsed: ParsedBackupData;
+    try {
+      parsed = parseFolderCopyData(copy.file);
+    } catch {
+      // Opens, but its records cannot be read back: no copy to load, and none to write over
+      return { status: 'protected', reason: 'unreadable' };
+    }
+    return {
+      status: 'changed-elsewhere',
+      copy: parsed,
+      revision,
+      bytes: encrypted as ArrayBuffer,
+      localChanged,
+      folder: sideOf(parsed, parsed.exportedAt),
+      browser: sideOf(data, latestChange([...data.labResults, ...data.testValues, ...data.userNotes])),
+      folderLock,
+    };
+  };
+
+  // The user chose to replace this very copy
+  if (context.replaces !== undefined && context.replaces === revision) return writeOver();
+
+  const { lastSeen } = context;
+  // The copy this browser last read or wrote; or one rewritten elsewhere with
+  // the data this browser saw then, as a password change there rewrites it
+  // for the lock alone: nothing in it is new to this browser
+  const seenBefore =
+    lastSeen !== null &&
+    (revision === lastSeen.revision || (await digestFolderData(copyJson)) === lastSeen.digest);
+  if (seenBefore) {
+    if (digest === lastSeen.digest && !lockIsLater) return unchanged;
+    return writeOver();
   }
 
-  // Built around the string already made, so the data is serialised once.
-  // The version leads: the format is told by it before anything else.
-  const file =
-    `{"version":${FOLDER_SYNC_FILE_VERSION},"exportedAt":"${new Date().toISOString()}",` +
-    `"revision":"${crypto.randomUUID()}","data":${dataJson}}`;
-  const lock = lockIsLater || folderLock === null ? context.lock : folderLock;
-  const sealed = await sealEnvelope(new TextEncoder().encode(file), key, lock);
-  // Only the lock changed: the previous copy stays the one from before the last change of data
-  const keep = existing && !sameData && (await keepsAsPrevious(store, existing.file, key));
-  // Only the current copy carries the lock. A password change re-wraps the
-  // same data key, so an older lock left in the previous copy would let an
-  // old password unwrap the key that opens the current copy too. Sealed
-  // before anything is saved: if this fails, both files stay as they are.
-  const previous = keep ? await sealEnvelope(new Uint8Array(existing.plain), key, null) : undefined;
-  await store.save(sealed, previous);
-  return { status: 'written', folderLock };
+  // Written elsewhere, or never read here
+  const localChanged = lastSeen === null || digest !== lastSeen.digest;
+  if (sameData) return lockIsLater ? write(null) : unchanged;
+  if (!localChanged) return changedElsewhere(false);
+  if (healthRecords(copy.file.data) === 0) return write(copy);
+  // A browser that lost its data must not write its empty state over the copy
+  if (healthRecords(data) === 0) return { status: 'protected', reason: 'empty', folderLock };
+  return changedElsewhere(true);
 }

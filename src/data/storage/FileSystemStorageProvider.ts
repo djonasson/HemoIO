@@ -8,6 +8,7 @@
  * Browser support: Chrome/Edge 86+ only (Firefox and Safari not supported)
  */
 
+import { notifyFolderBackupsChanged } from './folderAccessEvents';
 import type { StorageProvider } from '@/types';
 
 /**
@@ -26,6 +27,13 @@ export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
  * not fill up with copies of health data.
  */
 export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
+
+/**
+ * The folder's dated backups, in a folder of their own beside the copy: the
+ * side of a conflict the user did not choose, sealed like the copy but
+ * without the lock (see `services/sync/folderBackups.ts`)
+ */
+export const FOLDER_BACKUPS_DIR_NAME = 'hemoio-backups';
 
 const HANDLE_STORAGE_KEY = 'hemoio_filesystem_handle';
 
@@ -68,6 +76,50 @@ export class FileSystemStorageProvider implements StorageProvider {
   /** The previous copy's bytes, or null when the folder holds none */
   async loadPrevious(): Promise<ArrayBuffer | null> {
     return this.readFile(await this.getGrantedHandle(), FOLDER_PREVIOUS_FILE_NAME);
+  }
+
+  /** The names of the files in the backups folder; none when there is no such folder */
+  async listBackups(): Promise<string[]> {
+    const backups = await this.getBackupsHandle(false);
+    if (!backups) return [];
+    const names: string[] = [];
+    for await (const [name, entry] of backups.entries()) {
+      if (entry.kind === 'file') names.push(name);
+    }
+    return names;
+  }
+
+  /** Write a backup into the backups folder, made when missing */
+  async saveBackup(name: string, bytes: ArrayBuffer): Promise<void> {
+    const backups = await this.getBackupsHandle(true);
+    await this.writeFile(backups!, name, bytes);
+    notifyFolderBackupsChanged();
+  }
+
+  /** A backup's bytes; throws when there is no such backup */
+  async loadBackup(name: string): Promise<ArrayBuffer> {
+    const backups = await this.getBackupsHandle(false);
+    const bytes = backups && (await this.readFile(backups, name));
+    if (!bytes) throw new Error('No such backup');
+    return bytes;
+  }
+
+  async deleteBackup(name: string): Promise<void> {
+    const backups = await this.getBackupsHandle(false);
+    if (!backups) return;
+    await backups.removeEntry(name);
+    notifyFolderBackupsChanged();
+  }
+
+  /** The backups folder; null when it is missing and not to be made */
+  private async getBackupsHandle(create: boolean): Promise<FileSystemDirectoryHandle | null> {
+    const handle = await this.getGrantedHandle();
+    try {
+      return await handle.getDirectoryHandle(FOLDER_BACKUPS_DIR_NAME, { create });
+    } catch (error) {
+      if (!create && error instanceof DOMException && error.name === 'NotFoundError') return null;
+      throw error;
+    }
   }
 
   /**

@@ -89,8 +89,16 @@ describe('useFolderRestore', () => {
     expect(assessFolderCopy).not.toHaveBeenCalled();
   });
 
+  it("the offer carries the copy's revision", async () => {
+    assessAs({ kind: 'offer', data: COPY, revision: 'r42' });
+
+    const { result } = renderHook(() => useFolderRestore());
+
+    await waitFor(() => expect(result.current.prompt).toMatchObject({ kind: 'offer', revision: 'r42' }));
+  });
+
   it('offers the copy, with the folder name, and holds sync until the user decides', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
 
     const { result } = renderHook(() => useFolderRestore());
 
@@ -98,6 +106,7 @@ describe('useFolderRestore', () => {
       expect(result.current.prompt).toEqual({
         kind: 'offer',
         data: COPY,
+        revision: 'r1',
         folderName: 'Health',
         replacesBrowserData: false,
       })
@@ -126,7 +135,7 @@ describe('useFolderRestore', () => {
   });
 
   it('"Not now" closes the prompt and keeps sync held', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
 
@@ -138,7 +147,7 @@ describe('useFolderRestore', () => {
 
   it('waits for folder access, then checks', async () => {
     permission.mockResolvedValue('prompt');
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(permission).toHaveBeenCalled());
     expect(assessFolderCopy).not.toHaveBeenCalled();
@@ -155,7 +164,7 @@ describe('useFolderRestore', () => {
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
 
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     act(() => notifyFolderAccessChanged());
 
     expect(result.current.syncAllowed).toBe(false);
@@ -177,7 +186,7 @@ describe('useFolderRestore', () => {
 
   it('still asks when the browser, empty at unlock, gained data before folder access, and says so', async () => {
     permission.mockResolvedValue('prompt');
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(permission).toHaveBeenCalled());
 
@@ -191,7 +200,7 @@ describe('useFolderRestore', () => {
   });
 
   it('once the user lets sync go ahead, later checks go by what the browser has', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
     act(() => result.current.decide('sync'));
@@ -213,7 +222,7 @@ describe('useFolderRestore', () => {
 
     // Results imported and synced; then another folder, with an older copy
     hasLabData.mockResolvedValue(true);
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     act(() => notifyFolderAccessChanged());
 
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
@@ -221,7 +230,7 @@ describe('useFolderRestore', () => {
   });
 
   it('says whether sync is held, which a held restore elsewhere should mention', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
     // Asking is not held: the answer decides
