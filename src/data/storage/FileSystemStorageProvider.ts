@@ -379,6 +379,22 @@ export class FileSystemStorageProvider implements StorageProvider {
   }
 
   /**
+   * Whether `folder` is the directory chosen now: so a choice made about a
+   * file in one folder is never carried out in another chosen meanwhile
+   * (in this tab or another). False when no folder is chosen.
+   */
+  async isCurrentFolder(folder: FileSystemDirectoryHandle | null): Promise<boolean> {
+    const handle = await this.getDirectoryHandle();
+    if (!handle || !folder) return false;
+    return handle.isSameEntry(folder);
+  }
+
+  /** The directory chosen now, to tell later whether it is still the one (isCurrentFolder) */
+  async getFolderHandle(): Promise<FileSystemDirectoryHandle | null> {
+    return this.getDirectoryHandle();
+  }
+
+  /**
    * Clear the stored directory handle
    */
   async clearStoredHandle(): Promise<void> {

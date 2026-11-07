@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { notifyFolderAccessChanged } from './folderAccessEvents';
-import { chooseFolder } from './chooseFolder';
+import { chooseFolder, pickFolder } from './chooseFolder';
 
 const selectDirectory = vi.fn<() => Promise<{ name: string } | null>>();
 
@@ -42,5 +42,24 @@ describe('chooseFolder', () => {
 
     await expect(chooseFolder()).rejects.toThrow();
     expect(notifyFolderAccessChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe('pickFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("keeps the folder chosen and gives its name, telling no one", async () => {
+    selectDirectory.mockResolvedValue({ name: 'Other' });
+
+    expect(await pickFolder()).toBe('Other');
+    expect(notifyFolderAccessChanged).not.toHaveBeenCalled();
+  });
+
+  it('gives null when the picker is cancelled', async () => {
+    selectDirectory.mockResolvedValue(null);
+
+    expect(await pickFolder()).toBeNull();
   });
 });

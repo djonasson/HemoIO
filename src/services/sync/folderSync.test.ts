@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { loadFolderSyncState, type FolderSyncState } from '@data/storage/folderSyncState';
-import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
-import { readLockFile } from './folderLockFile';
+import { openEnvelope, readEnvelopeHeader, sealEnvelope } from './folderEnvelope';
+import { readLockFile, saveLockFile } from './folderLockFile';
 import {
   FOLDER_SYNC_FILE_VERSION,
   FolderWriteHeld,
@@ -248,6 +248,7 @@ describe('writeFolderCopy', () => {
     expect(await write(store, withResults(2), key, context)).toEqual({
       status: 'protected',
       reason: 'before-loinc',
+      fileId: expect.stringMatching(/^sha256:/),
     });
     expect(store.copy).toBe(before);
     expect(store.saves).toBe(0);
@@ -259,6 +260,7 @@ describe('writeFolderCopy', () => {
     expect(await write(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'before-loinc',
+      fileId: expect.stringMatching(/^sha256:/),
     });
   });
 
@@ -278,7 +280,7 @@ describe('writeFolderCopy', () => {
 
     const outcome = await write(store, withResults(), key, context);
 
-    expect(outcome).toEqual({ status: 'protected', reason: 'unreadable' });
+    expect(outcome).toEqual({ status: 'protected', reason: 'unreadable', fileId: expect.stringMatching(/^sha256:/) });
     expect(store.copy).toBe(foreign);
   });
 
@@ -288,6 +290,7 @@ describe('writeFolderCopy', () => {
     expect(await write(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'unreadable',
+      fileId: expect.stringMatching(/^sha256:/),
     });
   });
 
@@ -311,15 +314,17 @@ describe('writeFolderCopy', () => {
         replacesUnreadable: await idOf(store.copy),
       });
 
-      expect(outcome).toMatchObject({ status: 'written', folderLock: null });
+      expect(outcome).toMatchObject({ status: 'written', folderLock: LOCK });
       const copy = await readCopy(store, key);
       expect(copy.data.labResults).toHaveLength(2);
       // Built on nothing: the file replaced has no revision anyone saw
       expect(copy.ancestors).toEqual([]);
       expect(folderLockOf(store)).toEqual(LOCK);
-      // No previous copy is made of what cannot be read
-      expect(store.previous).toBe(previousBefore);
-      expect(store.previousSaves).toBe(0);
+      // The previous copy (kept as a backup already) is this copy without its lock,
+      // so nothing unkept is pushed out later
+      expect(store.previous).not.toBe(previousBefore);
+      expect(readEnvelopeHeader(store.previous!)).toMatchObject({ lock: null });
+      expect((await plainOf(store.previous, key))).toBe(await plainOf(store.copy, key));
       // The lock file first, as for every write of a copy with a lock
       expect(store.writes).toEqual(['lock', 'copy']);
       expect(readLockFile(store.lockFile)).toEqual(LOCK);
@@ -343,6 +348,7 @@ describe('writeFolderCopy', () => {
       expect(await write(store, withResults(), key, { ...context, replacesUnreadable: chosen })).toEqual({
         status: 'protected',
         reason: 'unreadable',
+        fileId: await idOf(now),
       });
       expect(store.copy).toBe(now);
       expect(store.saves).toBe(0);
@@ -356,6 +362,91 @@ describe('writeFolderCopy', () => {
         await write(store, withResults(), key, { ...context, replacesUnreadable: await idOf(foreign) })
       ).toEqual({ status: 'protected', reason: 'another-setup' });
       expect(store.copy).toBe(foreign);
+    });
+
+    /** A copy of ours whose envelope header was rewritten as a later HemoIO or another setup might */
+    async function withHeader(header: { version: unknown; lock: unknown }): Promise<ArrayBuffer> {
+      await write(store, withResults(), key, context);
+      const file = JSON.parse(new TextDecoder().decode(store.copy!));
+      return new TextEncoder().encode(JSON.stringify({ ...file, ...header })).buffer as ArrayBuffer;
+    }
+
+    it.each([
+      ['a newer envelope with credentials this build knows', { version: 2, lock: 'own' }, 'newer'],
+      ['a newer envelope with a lock this build does not know', { version: 2, lock: { version: 3 } }, 'newer'],
+      ['an envelope with a lock this build does not know', { version: 1, lock: { version: 3 } }, 'another-setup'],
+      ['an envelope with a lock that is not a lock at all', { version: 1, lock: 'not a lock' }, 'another-setup'],
+    ] as const)('never writes over %s, even when chosen', async (_label, header, reason) => {
+      store.copy = await withHeader({ ...header, lock: header.lock === 'own' ? LOCK : header.lock });
+      const held = store.copy;
+
+      expect(
+        await write(store, withResults(2), key, { ...context, replacesUnreadable: await idOf(held) })
+      ).toEqual({ status: 'protected', reason });
+      expect(store.copy).toBe(held);
+    });
+
+    it('writes over a copy whose records cannot be read back, sealing the later of the two locks', async () => {
+      const records = {
+        ...withResults(1),
+        testValues: [{ id: 1, labResultId: 1, biomarkerKey: 'not-a-test', value: 1, unit: 'u' }],
+      };
+      store.copy = (await sealFolderCopy(records as unknown as FolderSyncData, key, dated(LATER))).bytes;
+
+      const outcome = await write(store, withResults(2), key, {
+        ...context,
+        lock: dated(EARLIER),
+        replacesUnreadable: await idOf(store.copy),
+      });
+
+      expect(outcome).toMatchObject({ status: 'written', folderLock: dated(LATER) });
+      expect((await readCopy(store, key)).data.labResults).toHaveLength(2);
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+    });
+
+    it("seals this browser's lock when it is the later one", async () => {
+      store.copy = (await sealFolderCopy(withResults(1), key, dated(EARLIER))).bytes;
+      // Records that open, but cannot be restored: a sync file of an unknown test
+      const file = JSON.parse(await plainOf(store.copy, key));
+      file.data.testValues = [{ id: 1, labResultId: 1, biomarkerKey: 'not-a-test', value: 1, unit: 'u' }];
+      store.copy = await sealEnvelope(new TextEncoder().encode(JSON.stringify(file)), key, dated(EARLIER));
+
+      const outcome = await write(store, withResults(2), key, {
+        ...context,
+        lock: dated(LATER),
+        replacesUnreadable: await idOf(store.copy),
+      });
+
+      expect(outcome).toMatchObject({ status: 'written', folderLock: dated(LATER) });
+      expect(folderLockOf(store)).toEqual(dated(LATER));
+    });
+
+    it('rewrites the lock file after replacing a copy the key could not open, even over a later-dated lock', async () => {
+      store.copy = await sealed({ version: 4, exportedAt: '2024-01-01', data: withResults() }, await newKey());
+      // The lock file of the copy replaced: someone else's lock, dated later
+      await saveLockFile(store, { ...OTHER_LOCK, changedAt: LATER });
+
+      await write(store, withResults(2), key, {
+        ...context,
+        lock: dated(EARLIER),
+        replacesUnreadable: await idOf(store.copy),
+      });
+
+      expect(readLockFile(store.lockFile)).toEqual(dated(EARLIER));
+      expect(folderLockOf(store)).toEqual(dated(EARLIER));
+    });
+
+    it('keeps a later lock file after replacing a copy the key opened', async () => {
+      store.copy = await sealed({ version: 3, exportedAt: '2024-01-01', data: withResults(3) }, key);
+      await saveLockFile(store, dated(LATER));
+
+      await write(store, withResults(2), key, {
+        ...context,
+        lock: dated(EARLIER),
+        replacesUnreadable: await idOf(store.copy),
+      });
+
+      expect(readLockFile(store.lockFile)).toEqual(dated(LATER));
     });
 
     it('never writes over a copy from a newer HemoIO, even when chosen', async () => {
@@ -616,6 +707,7 @@ describe('writeFolderCopy', () => {
     expect(await write(store, withResults(), key, context)).toEqual({
       status: 'protected',
       reason: 'unreadable',
+      fileId: expect.stringMatching(/^sha256:/),
     });
   });
 
@@ -650,7 +742,11 @@ describe('writeFolderCopy', () => {
     store.copy = new TextEncoder().encode(JSON.stringify(file)).buffer as ArrayBuffer;
     const damaged = store.copy;
 
-    expect(await write(store, withResults(1), key, context)).toEqual({ status: 'protected', reason: 'unreadable' });
+    expect(await write(store, withResults(1), key, context)).toEqual({
+      status: 'protected',
+      reason: 'unreadable',
+      fileId: expect.stringMatching(/^sha256:/),
+    });
     expect(store.copy).toBe(damaged);
   });
 
@@ -665,7 +761,12 @@ describe('writeFolderCopy', () => {
       lockMayBeBehind: false,
     });
 
-    expect(outcome).toEqual({ status: 'protected', reason: 'unreadable', folderLock: dated(LATER) });
+    expect(outcome).toEqual({
+      status: 'protected',
+      reason: 'unreadable',
+      folderLock: dated(LATER),
+      fileId: expect.stringMatching(/^sha256:/),
+    });
   });
 
   describe('a password change while the data are left as they are (P42)', () => {

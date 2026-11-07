@@ -19,6 +19,10 @@ export interface FolderProblemActions {
   tryAgain: boolean;
 }
 
+/** Choosing a folder failed: fixed text, never the error, which can name a path */
+export const CHOOSE_FOLDER_FAILED =
+  'The folder could not be chosen. Nothing was changed; try again, or choose a folder in Settings, on the Data tab.';
+
 const NONE: FolderProblemActions = { chooseFolder: false, replace: false, tryAgain: false };
 
 /**

@@ -23,7 +23,7 @@ import {
   keepBrowserData,
   keepCurrentFolderCopy,
   keepFolderCopy,
-  keepUnreadableFolderCopy,
+  keepFolderFilesBeforeReplace,
   markFolderCopySeen,
 } from '@services/sync';
 import {
@@ -51,6 +51,32 @@ const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
 
 /** What the user is told about the folder sync: why it held back, or that it failed */
 export type FolderSyncIssue = FolderProtectionReason | 'failed';
+
+/**
+ * A folder copy that cannot be read, as the user was asked about it: the
+ * file (folderCopyId(bytes, null)) and the folder it was found in. A choice
+ * to replace it is carried out only for that file, in that folder.
+ */
+export interface UnreadableCopyTarget {
+  fileId: string;
+  folder: FileSystemDirectoryHandle | null;
+}
+
+/**
+ * What the user chose to replace: a copy offered for restore, by its
+ * revision (`copy`), or a copy that cannot be read (`unreadable`)
+ */
+export type FolderReplaceChoice =
+  | { kind: 'copy'; revision: string | null }
+  | ({ kind: 'unreadable' } & UnreadableCopyTarget);
+
+/**
+ * 'replaced': kept as a backup, and the next sync writes over it.
+ * 'changed': the folder, or the file in it, is no longer the one the user
+ * was asked about (or folder storage is off): nothing was kept, and the
+ * question is to be asked again.
+ */
+export type FolderReplaceResult = 'replaced' | 'changed';
 
 /**
  * What the user is shown to choose: both the folder copy and this browser
@@ -103,6 +129,8 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   syncNow: () => Promise<void>;
   /** Why the last sync left the folder copy alone or failed; null while syncs write or are held */
   issue: FolderSyncIssue | null;
+  /** For an issue the user may resolve by replacing the copy: the file and folder found */
+  issueTarget: UnreadableCopyTarget | null;
   /** Both sides changed: what the user is asked; null otherwise */
   conflict: FolderConflict | null;
   /** Syncs wait for the user's choice, or for the next session after "Decide later" */
@@ -120,18 +148,13 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
    */
   acknowledgeFolderCopy: (revision: string | null, loadedStamp: string) => Promise<void>;
   /**
-   * "Replace folder copy" from the restore question: keeps the copy in the
-   * folder as a backup, then the next sync writes over it without asking.
-   * Rejects, keeping nothing chosen, when the backup cannot be saved.
+   * "Replace folder copy", from the restore question or the sync notice:
+   * keeps the copy in the folder as a backup (with the previous copy, for
+   * one that cannot be read), then the next sync writes over that very copy
+   * without asking. Rejects, keeping nothing chosen, when a backup cannot be
+   * saved.
    */
-  replaceFolderCopy: (revision: string | null) => Promise<void>;
-  /**
-   * "Replace folder copy" for a copy that cannot be read: keeps the file in
-   * the folder as a backup, then the next sync writes over that very file,
-   * if it still cannot be read. Rejects, keeping nothing chosen, when the
-   * backup cannot be saved.
-   */
-  replaceUnreadableCopy: () => Promise<void>;
+  replaceFolderCopy: (choice: FolderReplaceChoice) => Promise<FolderReplaceResult>;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey, storedLock, adoptFolderLock } = useAuth();
@@ -156,7 +179,19 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   // for meanwhile share one: each exports the data as it is when it starts.
   const lastRef = useRef<Promise<void>>(Promise.resolve());
   const waitingRef = useRef<Promise<void> | null>(null);
-  const [issue, setIssue] = useState<FolderSyncIssue | null>(null);
+  const [found, setFound] = useState<{ issue: FolderSyncIssue; target: UnreadableCopyTarget | null } | null>(null);
+  const issue = found?.issue ?? null;
+  /** Told only when it changed: every sync sets it again */
+  const setIssue = useCallback((next: FolderSyncIssue | null, target: UnreadableCopyTarget | null = null) => {
+    setFound((current) => {
+      if (next === null) return null;
+      const same =
+        current?.issue === next &&
+        current.target?.fileId === target?.fileId &&
+        current.target?.folder === target?.folder;
+      return same ? current : { issue: next, target };
+    });
+  }, []);
   // Kept with the key of the session they belong to: a new unlock is a new
   // key, and starts with no question and no hold
   const [asked, setAsked] = useState<{ key: CryptoKey; conflict: FolderConflict } | null>(null);
@@ -230,7 +265,10 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             setIssue(null);
             return;
           case 'protected':
-            setIssue(outcome.reason);
+            setIssue(
+              outcome.reason,
+              outcome.fileId === undefined ? null : { fileId: outcome.fileId, folder: await provider.getFolderHandle() }
+            );
             return;
           case 'changed-elsewhere':
             setIssue(null);
@@ -281,7 +319,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         throw error;
       }
     },
-    [holdFor]
+    [holdFor, setIssue]
   );
 
   /**
@@ -327,7 +365,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     await withWebLock(FOLDER_SYNC_LOCK, async () => {
       if (stillWanted()) await syncOnce(session);
     });
-  }, [syncOnce, putLockInFolder]);
+  }, [syncOnce, putLockInFolder, setIssue]);
 
   /** Runs `task` after everything already queued; its failure is its caller's, and the next still runs */
   const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
@@ -429,36 +467,42 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   );
 
   const replaceFolderCopy = useCallback(
-    async (revision: string | null): Promise<void> => {
+    async (choice: FolderReplaceChoice): Promise<FolderReplaceResult> => {
       const session = unlockedRef.current;
       if (!session) throw new Error('HemoIO is locked');
-      await afterSyncs(async () => {
+      // Folder storage switched off: nothing is replaced, and the notice goes with the next sync
+      if (!isFolderStorageOn()) return 'changed';
+      return afterSyncs(async (): Promise<FolderReplaceResult> => {
+        if (!isFolderStorageOn()) return 'changed';
         const provider = currentFolder();
-        const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
-        const id = bytes && (await folderCopyId(bytes, revision));
+        let id: string | null;
+        if (choice.kind === 'copy') {
+          const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
+          id = bytes && (await folderCopyId(bytes, choice.revision));
+        } else {
+          // Only the file the user saw, in the folder it was in: else asked again
+          if (!(await provider.isCurrentFolder(choice.folder))) return 'changed';
+          const kept = await keepFolderFilesBeforeReplace({
+            key: session.key,
+            ownLock: lockRef.current,
+            backups: provider,
+            folder: provider,
+            fileId: choice.fileId,
+          });
+          if (!kept) return 'changed';
+          id = choice.fileId;
+        }
         // Locked meanwhile: the choice was for a session that has ended
-        if (unlockedRef.current?.key !== session.key) return;
-        // The sync that the hold's end starts writes over the copy kept
-        replaceNextRef.current = id === null ? null : { key: session.key, id, unreadable: false };
+        if (unlockedRef.current?.key !== session.key) return 'changed';
+        // The sync that follows writes over the copy kept; nothing there to
+        // keep (an offered copy gone meanwhile) writes as for an empty folder
+        replaceNextRef.current =
+          id === null ? null : { key: session.key, id, unreadable: choice.kind === 'unreadable' };
+        return 'replaced';
       });
     },
     [afterSyncs]
   );
-
-  const replaceUnreadableCopy = useCallback(async (): Promise<void> => {
-    const session = unlockedRef.current;
-    if (!session) throw new Error('HemoIO is locked');
-    await afterSyncs(async () => {
-      const provider = currentFolder();
-      const bytes = await keepUnreadableFolderCopy({ key: session.key, backups: provider, folder: provider });
-      // By its bytes: what cannot be read has no revision to name
-      const id = bytes && (await folderCopyId(bytes, null));
-      // Locked meanwhile: the choice was for a session that has ended
-      if (unlockedRef.current?.key !== session.key) return;
-      // Nothing there to keep: the next sync writes as for an empty folder
-      replaceNextRef.current = id === null ? null : { key: session.key, id, unreadable: true };
-    });
-  }, [afterSyncs]);
 
   const acknowledgeFolderCopy = useCallback(
     async (revision: string | null, loadedStamp: string): Promise<void> => {
@@ -546,12 +590,12 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   return {
     syncNow,
     issue,
+    issueTarget: found?.target ?? null,
     conflict: asked && asked.key === encryptionKey ? asked.conflict : null,
     held: heldFor !== null && heldFor === encryptionKey,
     resolveConflict,
     acknowledgeFolderCopy,
     replaceFolderCopy,
-    replaceUnreadableCopy,
   };
 }
 

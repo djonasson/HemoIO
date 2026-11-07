@@ -109,6 +109,45 @@ function parseEnvelope(
   };
 }
 
+/**
+ * Why an envelope's header names a copy this build must never write over,
+ * though it cannot read it: a newer envelope version ('newer'), or a lock
+ * that is not this build's credentials ('foreign-lock': another setup's, or
+ * a newer HemoIO's). The newer version is told first. Null for anything else:
+ * no envelope, one this build reads, or a damaged one.
+ */
+export function envelopeHeaderProblem(bytes: ArrayBuffer): 'newer' | 'foreign-lock' | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const { format, version, lock } = parsed as Record<string, unknown>;
+  if (format !== FOLDER_ENVELOPE_FORMAT) return null;
+  if (typeof version === 'number' && Number.isInteger(version) && version > 1) return 'newer';
+  if (version === 1 && lock !== null && lock !== undefined && !isCredentialsV2(lock)) return 'foreign-lock';
+  return null;
+}
+
+/**
+ * Whether a file shows no lock in plain text: not JSON at all (a copy in
+ * the raw format from before the envelope), or an envelope or damaged copy
+ * whose lock is null. Such a file may be kept as a backup as it lies.
+ */
+export function showsNoLock(bytes: ArrayBuffer): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return true;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return false;
+  const { format, lock } = parsed as Record<string, unknown>;
+  return (format === FOLDER_ENVELOPE_FORMAT || format === DAMAGED_COPY_FORMAT) && lock === null;
+}
+
 /** The header, null for a legacy raw copy (not JSON with this format), or 'damaged' */
 export function readEnvelopeHeader(bytes: ArrayBuffer): FolderEnvelopeHeader | null | 'damaged' {
   const envelope = parseEnvelope(bytes);

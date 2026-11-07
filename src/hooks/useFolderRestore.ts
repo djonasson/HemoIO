@@ -14,10 +14,25 @@ import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaus
 import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
-import { assessFolderCopy, type FolderCopyAssessment, type FolderCopyProblem } from '@services/sync';
+import {
+  assessFolderCopy,
+  type FolderCopyAssessment,
+  type FolderCopyProblem,
+  type UnreadableFolderCopy,
+} from '@services/sync';
 import { useEncryptedDb } from './useEncryptedDb';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
+import type { UnreadableCopyTarget } from './useFilesystemSync';
+
+/** A folder copy that cannot be read, as the question shows it */
+export interface UnreadableCopyPrompt {
+  reason: FolderCopyProblem;
+  /** Whether the user may choose to replace it: the sync's own decision */
+  replaceable: boolean;
+  /** The file and folder a replace is for; null when the file could not be read at all */
+  target: UnreadableCopyTarget | null;
+}
 
 export type FolderRestorePrompt =
   | {
@@ -33,8 +48,10 @@ export type FolderRestorePrompt =
        * a restore replaces only that, never a change saved since
        */
       stamp: string;
+      /** The current copy cannot be read, and the previous copy is offered instead */
+      damagedCurrent?: UnreadableCopyPrompt;
     }
-  | { kind: 'unreadable'; reason: FolderCopyProblem; folderName: string | null };
+  | ({ kind: 'unreadable'; folderName: string | null } & UnreadableCopyPrompt);
 
 /**
  * The user's answer: 'sync' when the copy was restored or may be replaced,
@@ -108,14 +125,23 @@ export function useFolderRestore(): UseFolderRestoreResult {
       const folder = currentFolder();
       let assessment: FolderCopyAssessment;
       let folderName: string | null = null;
+      let folderHandle: FileSystemDirectoryHandle | null = null;
       try {
         // Without access nothing can be written either: wait to be told it was granted
         if ((await folder.getPermissionState()) !== 'granted') return;
         assessment = await assessFolderCopy(folder, key, lockRef.current);
-        if (assessment.kind !== 'sync') folderName = await folder.getDirectoryName();
+        if (assessment.kind !== 'sync') {
+          folderName = await folder.getDirectoryName();
+          folderHandle = await folder.getFolderHandle();
+        }
       } catch {
-        assessment = { kind: 'unreadable', reason: 'read-failed' };
+        assessment = { kind: 'unreadable', reason: 'read-failed', fileId: null, replaceable: false };
       }
+      const unreadable = ({ reason, fileId, replaceable }: UnreadableFolderCopy): UnreadableCopyPrompt => ({
+        reason,
+        replaceable,
+        target: fileId === null ? null : { fileId, folder: folderHandle },
+      });
 
       if (cancelled) return;
       if (assessment.kind === 'sync') {
@@ -133,8 +159,9 @@ export function useFolderRestore(): UseFolderRestoreResult {
                 folderName,
                 replacesBrowserData: browserHasData,
                 stamp,
+                ...(assessment.damagedCurrent && { damagedCurrent: unreadable(assessment.damagedCurrent) }),
               }
-            : { kind: 'unreadable', reason: assessment.reason, folderName }
+            : { kind: 'unreadable', folderName, ...unreadable(assessment) }
       );
     }
 

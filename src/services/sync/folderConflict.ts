@@ -9,9 +9,16 @@
  */
 
 import { keepFolderBackup, type FolderBackupKind, type FolderBackupStore } from './folderBackups';
-import { resealWithoutLock, sealDamagedCopy } from './folderEnvelope';
-import { digestFolderData, folderDataJson, sealFolderCopy } from './folderSync';
+import { resealWithoutLock, sealDamagedCopy, showsNoLock } from './folderEnvelope';
+import {
+  digestFolderData,
+  folderCopyId,
+  folderDataJson,
+  isReplaceableFolderCopy,
+  sealFolderCopy,
+} from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
+import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { FolderCopySource } from './folderCopy';
 
 interface BrowserDataBackup {
@@ -53,6 +60,22 @@ export async function keepFolderCopy(
 }
 
 /**
+ * A folder file as it is kept as a backup. One the key opens is sealed again
+ * without its lock (P23). One that shows no lock in plain text (the raw
+ * format from before the envelope, under another password or an earlier
+ * setup) is kept as it lies, so its owner can still restore it from their
+ * own setup. Any other is sealed whole under the key (P41): a lock its
+ * header shows is never kept in plain text.
+ */
+export async function backupOfFolderFile(bytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
+  try {
+    return await resealWithoutLock(bytes, key);
+  } catch {
+    return showsNoLock(bytes) ? bytes.slice(0) : sealDamagedCopy(bytes, key);
+  }
+}
+
+/**
  * Keep the copy now in the folder as a conflict backup, before the user's
  * choice writes over it. Returns its bytes, or null when the folder holds none.
  */
@@ -70,39 +93,41 @@ export async function keepCurrentFolderCopy({
 }): Promise<ArrayBuffer | null> {
   const bytes = await folder.loadCurrent();
   if (bytes === null || bytes.byteLength === 0) return null;
-  await keepFolderCopy({ key, backups, protect }, bytes);
+  await keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict', protect });
   return bytes;
 }
 
 /**
- * Keep the file now in the folder, one that cannot be read as a current
- * copy, as a conflict backup before the user's choice writes over it. A
- * file the key opens (a copy saved before LOINC, say) is sealed again
- * without its lock; any other is sealed whole under the key (P41), so no
- * lock it carries is ever kept in plain text. Returns its bytes, or null
- * when the folder holds none; rejects, keeping nothing, when the backup
- * cannot be saved.
+ * Before a copy the user chose to replace is written over: keep it, and the
+ * previous copy beside it, as conflict backups, neither pruning the other.
+ * Only for the very file the user was asked about (`fileId`, by its bytes),
+ * and only while the sync would replace it (isReplaceableFolderCopy):
+ * otherwise nothing is kept and false is returned, so the question is asked
+ * again. Rejects when a backup cannot be saved.
  */
-export async function keepUnreadableFolderCopy({
+export async function keepFolderFilesBeforeReplace({
   key,
+  ownLock,
   backups,
   folder,
+  fileId,
 }: {
   key: CryptoKey;
+  ownLock: StoredCredentialsV2 | null;
   backups: FolderBackupStore;
-  folder: FolderCopySource;
-}): Promise<ArrayBuffer | null> {
+  folder: Required<FolderCopySource>;
+  fileId: string;
+}): Promise<boolean> {
   const bytes = await folder.loadCurrent();
-  if (bytes === null || bytes.byteLength === 0) return null;
-  let sealed: ArrayBuffer;
-  try {
-    sealed = await resealWithoutLock(bytes, key);
-  } catch {
-    // Another key, a damaged file, or a damaged header: kept as it lay
-    sealed = await sealDamagedCopy(bytes, key);
+  if (bytes === null || bytes.byteLength === 0) return false;
+  if ((await folderCopyId(bytes, null)) !== fileId) return false;
+  if (!(await isReplaceableFolderCopy(bytes, key, ownLock))) return false;
+  const kept = await keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict' });
+  const previous = await folder.loadPrevious();
+  if (previous !== null && previous.byteLength > 0) {
+    await keepFolderBackup(backups, await backupOfFolderFile(previous, key), { kind: 'conflict', protect: [kept] });
   }
-  await keepFolderBackup(backups, sealed, { kind: 'conflict' });
-  return bytes;
+  return true;
 }
 
 /**

@@ -1,20 +1,25 @@
 /**
  * ReplaceFolderCopyModal Component
  *
- * "Replace folder copy…" from the folder sync notice: asks first, then
- * keeps the copy as a dated backup and lets the next sync write over it.
+ * "Replace folder copy…" from the folder sync notice or Settings: asks
+ * first, then keeps the copy as a dated backup and lets the next sync write
+ * over it. Keyed by its host per opening, so each starts afresh.
  */
 
-import { useState } from 'react';
 import { Modal, Stack, getDefaultZIndex } from '@mantine/core';
+import { useReplaceConfirm } from '@hooks/useReplaceConfirm';
 import { ReplaceFolderCopyConfirm } from './ReplaceFolderCopyConfirm';
 
 export interface ReplaceFolderCopyModalProps {
   opened: boolean;
   /** The copy may be someone else's (ReplaceFolderCopyConfirm) */
   warnOtherSetup: boolean;
-  /** Keep the copy as a backup and choose to replace it; rejects, choosing nothing, when the backup fails */
-  onReplace: () => Promise<void>;
+  /**
+   * Keep the copy as a backup and choose to replace it; rejects, choosing
+   * nothing, when the backup fails. Resolves however it ended otherwise
+   * (replaced, or the copy changed and the question is asked again).
+   */
+  onReplace: () => Promise<unknown>;
   /** Back, Escape, or the replace done */
   onClose: () => void;
 }
@@ -25,28 +30,16 @@ export function ReplaceFolderCopyModal({
   onReplace,
   onClose,
 }: ReplaceFolderCopyModalProps): React.ReactNode {
-  const [isReplacing, setIsReplacing] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const replacing = useReplaceConfirm();
 
   const close = (): void => {
-    if (isReplacing) return;
-    setFailed(false);
+    if (replacing.isReplacing) return;
+    replacing.reset();
     onClose();
   };
 
   const handleConfirm = async (): Promise<void> => {
-    setIsReplacing(true);
-    setFailed(false);
-    try {
-      await onReplace();
-    } catch {
-      // Not shown: the reason could name the folder, and nothing was chosen
-      setFailed(true);
-      return;
-    } finally {
-      setIsReplacing(false);
-    }
-    onClose();
+    if (await replacing.run(onReplace)) onClose();
   };
 
   return (
@@ -64,8 +57,8 @@ export function ReplaceFolderCopyModal({
         <ReplaceFolderCopyConfirm
           folder="your folder"
           warnOtherSetup={warnOtherSetup}
-          isReplacing={isReplacing}
-          failed={failed}
+          isReplacing={replacing.isReplacing}
+          failed={replacing.failed}
           onBack={close}
           onConfirm={() => void handleConfirm()}
         />

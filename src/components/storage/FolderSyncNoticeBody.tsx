@@ -5,9 +5,9 @@
  * copy that cannot be read: choose another folder, or replace the copy.
  */
 
-import { useState } from 'react';
 import { Button, Group, Stack, Text } from '@mantine/core';
-import type { FolderProblemActions } from './folderProblemActions';
+import { useChooseFolder } from '@hooks/useChooseFolder';
+import { CHOOSE_FOLDER_FAILED, type FolderProblemActions } from './folderProblemActions';
 
 export interface FolderSyncNoticeBodyProps {
   /** Fixed text */
@@ -28,26 +28,19 @@ export function FolderSyncNoticeBody({
   onChooseFolder,
   onReplace,
 }: FolderSyncNoticeBodyProps): React.ReactNode {
-  const [chooseFailed, setChooseFailed] = useState(false);
-
-  const handleChooseFolder = (): void => {
-    setChooseFailed(false);
-    // Nothing awaited first: the picker needs the click's user activation
-    onChooseFolder().catch(() => setChooseFailed(true));
-  };
+  const chooser = useChooseFolder(onChooseFolder);
 
   return (
     <Stack gap="xs">
       <Text size="sm">{message}</Text>
-      {chooseFailed && (
+      {chooser.failed && (
         <Text size="sm" c="red" role="alert">
-          The folder could not be chosen. Nothing was changed; try again, or choose a folder in
-          Settings, on the Data tab.
+          {CHOOSE_FOLDER_FAILED}
         </Text>
       )}
       <Group gap="xs">
         {actions.chooseFolder && (
-          <Button size="xs" variant="light" onClick={handleChooseFolder}>
+          <Button size="xs" variant="light" onClick={chooser.choose}>
             Choose another folder
           </Button>
         )}

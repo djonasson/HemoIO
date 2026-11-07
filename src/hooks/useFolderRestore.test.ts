@@ -13,6 +13,7 @@ vi.mock('@/utils/fileSystemSupport', () => ({
 }));
 
 const permission = vi.fn<() => Promise<string | null>>();
+const HANDLE = { name: 'Health' } as unknown as FileSystemDirectoryHandle;
 const providerCreated = vi.fn();
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
@@ -20,6 +21,7 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
     getPermissionState = permission;
     getDirectoryName = vi.fn(async () => 'Health');
     loadCurrent = vi.fn();
+    getFolderHandle = vi.fn(async () => HANDLE);
     constructor() {
       providerCreated();
     }
@@ -124,8 +126,11 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(true);
   });
 
-  it.each(['cannot-decrypt', 'another-setup'] as const)('reports a copy it cannot read (%s)', async (reason) => {
-    assessAs({ kind: 'unreadable', reason });
+  it.each([
+    ['cannot-decrypt', 'sha256:f1', true],
+    ['another-setup', 'sha256:f2', false],
+  ] as const)('reports a copy it cannot read (%s), with the file and folder it found', async (reason, fileId, replaceable) => {
+    assessAs({ kind: 'unreadable', reason, fileId, replaceable });
 
     const { result } = renderHook(() => useFolderRestore());
 
@@ -134,9 +139,30 @@ describe('useFolderRestore', () => {
         kind: 'unreadable',
         reason,
         folderName: 'Health',
+        replaceable,
+        target: { fileId, folder: HANDLE },
       })
     );
     expect(result.current.syncAllowed).toBe(false);
+  });
+
+  it('offers the previous copy when the latest is damaged, naming the damaged file', async () => {
+    assessAs({
+      kind: 'offer',
+      data: COPY,
+      revision: 'r1',
+      damagedCurrent: { reason: 'cannot-decrypt', fileId: 'sha256:f1', replaceable: true },
+    });
+
+    const { result } = renderHook(() => useFolderRestore());
+
+    await waitFor(() =>
+      expect(result.current.prompt).toMatchObject({
+        kind: 'offer',
+        revision: 'r1',
+        damagedCurrent: { reason: 'cannot-decrypt', replaceable: true, target: { fileId: 'sha256:f1', folder: HANDLE } },
+      })
+    );
   });
 
   it('"Not now" closes the prompt and keeps sync held', async () => {
@@ -254,7 +280,13 @@ describe('useFolderRestore', () => {
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() =>
-      expect(result.current.prompt).toEqual({ kind: 'unreadable', reason: 'read-failed', folderName: null })
+      expect(result.current.prompt).toEqual({
+        kind: 'unreadable',
+        reason: 'read-failed',
+        folderName: null,
+        replaceable: false,
+        target: null,
+      })
     );
     expect(result.current.syncAllowed).toBe(false);
   });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { arrayBufferToBase64, base64ToArrayBuffer, encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import {
+  envelopeHeaderProblem,
   FOLDER_ENVELOPE_FORMAT,
   isDamagedCopy,
   openDamagedCopy,
@@ -9,6 +10,7 @@ import {
   readEnvelopeHeader,
   sealDamagedCopy,
   sealEnvelope,
+  showsNoLock,
 } from './folderEnvelope';
 
 const PLAIN = '{"version":4,"exportedAt":"2026-11-06T08:00:00.000Z","data":{"labResults":[]}}';
@@ -217,6 +219,45 @@ describe('folderEnvelope', () => {
 
       await expect(openDamagedCopy(kept, other.key)).rejects.toThrow();
       await expect(openDamagedCopy(fileOf(JSON.stringify({ ...file, format: 'other' })), key)).rejects.toThrow();
+    });
+  });
+
+  describe('what a header says about a copy that cannot be read', () => {
+    const header = (fields: Record<string, unknown>): ArrayBuffer =>
+      fileOf(JSON.stringify({ format: FOLDER_ENVELOPE_FORMAT, sealed: 'AAAA', ...fields }));
+
+    it('names a newer envelope first, whatever its lock', async () => {
+      const { credentials } = await createCredentialsV2('Passw0rd!', 1000);
+
+      expect(envelopeHeaderProblem(header({ version: 2, lock: credentials }))).toBe('newer');
+      expect(envelopeHeaderProblem(header({ version: 2, lock: { version: 3 } }))).toBe('newer');
+    });
+
+    it('names a lock that is not these credentials a foreign lock', () => {
+      expect(envelopeHeaderProblem(header({ version: 1, lock: { version: 3 } }))).toBe('foreign-lock');
+      expect(envelopeHeaderProblem(header({ version: 1, lock: 'a lock' }))).toBe('foreign-lock');
+    });
+
+    it('names nothing for a header this build reads, a damaged one, or no envelope', async () => {
+      const { credentials } = await createCredentialsV2('Passw0rd!', 1000);
+
+      expect(envelopeHeaderProblem(header({ version: 1, lock: credentials }))).toBeNull();
+      expect(envelopeHeaderProblem(header({ version: 1, lock: null }))).toBeNull();
+      expect(envelopeHeaderProblem(header({ version: 'one', lock: null }))).toBeNull();
+      expect(envelopeHeaderProblem(fileOf('not json'))).toBeNull();
+      expect(envelopeHeaderProblem(fileOf(JSON.stringify({ format: 'other', version: 9 })))).toBeNull();
+    });
+
+    it('tells whether a file shows no lock in plain text', async () => {
+      const { credentials, key } = await createCredentialsV2('Passw0rd!', 1000);
+      const legacy = await encrypt(encode(PLAIN).buffer as ArrayBuffer, key);
+
+      expect(showsNoLock(legacy)).toBe(true);
+      expect(showsNoLock(await sealEnvelope(encode(PLAIN), key, null))).toBe(true);
+      expect(showsNoLock(await sealDamagedCopy(legacy, key))).toBe(true);
+      expect(showsNoLock(await sealEnvelope(encode(PLAIN), key, credentials))).toBe(false);
+      expect(showsNoLock(header({ version: 1 }))).toBe(false);
+      expect(showsNoLock(fileOf(JSON.stringify({ format: 'other', lock: null })))).toBe(false);
     });
   });
 });

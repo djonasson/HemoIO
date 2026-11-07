@@ -11,7 +11,7 @@ import {
 } from './folderCopy';
 import { sealEnvelope } from './folderEnvelope';
 import { FOLDER_LOCK_FORMAT } from './folderLockFile';
-import { FOLDER_SYNC_FILE_VERSION as SYNC_FILE_VERSION } from './folderSync';
+import { folderCopyId, FOLDER_SYNC_FILE_VERSION as SYNC_FILE_VERSION } from './folderSync';
 
 async function newKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
@@ -197,6 +197,23 @@ describe('readFolderCopy', () => {
   });
 });
 
+describe('readFolderCopy, envelope headers it must not write over', () => {
+  async function withHeader(header: { version: unknown; lock: unknown }): Promise<ArrayBuffer> {
+    const key = await newKey();
+    const bytes = await sealEnvelope(new TextEncoder().encode(JSON.stringify(copy())), key, null);
+    const file = JSON.parse(new TextDecoder().decode(bytes));
+    return new TextEncoder().encode(JSON.stringify({ ...file, ...header })).buffer as ArrayBuffer;
+  }
+
+  it.each([
+    ['a newer envelope', { version: 2, lock: null }, 'newer-version'],
+    ['a newer envelope with a lock this build does not know', { version: 2, lock: { version: 3 } }, 'newer-version'],
+    ['an envelope with a lock this build does not know', { version: 1, lock: { version: 3 } }, 'another-setup'],
+  ] as const)('reports %s as such', async (_label, header, reason) => {
+    expect(await readFolderCopy(await withHeader(header), await newKey())).toEqual({ status: 'unreadable', reason });
+  });
+});
+
 describe('readFolderCopy, earlier formats', () => {
   it('writes the format of the current backup schema, whose records it holds', () => {
     expect(SYNC_FILE_VERSION).toBe(BACKUP_SCHEMA_VERSION);
@@ -222,12 +239,13 @@ describe('readFolderCopy, earlier formats', () => {
 });
 
 describe('assessFolderCopy', () => {
-  function source(bytes: ArrayBuffer | null | Error): FolderCopySource {
+  function source(bytes: ArrayBuffer | null | Error, previous?: ArrayBuffer | null): FolderCopySource {
     return {
       loadCurrent: vi.fn(async () => {
         if (bytes instanceof Error) throw bytes;
         return bytes;
       }),
+      ...(previous !== undefined && { loadPrevious: vi.fn(async () => previous) }),
     };
   }
 
@@ -293,10 +311,69 @@ describe('assessFolderCopy', () => {
     expect(assessment).toEqual({ kind: 'sync' });
   });
 
-  it('reports a copy it cannot open', async () => {
-    const assessment = await assessFolderCopy(source(await sealed(copy(), await newKey())), await newKey());
+  it('reports a copy it cannot open, with the file it found and whether it may be replaced', async () => {
+    const bytes = await sealed(copy(), await newKey());
 
-    expect(assessment).toEqual({ kind: 'unreadable', reason: 'cannot-decrypt' });
+    const assessment = await assessFolderCopy(source(bytes), await newKey());
+
+    expect(assessment).toEqual({
+      kind: 'unreadable',
+      reason: 'cannot-decrypt',
+      fileId: await folderCopyId(bytes, null),
+      replaceable: true,
+    });
+  });
+
+  it("reports another setup's copy as one that may not be replaced", async () => {
+    const other = await createCredentialsV2('Other-Passw0rd!', 1000);
+    const body = { version: SYNC_FILE_VERSION, exportedAt: EXPORTED_AT, revision: 'rev-1', data: STORED };
+    const bytes = await sealEnvelope(new TextEncoder().encode(JSON.stringify(body)), other.key, other.credentials);
+
+    expect(await assessFolderCopy(source(bytes), await newKey())).toMatchObject({
+      kind: 'unreadable',
+      reason: 'another-setup',
+      replaceable: false,
+    });
+  });
+
+  it('offers the previous copy when the latest cannot be read, naming the damaged file', async () => {
+    const key = await newKey();
+    const damaged = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer as ArrayBuffer;
+    const previous = await sealEnvelope(
+      new TextEncoder().encode(JSON.stringify({ ...(copy() as object), revision: 'r6' })),
+      key,
+      null
+    );
+
+    const assessment = await assessFolderCopy(source(damaged, previous), key);
+
+    expect(assessment).toMatchObject({
+      kind: 'offer',
+      revision: 'r6',
+      damagedCurrent: { reason: 'not-a-copy', fileId: await folderCopyId(damaged, null), replaceable: true },
+    });
+  });
+
+  it('reports the damaged file when the previous copy cannot be read or holds nothing', async () => {
+    const key = await newKey();
+    const damaged = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer as ArrayBuffer;
+    const empty = await sealed(copy({ ...STORED, labResults: [], testValues: [], userNotes: [] }), key);
+
+    expect(await assessFolderCopy(source(damaged, null), key)).toMatchObject({ kind: 'unreadable' });
+    expect(await assessFolderCopy(source(damaged, await sealed(copy(), await newKey())), key)).toMatchObject({
+      kind: 'unreadable',
+    });
+    expect(await assessFolderCopy(source(damaged, empty), key)).toMatchObject({ kind: 'unreadable' });
+  });
+
+  it("never offers the previous copy past another setup's or a newer HemoIO's latest copy", async () => {
+    const key = await newKey();
+    const newer = await sealed(copy(STORED, SYNC_FILE_VERSION + 1), key);
+
+    expect(await assessFolderCopy(source(newer, await sealed(copy(), key)), key)).toMatchObject({
+      kind: 'unreadable',
+      reason: 'newer-version',
+    });
   });
 
   it('reports a copy that cannot be read from the folder, without logging why', async () => {
@@ -304,7 +381,7 @@ describe('assessFolderCopy', () => {
 
     const assessment = await assessFolderCopy(source(new Error('disk on fire: /home/someone/Health')), await newKey());
 
-    expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed' });
+    expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed', fileId: null, replaceable: false });
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });

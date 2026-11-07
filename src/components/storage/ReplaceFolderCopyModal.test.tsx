@@ -6,8 +6,8 @@ import { ReplaceFolderCopyModal } from './ReplaceFolderCopyModal';
 
 function renderModal({
   warnOtherSetup = false,
-  onReplace = vi.fn(async () => {}),
-}: { warnOtherSetup?: boolean; onReplace?: () => Promise<void> } = {}) {
+  onReplace = vi.fn(async (): Promise<unknown> => 'replaced'),
+}: { warnOtherSetup?: boolean; onReplace?: () => Promise<unknown> } = {}) {
   const onClose = vi.fn();
   render(
     <MantineProvider env="test">
@@ -23,7 +23,7 @@ describe('ReplaceFolderCopyModal', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Replace the folder copy?' });
     expect(dialog).toHaveTextContent("From now on HemoIO saves this computer's data to your folder");
-    expect(dialog).toHaveTextContent("kept as a dated backup first, in the folder's hemoio-backups folder");
+    expect(dialog).toHaveTextContent("kept as a dated backup first, in its hemoio-backups folder");
     expect(dialog).toHaveTextContent('HemoIO keeps the 10 newest backups');
     expect(dialog).not.toHaveTextContent('another password');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus());
@@ -33,7 +33,7 @@ describe('ReplaceFolderCopyModal', () => {
     renderModal({ warnOtherSetup: true });
 
     expect(screen.getByRole('dialog')).toHaveTextContent(
-      "If the copy was made with another password or by someone else's HemoIO setup, their data will no longer sync from this folder."
+      "If the copy was made with another password or by someone else's HemoIO setup, it will no longer sync from this folder. It is kept in hemoio-backups as it was, and can still be restored there with that password."
     );
   });
 
@@ -82,5 +82,31 @@ describe('ReplaceFolderCopyModal', () => {
 
     finish();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('starts afresh when reopened after a failed replace, keyed per opening as its host does', async () => {
+    const onReplace = vi.fn(async (): Promise<unknown> => {
+      throw new Error('Disk full');
+    });
+    const ui = (opened: boolean, opening: number) => (
+      <MantineProvider env="test">
+        <ReplaceFolderCopyModal
+          key={opening}
+          opened={opened}
+          warnOtherSetup={false}
+          onReplace={onReplace}
+          onClose={vi.fn()}
+        />
+      </MantineProvider>
+    );
+    const { rerender } = render(ui(true, 1));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+    await screen.findByRole('alert');
+
+    // Closed from outside (the issue went), then opened again
+    rerender(ui(false, 1));
+    rerender(ui(true, 2));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 });

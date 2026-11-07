@@ -27,14 +27,14 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
     message:
       'The copy in your folder cannot be read: it was saved by a different HemoIO setup, ' +
       'or it is damaged. HemoIO left it as it is. ' +
-      "To keep syncing, choose another folder, or replace the folder copy with this computer's data.",
+      "To keep syncing, choose another folder, or replace the folder copy with this computer's data " +
+      '(also in Settings > Data).',
   },
   'another-setup': {
     title: SKIPPED,
     message:
       "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. " +
-      'Choose a different folder in Settings > Data, or use Start over in Settings > Security ' +
-      'to set up from that copy.',
+      'Choose another folder, or use Start over in Settings > Security to set up from that copy.',
   },
   newer: {
     title: SKIPPED,
@@ -47,7 +47,8 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
     message:
       'The copy in your folder was saved before tests were identified by LOINC, ' +
       'so it cannot be restored, and HemoIO left it as it is. ' +
-      "To keep syncing, choose another folder, or replace the folder copy with this computer's data.",
+      "To keep syncing, choose another folder, or replace the folder copy with this computer's data " +
+      '(also in Settings > Data).',
   },
   'set-aside': {
     title: SKIPPED,
@@ -86,8 +87,11 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions?: Fol
     actionsRef.current = actions;
   }, [actions]);
 
+  // Each notice shown gets a body of its own: nothing it showed carries over to the next
+  const shownRef = useRef(0);
   useEffect(() => {
     if (!issue) return;
+    shownRef.current += 1;
 
     const { title, message } = NOTICES[issue];
     const available = actionsRef.current ? folderSyncIssueActions(issue) : null;
@@ -97,6 +101,7 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions?: Fol
       title,
       message: offered
         ? createElement(FolderSyncNoticeBody, {
+            key: `${issue}-${shownRef.current}`,
             message,
             actions: available,
             onChooseFolder: () => actionsRef.current?.chooseFolder() ?? Promise.resolve(false),

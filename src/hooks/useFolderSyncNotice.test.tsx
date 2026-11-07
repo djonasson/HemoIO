@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import type { ReactNode } from 'react';
 import { notifications } from '@mantine/notifications';
 import { FOLDER_SYNC_NOTICE_ID, useFolderSyncNotice, type FolderSyncNoticeActions } from './useFolderSyncNotice';
+import type { ReactElement, ReactNode } from 'react';
 import type { FolderSyncIssue } from './useFilesystemSync';
 
 vi.mock('@mantine/notifications', () => ({
@@ -42,6 +42,8 @@ describe('useFolderSyncNotice', () => {
     expect(notice.message).toMatch(/cannot be read/);
     expect(notice.message).toMatch(/saved by a different HemoIO setup, or it is damaged/);
     expect(notice.message).toMatch(/choose another folder, or replace the folder copy with this computer's data/);
+    // Where to find it once the notice is dismissed
+    expect(notice.message).toMatch(/\(also in Settings > Data\)/);
   });
 
   it('the another-setup message points to Start over', () => {
@@ -50,7 +52,7 @@ describe('useFolderSyncNotice', () => {
     const notice = vi.mocked(notifications.show).mock.calls[0][0];
     expect(notice.title).toBe('Folder sync skipped');
     expect(notice.message).toBe(
-      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. Choose a different folder in Settings > Data, or use Start over in Settings > Security to set up from that copy."
+      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. Choose another folder, or use Start over in Settings > Security to set up from that copy."
     );
     expect(notice.autoClose).toBe(false);
   });
@@ -166,6 +168,20 @@ describe('useFolderSyncNotice', () => {
       expect(first.chooseFolder).not.toHaveBeenCalled();
       // Not shown again for new callbacks
       expect(notifications.show).toHaveBeenCalledTimes(1);
+    });
+
+    it('gives every notice shown a body of its own, so nothing carries over', () => {
+      const given = actions();
+      const { rerender } = renderHook(
+        ({ issue }: { issue: FolderSyncIssue | null }) => useFolderSyncNotice(issue, given),
+        { initialProps: { issue: 'unreadable' as FolderSyncIssue | null } }
+      );
+      rerender({ issue: null });
+      rerender({ issue: 'unreadable' });
+
+      const [first, second] = vi.mocked(notifications.show).mock.calls.map(([n]) => (n.message as ReactElement).key);
+      expect(first).not.toBeNull();
+      expect(second).not.toBe(first);
     });
 
     it('says, without the reason, when the folder could not be chosen', async () => {

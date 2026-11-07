@@ -22,13 +22,24 @@ export {
   type FolderConflict,
   type FolderConflictChoice,
   type FolderSyncIssue,
+  type FolderReplaceChoice,
+  type FolderReplaceResult,
+  type UnreadableCopyTarget,
 } from './useFilesystemSync';
+export { useFolderSyncIssue, FolderSyncIssueContext, type FolderSyncIssueState } from './useFolderSyncIssue';
 export { useFolderSyncNotice, type FolderSyncNoticeActions } from './useFolderSyncNotice';
+export { useFolderSyncReplace, type UseFolderSyncReplaceResult } from './useFolderSyncReplace';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';
 export { useSaveImport } from './useSaveImport';
-export { useFolderRestore, type UseFolderRestoreResult, type FolderRestorePrompt, type FolderRestoreDecision } from './useFolderRestore';
+export {
+  useFolderRestore,
+  type UseFolderRestoreResult,
+  type FolderRestorePrompt,
+  type FolderRestoreDecision,
+  type UnreadableCopyPrompt,
+} from './useFolderRestore';
 export { useSetAsideRecords, type UseSetAsideRecordsResult, type SealedDownload } from './useSetAsideRecords';
 export { useExistingBrowserData, type UseExistingBrowserDataResult } from './useExistingBrowserData';
 export { useNavigation, type UseNavigationResult, type AppView, type ViewFocus, type Destination } from './useNavigation';

@@ -17,6 +17,9 @@ import { SetupWizard } from '@components/setup';
 import { LoginScreen } from '@components/auth';
 import { AppShell, HEADER_HEIGHT } from '@components/layout';
 import { PWAUpdatePrompt, PWAInstallPrompt } from '@components/common';
+
+/** Taller than any notice: the height only bounds the closing animation */
+const NOTIFICATION_MAX_HEIGHT = 2000;
 import { cssVariablesResolver, theme } from './theme/theme';
 
 function AppContent(): React.ReactNode {
@@ -68,7 +71,15 @@ function App(): React.ReactNode {
       {/* Below the header: a notice that stays until closed must never cover its buttons.
           A margin, not top: Mantine renders a container for each position, and the
           margin moves only those placed from the top. */}
-      <Notifications position="top-right" styles={{ root: { marginTop: HEADER_HEIGHT } }} />
+      {/*
+        No cut-off height (Mantine's 200px default): a notice with buttons, a
+        large font or a narrow screen must still show every one of them
+      */}
+      <Notifications
+        position="top-right"
+        notificationMaxHeight={NOTIFICATION_MAX_HEIGHT}
+        styles={{ root: { marginTop: HEADER_HEIGHT } }}
+      />
       <AuthProvider>
         <EncryptedApiKeyProvider>
           <AISettingsProvider>

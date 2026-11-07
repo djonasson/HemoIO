@@ -15,6 +15,16 @@ export interface PersistentNotice {
   color?: string;
 }
 
+/** The close button's name, which screen readers announce and which has none otherwise */
+export const DISMISS_NOTICE_LABEL = 'Dismiss notice';
+
 export function showPersistentNotice({ id, title, message, color }: PersistentNotice): void {
-  notifications.show({ id, title, message, ...(color !== undefined && { color }), autoClose: false });
+  notifications.show({
+    id,
+    title,
+    message,
+    ...(color !== undefined && { color }),
+    autoClose: false,
+    closeButtonProps: { 'aria-label': DISMISS_NOTICE_LABEL },
+  });
 }

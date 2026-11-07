@@ -34,8 +34,10 @@ import {
   FileSystemStorageProvider,
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
+import { chooseFolder, pickFolder } from '@data/storage/chooseFolder';
 import { notifyFolderAccessChanged, onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
+import { useFolderSyncIssue } from '@hooks/useFolderSyncIssue';
 import type { ParsedBackupData } from '@services/import';
 import { FolderBackups } from './FolderBackups';
 import type { RestoreOptions } from './BackupRestore';
@@ -68,16 +70,22 @@ export function StorageSettings({
   const [folderGeneration, setFolderGeneration] = useState(0);
 
   const fileSystemSupported = isFileSystemAccessSupported();
+  const folderSyncIssue = useFolderSyncIssue();
 
-  // Load storage provider from localStorage
+  // The storage choice and the folder, as stored: read at first, and again
+  // whenever they change (here, from the restore question or a sync notice,
+  // or in another tab; switching storage tells the same)
   useEffect(() => {
-    const savedProvider = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
-    if (savedProvider) {
-      setStorageProvider(savedProvider);
-    }
+    const readStorageChoice = (): void => {
+      const savedProvider = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
+      if (savedProvider) setStorageProvider(savedProvider);
+    };
+    readStorageChoice();
+    return onFolderAccessChanged(() => {
+      readStorageChoice();
+      setFolderGeneration((g) => g + 1);
+    });
   }, []);
-
-  useEffect(() => onFolderAccessChanged(() => setFolderGeneration((g) => g + 1)), []);
 
   // Load filesystem status when provider is filesystem
   useEffect(() => {
@@ -126,20 +134,18 @@ export function StorageSettings({
     }
   }, []);
 
+  /** Pick a folder, telling no one: switching storage on tells sync itself */
   const handleSelectDirectory = useCallback(async () => {
     setIsSelectingDirectory(true);
     setError(null);
 
     try {
-      const provider = new FileSystemStorageProvider();
-      const handle = await provider.selectDirectory();
-
-      if (handle) {
-        setDirectoryName(handle.name);
+      const name = await pickFolder();
+      if (name) {
+        setDirectoryName(name);
         setPermissionState('granted');
-        return handle.name;
       }
-      return null;
+      return name;
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -152,12 +158,18 @@ export function StorageSettings({
     }
   }, []);
 
-  /** A folder chosen while folder storage is on: sync looks at the new folder */
+  /** A folder chosen while folder storage is on: sync looks at the new folder, and so does this card */
   const handleChangeDirectory = useCallback(async () => {
-    if (await handleSelectDirectory()) {
-      notifyFolderAccessChanged();
+    setIsSelectingDirectory(true);
+    setError(null);
+    try {
+      await chooseFolder();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to select directory');
+    } finally {
+      setIsSelectingDirectory(false);
     }
-  }, [handleSelectDirectory]);
+  }, []);
 
   const handleProviderChange = useCallback((newProvider: StorageProviderType) => {
     if (newProvider === storageProvider) return;
@@ -350,6 +362,25 @@ export function StorageSettings({
           <Text size="xs" c="dimmed">
             Browsers show only the folder&apos;s name, not where it is.
           </Text>
+        )}
+
+        {/* Still there once the sync notice is dismissed */}
+        {folderSyncIssue?.replaceable && (
+          <Group gap="xs">
+            <ThemeIcon size="sm" variant="light" color="yellow">
+              <IconAlertTriangle size={14} />
+            </ThemeIcon>
+            <Text size="sm">The folder copy can&apos;t be read.</Text>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              onClick={folderSyncIssue.askReplace}
+              disabled={isSaving}
+            >
+              Replace folder copy…
+            </Button>
+          </Group>
         )}
 
         {!directoryName && (

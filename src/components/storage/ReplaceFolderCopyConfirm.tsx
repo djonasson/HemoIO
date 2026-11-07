@@ -42,13 +42,14 @@ export function ReplaceFolderCopyConfirm({
     <>
       <Text size="sm">
         From now on HemoIO saves this computer&apos;s data to {folder}, and the copy there will be
-        replaced. The old file is kept as a dated backup first, in the folder&apos;s hemoio-backups
+        replaced. What the folder holds now is kept as a dated backup first, in its hemoio-backups
         folder; HemoIO keeps the {MAX_FOLDER_BACKUPS} newest backups.
       </Text>
       {warnOtherSetup && (
         <Text size="sm" fw={500}>
-          If the copy was made with another password or by someone else&apos;s HemoIO setup, their
-          data will no longer sync from this folder.
+          If the copy was made with another password or by someone else&apos;s HemoIO setup, it will
+          no longer sync from this folder. It is kept in hemoio-backups as it was, and can still be
+          restored there with that password.
         </Text>
       )}
       {failed && (
