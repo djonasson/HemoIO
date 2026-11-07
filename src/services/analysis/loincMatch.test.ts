@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
-import { learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix } from './loincMatch';
+import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix } from './loincMatch';
 import type { LocalMatch } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 
@@ -1112,10 +1112,95 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
   });
 
-  it('asks whether a hematocrit said to be calculated is the calculated test, never taking the counted one', () => {
+  it('takes a hematocrit said to be calculated as the calculated test, never the counted one HemoIO names', () => {
     const result = matchLocally(generated, { name: 'Ematocrito (calcolato)', unit: '%' });
+    expect(result).toMatchObject({ status: 'match', code: '20570-8' });
+    expect(result.candidates[0].code).toBe('20570-8');
+    expect(codesOf(result)).not.toContain('4544-3');
+  });
+
+  it.each(['Fibrinogeno (derivato)', 'Fibrinogeno (derivata)', 'Fibrinogeno (derived)', 'Fibrinogeno (PT-derivato)', 'Fibrinogeno PT-derivato'])(
+    'never takes %s as the Clauss fibrinogen',
+    (name) => {
+      const result = matchLocally(generated, { name, unit: 'mg/dL' });
+      expect(result.status === 'match' ? result.code : '48664-7').toBe('48664-7');
+    }
+  );
+
+  it('lists the derived fibrinogen first for a fibrinogen said to be derived', () => {
+    expect(matchLocally(generated, { name: 'Fibrinogeno (derivato)', unit: 'mg/dL' }).candidates[0].code).toBe('48664-7');
+  });
+
+  it.each([
+    // A sample the catalog cannot read
+    ['Glucosio - liquido cefalorachidiano', 'mg/dL', '2345-7'],
+    ['Glucosio - LCR', 'mg/dL', '2345-7'],
+    ['Proteine - liquor', 'mg/dL', '2885-2'],
+    ['Proteine totali - liquido pleurico', 'g/dL', '2885-2'],
+    ['Trigliceridi - liquido pleurico', 'mg/dL', '2571-8'],
+    ['Amilasi - liquido drenaggio', 'U/L', '1798-8'],
+    ['Potassio - sudore', 'mmol/L', '2823-3'],
+    // A time or a curve
+    ['Glucosio - 2 ore', 'mg/dL', '2345-7'],
+    ['Glucosio - curva', 'mg/dL', '2345-7'],
+    ['Glucosio - tempo 60', 'mg/dL', '2345-7'],
+    ['Cortisolo - ore 8', 'ug/dL', '2143-6'],
+    ['Cortisolo - ore 24', 'ug/dL', '2143-6'],
+  ])('leaves %s in %s to the AI or the user: its dashed part names what no test %s fits says', (name, unit, code) => {
+    const result = matchLocally(generated, { name, unit });
     expect(result.status).toBe('ambiguous');
-    expect(codesOf(result)).toContain('20570-8');
+    expect(codesOf(result)).toContain(code);
+  });
+
+  it.each([
+    // Another name of the test the rest names
+    ['Creatina chinasi - CK', 'U/L', '2157-6'],
+    ['Tireotropina - TSH', 'mUI/L', '3016-3'],
+    // A word saying only how the test is used
+    ['Colesterolo - controllo', 'mg/dL', '2093-3'],
+  ])('takes %s in %s as %s: its dashed part names the test, or only its use', (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
+    ['aPTT', 'ratio', undefined],
+    ['aPTT', 'ratio', 'plasma'],
+    ['aPTT ratio', 'ratio', undefined],
+    ['Rapporto aPTT', 'ratio', undefined],
+    ['aPTT', '{ratio}', undefined],
+    ['aPTT ratio', '', undefined],
+    ['Rapporto aPTT', '', undefined],
+  ])('reads %s in "%s" (sample %s) as the aPTT over a normal one, never the lupus ratio', (name, unit, specimenHint) => {
+    const result = matchLocally(generated, { name, unit, ...(specimenHint && { specimenHint }) });
+    expect(result.status === 'match' ? result.code : undefined).not.toBe('75884-7');
+    expect(codesOf(result).slice(0, 2)).toContain('63561-5');
+    expect(result.candidates[0].code).not.toBe('75884-7');
+  });
+
+  it.each([
+    ['aPTT LA', 'ratio'],
+    ['aPTT LA screening', 'ratio'],
+  ])('offers the lupus ratio for %s in %s, which says it is a lupus anticoagulant test', (name, unit) => {
+    expect(matchLocally(generated, { name, unit }).candidates[0].code).toBe('75884-7');
+  });
+
+  it('keeps the INR as it was for a value in "ratio": a choice between blood and plasma', () => {
+    const result = matchLocally(generated, { name: 'INR', unit: 'ratio' });
+    expect(result.status).toBe('ambiguous');
+    expect(codesOf(result).slice(0, 2).sort()).toEqual(['34714-6', '6301-6']);
+  });
+
+  it.each([
+    ['2345-7', true],
+    ['63561-5', false],
+  ])('counts %s as common: %s', (code, common) => {
+    expect(isCommon(generated, code)).toBe(common);
+  });
+
+  it('offers the prothrombin time over a normal one for "PT ratio" in ratio, never platinum', () => {
+    const result = matchLocally(generated, { name: 'PT ratio', unit: 'ratio' });
+    expect(result.status).toBe('ambiguous');
+    expect(codesOf(result).slice(0, 2)).toContain('5894-1');
   });
 
   it.each([

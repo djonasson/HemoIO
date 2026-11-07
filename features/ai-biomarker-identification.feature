@@ -13,8 +13,12 @@ Feature: Identifying the test of each value
   methods that give the same numbers, the one naming no method (else the
   most common) is taken without asking; tests whose methods give different
   numbers (clotting times, enzyme activities) are asked about. A method
-  named in brackets ("HPLC", "MDRD") picks the tests of that method, while
-  a brand or a standard LOINC does not name says nothing. A value printed
+  named in brackets ("HPLC", "MDRD", "calcolato") picks the tests of that
+  method, while a brand or a standard LOINC does not name says nothing. A
+  part set off by a dash that says only how the test is used ("screening")
+  says nothing either; one naming a sample, a time or anything else the
+  catalog cannot read ("liquor", "ore 8") leaves the value to be asked. A
+  value printed
   with no unit is matched only when its sample is named and only a test
   with no unit fits its name.
 
@@ -138,12 +142,53 @@ Feature: Identifying the test of each value
     And the albumin should be saved as "Albumin [Mass/volume] in Serum or Plasma by Bromocresol green (BCG) dye binding method"
     And the AI should not be asked which test they are
 
-  Scenario: A value said to be calculated is never filed under a measured test
+  Scenario: A value said to be calculated is filed under the calculated test, never a measured one
     Given a report prints "Ematocrito (calcolato)" in %
     And HemoIO's name "Ematocrito" is of the hematocrit counted by machine
     When the report is analyzed
+    Then the value should be saved as "Hematocrit [Volume Fraction] of Blood by calculation"
+    And the AI should not be asked which test it is
+
+  Scenario: A fibrinogen said to be derived is never filed under the Clauss fibrinogen
+    Given a report prints "Fibrinogeno (derivato)" in mg/dL
+    When the report is analyzed
     Then the AI should be asked which test it is
-    And the tests to choose from should include "Hematocrit [Volume Fraction] of Blood by calculation"
+    And the first test to choose from should be "Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation.derived"
+    And never "Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation assay"
+
+  Scenario Outline: A part after a dash naming what the catalog cannot read is asked about
+    Given a report prints "<name>" in <unit>
+    And no test the rest of the name fits names "<part>"
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include "<test>"
+
+    Examples:
+      | name                                | unit   | part                       | test                                        |
+      | Glucosio - liquido cefalorachidiano | mg/dL  | liquido cefalorachidiano   | Glucose [Mass/volume] in Serum or Plasma    |
+      | Proteine - liquor                   | mg/dL  | liquor                     | Protein [Mass/volume] in Serum or Plasma    |
+      | Potassio - sudore                   | mmol/L | sudore                     | Potassium [Moles/volume] in Serum or Plasma |
+      | Glucosio - 2 ore                    | mg/dL  | 2 ore                      | Glucose [Mass/volume] in Serum or Plasma    |
+      | Cortisolo - ore 8                   | ug/dL  | ore 8                      | Cortisol [Mass/volume] in Serum or Plasma   |
+
+  Scenario: A part after a dash saying only how the test is used says nothing of which test it is
+    Given a report prints "Rapporto albumina/creatinina - screening" in mg/g under a urine heading
+    When the report is analyzed
+    Then the value should be saved as "Albumin/Creatinine [Mass Ratio] in Urine"
+    And the AI should not be asked which test it is
+
+  Scenario Outline: An aPTT printed as a ratio is the aPTT over a normal one, never the lupus ratio
+    Given a report prints "<name>" in ratio
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include "aPTT actual/normal in Platelet poor plasma by Coagulation assay"
+    And the lupus anticoagulant screen-to-confirm ratio should not be the first of them
+
+    Examples:
+      | name          |
+      | aPTT          |
+      | aPTT ratio    |
+      | Rapporto aPTT |
 
   Scenario: A count per microscope field is filed under a test counted per field
     Given a report prints "Batteri" in "per campo" under a urine heading
