@@ -16,9 +16,15 @@ Feature: Identifying the test of each value
   named in brackets ("HPLC", "MDRD", "calcolato") picks the tests of that
   method, while a brand or a standard LOINC does not name says nothing. A
   part set off by a dash that says only how the test is used ("screening")
-  says nothing either; one naming a sample, a time or anything else the
-  catalog cannot read ("liquor", "ore 8") leaves the value to be asked. A
-  value printed
+  says nothing either, nor does one that is another name of the same test
+  ("ALT - GPT"); one naming a sample, a time or anything else the catalog
+  cannot read ("liquor", "ore 8") leaves the value to be asked. A value of
+  the blood count ("Emocromo - ...") is one of blood. A ratio is read as a
+  clotting time over a normal one only when the name names a clotting time
+  ("aPTT", "PT", "Protrombina"); a clotting factor's or protein's activity
+  over a normal one is never taken without asking. When no test of the
+  unit's kind fits well, tests of another kind whose name the printed one
+  is are offered first, as the unit may be misprinted. A value printed
   with no unit is matched only when its sample is named and only a test
   with no unit fits its name.
 
@@ -78,6 +84,8 @@ Feature: Identifying the test of each value
       | Eritroblasti          | %        | Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count |
       | Er-EMOGLOBINA GLICATA | mmol/mol | Hemoglobin A1c/Hemoglobin.total in Blood                              |
       | CREATINCHINASI - CK   | U/L      | Creatine kinase [Enzymatic activity/volume] in Serum or Plasma        |
+      | GLICEMIA              | mg/dL    | Glucose [Mass/volume] in Serum or Plasma                              |
+      | SIDEREMIA             | ug/dL    | Iron [Mass/volume] in Serum or Plasma                                 |
 
   Scenario: One measurement made by several methods is filed under the general test without asking
     Given a report prints "Eritrociti" in /µL under a urine heading
@@ -190,6 +198,62 @@ Feature: Identifying the test of each value
       | aPTT          |
       | aPTT ratio    |
       | Rapporto aPTT |
+
+  Scenario Outline: A part after a dash that is another name of the same test says nothing of which test it is
+    Given a report prints "<name>" in <unit>
+    When the report is analyzed
+    Then the value should be saved as "<test>"
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                | unit  | test                                                                      |
+      | ALT - GPT           | U/L   | Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma   |
+      | AST - GOT           | U/L   | Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma |
+      | Ferro - sideremia   | ug/dL | Iron [Mass/volume] in Serum or Plasma                                     |
+      | Glucosio - glicemia | mg/dL | Glucose [Mass/volume] in Serum or Plasma                                  |
+
+  Scenario: A value of the blood count is one of blood
+    Given a report prints "Emocromo - Emoglobina" in g/dL
+    When the report is analyzed
+    Then the value should be saved as "Hemoglobin [Mass/volume] in Blood"
+    And the AI should not be asked which test it is
+
+  Scenario Outline: "Protrombina" printed as a ratio is the prothrombin time over a normal one, never filed as prothrombin activity
+    Given a report prints "<name>" in ratio
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the first test to choose from should be "Prothrombin time (PT) actual/Normal"
+
+    Examples:
+      | name                   |
+      | Protrombina            |
+      | Protrombina ratio      |
+      | Ratio protrombina      |
+      | Protrombina - rapporto |
+
+  Scenario Outline: A clotting factor or protein printed as a ratio is asked about
+    Given a report prints "<name>" in ratio
+    And the name names no clotting time
+    When the report is analyzed
+    Then the AI should be asked which test it is
+
+    Examples:
+      | name         |
+      | Fattore VIII |
+      | Proteina S   |
+
+  Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+    Given a report prints "Proteina C attivata resistenza" in ratio
+    And LOINC gives the activated protein C resistance as a time ratio
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the first test to choose from should be "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
+
+  Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+    Given a report prints "Rapporto colesterolo/HDL" with no unit
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the first test to choose from should not be "Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma"
 
   Scenario: A count per microscope field is filed under a test counted per field
     Given a report prints "Batteri" in "per campo" under a urine heading

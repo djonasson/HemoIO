@@ -136,8 +136,8 @@ describe('matchLocally', () => {
   });
 
   it('is none when no test fits, offering the most common tests of the sample and unit', () => {
-    // The AI or the user may know a wording LOINC does not, as "Glicemia" for glucose
-    const result = matchLocally(catalog, { name: 'Glicemia', unit: 'mg/dL' });
+    // The AI or the user may know a wording neither LOINC nor HemoIO does, as "Glycemia" for glucose
+    const result = matchLocally(catalog, { name: 'Glycemia', unit: 'mg/dL' });
     expect(result.status).toBe('none');
     expect(codesOf(result)).toEqual(['2345-7', '718-7', '2885-2', '2339-0']);
     expect(result.candidates[0].score).toBe(0);
@@ -1202,6 +1202,74 @@ describe('matchLocally on names of real Italian reports', () => {
     const result = matchLocally(generated, { name: 'PT ratio', unit: 'ratio' });
     expect(result.status).toBe('ambiguous');
     expect(codesOf(result).slice(0, 2)).toContain('5894-1');
+  });
+
+  it.each(['PT ratio', 'PT', 'Rapporto PT', 'PT (ratio)'])(
+    'lists the patient over the normal prothrombin time before the same turned around for %s in ratio',
+    (name) => {
+      expect(codesOf(matchLocally(generated, { name, unit: 'ratio' })).slice(0, 2)).toEqual(['5894-1', '6302-4']);
+    }
+  );
+
+  it.each([
+    ['Protrombina', 'ratio'],
+    ['Protrombina ratio', 'ratio'],
+    ['Protrombina (ratio)', 'ratio'],
+    ['Ratio protrombina', 'ratio'],
+    ['PROTROMBINA - ratio', 'ratio'],
+    ['Protrombina - rapporto', 'ratio'],
+    ['Protrombina ratio', ''],
+  ])('asks about %s in "%s" with the PT over a normal one first, never taking prothrombin activity', (name, unit) => {
+    const result = matchLocally(generated, { name, unit });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates[0].code).toBe('5894-1');
+  });
+
+  it.each([
+    ['Fattore VIII', 'ratio', '3209-4'],
+    ['Fattore V', 'ratio', '3193-0'],
+    ['Proteina S', 'ratio', '27822-6'],
+    ['Attività protrombinica', 'ratio', '3289-6'],
+  ])('asks about %s in %s: %s, an activity over a normal one, is no clotting time to take unasked', (name, unit) => {
+    expect(matchLocally(generated, { name, unit }).status).toBe('ambiguous');
+  });
+
+  it.each([
+    ['Proteina C attivata resistenza', 1],
+    ['Proteina C attivata (APC) resistenza', 1],
+    ['Resistenza alla proteina C attivata', undefined],
+  ])('offers APC resistance, a time ratio, first for %s in ratio', (name, score) => {
+    const [first] = matchLocally(generated, { name, unit: 'ratio' }).candidates;
+    expect(first.code).toBe('13590-5');
+    if (score) expect(first.score).toBe(score);
+  });
+
+  it('lists a ratio "Rapporto colesterolo/HDL" with no unit barely fits after the tests it fits better', () => {
+    const { candidates } = matchLocally(generated, { name: 'Rapporto colesterolo/HDL', unit: '' });
+    const ratio = candidates.findIndex(({ code }) => code === '34695-7');
+    expect(candidates[0].score).toBe(1);
+    if (ratio !== -1) expect(candidates.slice(ratio).every(({ score }) => score <= candidates[ratio].score)).toBe(true);
+  });
+
+  it('never offers the factor VIII activity over a normal one first for "Rapporto A/G", which names no clotting time', () => {
+    expect(codesOf(matchLocally(generated, { name: 'Rapporto A/G', unit: '' }))).not.toContain('3209-4');
+  });
+
+  it.each([
+    ['ALT - GPT', 'U/L', '1742-6'],
+    ['AST - GOT', 'U/L', '1920-8'],
+    ['Ferro - sideremia', 'ug/dL', '2498-4'],
+    ['Glucosio - glicemia', 'mg/dL', '2345-7'],
+    ['Glicemia', 'mg/dL', '2345-7'],
+    ['Sideremia', 'ug/dL', '2498-4'],
+  ])('takes %s in %s as %s: each part is a name of that test', (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
+  });
+
+  it('reads a value of the blood count as one of blood: "Emocromo - Emoglobina" is hemoglobin in blood', () => {
+    const result = matchLocally(generated, { name: 'Emocromo - Emoglobina', unit: 'g/dL' });
+    expect(result.candidates[0].code).toBe('718-7');
+    expect(result.status === 'match' ? result.code : '718-7').toBe('718-7');
   });
 
   it.each([

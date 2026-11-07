@@ -125,6 +125,8 @@ test.describe('Identifying the test of each value', () => {
         { name: 'CREATINCHINASI - CK', value: 143, unit: 'U/L', confidence: 0.95 },
         'Creatine kinase [Enzymatic activity/volume] in Serum or Plasma',
       ],
+      [{ name: 'GLICEMIA', value: 94, unit: 'mg/dL', confidence: 0.95 }, 'Glucose [Mass/volume] in Serum or Plasma'],
+      [{ name: 'SIDEREMIA', value: 88, unit: 'ug/dL', confidence: 0.95 }, 'Iron [Mass/volume] in Serum or Plasma'],
     ];
     const ai = await analyzeReport(page, examples.map(([value]) => value));
     for (const [value, testName] of examples) {
@@ -286,6 +288,77 @@ test.describe('Identifying the test of each value', () => {
       expect(candidates.map((c) => c.code)).toContain('63561-5');
       expect(candidates[0].code).not.toBe('75884-7');
     }
+  });
+
+  test('files a value whose part after a dash is another name of the same test', async ({ page }) => {
+    // Scenario Outline: A part after a dash that is another name of the same test says nothing of which test it is
+    const examples: [ExtractedBiomarkerFixture, string][] = [
+      [
+        { name: 'ALT - GPT', value: 31, unit: 'U/L', confidence: 0.95 },
+        'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
+      [
+        { name: 'AST - GOT', value: 27, unit: 'U/L', confidence: 0.95 },
+        'Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
+      [{ name: 'Ferro - sideremia', value: 92, unit: 'ug/dL', confidence: 0.95 }, 'Iron [Mass/volume] in Serum or Plasma'],
+      [{ name: 'Glucosio - glicemia', value: 97, unit: 'mg/dL', confidence: 0.95 }, 'Glucose [Mass/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(page, examples.map(([value]) => value));
+    for (const [value, testName] of examples) {
+      await expect(savedAsCell(rowFor(page, String(value.value)))).toHaveText(testName);
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('files a value of the blood count as one of blood', async ({ page }) => {
+    // Scenario: A value of the blood count is one of blood
+    const ai = await analyzeReport(page, [{ name: 'Emocromo - Emoglobina', value: 14.2, unit: 'g/dL', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '14.2'))).toHaveText('Hemoglobin [Mass/volume] in Blood');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('asks about "Protrombina" printed as a ratio with the prothrombin time over a normal one first', async ({ page }) => {
+    // Scenario Outline: "Protrombina" printed as a ratio is the prothrombin time over a normal one, never filed as prothrombin activity
+    const names = ['Protrombina', 'Protrombina ratio', 'Ratio protrombina', 'Protrombina - rapporto'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [1.04, 1.05, 1.06, 1.07][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+    for (const { candidates } of ai.choiceRequests[0]) {
+      expect(candidates[0].name).toBe('Prothrombin time (PT) actual/Normal');
+    }
+  });
+
+  test('asks about a clotting factor or protein printed as a ratio', async ({ page }) => {
+    // Scenario Outline: A clotting factor or protein printed as a ratio is asked about
+    const names = ['Fattore VIII', 'Proteina S'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [0.95, 0.85][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+  });
+
+  test('offers first a test of another kind than the unit whose name the printed one is', async ({ page }) => {
+    // Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+    const ai = await analyzeReport(page, [
+      { name: 'Proteina C attivata resistenza', value: 2.4, unit: 'ratio', confidence: 0.95 },
+    ]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates[0].name).toBe(
+      'Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay'
+    );
+  });
+
+  test('lists a ratio a name with no unit barely fits after the tests it fits better', async ({ page }) => {
+    // Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+    const ai = await analyzeReport(page, [{ name: 'Rapporto colesterolo/HDL', value: 3.6, unit: '', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates[0].name).not.toBe('Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma');
   });
 
   test('files a count per microscope field under a test counted per field', async ({ page }) => {

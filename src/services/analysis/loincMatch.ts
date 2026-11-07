@@ -115,20 +115,23 @@ const PLASMA_WORDS = 'plasma|plasmatic[oaie]|plasmatiche';
 // The red cells: "Folati eritrocitari"
 const RED_CELL_WORDS = 'erythrocytes?|eritrocitari[oae]?';
 const BLOOD_WORDS = 'blood|sangue|ematic[oaie]|ematiche';
+// The blood count, whose values are all of blood and its cells: "Emocromo - Emoglobina"
+const BLOOD_COUNT_WORDS = 'emocromo|emocromocitometrico';
 const wordsOf = (words: string, flags: string): RegExp => new RegExp(`\\b(?:${words})\\b`, flags);
 const BLOOD_HINT = wordsOf(BLOOD_WORDS, 'i');
 const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
   [wordsOf(SERUM_WORDS, 'i'), ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
   [wordsOf(PLASMA_WORDS, 'i'), ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
   [wordsOf(RED_CELL_WORDS, 'i'), ['RBC']],
+  [wordsOf(BLOOD_COUNT_WORDS, 'i'), ['Bld', 'RBC']],
   [BLOOD_HINT, ['Bld', 'RBC', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld' && system !== 'RBC')]],
 ];
 
 /**
- * Words naming serum, plasma, red cells or blood in a printed name:
+ * Words naming serum, plasma, red cells, the blood count or blood in a printed name:
  * "Glucosio sangue", "Calcium, Blood", "Piombo ematico", "Folati eritrocitari"
  */
-const SAMPLE_WORDS = wordsOf([SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, BLOOD_WORDS].join('|'), 'gi');
+const SAMPLE_WORDS = wordsOf([SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, BLOOD_COUNT_WORDS, BLOOD_WORDS].join('|'), 'gi');
 
 /**
  * What says the value's sample: nothing; a prefix or a hint, which rule
@@ -427,11 +430,12 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
       // The rest of the name fits another test well: "Troponina I (hs)" is not troponin T hs
       const restNamesOther = !restNames && [...(carriers?.values() ?? [])].some(isFit);
       // A dashed part that tells none of the tests the rest fits from another: it says only how the test is used
-      // ("Rapporto albumina/creatinina - screening"), else it says what the catalog cannot read (a fluid, a time:
-      // "Glucosio - liquor", "Cortisolo - ore 8"), and the rest alone is no full fit. "Bilirubina - diretta" and
-      // "Cortisolo - salivare" tell tests apart.
+      // ("Rapporto albumina/creatinina - screening") or names the test again ("Ferro - sideremia"), else it says
+      // what the catalog cannot read (a fluid, a time: "Glucosio - liquor", "Cortisolo - ore 8"), and the rest
+      // alone is no full fit. "Bilirubina - diretta" and "Cortisolo - salivare" tell tests apart.
       if (part === 'dashed' && !restNames && !restNamesOther && !(tellsApart ??= partTellsApart(catalog, form, left))) {
-        keep(found, saysOnlyUse(left) ? found.score : Math.min(found.score, MATCH_SCORE - MATCH_MARGIN), false);
+        const saysNothing = saysOnlyUse(left) || namesTestAgain(found.test, left);
+        keep(found, saysNothing ? found.score : Math.min(found.score, MATCH_SCORE - MATCH_MARGIN), false);
         continue;
       }
       if (carriers?.size && byRest === undefined) continue;
@@ -514,6 +518,17 @@ const USAGE_WORDS: ReadonlySet<string> = new Set(['screening', 'controllo', 'mon
 /** Whether a part of a name says only how its test is used (see USAGE_WORDS) */
 function saysOnlyUse(part: string): boolean {
   return wordsIn(part).every((word) => isStopWord(word) || USAGE_WORDS.has(word));
+}
+
+/**
+ * Whether every telling word of a part of a name is a word of the test's
+ * own names, LOINC's or HemoIO's: the part is another name of that test
+ * ("ALT - GPT", "Glucosio - glicemia"), not a sample or a time it lacks
+ */
+function namesTestAgain(test: CatalogTest, part: string): boolean {
+  const words = wordsIn(part).filter((word) => !isStopWord(word));
+  const own = new Set([test.name, ...test.names].flatMap(wordsIn));
+  return words.length > 0 && words.every((word) => own.has(word));
 }
 
 /** A year a formula is named by: "CKD-EPI 2021" */
@@ -741,7 +756,7 @@ function sampleInName(name: string): { name: string; systems: string[]; loosely:
     .replace(SAMPLE_WORDS, ' ')
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/[\s,;:.-]+$/, '')
+    .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, '')
     .trim();
   return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT } : undefined;
 }
@@ -1013,20 +1028,79 @@ export function matchLocally(
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
   if (value.unit.trim() === '') return matchUnitless(catalog, value, unit, learned);
-  return matchIn(catalog, value, unit, unit.ucum ? unitProperties(unit.ucum) : [], learned);
+  return matchIn(catalog, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learned);
 }
 
 /** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
 const PLAIN_RATIO = /^(?:1|\{ratio\})$/i;
 
 /**
- * The LOINC properties a printed unit reads as (see ucumProperties). A
- * plain ratio is also a clotting time over a normal one (RelTime): "aPTT"
- * in "ratio" is LOINC's aPTT actual/normal.
+ * Words of a printed name naming a clotting time: "PT", "aPTT", "TT",
+ * "INR", "Protrombina", "Tempo di trombina", "Quick". "Antitrombina" and
+ * "Fattore VIII" name none.
  */
-function unitProperties(ucum: string): string[] {
+const CLOTTING_TIME_WORDS =
+  /\b(?:a?ptt?|tt|inr|quick|tempo|time|drvvt|protrombin\w*|prothrombin\w*|trombin\w*|thrombin\w*|tromboplastin\w*|thromboplastin\w*|cefalin\w*|coagul\w*|clotting)\b/i;
+
+/** The properties of a ratio said of a printed name: a clotting time over a normal one (RelTime) only when it names one */
+function ratioProperties(properties: string[], name: string): string[] {
+  return CLOTTING_TIME_WORDS.test(name) ? [...properties, 'RelTime'] : properties;
+}
+
+/**
+ * The LOINC properties a printed unit reads as (see ucumProperties). A
+ * plain ratio of a name naming a clotting time is also that time over a
+ * normal one (RelTime): "aPTT" in "ratio" is LOINC's aPTT actual/normal,
+ * but "Fattore VIII" in "ratio" is no clotting time.
+ */
+function unitProperties(ucum: string, name: string): string[] {
   const properties = ucumProperties(ucum);
-  return PLAIN_RATIO.test(ucum) ? [...properties, 'RelTime'] : properties;
+  return PLAIN_RATIO.test(ucum) ? ratioProperties(properties, name) : properties;
+}
+
+/** A clotting time over a normal one, or the INR, as LOINC names its component; a factor's or a protein's activity over a normal one is another */
+const CLOTTING_TIME_COMPONENT = /^Coagulation(?: actual\/normal| normal\/actual)?$/i;
+/** A clotting time over a normal one turned around: "Coagulation normal/actual" */
+const INVERSE_RATIO = /\bnormal\/actual\b/i;
+/** Words of a printed name saying it is an activity: "Attività protrombinica", "Fattore II" */
+const ACTIVITY_WORDS = /\b(?:attivit\w*|activity|fattore|factor)\b/i;
+/** LOINC's method of the prothrombin time (PT) */
+const PT_METHOD = 'Coag.tissue factor induced';
+
+/**
+ * The tests found of a name naming a clotting time in a ratio (see
+ * ratioProperties), read as that time over a normal one. A factor's or a
+ * protein's activity over a normal one is set below a full fit: it is no
+ * clotting time, so never the one meant unasked. Italian reports call
+ * the PT "Protrombina": a name saying it, and no activity, is the PT
+ * over a normal one ("Protrombina ratio") as well as it fits prothrombin's
+ * activity (factor II). A ratio of the patient's time over the normal one
+ * is listed before the same turned around.
+ */
+function asClottingTimes(catalog: Catalog, found: Found[], name: string): Found[] {
+  const cap = MATCH_SCORE - MATCH_MARGIN;
+  const isActivity = (test: CatalogTest): boolean => test.property === 'RelTime' && !CLOTTING_TIME_COMPONENT.test(test.component);
+  const ofProthrombin = ACTIVITY_WORDS.test(name)
+    ? []
+    : found.filter(({ test }) => isActivity(test) && /^Prothrombin\b/i.test(test.component));
+  const prothrombinTimes = ofProthrombin.flatMap(({ test, score, preference }) =>
+    catalog
+      .scoredSearch('prothrombin time', { properties: ['RelTime'], systems: [test.system] })
+      .filter(({ test: other }) => other.method === PT_METHOD && CLOTTING_TIME_COMPONENT.test(other.component))
+      .map(({ test: other }) => ({ test: other, score, preference }))
+  );
+  const all = [...found, ...prothrombinTimes];
+  return all
+    .filter((one) => all.every((other) => other.test !== one.test || other === one || other.score < one.score))
+    .filter((one, i, kept) => kept.findIndex(({ test }) => test === one.test) === i)
+    .map((one) => (isActivity(one.test) && one.score > cap ? { ...one, score: cap } : one))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.preference - b.preference ||
+        Number(INVERSE_RATIO.test(a.test.component)) - Number(INVERSE_RATIO.test(b.test.component)) ||
+        byRank(a.test, b.test)
+    );
 }
 
 /**
@@ -1050,8 +1124,10 @@ function matchUnitless(
   const unitless = matchIn(catalog, value, unit, NO_UNIT_PROPERTIES, learned, seen);
   if (unitless.status === 'match' && seen.learned) return unitless;
   const any = matchIn(catalog, value, unit, [], learned, {}, Number.POSITIVE_INFINITY);
-  // A name saying it is a ratio: a ratio, or a clotting time over a normal one ("aPTT ratio"), first
-  const ratios = RATIO_WORD.test(value.name) ? matchIn(catalog, value, unit, RATIO_PROPERTIES, learned).candidates : [];
+  // A name saying it is a ratio: a ratio, or a clotting time over a normal one ("aPTT ratio")
+  const ratios = RATIO_WORD.test(value.name)
+    ? matchIn(catalog, value, unit, ratioProperties(['Ratio'], value.name), learned).candidates
+    : [];
   if (unitless.status === 'match' && seen.sample === 'named' && unitless.candidates[0].score === 1) {
     // A test measured in a unit that fits as well, unless far rarer than the one with none ("Nitrite [Mass/volume] in Urine")
     const rank = groupRank(catalog, unitless.code);
@@ -1067,15 +1143,21 @@ function matchUnitless(
     });
     if (!measured) return unitless;
   }
-  const candidates = [...ratios, ...unitless.candidates, ...any.candidates]
+  const others = [...unitless.candidates, ...any.candidates];
+  // A ratio leads the others it fits at least as well as: "Rapporto colesterolo/HDL" is not first the VLDL/triglyceride ratio it barely fits
+  const merged: Candidate[] = [];
+  for (const candidate of others) {
+    while (ratios.length && ratios[0].score >= candidate.score) merged.push(ratios.shift()!);
+    merged.push(candidate);
+  }
+  const candidates = [...merged, ...ratios]
     .filter((candidate, i, all) => all.findIndex(({ code }) => code === candidate.code) === i)
     .slice(0, MAX_CANDIDATES);
   return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 
-/** A printed name saying its value is a ratio, and the properties of one */
+/** A printed name saying its value is a ratio */
 const RATIO_WORD = /\b(?:ratio|rapporto)\b/i;
-const RATIO_PROPERTIES = ['Ratio', 'RelTime'];
 
 /** What a match read on the way: the value's sample, and whether its code was learned */
 interface Seen {
@@ -1130,7 +1212,10 @@ function matchIn(
   }
 
   const search = (searched: string, scope: Scope): Found[] => {
-    const inPrintedUnit = (found: Found[]): Found[] => withoutUnsaidLupus(countedAsPrinted(inUnits(found, units), ucum), whole);
+    const inPrintedUnit = (found: Found[]): Found[] => {
+      const counted = withoutUnsaidLupus(countedAsPrinted(inUnits(found, units), ucum), whole);
+      return properties.includes('RelTime') ? asClottingTimes(catalog, counted, whole) : counted;
+    };
     const byProperty = readParts(catalog, searched, inPrintedUnit(findByForms(catalog, searched, scope)));
     // A test HemoIO describes in the unit, only when no test of the unit's property fits but one LOINC adjusts
     const fits = ({ test, score }: Found): boolean => score >= MATCH_SCORE - SCORE_EPSILON && !isAdjusted(test);
@@ -1154,10 +1239,18 @@ function matchIn(
     const usual = common().filter((test) => !close.some(({ code }) => code === test.code));
     return [...close, ...usual].slice(0, MAX_CANDIDATES);
   };
-  if (found.length === 0 && properties.length > 0) {
-    // A name of tests of other properties: the unit may be misread or misprinted
+  if (properties.length > 0 && !found.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)) {
+    // No test of the unit's properties fits fully: the unit may be misread or misprinted, so the tests of other
+    // properties the name fits are candidates too. When some of the unit's fit a little, only quantities (as the
+    // unit says) the name is a name of go before them, read as its brackets say: "Proteina C attivata resistenza"
+    // in "ratio" is APC resistance, a time ratio, but "Fibrinogeno (calcolato)" in "mg/dL" no fibrin fragments.
     const byName = findByForms(catalog, name, { systems, properties: [], ucum });
-    if (byName.length) return { status: 'ambiguous', candidates: withCommon(byName) };
+    const misread = found.length
+      ? readParts(catalog, name, byName).filter(
+          (one) => one.score >= 1 - SCORE_EPSILON && one.test.scale === 'Qn' && !found.some(({ test }) => test === one.test)
+        )
+      : byName;
+    if (misread.length) return { status: 'ambiguous', candidates: withCommon([...misread, ...found]) };
   }
   if (found.length === 0) return { status: 'none', candidates: common() };
   const fitting = withoutUnsaidChallenges(found);

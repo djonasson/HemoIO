@@ -281,6 +281,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Generally indicates low inflammation',
   },
   '2345-7': {
+    // The Italian word for blood glucose
+    names: ['glicemia'],
     shortName: 'Glucose',
     description: 'Blood sugar level, primary energy source for cells.',
     referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
@@ -497,6 +499,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding - no autoimmune thyroid disease',
   },
   '2498-4': {
+    // The Italian word for serum iron
+    names: ['sideremia'],
     shortName: 'Serum Iron',
     description: 'Amount of iron circulating in the blood.',
     referenceRange: { low: 60, high: 170, unit: 'µg/dL' },
@@ -784,6 +788,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate low protein intake or kidney dysfunction',
   },
   '1742-6': {
+    // Glutamic-pyruvic transaminase, the name Italian reports still give it
+    names: ['gpt'],
     shortName: 'Alanine Aminotransferase',
     description: 'Liver enzyme, elevated in liver damage.',
     referenceRange: { low: 7, high: 56, unit: 'U/L' },
@@ -793,6 +799,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Generally not concerning',
   },
   '1920-8': {
+    // Glutamic-oxaloacetic transaminase, the name Italian reports still give it
+    names: ['got'],
     shortName: 'Aspartate Aminotransferase',
     description: 'Enzyme found in liver, heart, and muscles.',
     referenceRange: { low: 10, high: 40, unit: 'U/L' },
