@@ -119,12 +119,15 @@ const BLOOD_WORDS = 'blood|sangue|ematic[oaie]|ematiche';
 const BLOOD_COUNT_WORDS = 'emocromo|emocromocitometrico';
 const wordsOf = (words: string, flags: string): RegExp => new RegExp(`\\b(?:${words})\\b`, flags);
 const BLOOD_HINT = wordsOf(BLOOD_WORDS, 'i');
+// Said loosely too: a report's blood count heading also stands over tests of serum
+const BLOOD_COUNT_HINT = wordsOf(BLOOD_COUNT_WORDS, 'i');
+const BLOOD_FIRST = ['Bld', 'RBC', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld' && system !== 'RBC')];
 const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
   [wordsOf(SERUM_WORDS, 'i'), ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
   [wordsOf(PLASMA_WORDS, 'i'), ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
   [wordsOf(RED_CELL_WORDS, 'i'), ['RBC']],
-  [wordsOf(BLOOD_COUNT_WORDS, 'i'), ['Bld', 'RBC']],
-  [BLOOD_HINT, ['Bld', 'RBC', ...DEFAULT_SYSTEMS.filter((system) => system !== 'Bld' && system !== 'RBC')]],
+  [BLOOD_COUNT_HINT, BLOOD_FIRST],
+  [BLOOD_HINT, BLOOD_FIRST],
 ];
 
 /**
@@ -758,7 +761,7 @@ function sampleInName(name: string): { name: string; systems: string[]; loosely:
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, '')
     .trim();
-  return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT } : undefined;
+  return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT || pattern === BLOOD_COUNT_HINT } : undefined;
 }
 
 function toCandidate(test: CatalogTest, score: number): Candidate {
@@ -1226,8 +1229,11 @@ function matchIn(
   let found = search(name, { systems, properties, ucum });
   // What looked like a prefix may be part of the name ("B-HCG", "P-ANCA"): then it names no sample
   if (found.length === 0 && name !== whole) {
+    // A sample word, unlike a letter prefix, still names the sample: "Glicemia urine" is not serum glucose
+    const sampleWorded = sample === 'named' && stripPrefix(whole).name === whole;
     ({ systems, sample } = sampleOf({}, undefined, value.specimenHint, isPerDay(ucum)));
     found = search(whole, { systems, properties, ucum });
+    if (sampleWorded) found = found.map((one) => ({ ...one, score: Math.min(one.score, MATCH_SCORE - MATCH_MARGIN) }));
   }
 
   // A value with no unit says nothing of which common tests it may be

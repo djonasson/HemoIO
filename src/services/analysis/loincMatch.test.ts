@@ -1273,6 +1273,32 @@ describe('matchLocally on names of real Italian reports', () => {
   });
 
   it.each([
+    ['Vitamina B12', 'pg/mL'],
+    ['Proteine totali', 'g/dL'],
+    ['Colinesterasi', 'U/L'],
+    ['Glucosio', 'mg/dL'],
+    ['Creatinina', 'mg/dL'],
+    ['Potassio', 'mmol/L'],
+  ])('files "Emocromo - %s" in %s as the name alone is filed, or asks: the blood count names no sample of other tests', (name, unit) => {
+    const alone = matchLocally(generated, { name, unit });
+    const counted = matchLocally(generated, { name: `Emocromo - ${name}`, unit });
+    if (counted.status === 'match') expect(counted.code).toBe(alone.status === 'match' ? alone.code : undefined);
+  });
+
+  it.each([
+    ['Glicemia urine', 'mg/dL'],
+    ['Glicemia (urine)', 'mg/dL'],
+    ['Glicemia - urine', 'mg/dL'],
+    ['Sideremia urine', 'ug/dL'],
+    ['GPT urine', 'U/L'],
+    ['Ferritina urine', 'ng/mL'],
+    ['TSH urine', 'mUI/L'],
+  ])('never files %s in %s under a test of another sample than the one it names', (name, unit) => {
+    const result = matchLocally(generated, { name, unit });
+    if (result.status === 'match') expect(generated.test(result.code)?.system).toMatch(/Urine/);
+  });
+
+  it.each([
     // The unit may be missing, and no sample is named
     ['aPTT ratio', undefined],
     ['Albumina', undefined],

@@ -19,7 +19,10 @@ Feature: Identifying the test of each value
   says nothing either, nor does one that is another name of the same test
   ("ALT - GPT"); one naming a sample, a time or anything else the catalog
   cannot read ("liquor", "ore 8") leaves the value to be asked. A value of
-  the blood count ("Emocromo - ...") is one of blood. A ratio is read as a
+  the blood count ("Emocromo - ...") is likelier one of blood, as a "blood"
+  word makes it, without ruling out serum. A sample word next to a name
+  known only for another sample ("Glicemia urine") leaves the value to be
+  asked. A ratio is read as a
   clotting time over a normal one only when the name names a clotting time
   ("aPTT", "PT", "Protrombina"); a clotting factor's or protein's activity
   over a normal one is never taken without asking. When no test of the
@@ -217,6 +220,29 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the value should be saved as "Hemoglobin [Mass/volume] in Blood"
     And the AI should not be asked which test it is
+
+  Scenario Outline: A blood count heading never moves another test to blood
+    Given a report prints "Emocromo - <name>" in <unit>
+    When the report is analyzed
+    Then the value should not be saved under a test of blood or red cells that "<name>" alone is not saved as
+
+    Examples:
+      | name          | unit  |
+      | Vitamina B12  | pg/mL |
+      | Colinesterasi | U/L   |
+      | Glucosio      | mg/dL |
+
+  Scenario Outline: A sample named beside a name known only for another sample is asked
+    Given a report prints "<name>" in <unit>
+    And HemoIO's name in it is of a test of serum only
+    When the report is analyzed
+    Then the value should not be saved under a test of serum
+
+    Examples:
+      | name            | unit  |
+      | Glicemia urine  | mg/dL |
+      | Sideremia urine | ug/dL |
+      | GPT urine       | U/L   |
 
   Scenario Outline: "Protrombina" printed as a ratio is the prothrombin time over a normal one, never filed as prothrombin activity
     Given a report prints "<name>" in ratio

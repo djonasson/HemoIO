@@ -736,6 +736,7 @@ test.describe('Import Wizard - With AI Mocking', () => {
 
     // 2. Analyze with the (mocked) AI
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
     expect(ai.prompts).toHaveLength(1);
 

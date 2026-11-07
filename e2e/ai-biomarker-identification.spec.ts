@@ -318,6 +318,32 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
+  test('never moves another test to blood under a blood count heading', async ({ page }) => {
+    // Scenario Outline: A blood count heading never moves another test to blood
+    await analyzeReport(page, [
+      { name: 'Emocromo - Vitamina B12', value: 412, unit: 'pg/mL', confidence: 0.95 },
+      { name: 'Emocromo - Colinesterasi', value: 7300, unit: 'U/L', confidence: 0.95 },
+      { name: 'Emocromo - Glucosio', value: 93, unit: 'mg/dL', confidence: 0.95 },
+    ]);
+    for (const value of ['412', '7300', '93']) {
+      await expect(savedAsCell(rowFor(page, value))).toBeVisible();
+      await expect(savedAsCell(rowFor(page, value))).not.toHaveText(/\bin (?:Blood|Red Blood Cells|Erythrocytes)\b/);
+    }
+  });
+
+  test('asks about a sample named beside a name known only for another sample', async ({ page }) => {
+    // Scenario Outline: A sample named beside a name known only for another sample is asked
+    await analyzeReport(page, [
+      { name: 'Glicemia urine', value: 15, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Sideremia urine', value: 21, unit: 'ug/dL', confidence: 0.95 },
+      { name: 'GPT urine', value: 9, unit: 'U/L', confidence: 0.95 },
+    ]);
+    for (const value of ['15', '21', '9']) {
+      await expect(savedAsCell(rowFor(page, value))).toBeVisible();
+      await expect(savedAsCell(rowFor(page, value))).not.toHaveText(/Serum/);
+    }
+  });
+
   test('asks about "Protrombina" printed as a ratio with the prothrombin time over a normal one first', async ({ page }) => {
     // Scenario Outline: "Protrombina" printed as a ratio is the prothrombin time over a normal one, never filed as prothrombin activity
     const names = ['Protrombina', 'Protrombina ratio', 'Ratio protrombina', 'Protrombina - rapporto'];
