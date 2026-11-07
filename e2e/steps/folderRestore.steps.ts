@@ -122,21 +122,30 @@ export function folderPermissionQueries(page: Page): Promise<number> {
   );
 }
 
-/** A fingerprint of the folder copy, or null when there is none */
-export function folderCopyHash(page: Page, folderName: string = FOLDER_NAME): Promise<string | null> {
+/**
+ * A fingerprint of the folder copy, or of another file in the folder
+ * (`path` may name a subfolder: `hemoio-backups/<name>`); null when there is none
+ */
+export function folderCopyHash(
+  page: Page,
+  folderName: string = FOLDER_NAME,
+  path: string = FOLDER_COPY
+): Promise<string | null> {
   return page.evaluate(
-    async ({ folderName, fileName }) => {
+    async ({ folderName, path }) => {
       const root = await navigator.storage.getDirectory();
       try {
-        const dir = await root.getDirectoryHandle(folderName);
-        const file = await (await dir.getFileHandle(fileName)).getFile();
+        let dir = await root.getDirectoryHandle(folderName);
+        const parts = path.split('/');
+        for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+        const file = await (await dir.getFileHandle(parts.at(-1)!)).getFile();
         const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
         return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
       } catch {
         return null;
       }
     },
-    { folderName, fileName: FOLDER_COPY }
+    { folderName, path }
   );
 }
 

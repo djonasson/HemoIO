@@ -188,11 +188,13 @@ export class SkippedSyncNotice {
   readonly notice: Locator;
   readonly chooseFolder: Locator;
   readonly replace: Locator;
+  readonly dismiss: Locator;
 
   constructor(page: Page) {
     this.notice = skippedSyncNotice(page);
     this.chooseFolder = this.notice.getByRole('button', { name: 'Choose another folder' });
     this.replace = this.notice.getByRole('button', { name: 'Replace folder copy…' });
+    this.dismiss = this.notice.getByRole('button', { name: 'Dismiss notice' });
   }
 }
 
