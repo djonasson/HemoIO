@@ -114,12 +114,9 @@ export function StorageSettings({
       if (state === 'granted') {
         notifyFolderAccessChanged();
       }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to request permission');
-      }
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('HemoIO could not get access to the folder. Try again.');
     } finally {
       setIsRequestingPermission(false);
     }
@@ -134,8 +131,9 @@ export function StorageSettings({
     setError(null);
     try {
       return (await chooseFolder({ switchingOn })) === 'chosen';
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to select directory');
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('The folder could not be chosen. Nothing was changed; try again.');
       return false;
     } finally {
       setIsSelectingDirectory(false);
@@ -185,12 +183,9 @@ export function StorageSettings({
 
       setShowConfirmModal(false);
       setPendingProvider(null);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to switch storage provider');
-      }
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('The storage location could not be changed. Try again.');
     } finally {
       setIsChanging(false);
     }

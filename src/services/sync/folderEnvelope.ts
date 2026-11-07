@@ -128,13 +128,20 @@ function parseEnvelope(
 }
 
 /**
- * Whether a file shows no lock in plain text: not JSON at all (a copy in
- * the raw format from before the envelope), or an envelope or damaged copy
- * whose lock is null. Such a file may be kept as a backup as it lies.
+ * Whether a file shows no lock in plain text: not JSON at all and nothing
+ * of an envelope or a lock in it (a copy in the raw format from before the
+ * envelope), or an envelope or damaged copy whose lock is null. Such a file
+ * may be kept as a backup as it lies.
  */
 export function showsNoLock(bytes: ArrayBuffer): boolean {
   const file = parseJsonObject(bytes);
-  if (file === NOT_JSON) return true;
+  if (file === NOT_JSON) {
+    // Text only an envelope or a lock holds: a half-written envelope may still carry its lock
+    const text = new TextDecoder().decode(bytes);
+    return ![FOLDER_ENVELOPE_FORMAT, DAMAGED_COPY_FORMAT, 'kekSalt', 'wrappedKey'].some((marker) =>
+      text.includes(marker)
+    );
+  }
   if (file === null) return false;
   return (file.format === FOLDER_ENVELOPE_FORMAT || file.format === DAMAGED_COPY_FORMAT) && file.lock === null;
 }

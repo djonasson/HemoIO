@@ -195,6 +195,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     syncNow,
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+  const replaceConfirmation = folderSyncReplace.confirmation;
   const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
   const handleNavClick = useCallback(
@@ -381,7 +382,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         onRecheck={recheckFolderRestore}
       />
       <FolderConflictModal conflict={folderConflict} onResolve={resolveConflict} />
-      <ReplaceFolderCopyModal {...folderSyncReplace.confirmation} />
+      <ReplaceFolderCopyModal
+        key={replaceConfirmation.key}
+        opened={replaceConfirmation.opened}
+        warnOtherSetup={replaceConfirmation.warnOtherSetup}
+        onReplace={replaceConfirmation.onReplace}
+        onClose={replaceConfirmation.onClose}
+      />
 
       <MantineAppShell
         header={{ height: HEADER_HEIGHT }}

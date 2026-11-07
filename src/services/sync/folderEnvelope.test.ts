@@ -257,6 +257,10 @@ describe('folderEnvelope', () => {
       expect(showsNoLock(await sealEnvelope(encode(PLAIN), key, credentials))).toBe(false);
       expect(showsNoLock(header({ version: 1 }))).toBe(false);
       expect(showsNoLock(fileOf(JSON.stringify({ format: 'other', lock: null })))).toBe(false);
+      // A half-synced envelope is no JSON, yet its header may still hold the lock
+      const locked = new Uint8Array(await sealEnvelope(encode(PLAIN), key, credentials));
+      expect(showsNoLock(locked.slice(0, locked.length - 10).buffer)).toBe(false);
+      expect(showsNoLock(locked.slice(0, 40).buffer)).toBe(false);
     });
   });
 });

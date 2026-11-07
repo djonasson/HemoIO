@@ -220,6 +220,30 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
     expect(notifyFolderAccessChanged).toHaveBeenCalled();
   });
 
+  it('never shows the error of a failed folder choice or access request, which can name a path', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    folderProvider('prompt');
+    const named = new Error('/home/someone/Lab Folder is not allowed');
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn(async () => 'Health');
+        getPermissionState = vi.fn(async () => 'prompt');
+        requestPermission = vi.fn(async () => {
+          throw named;
+        });
+        selectDirectory = vi.fn(async () => {
+          throw named;
+        });
+      } as unknown as typeof FileSystemStorageProvider
+    );
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Grant Access' }));
+
+    expect(await screen.findByText('HemoIO could not get access to the folder. Try again.')).toBeInTheDocument();
+    expect(screen.queryByText(/Lab Folder/)).not.toBeInTheDocument();
+  });
+
   it('after switching to folder storage, once the folder is the storage', async () => {
     folderProvider('granted');
     vi.mocked(notifyFolderAccessChanged).mockImplementation(() => {
