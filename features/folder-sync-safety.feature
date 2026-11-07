@@ -67,9 +67,10 @@ Feature: Folder Sync Safety
     And the folder sync was skipped because the folder copy cannot be read
     When I choose to replace the folder copy from the notice
     Then I should be asked to confirm, and told the old file is kept first as a dated backup
-    And I should be warned that if the copy was made with another password or by someone else's setup, their data will no longer sync from this folder
+    And I should be warned that if the copy was made with another password or by someone else's setup, it will no longer sync from this folder
+    And I should be told it is kept in the folder's backups as it was, and can still be restored there with that password
     When I confirm
-    Then my folder should hold the old file as a dated backup, sealed with my key and with no password lock
+    Then my folder should hold the old file as a dated backup, exactly as it was
     And my folder should hold a copy of my lab results that my password opens
     And the message about the skipped folder sync should go away
 
@@ -80,6 +81,33 @@ Feature: Folder Sync Safety
     And I choose "Back"
     Then the copy in my folder should be left as it was
     And the message about the skipped folder sync should still be shown
+
+  Scenario: Replace a folder copy that cannot be read from Settings, after dismissing the notice
+    Given my folder holds a copy that my current password cannot open
+    And the folder sync was skipped because the folder copy cannot be read
+    And the notice says the folder copy can also be replaced in Settings > Data
+    When I dismiss the notice
+    And I navigate to Settings > Data
+    Then I should see that the folder copy can't be read
+    When I choose to replace the folder copy there
+    And I confirm
+    Then my folder should hold a copy of my lab results that my password opens
+    And Settings > Data should no longer say that the folder copy can't be read
+
+  Scenario: The notice's buttons stay in view on a narrow screen with large text
+    Given my screen is 320 pixels wide and my browser's text size is large
+    And my folder holds a copy that my current password cannot open
+    When the folder sync is skipped because the folder copy cannot be read
+    Then the notice's "Choose another folder" and "Replace folder copy…" buttons should be fully in view
+    And I can choose either of them
+
+  # Unit-tested (folderEnvelope, folderSync, folderCopy): the restore question and the sync agree
+  Scenario: A folder copy whose header names a newer format or an unknown lock is never replaced
+    Given my folder holds a copy whose header names a newer format, or a lock this version does not know
+    When the folder sync runs, or I unlock HemoIO with no lab data in this browser
+    Then I should be told the copy is from a newer version or from another setup
+    And I should not be offered to replace the folder copy
+    And the copy in my folder should be left as it was
 
   Scenario: Choose another folder from the notice
     Given my folder holds a copy that my current password cannot open
@@ -190,7 +218,7 @@ Feature: Folder Sync Safety
     Given my folder holds a copy made by another HemoIO setup, with a different key
     When I add lab results
     Then I should see that the folder sync was skipped because my folder holds another setup's copy
-    And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
+    And I should be told to choose another folder, or to use Start over in Settings > Security to set up from that copy
     And I should be offered to choose another folder
     But I should not be offered to replace the folder copy, as other computers may still sync from it
     And the copy in my folder should be left as it was

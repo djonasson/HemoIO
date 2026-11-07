@@ -74,6 +74,12 @@ Feature: Local Directory Storage
     And I navigate to Settings > Data
     Then I should see the new folder as the current folder
 
+  # Unit-tested (StorageSettings): the storage choice is read again whenever it changes
+  Scenario: Storage switched in another tab shows in Settings
+    Given Settings > Data is open in one tab
+    When I switch storage to a folder in another tab
+    Then the first tab should show "Local Directory" as my storage type, with the folder
+
   Scenario: Change folder in settings
     Given I have completed setup with filesystem storage
     And I am on the Settings page

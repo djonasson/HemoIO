@@ -65,9 +65,10 @@ Feature: Restore From the Folder Copy
     And I unlock HemoIO
     When I choose to replace the folder copy
     Then I should be asked to confirm that the folder copy will be replaced, and told it is kept as a dated backup
-    And I should be warned that if the copy was made with another password or by someone else's setup, their data will no longer sync from this folder
+    And I should be warned that if the copy was made with another password or by someone else's setup, it will no longer sync from this folder
+    And I should be told it is kept in the folder's backups as it was, and can still be restored there with that password
     When I confirm
-    Then my folder should hold the old file as a dated backup, sealed with my key and with no password lock
+    Then my folder should hold the old file as a dated backup, exactly as it was, so the setup that made it can still restore it
     And my folder should hold a new folder copy that my password opens
 
   Scenario: Folder copy is damaged
@@ -84,9 +85,41 @@ Feature: Restore From the Folder Copy
     And I unlock HemoIO
     When I choose to replace the folder copy
     And I confirm
-    Then my folder should hold the damaged file as a dated backup, sealed with my key and with no password lock
+    Then my folder should hold the damaged file as a dated backup, exactly as it was
     And my folder should hold a new folder copy that my password opens
     And HemoIO should save to the folder again
+
+  Scenario: Replacing a damaged folder copy keeps the previous copy too
+    Given the folder holds a previous copy that my password opens
+    And the folder copy is damaged
+    And this browser no longer has any of my lab data
+    And I unlock HemoIO
+    When I choose to replace the folder copy
+    And I confirm
+    Then my folder should hold the damaged file, as it was, and the previous copy, with no password lock, as two dated backups
+    And my folder should hold a new folder copy that my password opens
+    And the previous copy in my folder should no longer be the one kept as a backup
+
+  Scenario: Offer the previous copy when the latest folder copy is damaged
+    Given the folder holds a previous copy that my password opens
+    And the folder copy is damaged
+    And this browser no longer has any of my lab data
+    When I unlock HemoIO
+    Then I should be told the latest copy is damaged, so the previous copy is offered instead
+    And I should be asked whether to restore my data from the folder
+    And I should be offered to replace the damaged folder copy
+    And the folder copy should not have been changed
+
+  # Unit-tested (useFilesystemSync, folderConflict): the replace is bound to the file and folder shown
+  Scenario: The folder changes while I confirm replacing the folder copy
+    Given the folder copy is damaged
+    And this browser no longer has any of my lab data
+    And I unlock HemoIO
+    And I choose to replace the folder copy
+    When the folder copy is written again by another computer before I confirm
+    And I confirm
+    Then nothing in my folder should have been kept or written over
+    And I should be asked again about what my folder holds now
 
   Scenario: Go back from replacing a folder copy that cannot be read
     Given the folder copy is damaged
@@ -187,7 +220,7 @@ Feature: Restore From the Folder Copy
     Then my folder should hold the old copy as a dated backup, with no password lock
     And my folder should hold a new folder copy that my password opens
 
-  Scenario: A folder copy saved before LOINC is never written over
+  Scenario: A folder copy saved before LOINC is not written over unless I choose to replace it
     Given the folder copy was saved before tests were identified by LOINC
     And this browser no longer has any of my lab data
     And I unlock HemoIO
