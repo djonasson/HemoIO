@@ -34,6 +34,8 @@ import {
   useEncryptedApiKey,
   useFilesystemSync,
   useFolderSyncNotice,
+  useFolderSyncReplace,
+  FolderSyncIssueContext,
   useFolderRestore,
   useAISettings,
   useAlerts,
@@ -54,7 +56,12 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@components/storage';
+import {
+  FolderConflictModal,
+  FolderRestoreModal,
+  ReplaceFolderCopyModal,
+  SetAsideBanner,
+} from '@components/storage';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
@@ -174,11 +181,21 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     resolveConflict,
     acknowledgeFolderCopy,
     replaceFolderCopy,
+    issueTarget: folderSyncIssueTarget,
   } = useFilesystemSync({
     enabled: folderRestore.syncAllowed,
     applyFolderCopy,
   });
-  useFolderSyncNotice(folderSyncIssue);
+  // A folder copy the sync cannot read: the notice's buttons, and the
+  // confirmation they and Settings open, here
+  const folderSyncReplace = useFolderSyncReplace({
+    issue: folderSyncIssue,
+    issueTarget: folderSyncIssueTarget,
+    replaceFolderCopy,
+    syncNow,
+  });
+  useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+  const replaceConfirmation = folderSyncReplace.confirmation;
   const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
   const handleNavClick = useCallback(
@@ -352,22 +369,26 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [handleRestore, acknowledgeFolderCopy, offeredRevision, offeredStamp, recheckFolderRestore]
   );
 
-  // "Replace folder copy": the copy is kept as a backup first, and the next
-  // sync writes over it without asking again
-  const handleFolderReplace = useCallback(
-    () => replaceFolderCopy(offeredRevision),
-    [replaceFolderCopy, offeredRevision]
-  );
-
   return (
-    <>
+    <FolderSyncIssueContext.Provider value={folderSyncReplace.issueState}>
       <FolderRestoreModal
         prompt={folderRestore.prompt}
         onRestore={handleFolderRestore}
-        onReplace={handleFolderReplace}
+        // "Replace folder copy": kept as a backup first, and the next sync
+        // writes over it without asking again; one that cannot be read, only
+        // while it still cannot be read
+        onReplace={replaceFolderCopy}
         onDecide={folderRestore.decide}
+        onRecheck={recheckFolderRestore}
       />
       <FolderConflictModal conflict={folderConflict} onResolve={resolveConflict} />
+      <ReplaceFolderCopyModal
+        key={replaceConfirmation.key}
+        opened={replaceConfirmation.opened}
+        warnOtherSetup={replaceConfirmation.warnOtherSetup}
+        onReplace={replaceConfirmation.onReplace}
+        onClose={replaceConfirmation.onClose}
+      />
 
       <MantineAppShell
         header={{ height: HEADER_HEIGHT }}
@@ -506,7 +527,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         setAsideCount={setAsideRecords.summary.total}
         loadExportData={loadExportData}
       />
-    </>
+    </FolderSyncIssueContext.Provider>
   );
 }
 

@@ -236,6 +236,7 @@ export function folderFileBody(
   password: string,
   folderName: string = TEST_FOLDER_NAME
 ): Promise<{
+  version?: number;
   revision?: string;
   exportedAt?: string;
   ancestors?: string[];

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { assessFolderCopy, type FolderCopyAssessment } from '@services/sync';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
 import type { ParsedBackupData } from '@services/import';
 import { useFolderRestore } from './useFolderRestore';
 import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
@@ -13,13 +14,14 @@ vi.mock('@/utils/fileSystemSupport', () => ({
 }));
 
 const permission = vi.fn<() => Promise<string | null>>();
+const TOKEN = {} as FolderToken;
 const providerCreated = vi.fn();
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class {
     getPermissionState = permission;
-    getDirectoryName = vi.fn(async () => 'Health');
     loadCurrent = vi.fn();
+    folderIdentity = vi.fn(async () => ({ token: TOKEN, name: 'Health' }));
     constructor() {
       providerCreated();
     }
@@ -114,6 +116,9 @@ describe('useFolderRestore', () => {
         folderName: 'Health',
         replacesBrowserData: false,
         stamp: 'stamp-1',
+        damagedCurrent: false,
+        // Replacing an offered copy names it by its revision
+        replace: { choice: { kind: 'copy', revision: 'r1' }, warn: false },
       })
     );
     expect(result.current.syncAllowed).toBe(false);
@@ -124,8 +129,12 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(true);
   });
 
-  it.each(['cannot-decrypt', 'another-setup'] as const)('reports a copy it cannot read (%s)', async (reason) => {
-    assessAs({ kind: 'unreadable', reason });
+  it.each([
+    ['cannot-decrypt', 'sha256:f1', 'warn', { choice: { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN }, warn: true }],
+    ['not-a-copy', 'sha256:f3', 'replace', { choice: { kind: 'unreadable', fileId: 'sha256:f3', folder: TOKEN }, warn: false }],
+    ['another-setup', 'sha256:f2', false, null],
+  ] as const)('reports a copy it cannot read (%s), with the file and folder it found', async (reason, fileId, allowed, replace) => {
+    assessAs({ kind: 'unreadable', reason, fileId, replace: allowed });
 
     const { result } = renderHook(() => useFolderRestore());
 
@@ -134,9 +143,31 @@ describe('useFolderRestore', () => {
         kind: 'unreadable',
         reason,
         folderName: 'Health',
+        replace,
       })
     );
     expect(result.current.syncAllowed).toBe(false);
+  });
+
+  it('offers the previous copy when the latest is damaged, naming the damaged file', async () => {
+    assessAs({
+      kind: 'offer',
+      data: COPY,
+      revision: 'r1',
+      damagedCurrent: { reason: 'cannot-decrypt', fileId: 'sha256:f1', replace: 'warn' },
+    });
+
+    const { result } = renderHook(() => useFolderRestore());
+
+    await waitFor(() =>
+      expect(result.current.prompt).toMatchObject({
+        kind: 'offer',
+        revision: 'r1',
+        damagedCurrent: true,
+        // A replace is for the damaged file, not the copy offered
+        replace: { choice: { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN }, warn: true },
+      })
+    );
   });
 
   it('"Not now" closes the prompt and keeps sync held', async () => {
@@ -254,7 +285,12 @@ describe('useFolderRestore', () => {
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() =>
-      expect(result.current.prompt).toEqual({ kind: 'unreadable', reason: 'read-failed', folderName: null })
+      expect(result.current.prompt).toEqual({
+        kind: 'unreadable',
+        reason: 'read-failed',
+        folderName: null,
+        replace: null,
+      })
     );
     expect(result.current.syncAllowed).toBe(false);
   });

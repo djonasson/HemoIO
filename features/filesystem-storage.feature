@@ -64,8 +64,21 @@ Feature: Local Directory Storage
     Given I have completed setup with filesystem storage
     When I navigate to Settings > Data
     Then I should see "Local Directory" as my storage type
-    And I should see the selected folder name
+    And I should see the selected folder name, labelled as the current folder
+    And I should be told that browsers show only the folder's name, not where it is
     And I should see a "Change" button
+
+  Scenario: A folder chosen outside Settings shows in Settings
+    Given I have completed setup with filesystem storage
+    When I choose another folder from a folder sync message or the restore dialog
+    And I navigate to Settings > Data
+    Then I should see the new folder as the current folder
+
+  # Unit-tested (StorageSettings): the storage choice is read again whenever it changes
+  Scenario: Storage switched in another tab shows in Settings
+    Given Settings > Data is open in one tab
+    When I switch storage to a folder in another tab
+    Then the first tab should show "Local Directory" as my storage type, with the folder
 
   Scenario: Change folder in settings
     Given I have completed setup with filesystem storage

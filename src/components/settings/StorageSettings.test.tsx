@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
 import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
 import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { FolderSyncIssueContext } from '@hooks/useFolderSyncIssue';
 import { StorageSettings } from './StorageSettings';
 
 // Mock the fileSystemSupport module
@@ -22,8 +23,15 @@ vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   })),
 }));
 
+// Folder access changed elsewhere (the restore question, a sync notice, another tab)
+const folderAccessListeners = new Set<() => void>();
 vi.mock('@data/storage/folderAccessEvents', () => ({
-  notifyFolderAccessChanged: vi.fn(),
+  // Heard in this tab too, as the real event is
+  notifyFolderAccessChanged: vi.fn(() => folderAccessListeners.forEach((listener) => listener())),
+  onFolderAccessChanged: (listener: () => void) => {
+    folderAccessListeners.add(listener);
+    return () => folderAccessListeners.delete(listener);
+  },
 }));
 
 vi.mock('./FolderBackups', () => ({
@@ -135,11 +143,13 @@ describe('StorageSettings folder backups', () => {
   it('hides them until access is granted, then lists them', async () => {
     localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
     vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    // Access granted stays granted, as the browser keeps it
+    let permission = 'prompt';
     vi.mocked(FileSystemStorageProvider).mockImplementation(
       class {
         getDirectoryName = vi.fn().mockResolvedValue('Health');
-        getPermissionState = vi.fn().mockResolvedValue('prompt');
-        requestPermission = vi.fn().mockResolvedValue('granted');
+        getPermissionState = vi.fn(async () => permission);
+        requestPermission = vi.fn(async () => (permission = 'granted'));
       } as unknown as typeof FileSystemStorageProvider
     );
     renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
@@ -162,12 +172,19 @@ describe('StorageSettings folder backups', () => {
 describe('StorageSettings tells folder sync when folder access changes', () => {
   function folderProvider(permission: 'granted' | 'prompt'): void {
     vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    // The folder kept, and its access, as the provider stores them
+    let folder = 'Health';
+    let access: string = permission;
     vi.mocked(FileSystemStorageProvider).mockImplementation(
       class {
-        getDirectoryName = vi.fn().mockResolvedValue('Health');
-        getPermissionState = vi.fn().mockResolvedValue(permission);
-        requestPermission = vi.fn().mockResolvedValue('granted');
-        selectDirectory = vi.fn().mockResolvedValue({ name: 'Other' });
+        getDirectoryName = vi.fn(async () => folder);
+        getPermissionState = vi.fn(async () => access);
+        requestPermission = vi.fn(async () => (access = 'granted'));
+        selectDirectory = vi.fn(async () => {
+          folder = 'Other';
+          access = 'granted';
+          return { name: folder };
+        });
       } as unknown as typeof FileSystemStorageProvider
     );
   }
@@ -203,6 +220,30 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
     expect(notifyFolderAccessChanged).toHaveBeenCalled();
   });
 
+  it('never shows the error of a failed folder choice or access request, which can name a path', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    folderProvider('prompt');
+    const named = new Error('/home/someone/Lab Folder is not allowed');
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn(async () => 'Health');
+        getPermissionState = vi.fn(async () => 'prompt');
+        requestPermission = vi.fn(async () => {
+          throw named;
+        });
+        selectDirectory = vi.fn(async () => {
+          throw named;
+        });
+      } as unknown as typeof FileSystemStorageProvider
+    );
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Grant Access' }));
+
+    expect(await screen.findByText('HemoIO could not get access to the folder. Try again.')).toBeInTheDocument();
+    expect(screen.queryByText(/Lab Folder/)).not.toBeInTheDocument();
+  });
+
   it('after switching to folder storage, once the folder is the storage', async () => {
     folderProvider('granted');
     vi.mocked(notifyFolderAccessChanged).mockImplementation(() => {
@@ -215,5 +256,117 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Select Folder & Switch' }));
 
     await waitFor(() => expect(notifyFolderAccessChanged).toHaveBeenCalled());
+  });
+});
+
+describe('StorageSettings shows the current folder', () => {
+  let folderName = 'Health';
+  /** The line naming the folder: its name is an element of its own */
+  const currentFolder =
+    (name: string) =>
+    (_content: string, element: Element | null): boolean =>
+      element?.tagName === 'P' && element.textContent === `Current folder: “${name}”`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    folderName = 'Health';
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn(async () => folderName);
+        getPermissionState = vi.fn().mockResolvedValue('granted');
+      } as unknown as typeof FileSystemStorageProvider
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(false);
+    vi.clearAllMocks();
+  });
+
+  it("names it as the current folder, and says browsers show only a folder's name", async () => {
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    expect(await screen.findByText(currentFolder('Health'))).toBeInTheDocument();
+    expect(screen.getByText("Browsers show only the folder's name, not where it is.")).toBeInTheDocument();
+  });
+
+  it('shows a folder chosen elsewhere', async () => {
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+    await screen.findByText(currentFolder('Health'));
+
+    folderName = 'Other';
+    act(() => folderAccessListeners.forEach((listener) => listener()));
+
+    expect(await screen.findByText(currentFolder('Other'))).toBeInTheDocument();
+  });
+
+  it('stops listening once closed', async () => {
+    const { unmount } = renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+    await screen.findByText(currentFolder('Health'));
+
+    unmount();
+
+    expect(folderAccessListeners.size).toBe(0);
+  });
+});
+
+describe('StorageSettings keeps a folder copy that cannot be read in view', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn().mockResolvedValue('Health');
+        getPermissionState = vi.fn().mockResolvedValue('granted');
+      } as unknown as typeof FileSystemStorageProvider
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(false);
+    vi.clearAllMocks();
+  });
+
+  function renderWithIssue(replaceable: boolean) {
+    const askReplace = vi.fn();
+    renderWithProviders(
+      <FolderSyncIssueContext.Provider value={{ replaceable, askReplace }}>
+        <StorageSettings onRestore={vi.fn()} />
+      </FolderSyncIssueContext.Provider>
+    );
+    return { askReplace };
+  }
+
+  it('says so and offers to replace it, with the same confirmation as the notice', async () => {
+    const { askReplace } = renderWithIssue(true);
+
+    expect(await screen.findByText("The folder copy can't be read.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+    expect(askReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing while the copy may not be replaced', async () => {
+    renderWithIssue(false);
+    await screen.findByRole('button', { name: 'Change' });
+
+    expect(screen.queryByText("The folder copy can't be read.")).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Replace folder copy…' })).not.toBeInTheDocument();
+  });
+
+  it('reads the storage choice again when it changes elsewhere', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
+
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    act(() => folderAccessListeners.forEach((listener) => listener()));
+
+    expect(await screen.findByRole('button', { name: 'Change' })).toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { showPersistentNotice } from './showPersistentNotice';
 vi.mock('@mantine/notifications', () => ({ notifications: { show: vi.fn() } }));
 
 describe('showPersistentNotice', () => {
-  it('shows a notice that stays until dismissed', () => {
+  it('shows a notice that stays until dismissed, with a close button that has a name', () => {
     showPersistentNotice({ id: 'n', title: 'T', message: 'M', color: 'yellow' });
     showPersistentNotice({ id: 'm', title: 'T', message: 'M' });
 
@@ -15,7 +15,14 @@ describe('showPersistentNotice', () => {
       message: 'M',
       color: 'yellow',
       autoClose: false,
+      closeButtonProps: { 'aria-label': 'Dismiss notice' },
     });
-    expect(notifications.show).toHaveBeenNthCalledWith(2, { id: 'm', title: 'T', message: 'M', autoClose: false });
+    expect(notifications.show).toHaveBeenNthCalledWith(2, {
+      id: 'm',
+      title: 'T',
+      message: 'M',
+      autoClose: false,
+      closeButtonProps: { 'aria-label': 'Dismiss notice' },
+    });
   });
 });

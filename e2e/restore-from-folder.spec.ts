@@ -6,22 +6,26 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
+import { TEST_PASSWORD, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import { lockApp } from './steps/changePassword.steps';
 import {
   FOLDER_NAME,
   FolderRestoreDialog,
+  canReadFolderAgain,
+  expectCurrentFolder,
+  failFolderReads,
   folderCopyHash,
   folderPermissionQueries,
   forgetFolderPermission,
   grantFolderAccess,
   installFolderPicker,
+  pickNext,
   switchToFolderStorage,
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
-import { loseBrowserData } from './steps/folderSync.steps';
-import { FOLDER_BACKUPS, folderBackupNames, folderFileHeader } from './steps/otherComputer.steps';
+import { FOLDER_COPY, PREVIOUS_FOLDER_COPY, loseBrowserData } from './steps/folderSync.steps';
+import { FOLDER_BACKUPS, folderBackupNames, folderFileBody, folderFileHeader } from './steps/otherComputer.steps';
 
 /**
  * Background: folder storage on, holding a copy of two lab results, three
@@ -50,6 +54,20 @@ async function folderWithCopy(page: Page): Promise<string> {
   await switchToFolderStorage(page);
   await expect.poll(() => folderCopyHash(page)).not.toBeNull();
   return (await folderCopyHash(page))!;
+}
+
+/**
+ * Given the folder holds a previous copy that my password opens: the
+ * background's copy of two results, saved over by one of three, so the
+ * first becomes the previous copy
+ */
+async function folderWithPreviousCopy(page: Page): Promise<void> {
+  const first = await folderWithCopy(page);
+  await seedLabData(page, { labResults: [...SEED_LAB_RESULTS, LATER_RESULT] });
+  await expect.poll(() => folderCopyHash(page)).not.toBe(first);
+  // Sealed again without its lock as it moved: there now, whatever its bytes
+  await expect.poll(() => folderCopyHash(page, FOLDER_NAME, PREVIOUS_FOLDER_COPY)).not.toBeNull();
+  expect((await folderFileBody(page, PREVIOUS_FOLDER_COPY, TEST_PASSWORD)).data.labResults).toHaveLength(2);
 }
 
 const LATER_RESULT = {
@@ -86,13 +104,53 @@ async function expectFolderCopyUnchanged(page: Page, hash: string | null): Promi
  * did, under this user's own key
  */
 async function sealAsPreLoinc(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const encode = TextEncoder.prototype.encode;
-    TextEncoder.prototype.encode = function (input?: string): Uint8Array<ArrayBuffer> {
-      const text = typeof input === 'string' ? input.replace(/^\{"version":4,/, '{"version":3,') : input;
-      return encode.call(this, text) as Uint8Array<ArrayBuffer>;
-    };
-  });
+  await sealAsVersion(page, 3);
+}
+
+/** Given the folder copy was saved by a newer version of HemoIO: format 5 */
+async function sealAsNewer(page: Page): Promise<void> {
+  await sealAsVersion(page, 5);
+}
+
+const SEAL_AS_KEY = 'e2e-seal-as';
+
+/** Have the app seal its folder copy in another format version, until sealAsCurrent */
+async function sealAsVersion(page: Page, version: number): Promise<void> {
+  await page.addInitScript(
+    ({ version, key }) => {
+      const encode = TextEncoder.prototype.encode;
+      TextEncoder.prototype.encode = function (input?: string): Uint8Array<ArrayBuffer> {
+        const text =
+          typeof input === 'string' && sessionStorage.getItem(key) !== 'off'
+            ? input.replace(/^\{"version":4,/, `{"version":${version},`)
+            : input;
+        return encode.call(this, text) as Uint8Array<ArrayBuffer>;
+      };
+    },
+    { version, key: SEAL_AS_KEY }
+  );
+}
+
+/** The app seals its folder copy in its own format again */
+async function sealAsCurrent(page: Page): Promise<void> {
+  await page.evaluate((key) => sessionStorage.setItem(key, 'off'), SEAL_AS_KEY);
+}
+
+/** Then my folder should hold a new folder copy that my password opens */
+async function expectFreshCopy(page: Page, replaced: string | null): Promise<void> {
+  await expect.poll(() => folderCopyHash(page)).not.toBe(replaced);
+  const body = await folderFileBody(page, FOLDER_COPY, TEST_PASSWORD);
+  expect(body.version).toBe(4);
+  // Built on nothing: no one saw the file it replaced
+  expect(body.ancestors).toEqual([]);
+  expect(await folderFileHeader(page, FOLDER_COPY)).toMatchObject({ format: 'hemoio-folder-copy' });
+}
+
+/** The one dated backup in the folder, by name */
+async function onlyBackup(page: Page): Promise<string> {
+  const names = await folderBackupNames(page, FOLDER_NAME);
+  expect(names).toEqual([expect.stringMatching(/^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/)]);
+  return `${FOLDER_BACKUPS}/${names[0]}`;
 }
 
 test.describe('Restore from the folder copy', () => {
@@ -200,12 +258,14 @@ test.describe('Restore from the folder copy', () => {
       "HemoIO must be set up again from that folder's copy"
     );
     await expect(dialog.restore).toHaveCount(0);
+    // Other computers may still sync from it
     await expect(dialog.replace).toHaveCount(0);
+    await expect(dialog.chooseFolder).toBeVisible();
     await expect(dialog.notNow).toBeFocused();
     await expectFolderCopyUnchanged(page, hash);
   });
 
-  test('an older copy saved with another key is reported, not offered or changed', async ({ page }) => {
+  test('an older copy saved with another key is reported, not offered for restore or changed', async ({ page }) => {
     // Scenario: Older folder copy saved with another key
     await folderWithCopy(page);
     await writeForeignFolderCopy(page, 'legacy-other-key');
@@ -217,9 +277,38 @@ test.describe('Restore from the folder copy', () => {
     await expect(dialog.unreadable()).toBeVisible();
     await expect(dialog.dialog).toContainText('different password');
     await expect(dialog.restore).toHaveCount(0);
-    await expect(dialog.replace).toHaveCount(0);
-    await expect(dialog.dialog).toContainText('choose another folder in Settings');
+    await expect(dialog.dialog).toContainText('choose another folder, or replace the folder copy');
+    await expect(dialog.replace).toBeVisible();
+    await expect(dialog.chooseFolder).toBeVisible();
     await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('a copy saved with another key is replaced only once confirmed, after a warning, and kept sealed', async ({
+    page,
+  }) => {
+    // Scenario: Replace a folder copy that cannot be opened with my password
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'legacy-other-key');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await dialog.replace.click();
+    await expect(dialog.dialog).toHaveAccessibleName('Replace the folder copy?');
+    await expect(dialog.dialog).toContainText('will be replaced');
+    await expect(dialog.dialog).toContainText('kept as a dated backup');
+    await expect(dialog.dialog).toContainText(
+      "If the copy was made with another password or by someone else's HemoIO setup, it will no longer sync from this folder. It is kept in hemoio-backups as it was, and can still be restored there with that password."
+    );
+    await expect(dialog.back).toBeFocused();
+    await dialog.confirmReplace.click();
+    await expect(dialog.dialog).toBeHidden();
+
+    // No envelope, so no lock: kept exactly as it was, for the setup that made it to restore
+    const backup = await onlyBackup(page);
+    expect(await folderCopyHash(page, FOLDER_NAME, backup)).toBe(hash);
+    await expectFreshCopy(page, hash);
   });
 
   test('a damaged copy is reported and left alone', async ({ page }) => {
@@ -232,11 +321,174 @@ test.describe('Restore from the folder copy', () => {
     const dialog = new FolderRestoreDialog(page);
     await expect(dialog.unreadable()).toBeVisible();
     await expect(dialog.dialog).toContainText('damaged');
+    await expect(dialog.replace).toBeVisible();
+    await expect(dialog.chooseFolder).toBeVisible();
     await dialog.notNow.click();
     await expectFolderCopyUnchanged(page, hash);
   });
 
-  test('a copy saved before tests were identified by LOINC is reported, not offered or changed', async ({ page }) => {
+  test('a damaged copy is replaced once confirmed, kept first as it was', async ({ page }) => {
+    // Scenario: Replace a damaged folder copy
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await dialog.replace.click();
+    await dialog.confirmReplace.click();
+    await expect(dialog.dialog).toBeHidden();
+
+    // Random bytes show no lock: kept exactly as they lay
+    const backup = await onlyBackup(page);
+    expect(await folderCopyHash(page, FOLDER_NAME, backup)).toBe(hash);
+    await expectFreshCopy(page, hash);
+
+    // From now on saves reach the folder
+    const fresh = await folderCopyHash(page);
+    await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });
+    await expect.poll(() => folderCopyHash(page)).not.toBe(fresh);
+  });
+
+  test('the previous copy is offered when the latest is damaged, with the damaged file left alone', async ({ page }) => {
+    // Scenario: Offer the previous copy when the latest folder copy is damaged
+    await folderWithPreviousCopy(page);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.offer()).toBeVisible();
+    await expect(dialog.dialog).toContainText(
+      `The latest copy in “${FOLDER_NAME}” is damaged, so the previous copy is offered instead.`
+    );
+    // The previous copy: the two results the first save held
+    await expect(dialog.dialog).toContainText('2 lab results');
+    await expect(dialog.restore).toBeVisible();
+    await expect(dialog.replace).toBeVisible();
+    await dialog.notNow.click();
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('replacing a damaged copy keeps the previous copy as well, and replaces it too', async ({ page }) => {
+    // Scenario: Replacing a damaged folder copy keeps the previous copy too
+    await folderWithPreviousCopy(page);
+    const previous = await folderCopyHash(page, FOLDER_NAME, PREVIOUS_FOLDER_COPY);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.offer()).toBeVisible();
+    await dialog.replace.click();
+    await expect(dialog.dialog).toContainText('another password');
+    await dialog.confirmReplace.click();
+    await expect(dialog.dialog).toBeHidden();
+
+    await expectFreshCopy(page, hash);
+    const names = await folderBackupNames(page, FOLDER_NAME);
+    expect(names).toHaveLength(2);
+    const backups = names.map((name) => `${FOLDER_BACKUPS}/${name}`);
+    const hashes = await Promise.all(backups.map((path) => folderCopyHash(page, FOLDER_NAME, path)));
+    // The damaged file as it lay; the previous copy sealed again, without its lock
+    expect(hashes).toContain(hash);
+    const resealed = backups[hashes.indexOf(hash) === 0 ? 1 : 0];
+    expect(await folderFileHeader(page, resealed)).toEqual({ format: 'hemoio-folder-copy', version: 1, lock: null });
+    expect((await folderFileBody(page, resealed, TEST_PASSWORD)).data.labResults).toHaveLength(2);
+    // Kept already, so no later save pushes it out unkept
+    expect(await folderCopyHash(page, FOLDER_NAME, PREVIOUS_FOLDER_COPY)).not.toBe(previous);
+  });
+
+  test('"Back" from replacing a damaged copy goes back to the problem, changing nothing', async ({ page }) => {
+    // Scenario: Go back from replacing a folder copy that cannot be read
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await dialog.replace.click();
+    await dialog.back.click();
+
+    await expect(dialog.unreadable()).toBeVisible();
+    expect(await folderBackupNames(page, FOLDER_NAME)).toEqual([]);
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('"Choose another folder" opens the picker, and syncs to the folder picked', async ({ page }) => {
+    // Scenario: Choose another folder when the folder copy cannot be read
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await pickNext(page, 'Other Folder');
+    await dialog.chooseFolder.click();
+
+    await expect(dialog.dialog).toHaveCount(0);
+    await expect.poll(() => folderCopyHash(page, 'Other Folder')).not.toBeNull();
+    await expectCurrentFolder(page, 'Other Folder');
+    expect(await folderCopyHash(page)).toBe(hash);
+  });
+
+  test('cancelling the picker leaves the question as it was', async ({ page }) => {
+    // Scenario: Cancel choosing another folder
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'damaged');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await pickNext(page, 'cancel');
+    await dialog.chooseFolder.click();
+
+    await expect(dialog.unreadable()).toBeVisible();
+    await expect(dialog.dialog.getByRole('alert')).toHaveCount(0);
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('a folder that cannot be read offers to try again, not to replace', async ({ page }) => {
+    // Scenario: The folder cannot be read
+    await folderWithCopy(page);
+    await failFolderReads(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await expect(dialog.dialog).toContainText("HemoIO couldn't read the file in");
+    await expect(dialog.replace).toHaveCount(0);
+    await expect(dialog.chooseFolder).toBeVisible();
+
+    await canReadFolderAgain(page);
+    await dialog.tryAgain.click();
+    await expect(dialog.offer()).toBeVisible();
+  });
+
+  test('a copy from a newer HemoIO offers no folder actions', async ({ page }) => {
+    // Scenario: Folder copy from a newer version of HemoIO
+    await sealAsNewer(page);
+    await folderWithCopy(page);
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await expect(dialog.dialog).toContainText('saved by a newer version of HemoIO');
+    await expect(dialog.dialog.getByRole('button')).toHaveText(['Not now']);
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('a copy saved before tests were identified by LOINC is reported, not offered for restore or changed', async ({ page }) => {
     // Scenario: Folder copy saved before tests were identified by LOINC
     await sealAsPreLoinc(page);
     await folderWithCopy(page);
@@ -250,12 +502,35 @@ test.describe('Restore from the folder copy', () => {
       'This backup was made before tests were identified by LOINC and cannot be restored. Re-import your reports instead.'
     );
     await expect(dialog.restore).toHaveCount(0);
-    await expect(dialog.replace).toHaveCount(0);
+    await expect(dialog.replace).toBeVisible();
+    await expect(dialog.chooseFolder).toBeVisible();
     await expectFolderCopyUnchanged(page, hash);
   });
 
+  test('a copy saved before LOINC is replaced once confirmed, kept first without its lock', async ({ page }) => {
+    // Scenario: Replace a folder copy saved before tests were identified by LOINC
+    await sealAsPreLoinc(page);
+    await folderWithCopy(page);
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+    await sealAsCurrent(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await dialog.replace.click();
+    await expect(dialog.dialog).not.toContainText('another password');
+    await dialog.confirmReplace.click();
+    await expect(dialog.dialog).toBeHidden();
+
+    // The key opens it: kept as it was, sealed again without the lock
+    const backup = await onlyBackup(page);
+    expect(await folderFileHeader(page, backup)).toEqual({ format: 'hemoio-folder-copy', version: 1, lock: null });
+    expect((await folderFileBody(page, backup, TEST_PASSWORD)).version).toBe(3);
+    await expectFreshCopy(page, hash);
+  });
+
   test('a pre-LOINC copy the user declined is not written over after an import', async ({ page }) => {
-    // Scenario: A folder copy saved before LOINC is never written over
+    // Scenario: A folder copy saved before LOINC is not written over unless I choose to replace it
     await sealAsPreLoinc(page);
     await folderWithCopy(page);
     const hash = await folderCopyHash(page);

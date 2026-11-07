@@ -85,21 +85,39 @@ export async function sealEnvelope(
   return new TextEncoder().encode(file).buffer as ArrayBuffer;
 }
 
-/** The header and the sealed part, null for a legacy raw copy, or 'damaged' */
-function parseEnvelope(
-  bytes: ArrayBuffer
-): { header: FolderEnvelopeHeader; sealed: string } | null | 'damaged' {
+/** Bytes that are not JSON text at all, as a copy in the raw format from before the envelope */
+const NOT_JSON = Symbol('not JSON');
+
+/** The file's JSON object; null for JSON that is not an object, NOT_JSON for anything else */
+function parseJsonObject(bytes: ArrayBuffer): Record<string, unknown> | null | typeof NOT_JSON {
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    return null;
+    return NOT_JSON;
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const file = parsed as Record<string, unknown>;
-  if (file.format !== FOLDER_ENVELOPE_FORMAT) return null;
+  return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+}
+
+/**
+ * What an envelope's header says, before anything is opened: a header this
+ * build reads; null for no envelope (a legacy raw copy, or JSON of another
+ * format); 'newer' for a newer envelope version and 'foreign-lock' for a
+ * lock that is not this build's credentials (another setup's, or a newer
+ * HemoIO's), which are never written over, the newer version told first;
+ * or 'damaged'
+ */
+export type EnvelopeHeaderState = FolderEnvelopeHeader | null | 'newer' | 'foreign-lock' | 'damaged';
+
+function parseEnvelope(
+  bytes: ArrayBuffer
+): { header: FolderEnvelopeHeader; sealed: string } | Exclude<EnvelopeHeaderState, FolderEnvelopeHeader> {
+  const file = parseJsonObject(bytes);
+  if (file === NOT_JSON || file === null || file.format !== FOLDER_ENVELOPE_FORMAT) return null;
 
   const { version, lock, sealed } = file;
+  if (typeof version === 'number' && Number.isInteger(version) && version > 1) return 'newer';
+  if (version === 1 && lock !== null && lock !== undefined && !isCredentialsV2(lock)) return 'foreign-lock';
   if (version !== 1) return 'damaged';
   if (lock !== null && !isCredentialsV2(lock)) return 'damaged';
   if (typeof sealed !== 'string' || !isBase64(sealed)) return 'damaged';
@@ -109,10 +127,29 @@ function parseEnvelope(
   };
 }
 
-/** The header, null for a legacy raw copy (not JSON with this format), or 'damaged' */
-export function readEnvelopeHeader(bytes: ArrayBuffer): FolderEnvelopeHeader | null | 'damaged' {
+/**
+ * Whether a file shows no lock in plain text: not JSON at all and nothing
+ * of an envelope or a lock in it (a copy in the raw format from before the
+ * envelope), or an envelope or damaged copy whose lock is null. Such a file
+ * may be kept as a backup as it lies.
+ */
+export function showsNoLock(bytes: ArrayBuffer): boolean {
+  const file = parseJsonObject(bytes);
+  if (file === NOT_JSON) {
+    // Text only an envelope or a lock holds: a half-written envelope may still carry its lock
+    const text = new TextDecoder().decode(bytes);
+    return ![FOLDER_ENVELOPE_FORMAT, DAMAGED_COPY_FORMAT, 'kekSalt', 'wrappedKey'].some((marker) =>
+      text.includes(marker)
+    );
+  }
+  if (file === null) return false;
+  return (file.format === FOLDER_ENVELOPE_FORMAT || file.format === DAMAGED_COPY_FORMAT) && file.lock === null;
+}
+
+/** The header, as the file states it (EnvelopeHeaderState) */
+export function readEnvelopeHeader(bytes: ArrayBuffer): EnvelopeHeaderState {
   const envelope = parseEnvelope(bytes);
-  return envelope && envelope !== 'damaged' ? envelope.header : envelope;
+  return envelope !== null && typeof envelope === 'object' ? envelope.header : envelope;
 }
 
 /** Opens either format; rejects when the key does not open it */
@@ -121,8 +158,9 @@ export async function openEnvelope(
   key: CryptoKey
 ): Promise<{ header: FolderEnvelopeHeader | null; plain: ArrayBuffer }> {
   const envelope = parseEnvelope(bytes);
-  if (envelope === 'damaged') {
-    // Fixed text: the file's content is not the error's to carry
+  if (typeof envelope === 'string') {
+    // Never opened, as damaged: a newer envelope or an unknown lock is no
+    // header this build may trust. Fixed text: the file's content is not the error's to carry.
     throw new Error('The folder copy is damaged');
   }
   if (envelope === null) {
@@ -167,12 +205,8 @@ export async function sealDamagedCopy(bytes: ArrayBuffer, key: CryptoKey): Promi
 
 /** Whether the file is a damaged copy kept by sealDamagedCopy */
 export function isDamagedCopy(bytes: ArrayBuffer): boolean {
-  try {
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    return typeof parsed === 'object' && parsed !== null && (parsed as { format?: unknown }).format === DAMAGED_COPY_FORMAT;
-  } catch {
-    return false;
-  }
+  const file = parseJsonObject(bytes);
+  return file !== NOT_JSON && file !== null && file.format === DAMAGED_COPY_FORMAT;
 }
 
 /** The bytes a damaged copy kept; rejects when the key does not open it */

@@ -11,6 +11,7 @@ export {
   folderCopyId,
   folderDataJson,
   isNothingToKeep,
+  isReplaceableFolderCopy,
   markFolderCopySeen,
   sealFolderCopy,
   writeFolderCopy,
@@ -32,7 +33,14 @@ export {
   type FolderBackupStore,
   type KeepFolderBackupOptions,
 } from './folderBackups';
-export { canKeepFolderCopy, keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
+export {
+  canKeepFolderCopy,
+  keepBrowserData,
+  backupOfFolderFile,
+  keepCurrentFolderCopy,
+  keepFolderCopy,
+  keepFolderFilesBeforeReplace,
+} from './folderConflict';
 export {
   assessFolderCopy,
   readFolderCopy,
@@ -45,4 +53,10 @@ export {
   type FolderCopySource,
   type FolderCopyAssessment,
   type FolderCopyReading,
+  type UnreadableFolderCopy,
 } from './folderCopy';
+export {
+  folderCopyProblemActions,
+  folderSyncIssueActions,
+  type FolderProblemActions,
+} from './folderProblemActions';

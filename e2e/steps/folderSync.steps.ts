@@ -182,3 +182,36 @@ export function skippedSyncNotice(page: Page): Locator {
 export function failedSyncNotice(page: Page): Locator {
   return page.getByRole('alert').filter({ hasText: 'Folder sync failed' });
 }
+
+/** The skipped-sync notice's buttons, for a folder copy that cannot be read */
+export class SkippedSyncNotice {
+  readonly notice: Locator;
+  readonly chooseFolder: Locator;
+  readonly replace: Locator;
+  readonly dismiss: Locator;
+
+  constructor(page: Page) {
+    this.notice = skippedSyncNotice(page);
+    this.chooseFolder = this.notice.getByRole('button', { name: 'Choose another folder' });
+    this.replace = this.notice.getByRole('button', { name: 'Replace folder copy…' });
+    this.dismiss = this.notice.getByRole('button', { name: 'Dismiss notice' });
+  }
+}
+
+/** The confirmation "Replace folder copy…" in the notice opens */
+export class ReplaceFolderCopyDialog {
+  readonly dialog: Locator;
+  readonly back: Locator;
+  readonly confirm: Locator;
+
+  constructor(page: Page) {
+    this.dialog = page.getByRole('dialog', { name: 'Replace the folder copy?' });
+    this.back = this.dialog.getByRole('button', { name: 'Back' });
+    this.confirm = this.dialog.getByRole('button', { name: 'Replace folder copy', exact: true });
+  }
+}
+
+/** The folder the picker hands out next (useTestFolder), without going through Settings */
+export async function pickNextFolder(page: Page, folder: TestFolder): Promise<void> {
+  await page.evaluate(({ key, name }) => sessionStorage.setItem(key, name), { key: NEXT_FOLDER_KEY, name: folder.name });
+}

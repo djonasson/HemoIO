@@ -9,9 +9,16 @@
  */
 
 import { keepFolderBackup, type FolderBackupKind, type FolderBackupStore } from './folderBackups';
-import { resealWithoutLock } from './folderEnvelope';
-import { digestFolderData, folderDataJson, sealFolderCopy } from './folderSync';
+import { resealWithoutLock, sealDamagedCopy, showsNoLock } from './folderEnvelope';
+import {
+  digestFolderData,
+  folderCopyId,
+  folderDataJson,
+  isReplaceableFolderCopy,
+  sealFolderCopy,
+} from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
+import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { FolderCopySource } from './folderCopy';
 
 interface BrowserDataBackup {
@@ -41,15 +48,31 @@ export async function keepBrowserData(
 }
 
 /**
- * Keep a folder copy, as its bytes were read, as a conflict backup: its
- * content unchanged, without its lock. Rejects when the key does not open it
- * or the backup cannot be saved.
+ * Keep a folder file, as its bytes were read, as a conflict backup, as
+ * backupOfFolderFile keeps it: the one rule for every file kept before it is
+ * replaced. Resolves the backup's name; rejects when it cannot be saved.
  */
 export async function keepFolderCopy(
   { key, backups, protect }: { key: CryptoKey; backups: FolderBackupStore; protect?: string[] },
   bytes: ArrayBuffer
-): Promise<void> {
-  await keepFolderBackup(backups, await resealWithoutLock(bytes, key), { kind: 'conflict', protect });
+): Promise<string> {
+  return keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict', protect });
+}
+
+/**
+ * A folder file as it is kept as a backup. One the key opens is sealed again
+ * without its lock (P23). One that shows no lock in plain text (the raw
+ * format from before the envelope, under another password or an earlier
+ * setup) is kept as it lies, so its owner can still restore it from their
+ * own setup. Any other is sealed whole under the key (P41): a lock its
+ * header shows is never kept in plain text.
+ */
+export async function backupOfFolderFile(bytes: ArrayBuffer, key: CryptoKey): Promise<ArrayBuffer> {
+  try {
+    return await resealWithoutLock(bytes, key);
+  } catch {
+    return showsNoLock(bytes) ? bytes.slice(0) : sealDamagedCopy(bytes, key);
+  }
 }
 
 /**
@@ -72,6 +95,37 @@ export async function keepCurrentFolderCopy({
   if (bytes === null || bytes.byteLength === 0) return null;
   await keepFolderCopy({ key, backups, protect }, bytes);
   return bytes;
+}
+
+/**
+ * Before a copy the user chose to replace is written over: keep it, and the
+ * previous copy beside it, as conflict backups, neither pruning the other.
+ * Only for the very file the user was asked about (`fileId`, by its bytes),
+ * and only while the sync would replace it (isReplaceableFolderCopy):
+ * otherwise nothing is kept and false is returned, so the question is asked
+ * again. Rejects when a backup cannot be saved.
+ */
+export async function keepFolderFilesBeforeReplace({
+  key,
+  ownLock,
+  backups,
+  folder,
+  fileId,
+}: {
+  key: CryptoKey;
+  ownLock: StoredCredentialsV2 | null;
+  backups: FolderBackupStore;
+  folder: Required<FolderCopySource>;
+  fileId: string;
+}): Promise<boolean> {
+  const bytes = await folder.loadCurrent();
+  if (bytes === null || bytes.byteLength === 0) return false;
+  if ((await folderCopyId(bytes, null)) !== fileId) return false;
+  if (!(await isReplaceableFolderCopy(bytes, key, ownLock))) return false;
+  const kept = await keepFolderCopy({ key, backups }, bytes);
+  const previous = await folder.loadPrevious();
+  if (previous !== null && previous.byteLength > 0) await keepFolderCopy({ key, backups, protect: [kept] }, previous);
+  return true;
 }
 
 /**

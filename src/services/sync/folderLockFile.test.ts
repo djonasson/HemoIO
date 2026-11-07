@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createCredentialsV2 } from '@data/encryption/keyWrapping';
-import { FOLDER_LOCK_FORMAT, keepLockFile, readLockFile, type FolderLockStore } from './folderLockFile';
+import { FOLDER_LOCK_FORMAT, keepLockFile, readLockFile, saveLockFile, type FolderLockStore } from './folderLockFile';
 
 const encode = (value: unknown): ArrayBuffer =>
   new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value)).buffer as ArrayBuffer;
@@ -78,6 +78,18 @@ describe('folder lock file', () => {
 
     expect(store.saveLock).not.toHaveBeenCalled();
     expect(readLockFile(read())).toEqual(laterLock);
+  });
+
+  it('saving writes the lock over whatever the file holds, a later lock too', async () => {
+    const older = await createCredentialsV2('Old-Passw0rd!', 1000);
+    const later = await createCredentialsV2('New-Passw0rd!', 1000);
+    const olderLock = { ...older.credentials, changedAt: '2026-11-05T09:00:00.000Z' };
+    const { store, read } = folderWith(null);
+    await keepLockFile(store, { ...later.credentials, changedAt: '2026-11-06T09:00:00.000Z' });
+
+    await saveLockFile(store, olderLock);
+
+    expect(readLockFile(read())).toEqual(olderLock);
   });
 
   it('writes the lock when the file cannot be read, and rejects when it cannot be written', async () => {

@@ -5,15 +5,26 @@
  */
 
 import { notifications } from '@mantine/notifications';
+import type { ReactNode } from 'react';
 
 export interface PersistentNotice {
   id: string;
   title: string;
-  /** Fixed text: never a value entered, nor an error's detail */
-  message: string;
+  /** Fixed text, or an element showing fixed text and buttons: never a value entered, nor an error's detail */
+  message: ReactNode;
   color?: string;
 }
 
+/** The close button's name, which screen readers announce and which has none otherwise */
+export const DISMISS_NOTICE_LABEL = 'Dismiss notice';
+
 export function showPersistentNotice({ id, title, message, color }: PersistentNotice): void {
-  notifications.show({ id, title, message, ...(color !== undefined && { color }), autoClose: false });
+  notifications.show({
+    id,
+    title,
+    message,
+    ...(color !== undefined && { color }),
+    autoClose: false,
+    closeButtonProps: { 'aria-label': DISMISS_NOTICE_LABEL },
+  });
 }

@@ -23,12 +23,14 @@ import {
   keepBrowserData,
   keepCurrentFolderCopy,
   keepFolderCopy,
+  keepFolderFilesBeforeReplace,
   markFolderCopySeen,
 } from '@services/sync';
 import {
   loadNewerFolderCopy,
   recordFolderCopySeen,
   runFolderSync,
+  type ReplacementToTake,
   type SyncSession,
 } from '@services/sync/folderSyncRun';
 import { isNothingToKeep, sealLockIntoFolderCopy, type FolderSyncOutcome } from '@services/sync/folderSync';
@@ -40,6 +42,7 @@ import { withWebLock } from '@/utils/withWebLock';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { logFailure } from '@/utils/logFailure';
 import { hasUnsavedEdits } from '@/utils/unsavedEdits';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
 import type { ParsedBackupData } from '@services/import';
 import type { ApplyFolderCopy } from './useApplyFolderCopy';
 import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from '@services/sync';
@@ -47,9 +50,34 @@ import type { ChangedElsewhereReason, FolderProtectionReason, FolderSide } from 
 /** The notice that this browser took on a password changed on another computer */
 const FOLDER_LOCK_ADOPTED_NOTICE_ID = 'folder-lock-adopted';
 
-
 /** What the user is told about the folder sync: why it held back, or that it failed */
 export type FolderSyncIssue = FolderProtectionReason | 'failed';
+
+/**
+ * A folder copy that cannot be read, as the user was asked about it: the
+ * file (folderCopyId(bytes, null)) and the folder it was found in. A choice
+ * to replace it is carried out only for that file, in that folder.
+ */
+export interface UnreadableCopyTarget {
+  fileId: string;
+  folder: FolderToken | null;
+}
+
+/**
+ * What the user chose to replace: a copy offered for restore, by its
+ * revision (`copy`), or a copy that cannot be read (`unreadable`)
+ */
+export type FolderReplaceChoice =
+  | { kind: 'copy'; revision: string | null }
+  | ({ kind: 'unreadable' } & UnreadableCopyTarget);
+
+/**
+ * 'replaced': kept as a backup, and the next sync writes over it.
+ * 'changed': the folder, or the file in it, is no longer the one the user
+ * was asked about (or folder storage is off): nothing was kept, and the
+ * question is to be asked again.
+ */
+export type FolderReplaceResult = 'replaced' | 'changed';
 
 /**
  * What the user is shown to choose: both the folder copy and this browser
@@ -84,6 +112,17 @@ export interface UseFilesystemSyncOptions {
   applyFolderCopy: ApplyFolderCopy;
 }
 
+/** What the last sync found to tell, and for a copy the user may replace, which file and folder */
+interface Found {
+  issue: FolderSyncIssue;
+  target: UnreadableCopyTarget | null;
+}
+
+function sameFound(a: Found | null, b: Found | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.issue === b.issue && a.target?.fileId === b.target?.fileId && a.target?.folder === b.target?.folder;
+}
+
 /** A conflict waiting for the user: the copy and its bytes as the sync found them */
 interface PendingConflict {
   session: SyncSession;
@@ -102,6 +141,8 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   syncNow: () => Promise<void>;
   /** Why the last sync left the folder copy alone or failed; null while syncs write or are held */
   issue: FolderSyncIssue | null;
+  /** For an issue the user may resolve by replacing the copy: the file and folder found */
+  issueTarget: UnreadableCopyTarget | null;
   /** Both sides changed: what the user is asked; null otherwise */
   conflict: FolderConflict | null;
   /** Syncs wait for the user's choice, or for the next session after "Decide later" */
@@ -119,11 +160,13 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
    */
   acknowledgeFolderCopy: (revision: string | null, loadedStamp: string) => Promise<void>;
   /**
-   * "Replace folder copy" from the restore question: keeps the copy in the
-   * folder as a backup, then the next sync writes over it without asking.
-   * Rejects, keeping nothing chosen, when the backup cannot be saved.
+   * "Replace folder copy", from the restore question or the sync notice:
+   * keeps the copy in the folder as a backup (with the previous copy, for
+   * one that cannot be read), then the next sync writes over that very copy
+   * without asking. Rejects, keeping nothing chosen, when a backup cannot be
+   * saved.
    */
-  replaceFolderCopy: (revision: string | null) => Promise<void>;
+  replaceFolderCopy: (choice: FolderReplaceChoice) => Promise<FolderReplaceResult>;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey, storedLock, adoptFolderLock } = useAuth();
@@ -148,23 +191,36 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   // for meanwhile share one: each exports the data as it is when it starts.
   const lastRef = useRef<Promise<void>>(Promise.resolve());
   const waitingRef = useRef<Promise<void> | null>(null);
-  const [issue, setIssue] = useState<FolderSyncIssue | null>(null);
+  const [found, setFound] = useState<Found | null>(null);
+  const issue = found?.issue ?? null;
+  // What the last sync found, read by the next: the same file found again keeps its folder token
+  const foundRef = useRef<Found | null>(null);
+  /** Told only when it changed: every sync sets it again */
+  const setIssue = useCallback((next: FolderSyncIssue | null, target: UnreadableCopyTarget | null = null) => {
+    const value = next === null ? null : { issue: next, target };
+    if (!sameFound(foundRef.current, value)) foundRef.current = value;
+    setFound(foundRef.current);
+  }, []);
   // Kept with the key of the session they belong to: a new unlock is a new
   // key, and starts with no question and no hold
   const [asked, setAsked] = useState<{ key: CryptoKey; conflict: FolderConflict } | null>(null);
   const heldForRef = useRef<CryptoKey | null>(null);
   const [heldFor, setHeldFor] = useState<CryptoKey | null>(null);
   const pendingRef = useRef<PendingConflict | null>(null);
-  // The copy the user chose to replace from the restore question, for the
-  // next sync of the session it was chosen in
-  const replaceNextRef = useRef<{ key: CryptoKey; id: string } | null>(null);
+  // The copy the user chose to replace from the restore question or the
+  // sync notice, for the next sync of the session it was chosen in;
+  // `unreadable`: a copy that cannot be read, identified by its bytes
+  const replaceNextRef = useRef<{ key: CryptoKey; choice: ReplacementToTake } | null>(null);
   // Whether the folder may not hold this browser's lock yet: unknown at
   // first, and after every password change, until a sync finds it there.
   // While it may not, a sync that leaves the data as they are, or a held
   // one, reads the copy to put the lock in it (P42).
   const lockBehindRef = useRef(true);
   // Held, the folder is looked at again: what the last sync found no longer applies
-  if (!enabled && issue !== null) setIssue(null);
+  if (!enabled && issue !== null) setFound(null);
+  useEffect(() => {
+    if (!enabled) foundRef.current = null;
+  }, [enabled]);
   // A ref, so a sync asked for before the hold began is held too. Set before
   // the effects below run, so the sync a hold's end starts sees it ended.
   const enabledRef = useRef(enabled);
@@ -194,7 +250,8 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             // Taken once: a later sync asks again rather than replace another copy
             const chosen = replaceNextRef.current;
             replaceNextRef.current = null;
-            return replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
+            if (replaces != null) return { replaces };
+            return chosen?.key === session.key ? chosen.choice : undefined;
           },
           isEnabled: () => enabledRef.current,
           lockMayBeBehind: lockBehindRef.current,
@@ -218,9 +275,19 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             await recordFolderCopySeen(outcome.state, lastSeen, session.key);
             setIssue(null);
             return;
-          case 'protected':
-            setIssue(outcome.reason);
+          case 'protected': {
+            const { fileId } = outcome;
+            const last = foundRef.current;
+            // The folder the provider read the file from; the same file found again is in the folder found before
+            const target =
+              fileId === undefined
+                ? null
+                : last?.issue === outcome.reason && last.target?.fileId === fileId
+                  ? last.target
+                  : { fileId, folder: (await provider.folderIdentity())?.token ?? null };
+            setIssue(outcome.reason, target);
             return;
+          }
           case 'changed-elsewhere':
             setIssue(null);
             if (!enabledRef.current || sessionRef.current !== session) return;
@@ -270,7 +337,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         throw error;
       }
     },
-    [holdFor]
+    [holdFor, setIssue]
   );
 
   /**
@@ -316,7 +383,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     await withWebLock(FOLDER_SYNC_LOCK, async () => {
       if (stillWanted()) await syncOnce(session);
     });
-  }, [syncOnce, putLockInFolder]);
+  }, [syncOnce, putLockInFolder, setIssue]);
 
   /** Runs `task` after everything already queued; its failure is its caller's, and the next still runs */
   const enqueue = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
@@ -418,17 +485,44 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   );
 
   const replaceFolderCopy = useCallback(
-    async (revision: string | null): Promise<void> => {
+    async (choice: FolderReplaceChoice): Promise<FolderReplaceResult> => {
       const session = unlockedRef.current;
       if (!session) throw new Error('HemoIO is locked');
-      await afterSyncs(async () => {
+      // Folder storage switched off: nothing is replaced, and the notice goes with the next sync
+      if (!isFolderStorageOn()) return 'changed';
+      return afterSyncs(async (): Promise<FolderReplaceResult> => {
+        if (!isFolderStorageOn()) return 'changed';
         const provider = currentFolder();
-        const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
-        const id = bytes && (await folderCopyId(bytes, revision));
+        let id: string | null;
+        if (choice.kind === 'copy') {
+          const bytes = await keepCurrentFolderCopy({ key: session.key, backups: provider, folder: provider });
+          id = bytes && (await folderCopyId(bytes, choice.revision));
+        } else {
+          // Only the file the user saw, in the folder it was in: else asked again
+          if (!(await provider.isCurrentFolder(choice.folder))) {
+            // The next sync reads the folder afresh, even for the same file
+            foundRef.current = null;
+            return 'changed';
+          }
+          const kept = await keepFolderFilesBeforeReplace({
+            key: session.key,
+            ownLock: lockRef.current,
+            backups: provider,
+            folder: provider,
+            fileId: choice.fileId,
+          });
+          if (!kept) return 'changed';
+          id = choice.fileId;
+        }
         // Locked meanwhile: the choice was for a session that has ended
-        if (unlockedRef.current?.key !== session.key) return;
-        // The sync that the hold's end starts writes over the copy kept
-        replaceNextRef.current = id === null ? null : { key: session.key, id };
+        if (unlockedRef.current?.key !== session.key) return 'changed';
+        // The sync that follows writes over the copy kept; nothing there to
+        // keep (an offered copy gone meanwhile) writes as for an empty folder
+        replaceNextRef.current =
+          id === null
+            ? null
+            : { key: session.key, choice: choice.kind === 'unreadable' ? { replacesUnreadable: id } : { replaces: id } };
+        return 'replaced';
       });
     },
     [afterSyncs]
@@ -450,6 +544,8 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
       onFolderAccessChanged(() => {
         pendingRef.current = null;
         replaceNextRef.current = null;
+        // The same file found in another folder is not the one found before
+        foundRef.current = null;
         setAsked(null);
         holdFor(null);
       }),
@@ -520,6 +616,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   return {
     syncNow,
     issue,
+    issueTarget: found?.target ?? null,
     conflict: asked && asked.key === encryptionKey ? asked.conflict : null,
     held: heldFor !== null && heldFor === encryptionKey,
     resolveConflict,

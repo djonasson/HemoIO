@@ -1,13 +1,26 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { chooseFolder } from '@data/storage/chooseFolder';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { folderCopyProblemActions, type FolderCopyProblem } from '@services/sync';
 import { FolderRestoreModal } from './FolderRestoreModal';
-import type { FolderRestorePrompt } from '@hooks';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
+import type { FolderReplaceChoice, FolderReplaceResult, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
 
 const SAVED_AT = new Date('2026-10-29T08:30:00.000Z');
+const TOKEN = {} as FolderToken;
+
+vi.mock('@data/storage/chooseFolder', () => ({
+  chooseFolder: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(chooseFolder).mockReset();
+  vi.mocked(chooseFolder).mockResolvedValue('chosen');
+});
 
 function copyOf(labResults: number, testValues: number, notes: number): ParsedBackupData {
   return {
@@ -28,20 +41,29 @@ const OFFER: FolderRestorePrompt = {
   folderName: 'Health',
   replacesBrowserData: false,
   stamp: 'stamp-1',
+  damagedCurrent: false,
+  replace: { choice: { kind: 'copy', revision: 'r1' }, warn: false },
 };
 
 function renderModal(
   prompt: FolderRestorePrompt | null = OFFER,
   onRestore = vi.fn(async (): Promise<boolean> => true),
-  onReplace = vi.fn(async () => {})
+  onReplace = vi.fn<(choice: FolderReplaceChoice) => Promise<FolderReplaceResult>>(async () => 'replaced')
 ) {
   const onDecide = vi.fn();
+  const onRecheck = vi.fn();
   render(
     <MantineProvider env="test">
-      <FolderRestoreModal prompt={prompt} onRestore={onRestore} onReplace={onReplace} onDecide={onDecide} />
+      <FolderRestoreModal
+        prompt={prompt}
+        onRestore={onRestore}
+        onReplace={onReplace}
+        onDecide={onDecide}
+        onRecheck={onRecheck}
+      />
     </MantineProvider>
   );
-  return { onRestore, onReplace, onDecide };
+  return { onRestore, onReplace, onDecide, onRecheck };
 }
 
 describe('FolderRestoreModal', () => {
@@ -81,7 +103,7 @@ describe('FolderRestoreModal', () => {
   });
 
   it('counts in the singular and names no folder it does not know', () => {
-    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false, stamp: 's' });
+    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false, stamp: 's', damagedCurrent: false, replace: null });
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('1 lab result');
@@ -173,12 +195,12 @@ describe('FolderRestoreModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
 
     await waitFor(() => expect(onDecide).toHaveBeenCalledWith('sync'));
-    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onReplace).toHaveBeenCalledWith({ kind: 'copy', revision: 'r1' });
     expect(onReplace.mock.invocationCallOrder[0]).toBeLessThan(onDecide.mock.invocationCallOrder[0]);
   });
 
   it('replaces nothing when the folder copy cannot be kept as a backup', async () => {
-    const onReplace = vi.fn(async () => {
+    const onReplace = vi.fn(async (): Promise<FolderReplaceResult> => {
       throw new Error('Disk full');
     });
     const { onDecide } = renderModal(OFFER, undefined, onReplace);
@@ -207,7 +229,13 @@ describe('FolderRestoreModal', () => {
     const onDecide = vi.fn();
     const ui = (prompt: FolderRestorePrompt | null) => (
       <MantineProvider env="test">
-        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onReplace={vi.fn(async () => {})} onDecide={onDecide} />
+        <FolderRestoreModal
+          prompt={prompt}
+          onRestore={vi.fn()}
+          onReplace={vi.fn(async (): Promise<FolderReplaceResult> => 'replaced')}
+          onDecide={onDecide}
+          onRecheck={vi.fn()}
+        />
       </MantineProvider>
     );
     const { rerender } = render(ui(OFFER));
@@ -221,7 +249,13 @@ describe('FolderRestoreModal', () => {
     const onDecide = vi.fn();
     const ui = (prompt: FolderRestorePrompt | null) => (
       <MantineProvider env="test">
-        <FolderRestoreModal prompt={prompt} onRestore={vi.fn()} onReplace={vi.fn(async () => {})} onDecide={onDecide} />
+        <FolderRestoreModal
+          prompt={prompt}
+          onRestore={vi.fn()}
+          onReplace={vi.fn(async (): Promise<FolderReplaceResult> => 'replaced')}
+          onDecide={onDecide}
+          onRecheck={vi.fn()}
+        />
       </MantineProvider>
     );
     const { rerender } = render(ui(OFFER));
@@ -232,31 +266,163 @@ describe('FolderRestoreModal', () => {
     expect(screen.getByRole('dialog', { name: 'Restore your data from the folder?' })).toBeInTheDocument();
   });
 
+  // As the hook gives it: the replace the policy allows for the reason
+  const UNREADABLE = (
+    reason: FolderCopyProblem,
+    replaceable = folderCopyProblemActions(reason).replace !== false
+  ): FolderRestorePrompt => ({
+    kind: 'unreadable',
+    reason,
+    folderName: 'Health',
+    replace: replaceable
+      ? { choice: { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN }, warn: reason === 'cannot-decrypt' }
+      : null,
+  });
+
   it.each([
     ['cannot-decrypt', /can't be opened with your password.*different password.*damaged/],
     ['not-a-copy', /isn't a folder copy HemoIO can read.*damaged/],
-    ['newer-version', /newer version of HemoIO/],
+    ['damaged-copy', /already damaged when HemoIO kept it/],
     [
       'before-loinc',
       /This backup was made before tests were identified by LOINC and cannot be restored\. Re-import your reports instead\./,
     ],
-    ['read-failed', /couldn't read the file/],
-  ] as const)('explains a copy it cannot read (%s), and offers neither restore nor replace', (reason, message) => {
-    renderModal({ kind: 'unreadable', reason, folderName: 'Health' });
+  ] as const)('explains a copy it cannot read (%s), and offers another folder or replacing it', (reason, message) => {
+    renderModal(UNREADABLE(reason));
 
     const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
     expect(dialog).toHaveTextContent(message);
-    expect(dialog).toHaveTextContent('has not been changed');
-    // The sync never writes over a copy it cannot read, so replacing is no choice to offer
-    expect(dialog).toHaveTextContent('HemoIO will not write over it');
-    expect(dialog).toHaveTextContent('choose another folder in Settings');
+    expect(dialog).toHaveTextContent(
+      "The file has not been changed. To keep syncing, choose another folder, or replace the folder copy with this computer's data."
+    );
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Replace folder copy…' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace folder copy…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose another folder' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument();
   });
 
+  it('offers nothing but "Not now" for a copy from a newer HemoIO: updating restores it', () => {
+    renderModal(UNREADABLE('newer-version'));
+
+    const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
+    expect(dialog).toHaveTextContent(/newer version of HemoIO/);
+    expect(dialog).toHaveTextContent('The file has not been changed, and HemoIO will not write over it.');
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Not now']);
+  });
+
+  it('offers to read the folder again when the file could not be read, but not to replace it', async () => {
+    const { onRecheck } = renderModal(UNREADABLE('read-failed'));
+
+    const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
+    expect(dialog).toHaveTextContent(/couldn't read the file/);
+    expect(dialog).toHaveTextContent('Try again, or choose another folder.');
+    expect(screen.queryByRole('button', { name: /Replace folder copy/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose another folder' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRecheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces a copy that cannot be read only once confirmed, and then lets sync go ahead', async () => {
+    const { onReplace, onDecide } = renderModal(UNREADABLE('not-a-copy'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    const confirm = screen.getByRole('dialog', { name: 'Replace the folder copy?' });
+    expect(confirm).toHaveTextContent("saves this computer's data to “Health”");
+    expect(confirm).toHaveTextContent('kept as a dated backup first, in its hemoio-backups folder');
+    expect(confirm).toHaveTextContent('keeps the 10 newest backups');
+    expect(confirm).not.toHaveTextContent('another password');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus());
+    expect(onReplace).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('sync'));
+    expect(onReplace).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns that a copy made with another password or setup no longer syncs from the folder", async () => {
+    renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+    expect(screen.getByRole('dialog', { name: 'Replace the folder copy?' })).toHaveTextContent(
+      "If the copy was made with another password or by someone else's HemoIO setup, it will no longer sync from this folder. It is kept in hemoio-backups as it was, and can still be restored there with that password."
+    );
+  });
+
+  it('goes back to the problem from the confirmation, with nothing replaced', async () => {
+    const { onReplace, onDecide } = renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(screen.getByRole('dialog', { name: "The folder copy can't be read" })).toBeInTheDocument();
+    expect(onReplace).not.toHaveBeenCalled();
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('says nothing changed when a copy that cannot be read cannot be kept as a backup', async () => {
+    const onReplace = vi.fn(async (): Promise<FolderReplaceResult> => {
+      throw new Error('Disk full at /home/someone');
+    });
+    const { onDecide } = renderModal(UNREADABLE('damaged-copy'), undefined, onReplace);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Nothing was changed: the folder copy could not be kept as a backup.');
+    expect(alert).not.toHaveTextContent('/home/someone');
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('opens the folder picker from "Choose another folder", decides nothing itself', async () => {
+    const { onDecide, onRecheck } = renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    expect(chooseFolder).toHaveBeenCalledTimes(1);
+    expect(onRecheck).not.toHaveBeenCalled();
+    // The folder chosen is looked at afresh, which closes the question
+    expect(onDecide).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('stays as it was when the picker is cancelled', async () => {
+    vi.mocked(chooseFolder).mockResolvedValue('cancelled');
+    const { onDecide } = renderModal(UNREADABLE('another-setup'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    expect(screen.getByRole('dialog', { name: "The folder copy can't be read" })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('says, without the reason, when the folder could not be chosen', async () => {
+    vi.mocked(chooseFolder).mockRejectedValue(new Error('Cannot open /home/someone/Health'));
+    renderModal(UNREADABLE('read-failed'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The folder could not be chosen. Nothing was changed');
+    expect(alert).not.toHaveTextContent('/home/someone');
+  });
+
+  it('looks again when folder storage was switched off meanwhile', async () => {
+    vi.mocked(chooseFolder).mockResolvedValue('off');
+    const { onRecheck, onDecide } = renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    await waitFor(() => expect(onRecheck).toHaveBeenCalledTimes(1));
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
   it('explains a folder from another setup, and the another-setup message points to Start over', async () => {
-    const { onDecide } = renderModal({ kind: 'unreadable', reason: 'another-setup', folderName: 'Health' });
+    const { onDecide } = renderModal(UNREADABLE('another-setup', false));
 
     const dialog = screen.getByRole('dialog', { name: "The folder copy can't be read" });
     expect(dialog).toHaveTextContent(
@@ -264,9 +430,114 @@ describe('FolderRestoreModal', () => {
     );
     expect(screen.queryByRole('button', { name: 'Restore' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Replace folder copy/ })).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent('The file has not been changed. To keep syncing, choose another folder.');
+    expect(screen.getByRole('button', { name: 'Choose another folder' })).toBeInTheDocument();
     const notNow = screen.getByRole('button', { name: 'Not now' });
     await waitFor(() => expect(notNow).toHaveFocus());
     await userEvent.click(notNow);
     expect(onDecide).toHaveBeenCalledWith('hold');
+  });
+
+  it('replaces the very copy the confirmation was shown for', async () => {
+    const prompt = UNREADABLE('not-a-copy');
+    const { onReplace } = renderModal(prompt);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    await waitFor(() =>
+      expect(onReplace).toHaveBeenCalledWith({ kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN })
+    );
+  });
+
+  it('asks again, deciding nothing, when the folder or the file changed meanwhile', async () => {
+    const onReplace = vi.fn(async (): Promise<FolderReplaceResult> => 'changed');
+    const { onDecide, onRecheck } = renderModal(UNREADABLE('not-a-copy'), undefined, onReplace);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    await waitFor(() => expect(onRecheck).toHaveBeenCalledTimes(1));
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('lets a replace decide nothing once another question is asked', async () => {
+    let finish!: (result: FolderReplaceResult) => void;
+    const onReplace = vi.fn(() => new Promise<FolderReplaceResult>((resolve) => (finish = resolve)));
+    const onDecide = vi.fn();
+    const ui = (prompt: FolderRestorePrompt | null) => (
+      <MantineProvider env="test">
+        <FolderRestoreModal
+          prompt={prompt}
+          onRestore={vi.fn()}
+          onReplace={onReplace}
+          onDecide={onDecide}
+          onRecheck={vi.fn()}
+        />
+      </MantineProvider>
+    );
+    const { rerender } = render(ui(UNREADABLE('not-a-copy')));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    rerender(ui({ ...UNREADABLE('not-a-copy'), folderName: 'Other' } as FolderRestorePrompt));
+    finish('replaced');
+
+    await waitFor(() => expect(onReplace).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  it('offers no replace for a copy the sync would not write over', () => {
+    renderModal(UNREADABLE('cannot-decrypt', false));
+
+    expect(screen.queryByRole('button', { name: /Replace folder copy/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose another folder' })).toBeInTheDocument();
+  });
+
+  it('puts the focus back on "Replace folder copy…" after going back', async () => {
+    renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Replace folder copy…' })).toHaveFocus());
+  });
+
+  it('starts the confirmation afresh after going back from a failed replace', async () => {
+    const onReplace = vi.fn(async (): Promise<FolderReplaceResult> => {
+      throw new Error('Disk full');
+    });
+    renderModal(UNREADABLE('not-a-copy'), undefined, onReplace);
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+    await screen.findByRole('alert');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('puts the focus on "Try again" when the file could not be read', async () => {
+    renderModal(UNREADABLE('read-failed'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus());
+  });
+
+  it('offers the previous copy when the latest is damaged, and a replace of the damaged file', async () => {
+    const choice: FolderReplaceChoice = { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN };
+    const prompt = { ...OFFER, damagedCurrent: true, replace: { choice, warn: true } } as FolderRestorePrompt;
+    const { onReplace } = renderModal(prompt);
+
+    const dialog = screen.getByRole('dialog', { name: 'Restore your data from the folder?' });
+    expect(dialog).toHaveTextContent('The latest copy in “Health” is damaged, so the previous copy is offered instead.');
+    expect(screen.getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+    // The damaged file is the one replaced: the warning for a copy made elsewhere applies
+    expect(screen.getByRole('dialog', { name: 'Replace the folder copy?' })).toHaveTextContent('another password');
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+    await waitFor(() => expect(onReplace).toHaveBeenCalledWith(choice));
   });
 });

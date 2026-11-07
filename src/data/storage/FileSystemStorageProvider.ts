@@ -101,6 +101,18 @@ export async function clearFolderHandleStore(): Promise<void> {
  */
 export type FileSystemPermissionState = 'granted' | 'prompt' | 'denied';
 
+declare const FOLDER_TOKEN: unique symbol;
+
+/**
+ * Names a folder without handing it out: the UI holds the token, and only
+ * the provider can tell which folder it names (folderIdentity, isCurrentFolder)
+ */
+export interface FolderToken {
+  readonly [FOLDER_TOKEN]: true;
+}
+
+const TOKEN_FOLDERS = new WeakMap<FolderToken, FileSystemDirectoryHandle>();
+
 /**
  * File System Storage Provider
  *
@@ -376,6 +388,32 @@ export class FileSystemStorageProvider implements StorageProvider {
   async getDirectoryName(): Promise<string | null> {
     const handle = await this.getDirectoryHandle();
     return handle?.name ?? null;
+  }
+
+  /**
+   * The folder this provider reads and writes, by name and by a token that
+   * tells later whether it is still the one chosen (isCurrentFolder). Kept
+   * since the provider first used it, so it is the folder a file was just
+   * read from, even if another was chosen meanwhile. Null when none is chosen.
+   */
+  async folderIdentity(): Promise<{ token: FolderToken; name: string } | null> {
+    const handle = await this.getDirectoryHandle();
+    if (!handle) return null;
+    const token = Object.freeze({}) as FolderToken;
+    TOKEN_FOLDERS.set(token, handle);
+    return { token, name: handle.name };
+  }
+
+  /**
+   * Whether the folder `token` names is the directory chosen now: so a
+   * choice made about a file in one folder is never carried out in another
+   * chosen meanwhile (in this tab or another). False when no folder is chosen.
+   */
+  async isCurrentFolder(token: FolderToken | null): Promise<boolean> {
+    const folder = token && TOKEN_FOLDERS.get(token);
+    const handle = await this.getDirectoryHandle();
+    if (!handle || !folder) return false;
+    return handle.isSameEntry(folder);
   }
 
   /**

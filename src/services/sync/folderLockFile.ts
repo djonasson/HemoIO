@@ -64,5 +64,13 @@ export async function keepLockFile(store: FolderLockStore, lock: StoredCredentia
   // another computer before its copy, and the copy's older lock must not undo it
   const held = readLockFile(current);
   if (held !== null && isLaterLock(held, lock)) return;
-  await store.saveLock(new TextEncoder().encode(text).buffer as ArrayBuffer);
+  await saveLockFile(store, lock);
+}
+
+/**
+ * Make the lock file hold this lock, whatever it holds now: for a copy that
+ * replaced one the key could not open, whose lock file belonged to that copy
+ */
+export async function saveLockFile(store: FolderLockStore, lock: StoredCredentialsV2): Promise<void> {
+  await store.saveLock(new TextEncoder().encode(lockFileText(lock)).buffer as ArrayBuffer);
 }

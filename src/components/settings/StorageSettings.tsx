@@ -34,8 +34,10 @@ import {
   FileSystemStorageProvider,
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
-import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { chooseFolder } from '@data/storage/chooseFolder';
+import { notifyFolderAccessChanged, onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
+import { useFolderSyncIssue } from '@hooks/useFolderSyncIssue';
 import type { ParsedBackupData } from '@services/import';
 import { FolderBackups } from './FolderBackups';
 import type { RestoreOptions } from './BackupRestore';
@@ -65,34 +67,41 @@ export function StorageSettings({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const fileSystemSupported = isFileSystemAccessSupported();
+  const folderSyncIssue = useFolderSyncIssue();
 
-  // Load storage provider from localStorage
-  useEffect(() => {
-    const savedProvider = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
-    if (savedProvider) {
-      setStorageProvider(savedProvider);
-    }
-  }, []);
-
-  // Load filesystem status when provider is filesystem
-  useEffect(() => {
-    async function loadFileSystemStatus() {
-      if (storageProvider !== 'filesystem' || !fileSystemSupported) {
-        return;
-      }
-
-      const provider = new FileSystemStorageProvider();
-      const name = await provider.getDirectoryName();
+  /** The folder and its access, as stored, while folder storage is the choice */
+  const loadFileSystemStatus = useCallback(
+    async (provider: StorageProviderType, isCancelled: () => boolean): Promise<void> => {
+      if (provider !== 'filesystem' || !fileSystemSupported) return;
+      const storage = new FileSystemStorageProvider();
+      const name = await storage.getDirectoryName();
+      if (isCancelled()) return;
       setDirectoryName(name);
-
       if (name) {
-        const state = await provider.getPermissionState();
-        setPermissionState(state);
+        const state = await storage.getPermissionState();
+        if (!isCancelled()) setPermissionState(state);
       }
-    }
+    },
+    [fileSystemSupported]
+  );
 
-    loadFileSystemStatus();
-  }, [storageProvider, fileSystemSupported]);
+  // The storage choice, as stored: read at first, and the folder with it;
+  // read again whenever they change (here, from the restore question or a
+  // sync notice, or in another tab; switching storage tells the same)
+  useEffect(() => {
+    let closed = false;
+    const readStorageChoice = (): void => {
+      const saved = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
+      if (saved) setStorageProvider(saved);
+      void loadFileSystemStatus(saved ?? 'local', () => closed);
+    };
+    readStorageChoice();
+    const stop = onFolderAccessChanged(readStorageChoice);
+    return () => {
+      closed = true;
+      stop();
+    };
+  }, [loadFileSystemStatus]);
 
   const handleRequestPermission = useCallback(async () => {
     setIsRequestingPermission(true);
@@ -105,49 +114,34 @@ export function StorageSettings({
       if (state === 'granted') {
         notifyFolderAccessChanged();
       }
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to request permission');
-      }
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('HemoIO could not get access to the folder. Try again.');
     } finally {
       setIsRequestingPermission(false);
     }
   }, []);
 
-  const handleSelectDirectory = useCallback(async () => {
+  /**
+   * Show the folder picker, with the card busy and any failure shown;
+   * resolves whether a folder was chosen
+   */
+  const runPick = useCallback(async (switchingOn: boolean): Promise<boolean> => {
     setIsSelectingDirectory(true);
     setError(null);
-
     try {
-      const provider = new FileSystemStorageProvider();
-      const handle = await provider.selectDirectory();
-
-      if (handle) {
-        setDirectoryName(handle.name);
-        setPermissionState('granted');
-        return handle.name;
-      }
-      return null;
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to select directory');
-      }
-      return null;
+      return (await chooseFolder({ switchingOn })) === 'chosen';
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('The folder could not be chosen. Nothing was changed; try again.');
+      return false;
     } finally {
       setIsSelectingDirectory(false);
     }
   }, []);
 
-  /** A folder chosen while folder storage is on: sync looks at the new folder */
-  const handleChangeDirectory = useCallback(async () => {
-    if (await handleSelectDirectory()) {
-      notifyFolderAccessChanged();
-    }
-  }, [handleSelectDirectory]);
+  /** A folder chosen while folder storage is on: sync looks at the new folder, and so does this card */
+  const handleChangeDirectory = useCallback(() => void runPick(false), [runPick]);
 
   const handleProviderChange = useCallback((newProvider: StorageProviderType) => {
     if (newProvider === storageProvider) return;
@@ -166,8 +160,9 @@ export function StorageSettings({
     try {
       // If switching to filesystem, need to select a directory first
       if (pendingProvider === 'filesystem') {
-        const selectedDir = await handleSelectDirectory();
-        if (!selectedDir) {
+        // Told no one: saving the storage choice tells sync, and this card, itself
+        const selected = await runPick(true);
+        if (!selected) {
           // User cancelled directory selection
           setIsChanging(false);
           setShowConfirmModal(false);
@@ -188,16 +183,13 @@ export function StorageSettings({
 
       setShowConfirmModal(false);
       setPendingProvider(null);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to switch storage provider');
-      }
+    } catch {
+      // Fixed text: the error could name the folder
+      setError('The storage location could not be changed. Try again.');
     } finally {
       setIsChanging(false);
     }
-  }, [pendingProvider, handleSelectDirectory]);
+  }, [pendingProvider, runPick]);
 
   const handleCancelSwitch = useCallback(() => {
     setShowConfirmModal(false);
@@ -280,7 +272,7 @@ export function StorageSettings({
                   <IconCheck size={14} />
                 </ThemeIcon>
                 <Text size="sm" fw={500}>
-                  {directoryName}
+                  Current folder: “<span>{directoryName}</span>”
                 </Text>
                 <Button
                   size="xs"
@@ -299,7 +291,7 @@ export function StorageSettings({
                   <IconAlertTriangle size={14} />
                 </ThemeIcon>
                 <Text size="sm" c="dimmed">
-                  {directoryName}
+                  Current folder: “<span>{directoryName}</span>”
                 </Text>
                 <Button
                   size="xs"
@@ -333,6 +325,31 @@ export function StorageSettings({
                 </Button>
               </>
             )}
+          </Group>
+        )}
+
+        {directoryName && permissionState !== 'denied' && (
+          <Text size="xs" c="dimmed">
+            Browsers show only the folder&apos;s name, not where it is.
+          </Text>
+        )}
+
+        {/* Still there once the sync notice is dismissed */}
+        {folderSyncIssue?.replaceable && (
+          <Group gap="xs">
+            <ThemeIcon size="sm" variant="light" color="yellow">
+              <IconAlertTriangle size={14} />
+            </ThemeIcon>
+            <Text size="sm">The folder copy can&apos;t be read.</Text>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              onClick={folderSyncIssue.askReplace}
+              disabled={isSaving}
+            >
+              Replace folder copy…
+            </Button>
           </Group>
         )}
 
