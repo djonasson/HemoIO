@@ -16,13 +16,21 @@ import { writeEnvelopeCopy } from './otherComputer.steps';
 /** The test folder: the same one useTestFolder hands out */
 export const FOLDER_NAME = TEST_FOLDER_NAME;
 const PERMISSION_KEY = 'e2e-folder-permission';
+/** Where the picker looks for the folder a test picks next, or 'cancel' to have it cancelled */
+const NEXT_PICK_KEY = 'e2e-next-pick';
+/** Set while reading the folder copy fails */
+const FAIL_READS_KEY = 'e2e-fail-folder-reads';
 
 /** Given the browser supports the File System Access API */
 export async function installFolderPicker(page: Page): Promise<void> {
   await page.addInitScript(
-    ({ folderName, permissionKey }) => {
-      const folder = async (): Promise<FileSystemDirectoryHandle> =>
-        (await navigator.storage.getDirectory()).getDirectoryHandle(folderName, { create: true });
+    ({ folderName, permissionKey, nextPickKey }) => {
+      const folder = async (): Promise<FileSystemDirectoryHandle> => {
+        const next = sessionStorage.getItem(nextPickKey);
+        // As the browser reports a picker the user closed
+        if (next === 'cancel') throw new DOMException('The user aborted a request.', 'AbortError');
+        return (await navigator.storage.getDirectory()).getDirectoryHandle(next ?? folderName, { create: true });
+      };
       Object.defineProperty(window, 'showDirectoryPicker', {
         configurable: true,
         value: folder,
@@ -40,8 +48,48 @@ export async function installFolderPicker(page: Page): Promise<void> {
         return 'granted';
       };
     },
-    { folderName: FOLDER_NAME, permissionKey: PERMISSION_KEY }
+    { folderName: FOLDER_NAME, permissionKey: PERMISSION_KEY, nextPickKey: NEXT_PICK_KEY }
   );
+}
+
+/** The folder the picker hands out next, by name; 'cancel' has the user close it instead */
+export async function pickNext(page: Page, folderName: string | 'cancel'): Promise<void> {
+  await page.evaluate(({ key, name }) => sessionStorage.setItem(key, name), { key: NEXT_PICK_KEY, name: folderName });
+}
+
+/**
+ * Given the folder copy cannot be read from the folder — reading the file
+ * fails, as on a drive that is not ready, until canReadFolderAgain. Must be
+ * called before the page loads that is to see it.
+ */
+export async function failFolderReads(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ key, fileName }) => {
+      // On until the test says the folder can be read again, reloads included
+      if (sessionStorage.getItem(key) === null) sessionStorage.setItem(key, 'on');
+      const proto = FileSystemFileHandle.prototype;
+      const getFile = proto.getFile;
+      proto.getFile = function (this: FileSystemFileHandle): Promise<File> {
+        if (this.name === fileName && sessionStorage.getItem(key) === 'on') {
+          return Promise.reject(new DOMException('The file could not be read.', 'NotReadableError'));
+        }
+        return getFile.call(this);
+      };
+    },
+    { key: FAIL_READS_KEY, fileName: FOLDER_COPY }
+  );
+}
+
+/** When the folder can be read again */
+export async function canReadFolderAgain(page: Page): Promise<void> {
+  await page.evaluate((key) => sessionStorage.setItem(key, 'off'), FAIL_READS_KEY);
+}
+
+/** Then Settings > Data should show this folder as the current folder */
+export async function expectCurrentFolder(page: Page, folderName: string): Promise<void> {
+  await openDataSettings(page);
+  await expect(page.getByText(`Current folder: “${folderName}”`, { exact: true })).toBeVisible();
+  await expect(page.getByText("Browsers show only the folder's name, not where it is.")).toBeVisible();
 }
 
 /** And HemoIO needs my permission to use the folder again */
@@ -146,6 +194,9 @@ export class FolderRestoreDialog {
   readonly notNow: Locator;
   readonly replace: Locator;
   readonly confirmReplace: Locator;
+  readonly back: Locator;
+  readonly chooseFolder: Locator;
+  readonly tryAgain: Locator;
 
   constructor(page: Page) {
     this.dialog = page.getByRole('dialog', {
@@ -155,6 +206,9 @@ export class FolderRestoreDialog {
     this.notNow = this.dialog.getByRole('button', { name: 'Not now' });
     this.replace = this.dialog.getByRole('button', { name: 'Replace folder copy…' });
     this.confirmReplace = this.dialog.getByRole('button', { name: 'Replace folder copy', exact: true });
+    this.back = this.dialog.getByRole('button', { name: 'Back' });
+    this.chooseFolder = this.dialog.getByRole('button', { name: 'Choose another folder' });
+    this.tryAgain = this.dialog.getByRole('button', { name: 'Try again' });
   }
 
   offer(): Locator {

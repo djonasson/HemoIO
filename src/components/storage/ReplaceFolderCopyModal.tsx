@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { Modal, Stack } from '@mantine/core';
+import { Modal, Stack, getDefaultZIndex } from '@mantine/core';
 import { ReplaceFolderCopyConfirm } from './ReplaceFolderCopyConfirm';
 
 export interface ReplaceFolderCopyModalProps {
@@ -57,6 +57,8 @@ export function ReplaceFolderCopyModal({
       withCloseButton={false}
       closeOnClickOutside={false}
       centered
+      // Above the notice it was opened from, which notifications otherwise draw over it
+      zIndex={getDefaultZIndex('max')}
     >
       <Stack gap="md">
         <ReplaceFolderCopyConfirm

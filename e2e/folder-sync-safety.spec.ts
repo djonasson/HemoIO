@@ -19,10 +19,13 @@ import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import {
   FOLDER_COPY,
   PREVIOUS_FOLDER_COPY,
+  ReplaceFolderCopyDialog,
+  SkippedSyncNotice,
   TestFolder,
   changeFolder,
   failedSyncNotice,
   loseBrowserData,
+  pickNextFolder,
   skippedSyncNotice,
   syncAttempts,
   storeDataInFolder,
@@ -30,11 +33,16 @@ import {
 } from './steps/folderSync.steps';
 import {
   FolderRestoreDialog,
+  expectCurrentFolder,
   folderCopyHash,
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
 import {
+  FOLDER_BACKUPS,
   currentFolderData,
+  folderBackupNames,
+  folderFileBody,
+  folderFileHeader,
   folderFileRevision,
   readFolderCopyText,
   readFolderEnvelope,
@@ -222,7 +230,77 @@ test.describe('Folder Sync Safety', () => {
 
     await expect(skippedSyncNotice(page)).toBeVisible();
     await expect(skippedSyncNotice(page)).toContainText('cannot be read');
-    await expect(skippedSyncNotice(page)).toContainText('choose a different folder');
+    await expect(skippedSyncNotice(page)).toContainText('choose another folder, or replace the folder copy');
+    const notice = new SkippedSyncNotice(page);
+    await expect(notice.chooseFolder).toBeVisible();
+    await expect(notice.replace).toBeVisible();
+    expect(await folder.read(FOLDER_COPY)).toBe(foreign);
+  });
+
+  test('a folder copy that cannot be read is replaced from the notice, kept first as a sealed backup', async ({
+    page,
+  }) => {
+    // Scenario: Replace a folder copy that cannot be read, from the notice
+    await folder.write(FOLDER_COPY, 'sealed with a different password');
+    await seedLabData(page);
+    const notice = new SkippedSyncNotice(page);
+    await expect(notice.notice).toBeVisible();
+
+    await notice.replace.click();
+    const confirm = new ReplaceFolderCopyDialog(page);
+    await expect(confirm.dialog).toContainText('kept as a dated backup first');
+    await expect(confirm.dialog).toContainText(
+      "If the copy was made with another password or by someone else's HemoIO setup, their data will no longer sync from this folder."
+    );
+    await expect(confirm.back).toBeFocused();
+    await confirm.confirm.click();
+    await expect(confirm.dialog).toHaveCount(0);
+
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    const names = await folderBackupNames(page);
+    expect(names).toEqual([expect.stringMatching(/^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/)]);
+    // Kept whole, sealed with this key: no lock anywhere in plain text
+    expect(await folderFileHeader(page, `${FOLDER_BACKUPS}/${names[0]}`)).toEqual({
+      format: 'hemoio-damaged-copy',
+      version: 1,
+      lock: null,
+    });
+    const copy = await folderFileBody(page, FOLDER_COPY, TEST_PASSWORD);
+    expect(copy.data.labResults.map((r) => r.labName).sort()).toEqual(SEED_LAB_RESULTS.map((r) => r.labName).sort());
+  });
+
+  test('"Back" from replacing in the notice leaves the copy and the notice as they were', async ({ page }) => {
+    // Scenario: Change my mind about replacing from the notice
+    await folder.write(FOLDER_COPY, 'sealed with a different password');
+    const foreign = await folder.read(FOLDER_COPY);
+    await seedLabData(page);
+    const notice = new SkippedSyncNotice(page);
+
+    await notice.replace.click();
+    const confirm = new ReplaceFolderCopyDialog(page);
+    await confirm.back.click();
+
+    await expect(confirm.dialog).toHaveCount(0);
+    await expect(notice.notice).toBeVisible();
+    expect(await folderBackupNames(page)).toEqual([]);
+    expect(await folder.read(FOLDER_COPY)).toBe(foreign);
+  });
+
+  test('"Choose another folder" in the notice lets the sync start again there', async ({ page }) => {
+    // Scenario: Choose another folder from the notice
+    await folder.write(FOLDER_COPY, 'sealed with a different password');
+    const foreign = await folder.read(FOLDER_COPY);
+    await seedLabData(page);
+    const notice = new SkippedSyncNotice(page);
+    await expect(notice.notice).toBeVisible();
+
+    const otherFolder = new TestFolder(page, 'Other Folder');
+    await pickNextFolder(page, otherFolder);
+    await notice.chooseFolder.click();
+
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    await expect.poll(() => otherFolder.read(FOLDER_COPY)).not.toBeNull();
+    await expectCurrentFolder(page, otherFolder.name);
     expect(await folder.read(FOLDER_COPY)).toBe(foreign);
   });
 
@@ -372,6 +450,10 @@ test.describe('Folder Sync Safety', () => {
     await expect(skippedSyncNotice(page)).toContainText(
       'Choose a different folder in Settings > Data, or use Start over in Settings > Security to set up from that copy.'
     );
+    const notice = new SkippedSyncNotice(page);
+    await expect(notice.chooseFolder).toBeVisible();
+    // Other computers may still sync from it
+    await expect(notice.replace).toHaveCount(0);
     expect(await folderCopyHash(page, folder.name)).toBe(foreign);
   });
 });
