@@ -217,13 +217,71 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
-  test('never files a value said to be calculated under a measured test', async ({ page }) => {
-    // Scenario: A value said to be calculated is never filed under a measured test
+  test('files a value said to be calculated under the calculated test, never a measured one', async ({ page }) => {
+    // Scenario: A value said to be calculated is filed under the calculated test, never a measured one
     const ai = await analyzeReport(page, [{ name: 'Ematocrito (calcolato)', value: 41.7, unit: '%', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '41.7'))).toHaveText('Hematocrit [Volume Fraction] of Blood by calculation');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('never files a fibrinogen said to be derived under the Clauss fibrinogen', async ({ page }) => {
+    // Scenario: A fibrinogen said to be derived is never filed under the Clauss fibrinogen
+    const ai = await analyzeReport(page, [{ name: 'Fibrinogeno (derivato)', value: 310, unit: 'mg/dL', confidence: 0.95 }]);
     expect(ai.choiceRequests).toHaveLength(1);
-    expect(ai.choiceRequests[0][0].candidates.map((c) => c.name)).toContain(
-      'Hematocrit [Volume Fraction] of Blood by calculation'
+    const names = ai.choiceRequests[0][0].candidates.map((c) => c.name);
+    expect(names[0]).toBe('Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation.derived');
+    expect(names).not.toContain('Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation assay');
+  });
+
+  test('asks about a value whose part after a dash names what the catalog cannot read', async ({ page }) => {
+    // Scenario Outline: A part after a dash naming what the catalog cannot read is asked about
+    const examples: [string, string, string][] = [
+      ['Glucosio - liquido cefalorachidiano', 'mg/dL', 'Glucose [Mass/volume] in Serum or Plasma'],
+      ['Proteine - liquor', 'mg/dL', 'Protein [Mass/volume] in Serum or Plasma'],
+      ['Potassio - sudore', 'mmol/L', 'Potassium [Moles/volume] in Serum or Plasma'],
+      ['Glucosio - 2 ore', 'mg/dL', 'Glucose [Mass/volume] in Serum or Plasma'],
+      ['Cortisolo - ore 8', 'ug/dL', 'Cortisol [Mass/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(
+      page,
+      examples.map(([name, unit], i) => ({ name, value: 51 + i, unit, confidence: 0.95 }))
     );
+    expect(ai.choiceRequests).toHaveLength(1);
+    const asked = ai.choiceRequests[0];
+    expect(asked.map((value) => value.name).sort()).toEqual(examples.map(([name]) => name).sort());
+    for (const [name, , testName] of examples) {
+      expect(asked.find((value) => value.name === name)?.candidates.map((c) => c.name)).toContain(testName);
+    }
+  });
+
+  test('files a value whose part after a dash says only how the test is used', async ({ page }) => {
+    // Scenario: A part after a dash saying only how the test is used says nothing of which test it is
+    const ai = await analyzeReport(page, [
+      {
+        name: 'Rapporto albumina/creatinina - screening',
+        value: 12,
+        unit: 'mg/g',
+        confidence: 0.95,
+        specimenHint: 'urine',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '12'))).toHaveText('Albumin/Creatinine [Mass Ratio] in Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('reads an aPTT printed as a ratio as the aPTT over a normal one, never the lupus ratio', async ({ page }) => {
+    // Scenario Outline: An aPTT printed as a ratio is the aPTT over a normal one, never the lupus ratio
+    const names = ['aPTT', 'aPTT ratio', 'Rapporto aPTT'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [1.01, 1.02, 1.03][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+    for (const { candidates } of ai.choiceRequests[0]) {
+      expect(candidates.map((c) => c.code)).toContain('63561-5');
+      expect(candidates[0].code).not.toBe('75884-7');
+    }
   });
 
   test('files a count per microscope field under a test counted per field', async ({ page }) => {

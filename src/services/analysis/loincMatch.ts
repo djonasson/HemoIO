@@ -359,7 +359,7 @@ function withSearchesKept(catalog: Catalog): Catalog {
  * and each bracket alone, each with what it leaves out. A bracket holds
  * another name ("Tirotropina (TSH)") or a qualifier the catalog does not
  * name ("(metodo enzimatico)"); so does a part set off by a spaced dash
- * ("Creatinchinasi - CK").
+ * ("Creatina chinasi - CK").
  */
 function nameForms(name: string): { form: string; left: string; part?: 'bracket' | 'dashed' }[] {
   const brackets = [...name.matchAll(/\(([^()]*)\)/g)].map(([, inner]) => inner.trim());
@@ -426,15 +426,17 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
       const restNames = byRest !== undefined && isFit(byRest);
       // The rest of the name fits another test well: "Troponina I (hs)" is not troponin T hs
       const restNamesOther = !restNames && [...(carriers?.values() ?? [])].some(isFit);
-      // A dashed part that tells none of the tests the rest fits from another qualifies its use: "Rapporto albumina/creatinina - screening",
-      // but not "Bilirubina - diretta" or "Cortisolo - salivare"
+      // A dashed part that tells none of the tests the rest fits from another: it says only how the test is used
+      // ("Rapporto albumina/creatinina - screening"), else it says what the catalog cannot read (a fluid, a time:
+      // "Glucosio - liquor", "Cortisolo - ore 8"), and the rest alone is no full fit. "Bilirubina - diretta" and
+      // "Cortisolo - salivare" tell tests apart.
       if (part === 'dashed' && !restNames && !restNamesOther && !(tellsApart ??= partTellsApart(catalog, form, left))) {
-        keep(found, found.score, false);
+        keep(found, saysOnlyUse(left) ? found.score : Math.min(found.score, MATCH_SCORE - MATCH_MARGIN), false);
         continue;
       }
       if (carriers?.size && byRest === undefined) continue;
       if (part === 'dashed' || (part === 'bracket' && found.score < 1 && carriers?.size)) {
-        // Another name of the test the rest names too ("Creatinchinasi - CK", "eGFR (CKD-EPI)")
+        // Another name of the test the rest names too ("Creatina chinasi - CK", "eGFR (CKD-EPI)")
         if (!restNames) continue;
         keep(found, Math.min(found.score, byRest), false);
       } else if (part === 'bracket' && restNamesOther) {
@@ -469,6 +471,7 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
 const METHOD_READINGS: Readonly<Record<string, string>> = {
   calcolat: 'calculated',
   cistatin: 'cystatin',
+  derivat: 'derived',
   dirett: 'direct',
 };
 
@@ -501,6 +504,18 @@ function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
     );
 }
 
+/**
+ * Words saying only why or when a test is done, never which test: a
+ * screening, a check-up. Short on purpose: any other word a dashed part
+ * holds may name a sample, a time or a test the catalog cannot read.
+ */
+const USAGE_WORDS: ReadonlySet<string> = new Set(['screening', 'controllo', 'monitoraggio']);
+
+/** Whether a part of a name says only how its test is used (see USAGE_WORDS) */
+function saysOnlyUse(part: string): boolean {
+  return wordsIn(part).every((word) => isStopWord(word) || USAGE_WORDS.has(word));
+}
+
 /** A year a formula is named by: "CKD-EPI 2021" */
 const YEAR = /^(?:19|20)\d\d$/;
 
@@ -517,24 +532,37 @@ function namePartsOf(name: string): string[] {
  * "MDRD", "CKD-EPI", "calcolato") narrows them to those, words naming no
  * test (a brand, "Tosoh") aside; of those, the one HemoIO describes, else
  * the ones whose method says least the name does not ("by MDRD" before
- * "by MDRD among black population"). A year rules out a formula of
- * another year ("CKD-EPI 2009" is not the 2021 one). A word read neither
- * way may name a method LOINC has no test for, when the tests that fit
- * all name a method and either are estimates by different formulas
- * ("eGFR (EKFC)", "(formula BIS)") or none has the method the word names
- * ("Ematocrito (calcolato)" of hematocrit by automated count): then no
- * test fits fully, and the value is asked. A brand or a technique of a
- * measured value says nothing ("Fibrinogeno (Clauss)").
+ * "by MDRD among black population"). An Italian method word none of the
+ * tests that fit has reads as their variants by that method (see
+ * variantsBy). A year rules out a formula of another year ("CKD-EPI 2009"
+ * is not the 2021 one). A word read neither way may name a method LOINC
+ * has no test for, when the tests that fit all name a method and either
+ * are estimates by different formulas ("eGFR (EKFC)", "(formula BIS)") or
+ * none has the method the word names: then no test fits fully, and the
+ * value is asked. A brand or a technique of a measured value says nothing
+ * ("Fibrinogeno (Clauss)").
  */
-function readParts(name: string, found: Found[]): Found[] {
+function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
   let result = found;
   for (const part of namePartsOf(name)) {
     // The tests that fit about as well as the best: a name equal to the printed one sets aside those only sharing its words
     const least = Math.max(MATCH_SCORE - SCORE_EPSILON, ...result.map(({ score }) => score - MATCH_MARGIN + SCORE_EPSILON));
-    const fitting = result.filter(({ score }) => score >= least);
+    let fitting = result.filter(({ score }) => score >= least);
     if (fitting.length === 0) break;
-    const methodOf = new Map(fitting.map(({ test }) => [test, new Set(wordsIn(test.method))]));
     const words = wordsIn(part).filter((word) => !isStopWord(word));
+    // A method the name says in Italian that no test fitting has: those tests by that method, when LOINC has them
+    const unmet = words
+      .filter((word) => isMethodWord(word))
+      .map(methodReading)
+      .filter((reading) => !fitting.some(({ test }) => wordsIn(test.method).includes(reading)));
+    if (unmet.length > 0) {
+      const variants = fitting.flatMap((one) => variantsBy(catalog, one, unmet)).filter(
+        (variant, i, all) => !result.some(({ test }) => test === variant.test) && all.findIndex(({ test }) => test === variant.test) === i
+      );
+      result = [...variants, ...result];
+      fitting = [...variants, ...fitting];
+    }
+    const methodOf = new Map(fitting.map(({ test }) => [test, new Set(wordsIn(test.method))]));
     const read = new Set<string>();
     let narrowed = fitting;
     for (const word of words.filter((one) => YEAR.test(one))) {
@@ -560,7 +588,6 @@ function readParts(name: string, found: Found[]): Found[] {
         [test.name, ...test.names].some((testName) => wordsIn(testName).some((other) => isNearForm(word, other)))
       );
     const unread = words.filter((word) => !read.has(word) && /\p{L}/u.test(word) && !isNamed(word));
-    const isMethodWord = (word: string): boolean => methodReading(word) !== word;
     const methods = new Set(still.map(({ test }) => test.method));
     // An estimate by formulas: one LOINC lacks is none of them. A measured value's brand or technique says nothing ("Fibrinogeno (Clauss)")
     const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || /\bformula\b/i.test(method));
@@ -571,6 +598,27 @@ function readParts(name: string, found: Found[]): Found[] {
     }
   }
   return result;
+}
+
+/** Whether a word is an Italian one for a method (see METHOD_READINGS) */
+function isMethodWord(word: string): boolean {
+  return methodReading(word) !== word;
+}
+
+/**
+ * The tests that are a found one by the methods read (its component,
+ * property and sample, by a method naming them all), each fitting as that
+ * one does: "Ematocrito (calcolato)" is hematocrit by calculation, which
+ * HemoIO's "Ematocrito" of the automated count does not name
+ */
+function variantsBy(catalog: Catalog, { test, score, preference }: Found, readings: string[]): Found[] {
+  return catalog
+    .scoredSearch(test.component, { properties: [test.property], systems: [test.system] })
+    .filter(({ test: other }) => {
+      const method = wordsIn(other.method);
+      return other.code !== test.code && other.component === test.component && readings.every((reading) => method.includes(reading));
+    })
+    .map(({ test: other }) => ({ test: other, score, preference }));
 }
 
 /** Whether two words are one in other forms: "ossea" and "osso", "salivare" and "saliva" */
@@ -770,6 +818,24 @@ function withoutUnsaidChallenges(found: Found[]): Found[] {
   return found.filter(({ test, score }) => !isChallenged(test) || score > plainBest + SCORE_EPSILON);
 }
 
+/** A lupus anticoagulant test, by its component or method: a clotting time made lupus sensitive, or compared with one in excess phospholipid */
+const LUPUS_TEST = /\blupus\b|\bexcess phospholipid\b/i;
+/** Words of a printed name saying it is a lupus anticoagulant test: "LA", "lupus", "screening", "conferma", "dRVVT" */
+const LUPUS_WORDS = /\b(?:la|lac|lupus|lupic[oaie]|screen(?:ing)?|confirm(?:ation|atory)?|conferma|drvvt)\b/i;
+
+/**
+ * The tests found, with a lupus anticoagulant test set below a full fit
+ * unless the name says it is one: "aPTT" in "ratio" is the aPTT over a
+ * normal one, never the lupus screen-to-confirm ratio, unasked
+ */
+function withoutUnsaidLupus(found: Found[], name: string): Found[] {
+  if (LUPUS_WORDS.test(name)) return found;
+  const cap = MATCH_SCORE - MATCH_MARGIN;
+  return found
+    .map((one) => (LUPUS_TEST.test(`${one.test.component} ${one.test.method}`) && one.score > cap ? { ...one, score: cap } : one))
+    .sort((a, b) => b.score - a.score || a.preference - b.preference || byRank(a.test, b.test));
+}
+
 /** LOINC's method of a value calculated from other tests ("Cholesterol in LDL ... by calculation") */
 const CALCULATED = 'Calculated';
 
@@ -778,7 +844,8 @@ const CALCULATED = 'Calculated';
  * measuring it that trends apart fits the name as well and is about as
  * common: then the name may mean either ("Colesterolo LDL" calculated or
  * by direct assay, which differ in what they are). LOINC's names do not
- * have the Italian "calcolato", so a name saying it is asked too, and the
+ * have the Italian "calcolato": a bracket saying it is read as a method
+ * (see readParts), but a name saying it otherwise is asked too, and the
  * choice is learned. Counts by machine or by hand, or strips read by eye
  * or by machine, measure one thing alike.
  */
@@ -816,7 +883,7 @@ function bloodTestsApart(catalog: Catalog, name: string, test: CatalogTest, ucum
 }
 
 /** Whether the most common test a code trends with is among LOINC's common ones */
-function isCommon(catalog: Catalog, code: string): boolean {
+export function isCommon(catalog: Catalog, code: string): boolean {
   return groupRank(catalog, code) <= COMMON_RANK;
 }
 
@@ -946,7 +1013,20 @@ export function matchLocally(
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
   if (value.unit.trim() === '') return matchUnitless(catalog, value, unit, learned);
-  return matchIn(catalog, value, unit, unit.ucum ? ucumProperties(unit.ucum) : [], learned);
+  return matchIn(catalog, value, unit, unit.ucum ? unitProperties(unit.ucum) : [], learned);
+}
+
+/** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
+const PLAIN_RATIO = /^(?:1|\{ratio\})$/i;
+
+/**
+ * The LOINC properties a printed unit reads as (see ucumProperties). A
+ * plain ratio is also a clotting time over a normal one (RelTime): "aPTT"
+ * in "ratio" is LOINC's aPTT actual/normal.
+ */
+function unitProperties(ucum: string): string[] {
+  const properties = ucumProperties(ucum);
+  return PLAIN_RATIO.test(ucum) ? [...properties, 'RelTime'] : properties;
 }
 
 /**
@@ -970,6 +1050,8 @@ function matchUnitless(
   const unitless = matchIn(catalog, value, unit, NO_UNIT_PROPERTIES, learned, seen);
   if (unitless.status === 'match' && seen.learned) return unitless;
   const any = matchIn(catalog, value, unit, [], learned, {}, Number.POSITIVE_INFINITY);
+  // A name saying it is a ratio: a ratio, or a clotting time over a normal one ("aPTT ratio"), first
+  const ratios = RATIO_WORD.test(value.name) ? matchIn(catalog, value, unit, RATIO_PROPERTIES, learned).candidates : [];
   if (unitless.status === 'match' && seen.sample === 'named' && unitless.candidates[0].score === 1) {
     // A test measured in a unit that fits as well, unless far rarer than the one with none ("Nitrite [Mass/volume] in Urine")
     const rank = groupRank(catalog, unitless.code);
@@ -985,11 +1067,15 @@ function matchUnitless(
     });
     if (!measured) return unitless;
   }
-  const candidates = [...unitless.candidates, ...any.candidates]
+  const candidates = [...ratios, ...unitless.candidates, ...any.candidates]
     .filter((candidate, i, all) => all.findIndex(({ code }) => code === candidate.code) === i)
     .slice(0, MAX_CANDIDATES);
   return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
+
+/** A printed name saying its value is a ratio, and the properties of one */
+const RATIO_WORD = /\b(?:ratio|rapporto)\b/i;
+const RATIO_PROPERTIES = ['Ratio', 'RelTime'];
 
 /** What a match read on the way: the value's sample, and whether its code was learned */
 interface Seen {
@@ -1044,12 +1130,12 @@ function matchIn(
   }
 
   const search = (searched: string, scope: Scope): Found[] => {
-    const inPrintedUnit = (found: Found[]): Found[] => countedAsPrinted(inUnits(found, units), ucum);
-    const byProperty = readParts(searched, inPrintedUnit(findByForms(catalog, searched, scope)));
+    const inPrintedUnit = (found: Found[]): Found[] => withoutUnsaidLupus(countedAsPrinted(inUnits(found, units), ucum), whole);
+    const byProperty = readParts(catalog, searched, inPrintedUnit(findByForms(catalog, searched, scope)));
     // A test HemoIO describes in the unit, only when no test of the unit's property fits but one LOINC adjusts
     const fits = ({ test, score }: Found): boolean => score >= MATCH_SCORE - SCORE_EPSILON && !isAdjusted(test);
     if (byProperty.some(fits)) return byProperty;
-    const withDescribed = readParts(searched, inPrintedUnit(findByForms(catalog, searched, { ...scope, described: true })));
+    const withDescribed = readParts(catalog, searched, inPrintedUnit(findByForms(catalog, searched, { ...scope, described: true })));
     return withDescribed.length ? withDescribed : byProperty;
   };
   let found = search(name, { systems, properties, ucum });

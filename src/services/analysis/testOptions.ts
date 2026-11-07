@@ -3,7 +3,7 @@
  * parts of its LOINC name and what HemoIO knows of it
  */
 import { sampleLabel, testDescription, unitOptions } from '@data/loinc/display';
-import { COMMON_RANK, MATCH_SCORE } from './loincMatch';
+import { isCommon, MATCH_SCORE } from './loincMatch';
 import { searchTests } from './reviewEdits';
 import { unitFit, type UnitFit } from './reviewedSave';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
@@ -54,15 +54,6 @@ function titleAndKind(test: CatalogTest): { title: string; kind: string } {
   const bracketed = /^(.*?)\s*\[([^\]]+)\]/.exec(test.name);
   if (bracketed) return { title: bracketed[1], kind: bracketed[2] };
   return { title: test.name.split(/\s+(?:of|in|by)\s+/)[0], kind: '' };
-}
-
-/** Whether the most common test a code trends with is among LOINC's commonly ordered ones, as the matcher counts it */
-function isCommon(catalog: Catalog, code: string): boolean {
-  const ranks = catalog
-    .groupCodes(catalog.trendGroup(code))
-    .map((member) => catalog.test(member)?.rank ?? 0)
-    .filter((rank) => rank > 0);
-  return ranks.length > 0 && Math.min(...ranks) <= COMMON_RANK;
 }
 
 /** Why a test the value may be is offered; none for a test that is not one of them */
