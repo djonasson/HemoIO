@@ -411,6 +411,14 @@ describe('TestValuesList', () => {
       expect(await screen.findByRole('tooltip')).toHaveTextContent('Blood sugar level');
     });
 
+    it("puts LOINC's name and the description on lines of their own", async () => {
+      renderWithProviders(<TestValuesList testValues={[glucose()]} onOpenTrend={vi.fn()} />);
+
+      act(() => screen.getByRole('button', { name: 'Glucose, open trend' }).focus());
+
+      expect(await screen.findByRole('tooltip')).toHaveStyle({ whiteSpace: 'pre-line' });
+    });
+
     it('offers no link for a value Trends cannot chart', () => {
       renderWithProviders(
         <TestValuesList testValues={[glucose({ value: 'Negative', unit: '' })]} onOpenTrend={vi.fn()} />

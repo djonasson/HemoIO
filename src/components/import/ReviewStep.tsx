@@ -413,11 +413,12 @@ export function ReviewStep({
                   </Text>
                 </Box>
                 {result.manualEntry ? (
-                  <Badge color="gray" variant="light">
+                  <Badge color="gray" variant="light" style={{ flexShrink: 0 }}>
                     Entered manually
                   </Badge>
                 ) : (
-                  <Badge color={getConfidenceColor(result.confidence)}>
+                  // Never squeezed: the file name wraps instead
+                  <Badge color={getConfidenceColor(result.confidence)} style={{ flexShrink: 0 }}>
                     {getConfidenceLabel(result.confidence)} confidence
                   </Badge>
                 )}
@@ -536,8 +537,16 @@ export function ReviewStep({
                                       multiline
                                       w={300}
                                       withArrow
+                                      // LOINC's name and the description on lines of their own
+                                      styles={{ tooltip: { whiteSpace: 'pre-line' } }}
+                                      events={{ hover: true, focus: true, touch: false }}
                                     >
-                                      <Text size="sm" style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                      <Text
+                                        size="sm"
+                                        // Focusable, so keyboard users reach the tooltip
+                                        tabIndex={0}
+                                        style={{ cursor: 'help', textDecoration: 'underline dotted' }}
+                                      >
                                         {getDisplayName(biomarker)}
                                       </Text>
                                     </Tooltip>

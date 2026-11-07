@@ -81,7 +81,18 @@ Feature: Import Wizard
     When I hover over an identified value's name
     Then I should see the LOINC code in a tooltip
     And LOINC's own name for the code beside it
-    And the tooltip should include the test's description when HemoIO has one
+    And the tooltip should include the test's description when HemoIO has one, on a line of its own
+
+  Scenario: Keyboard users see the LOINC tooltip too
+    Given the analysis has completed
+    When I move the keyboard focus to an identified value's name
+    Then I should see the LOINC code and LOINC's name in a tooltip
+
+  Scenario: A long file name never squeezes the confidence badge
+    Given I am on the review step on a phone-sized screen
+    And a file has a long name
+    Then the file's confidence badge shows its full text
+    And the file name wraps instead
 
   Scenario: User sees confidence indicators
     Given I am on the review step

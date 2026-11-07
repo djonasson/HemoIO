@@ -51,7 +51,15 @@ export function BiomarkerName({
 
   if (!description) return label;
   return (
-    <Tooltip label={description} multiline w={300} withArrow events={{ hover: true, focus: true, touch: false }}>
+    <Tooltip
+      label={description}
+      multiline
+      w={300}
+      withArrow
+      // Each part of the description (LOINC's name, HemoIO's text) on a line of its own
+      styles={{ tooltip: { whiteSpace: 'pre-line' } }}
+      events={{ hover: true, focus: true, touch: false }}
+    >
       {label}
     </Tooltip>
   );
