@@ -92,7 +92,7 @@ Feature: Import Wizard
     Given I am on the review step on a phone-sized screen
     And a file has a long name
     Then the file's confidence badge shows its full text
-    And the file name wraps instead
+    And the badge sits below the file name, which keeps the width to be read
 
   Scenario: User sees confidence indicators
     Given I am on the review step

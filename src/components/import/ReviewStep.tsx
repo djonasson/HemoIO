@@ -406,8 +406,9 @@ export function ReviewStep({
         {reviewedResults.map((result, resultIndex) => (
           <Accordion.Item key={result.fileId} value={String(resultIndex)}>
             <Accordion.Control>
-              <Group justify="space-between" wrap="nowrap" pr="md">
-                <Box miw={0}>
+              {/* Too narrow for both side by side, the badge goes below the name */}
+              <Group justify="space-between" gap="xs" pr="md">
+                <Box style={{ flex: '1 1 14rem', minWidth: 0 }}>
                   <FileName name={result.fileName} />
                   <Text size="sm" c="dimmed">
                     {result.editedBiomarkers.length} biomarker(s)
@@ -418,7 +419,7 @@ export function ReviewStep({
                     Entered manually
                   </Badge>
                 ) : (
-                  // Never squeezed: the file name wraps instead
+                  // Never squeezed: the name wraps, or the badge goes below it
                   <Badge color={getConfidenceColor(result.confidence)} style={{ flexShrink: 0 }}>
                     {getConfidenceLabel(result.confidence)} confidence
                   </Badge>

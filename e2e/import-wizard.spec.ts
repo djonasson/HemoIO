@@ -597,6 +597,14 @@ test.describe('Import Wizard', () => {
       await expect(badge).toBeVisible();
       const fits = await badge.evaluate((label) => label.scrollWidth <= label.clientWidth);
       expect(fits).toBe(true);
+
+      const name = await main(page)
+        .getByText('Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf', { exact: true })
+        .boundingBox();
+      const badgeBox = await badge.boundingBox();
+      expect(badgeBox!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
+      // Wide enough for whole syllables, not a column of letters
+      expect(name!.width).toBeGreaterThan(150);
     });
   });
 
