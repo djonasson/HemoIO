@@ -6,7 +6,11 @@ Feature: Identifying the test of each value
   Each value gets its LOINC code in this order: a test I chose before for
   the same wording and unit; the one test in the LOINC catalog that clearly
   fits the printed name, its sample and its unit; the AI's confident choice
-  among the tests that fit; else I choose in the review step.
+  among the tests that fit; else I choose in the review step. Besides
+  LOINC's own names, the catalog knows the usual Italian and English names
+  of common tests that LOINC lacks ("Ematocrito", "MPV"). When the tests
+  that fit best are one measurement by several methods, the one naming no
+  method (else the most common) is taken without asking.
 
   "Glucosio" below is printed under a blood heading, so glucose in blood and
   glucose in serum or plasma both fit it.
@@ -48,6 +52,53 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the value should be saved as "IgG [Mass/volume] in Serum or Plasma"
     And the AI should not be asked which test it is
+
+  Scenario Outline: A usual lab name that LOINC's names lack is matched by HemoIO's own names
+    Given a report prints "<name>" in <unit>
+    And LOINC's English and Italian names do not include "<name>"
+    When the report is analyzed
+    Then the value should be saved as "<test>"
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                  | unit     | test                                                                  |
+      | Ematocrito            | %        | Hematocrit [Volume Fraction] of Blood by Automated count              |
+      | MPV                   | fL       | Platelet [Entitic mean volume] in Blood by Automated count            |
+      | RDW                   | %        | Erythrocyte [DistWidth] in Blood by Automated count                   |
+      | Eritroblasti          | %        | Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count |
+      | Er-EMOGLOBINA GLICATA | mmol/mol | Hemoglobin A1c/Hemoglobin.total in Blood                              |
+
+  Scenario: One measurement made by several methods is filed under the general test without asking
+    Given a report prints "Eritrociti" in /µL under a urine heading
+    And LOINC has red cells in urine counted by strip, by machine and with no method named
+    When the report is analyzed
+    Then the value should be saved as "Erythrocytes [#/volume] in Urine", the test naming no method
+    And the AI should not be asked which test it is
+
+  Scenario: Squamous cells are never taken for non-squamous ones
+    Given a report prints "Cellule Ep. Squamose" in /µL under a urine heading
+    When the report is analyzed
+    Then the value should be saved as "Epithelial cells.squamous [#/volume] in Urine by Automated count"
+
+  Scenario: A D-dimer printed in fibrinogen equivalent units is filed under an FEU test
+    Given a report prints "D Dimero" in "µg/L FEU"
+    When the report is analyzed
+    Then the value should be saved as "Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma"
+    And the AI should not be asked which test it is
+
+  Scenario: A D-dimer that names neither FEU nor DDU is asked about
+    Given a report prints "D Dimero" in ng/mL
+    And FEU and DDU values differ about two-fold
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include the FEU and the DDU tests
+
+  Scenario: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+    Given a report prints "eGFR (formula EKFC)" in mL/min/1.73m²
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the first test to choose from should be the eGFR HemoIO describes
+    And the filtration rates should come before any creatinine clearance
 
   Scenario: A value said to be of another sample is not given the test learned for its wording
     Given "Glucosio" in mg/dL was learned as "Glucose [Mass/volume] in Blood"
@@ -156,15 +207,21 @@ Feature: Identifying the test of each value
     When a report prints "Glicemia" in mg/dL and I rename it "Glucosio" before saving
     Then a later report printing "Glicemia" in mg/dL should be saved as "Glucose [Mass/volume] in Blood"
 
-  Scenario: A value with no unit is never matched on its name alone
+  Scenario: A value with no unit is matched to the common test that has none
     Given a report prints "pH (urine)" without a unit, as pH and specific gravity have none
     When the report is analyzed
-    Then the AI should be asked which test it is, among tests of any kind for its name
-    And when the AI is sure it is "pH of Urine", the value should be saved as that test
+    Then the value should be saved as "pH of Urine"
+    And the AI should not be asked which test it is
     And I should be able to continue without giving it a unit
 
+  Scenario: A dipstick result with no unit is read as present or absent, never as an amount
+    Given a report prints "Nitriti" without a unit under a urine heading
+    And LOINC has nitrite in urine as present or absent and as an amount per volume
+    When the report is analyzed
+    Then the value should be saved as "Nitrite [Presence] in Urine by Test strip"
+
   Scenario: I choose the test of a value with no unit the AI is not sure of
-    Given a report prints "pH (urine)" without a unit
+    Given a report prints "Glucosio" without a unit, which no test without a unit fits
     And the AI is not sure which test it is
     When the report is analyzed
     Then the value should show "No test chosen", labelled "No unit in report"

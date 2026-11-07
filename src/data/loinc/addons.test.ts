@@ -3,14 +3,14 @@ import { unitsMatch } from '@services/units/definitions';
 import { toUcum } from '@services/units/ucum';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { TEST_ADDONS, getAddon } from './addons';
-import { loadCatalog, type Catalog } from './catalog';
+import { createCatalog, loadCatalog, type Catalog, type CatalogFile } from './catalog';
 
 const catalog = fixtureCatalog();
 const ADDONS = Object.entries(TEST_ADDONS);
 
 describe('TEST_ADDONS', () => {
-  it('keeps the ranges, descriptions and units of the 107 coded dictionary tests', () => {
-    expect(ADDONS).toHaveLength(107);
+  it('keeps the ranges, descriptions and units of the 109 coded dictionary tests', () => {
+    expect(ADDONS).toHaveLength(109);
     expect(TEST_ADDONS['2345-7']).toMatchObject({
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
       canonicalUnit: 'mg/dL',
@@ -74,6 +74,24 @@ describe('getAddon', () => {
   it('is undefined for a code with no entry in its group', () => {
     expect(getAddon(catalog, '2351-5')).toBeUndefined();
     expect(getAddon(catalog, '99999-9')).toBeUndefined();
+  });
+});
+
+describe("HemoIO's own names of tests", () => {
+  const NAMED = ADDONS.flatMap(([code, addon]) => (addon.names ?? []).map((name) => [code, name] as const));
+
+  it.each(NAMED)('finds %s by "%s"', async (code, name) => {
+    expect((await loadCatalog()).named(name).map((test) => test.code)).toContain(code);
+  });
+
+  // The generated catalog without HemoIO's names
+  let bare: Catalog;
+  beforeAll(async () => {
+    bare = createCatalog((await import('./catalog.generated.json')).default as CatalogFile, {});
+  });
+
+  it.each(NAMED)('gives %s "%s" only because LOINC has no such name of it', (code, name) => {
+    expect(bare.named(name).map((test) => test.code)).not.toContain(code);
   });
 });
 
@@ -152,6 +170,7 @@ const TERMS: [string, string][] = [
   ['704-7', 'Basophils [#/volume] in Blood by Automated count'],
   ['706-2', 'Basophils/Leukocytes in Blood by Automated count'],
   ['30392-5', 'Nucleated erythrocytes [#/volume] in Blood'],
+  ['32623-1', 'Platelet [Entitic mean volume] in Blood by Automated count'],
   ['58413-6', 'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count'],
   ['60474-4', 'Reticulocytes [#/volume] in Blood by Automated count'],
   ['17849-1', 'Reticulocytes/Erythrocytes in Blood by Automated count'],
@@ -198,6 +217,7 @@ const TERMS: [string, string][] = [
   ['2888-6', 'Protein [Mass/volume] in Urine'],
   ['2350-7', 'Glucose [Mass/volume] in Urine'],
   ['5797-6', 'Ketones [Mass/volume] in Urine by Test strip'],
+  ['33903-6', 'Ketones [Presence] in Urine'],
   ['49137-3', 'Hemoglobin [Mass/volume] in Urine by Test strip'],
   ['13945-1', 'Erythrocytes [#/area] in Urine sediment by Microscopy high power field'],
   ['5821-4', 'Leukocytes [#/area] in Urine sediment by Microscopy high power field'],

@@ -84,9 +84,10 @@ describe('matchLocally', () => {
     expect(codesOf(blood)).toEqual(['15074-8', '14749-6']);
   });
 
-  it('never matches a value without a readable unit, but still offers candidates', () => {
+  it('never takes a rare test for a value with no unit, and offers the tests its name fits whatever their unit', () => {
+    // The fixture's only unitless "proteine" test is a rare allergen antibody
     const result = matchLocally(catalog, { name: 'Proteine', unit: '' });
-    expect(result.status).not.toBe('match');
+    expect(result.status).toBe('ambiguous');
     expect(result.candidates.map((candidate) => candidate.code)).toContain('2885-2');
   });
 
@@ -847,9 +848,7 @@ describe('matchLocally in the generated catalog', () => {
   });
 
   it.each([
-    ['Filtrato glomerulare (eGFR)', 'mL/min/1,73m^2'],
     ['P-ANCA', 'U/mL'],
-    ['Ematocrito', '%'],
     ['Globuli bianchi', '10^3/µL'],
   ])('leaves %s in %s to the AI or the user, with candidates', async (name, unit) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
@@ -936,7 +935,6 @@ describe('matchLocally in the generated catalog', () => {
     ['Fosforo', 'mg/dL', '2777-1'],
     ['S-Fosforo', 'mg/dL', '2777-1'],
     ['Fosforo sierico', 'mg/dL', '2777-1'],
-    ['Ematocrito', '%', '4544-3'],
     ['Beta 1', '%', '32732-0'],
     ['Beta 2', 'g/dL', '32731-2'],
     ['HbA1c (IFCC)', 'mmol/mol', '4548-4'],
@@ -981,10 +979,8 @@ describe('matchLocally in the generated catalog', () => {
     expect(result.candidates.map(({ code }) => code)).toContain('4548-4');
   });
 
-  it('offers filtration rates for eGFR, and myeloperoxidase antibodies for P-ANCA', async () => {
+  it('offers myeloperoxidase antibodies for P-ANCA', async () => {
     const catalog = await loadCatalog();
-    const egfr = matchLocally(catalog, { name: 'Filtrato glomerulare (eGFR)', unit: 'mL/min/1,73m^2' });
-    expect(egfr.candidates.every(({ name }) => name.startsWith('Glomerular filtration rate'))).toBe(true);
     const anca = matchLocally(catalog, { name: 'P-ANCA', unit: 'U/mL' });
     expect(anca.candidates[0].name).toMatch(/^Myeloperoxidase Ab/);
   });
@@ -995,5 +991,84 @@ describe('matchLocally in the generated catalog', () => {
   ])('reads %s whole when its prefix-looking start finds nothing', async (name, unit) => {
     const result = matchLocally(await loadCatalog(), { name, unit });
     expect(result.candidates.length).toBeGreaterThan(0);
+  });
+});
+
+describe('matchLocally on names of real Italian reports', () => {
+  let generated: Catalog;
+  // Reading the 13 MB catalog and building its search index take seconds on a busy machine
+  beforeAll(async () => {
+    generated = await loadCatalog();
+    generated.scoredSearch('glucosio');
+  }, 60_000);
+
+  it.each([
+    // HemoIO's own names of the tests it describes, which LOINC's names lack
+    ['Ematocrito', '%', undefined, '4544-3'],
+    ['MPV', 'fL', undefined, '32623-1'],
+    ['RDW', '%', undefined, '788-0'],
+    ['Eritroblasti', '%', undefined, '58413-6'],
+    ['Eritroblasti', '/100 WBC', undefined, '58413-6'],
+    ['Filtrato glomerulare (eGFR)', 'mL/min/1,73m^2', undefined, '98979-8'],
+    ['Corpi chetonici', 'mg/dL', 'urine', '5797-6'],
+    // "Er-", the red cells, names blood: the HbA1c HemoIO describes in mmol/mol
+    ['Er-EMOGLOBINA GLICATA', 'mmol/mol', undefined, '4548-4'],
+    // A screening says how the test is used, not which test it is
+    ['Rapporto albumina/creatinina - screening', 'mg/g', 'urine', '9318-7'],
+    // One measurement by several methods: the one naming none
+    ['Eritrociti', '/µL', 'urine', '30391-7'],
+    // A urine value is the urine's, not its sediment's; "Ep." is short for epithelial; never the non-squamous cells
+    ['Cellule Ep. Squamose', '/µL', 'urine', '51486-9'],
+    ['Batteri', '/µL', 'urine', '51480-2'],
+    // A unit in fibrinogen equivalent units takes an FEU test, never a DDU one
+    ['D Dimero', 'µg/L FEU', undefined, '48065-7'],
+    ['D Dimero', 'ng/mL FEU', undefined, '48065-7'],
+  ])('takes %s in %s (sample %s) as %s', (name, unit, specimenHint, code) => {
+    const value = { name, unit, ...(specimenHint && { specimenHint }) };
+    expect(matchLocally(generated, value)).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
+    // pH and specific gravity have no unit; a dipstick reads presence: never a Mass/volume test
+    ['pH', 'urine', '2756-5'],
+    ['Densità Relativa', 'urine', '2965-2'],
+    ['Peso specifico', 'urine', '2965-2'],
+    ['Nitriti', 'urine', '5802-4'],
+    ['Corpi chetonici', 'urine', '33903-6'],
+  ])('takes %s with no unit (sample %s) as the unitless test %s', (name, specimenHint, code) => {
+    expect(matchLocally(generated, { name, unit: '', specimenHint })).toMatchObject({ status: 'match', code });
+  });
+
+  it('takes D-dimer in DDU as a DDU test, and leaves one that names neither unit to the AI or the user', () => {
+    const ddu = matchLocally(generated, { name: 'D Dimero', unit: 'ng/mL DDU' });
+    expect(ddu.status === 'match' && generated.test(ddu.code)?.name).toMatch(/DDU/);
+    const plain = matchLocally(generated, { name: 'D Dimero', unit: 'ng/mL' });
+    expect(plain.status).toBe('ambiguous');
+    expect(codesOf(plain)).toEqual(expect.arrayContaining(['48065-7', '48066-5']));
+  });
+
+  it('leaves LDH by either reaction to the AI or the user: the two methods give different numbers', () => {
+    const result = matchLocally(generated, { name: 'LDH', unit: 'U/L' });
+    expect(result.status).toBe('ambiguous');
+    expect(codesOf(result)).toEqual(expect.arrayContaining(['14804-9', '14805-6']));
+  });
+
+  it('leaves an eGFR by a formula LOINC has no test for to the AI or the user, the eGFR HemoIO describes first', () => {
+    const result = matchLocally(generated, { name: 'eGFR (formula EKFC)', unit: 'mL/min/1.73m²' });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates[0].code).toBe('98979-8');
+    // Filtration rates before the creatinine clearance a Cockcroft-Gault formula predicts
+    const closest = result.candidates.slice(0, 4).map(({ name }) => name);
+    expect(closest.every((name) => name.startsWith('Glomerular filtration rate'))).toBe(true);
+  });
+
+  it.each([
+    // LOINC has no test of urine conductivity
+    ['Conduttività', 'mS/cm', 'urine'],
+    // nor of the high, medium and low fluorescence reticulocyte fractions
+    ['Reticolociti grado di maturazione alto', '%', undefined],
+  ])('never takes %s in %s, which LOINC has no test of', (name, unit, specimenHint) => {
+    const value = { name, unit, ...(specimenHint && { specimenHint }) };
+    expect(matchLocally(generated, value).status).not.toBe('match');
   });
 });

@@ -164,7 +164,9 @@ describe('search', () => {
     };
     const scores = (query: string): Record<string, number> =>
       Object.fromEntries(createCatalog(file).scoredSearch(query).map(({ test, score }) => [test.code, score]));
-    expect(scores('Colesterolo HDL')).toEqual({ '1-1': 1, '2-2': 0.9 });
+    expect(scores('Colesterolo HDL')['1-1']).toBe(1);
+    // A non-HDL cholesterol is no HDL one
+    expect(scores('Colesterolo HDL')['2-2']).toBeLessThan(0.5);
     // "And" and a single letter change what a name means
     expect(scores('Bilirubina diretta')['3-3']).toBeLessThan(1);
     expect(scores('Proteine')['4-4']).toBeLessThan(1);
@@ -440,6 +442,53 @@ describe('search in the generated catalog', () => {
 
   it('finds a specific gravity test', async () => {
     expect((await loadCatalog()).search('Specific gravity')[0].property).toBe('SpGrav');
+  });
+});
+
+describe('negated and shortened words', () => {
+  const file = {
+    version: 't',
+    groups: [],
+    tests: [
+      madeUpTest('1-1', ['cellule epiteliali.squamose']),
+      madeUpTest('2-2', ['cellule epiteliali.non-squamose']),
+      madeUpTest('3-3', ['epatite b']),
+    ],
+  };
+  const scores = (query: string): Record<string, number> =>
+    Object.fromEntries(createCatalog(file).scoredSearch(query).map(({ test, score }) => [test.code, score]));
+
+  it('never fits a name saying "non-" to the word it negates', () => {
+    expect(scores('cellule epiteliali squamose')['1-1']).toBe(1);
+    expect(scores('cellule epiteliali squamose')['2-2']).toBeLessThan(0.9);
+    expect(scores('cellule epiteliali non squamose')['2-2']).toBe(1);
+  });
+
+  it('reads a word shortened with a full stop as the name words it begins', () => {
+    expect(scores('Cellule Ep. Squamose')['1-1']).toBeGreaterThanOrEqual(0.9);
+    // Without the full stop "ep" is a word of its own, which no name has
+    expect(scores('Cellule Ep Squamose')['1-1']).toBeLessThan(0.9);
+  });
+
+  it('lists the words of a text that no name has, words saying nothing of a test aside', () => {
+    expect(createCatalog(file).unknownWords('formula EKFC epatite siero')).toEqual(['formula', 'ekfc']);
+  });
+});
+
+describe('extra names', () => {
+  it("counts a code's extra names as names of it and of the codes it trends with", () => {
+    const mass = { ...madeUpTest('1-1', ['glucose']), groups: ['G1'] };
+    const molar = { ...madeUpTest('2-2', ['glucose']), property: 'SCnc', groups: ['G1'] };
+    const group = { id: 'G1', parentId: 'P', parentName: 'MassMolConc<SAME:Comp|Tm|Sys|Meth><Prop:MCncORSCnc>', name: 'Glucose' };
+    const named = createCatalog({ version: 't', groups: [group], tests: [mass, molar] }, { '1-1': ['Glicemia'] });
+    expect(named.named('glicemia').map((test) => test.code)).toEqual(['1-1', '2-2']);
+    expect(named.test('2-2')?.names).toContain('glicemia');
+  });
+
+  it("adds HemoIO's own names of the tests it describes", async () => {
+    const generated = await loadCatalog();
+    expect(generated.named('ematocrito').map((test) => test.code)).toContain('4544-3');
+    expect(generated.named('peso specifico').map((test) => test.code)).toEqual(['2965-2']);
   });
 });
 

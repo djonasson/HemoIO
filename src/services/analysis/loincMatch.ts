@@ -74,11 +74,13 @@ const DEFAULT_SYSTEMS = ['Ser/Plas', 'Ser', 'Plas', 'Ser/Plas/Bld', 'Bld', 'RBC'
  * Sample prefixes labs print before a test name, and the systems they mean.
  * "Ser/Plas/Bld" is LOINC's system for a test of any of the three (eGFR);
  * "PPP", platelet-poor plasma, that of the clotting tests; "RBC", that of
- * the red cell indices of a blood count (MCV, MCH, MCHC).
+ * the red cell indices of a blood count (MCV, MCH, MCHC). "Er-", the red
+ * cells ("Er-Emoglobina glicata"), names the tests of blood and its cells.
  */
 const SAMPLE_PREFIXES: ReadonlyArray<[string, string[]]> = [
   ['U24', [DAY_URINE]],
   ['dU', [DAY_URINE]],
+  ['Er', ['Bld', 'RBC']],
   ['Se', ['Ser', 'Ser/Plas', 'Ser/Plas/Bld']],
   ['Pl', ['Plas', 'Ser/Plas', 'PPP', 'Ser/Plas/Bld']],
   ['Sg', ['Bld', 'RBC', 'Ser/Plas/Bld']],
@@ -359,6 +361,20 @@ function nameForms(name: string): { form: string; left: string; part?: 'bracket'
 }
 
 /**
+ * Whether the rest of a printed name names the test's method with a word
+ * no test has: every other word of it is a word of the method ("formula"
+ * of "Creatinine-based formula (CKD-EPI)"), so the unknown one names a
+ * method LOINC has no test for ("formula EKFC")
+ */
+function namesUnknownMethod(test: CatalogTest, rest: string, unknown: string[]): boolean {
+  if (unknown.length === 0 || !test.method) return false;
+  const wordsIn = (text: string): string[] => nameKey(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const methodWords = new Set(wordsIn(test.method));
+  const known = wordsIn(rest).filter((word) => !unknown.includes(word));
+  return known.length > 0 && known.every((word) => methodWords.has(word));
+}
+
+/**
  * The tests each form of the name finds, each at its best score, best
  * first. A part of the name some tests carry says which test it is: a test
  * without it is found by the whole name only ("Vitamina D (25-OH)" is not
@@ -391,12 +407,22 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
   for (const { form, left, part } of readings.flatMap(nameForms)) {
     // Searched only once a test is found that the rest may rule out
     let carriers: Map<string, number> | undefined;
-    for (const found of findTests(catalog, form, scope)) {
+    let unknown: string[] | undefined;
+    const formFound = findTests(catalog, form, scope);
+    // How well the rest fits the tests the form fits best: of the tests a bracket names, those the rest fits less are not meant
+    let restBest: number | undefined;
+    const bestByRest = (): number =>
+      Math.max(-1, ...formFound.filter(({ score }) => isFit(score)).map(({ test }) => carriers?.get(test.code) ?? -1));
+    for (const found of formFound) {
       if (part && !isFit(found.score)) continue;
       if (left) carriers ??= new Map(findTests(catalog, left, scope).map(({ test, score }) => [test.code, score]));
       const byRest = carriers?.get(found.test.code);
       const restNames = byRest !== undefined && isFit(byRest);
       if (carriers?.size && byRest === undefined) continue;
+      // The rest names the test's method with a word no test has: a method LOINC lacks ("eGFR (formula EKFC)"), left to the whole name
+      if (!part && byRest !== undefined && !restNames && namesUnknownMethod(found.test, left, (unknown ??= catalog.unknownWords(left)))) {
+        continue;
+      }
       // The rest of the name fits another test well: "Troponina I (hs)" is not troponin T hs
       const restNamesOther = !restNames && [...(carriers?.values() ?? [])].some(isFit);
       if (part === 'dashed' || (part === 'bracket' && found.score < 1 && carriers?.size)) {
@@ -404,6 +430,9 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
         if (!restNames) continue;
         keep(found, Math.min(found.score, byRest), false);
       } else if (part === 'bracket' && restNamesOther) {
+        continue;
+      } else if (part === 'bracket' && byRest !== undefined && byRest < (restBest ??= bestByRest()) - SCORE_EPSILON) {
+        // "AA Saccaromyces cer. IgA (ASCA)": ASCA names the yeast antibodies of every class, the rest the IgA one
         continue;
       } else {
         keep(found, found.score, carriers?.size === 0 && !part);
@@ -436,15 +465,43 @@ function rankOf(rank: number): number {
   return rank || Number.POSITIVE_INFINITY;
 }
 
+/** The units a D-dimer is given in: fibrinogen equivalent units or D-dimer units, about two-fold apart */
+const DIMER_UNITS = /\b(FEU|DDU)\b/i;
+
+/** The D-dimer units a test, or a printed unit, gives its value in, if it names them */
+function dimerUnits(text: string): string | undefined {
+  return text.match(DIMER_UNITS)?.[1].toUpperCase();
+}
+
+/** The D-dimer units a test names in its component or method ("Fibrin D-dimer FEU", "Immunoassay.DDU") */
+function testDimerUnits(test: CatalogTest): string | undefined {
+  return dimerUnits(`${test.component} ${test.method}`);
+}
+
+/** A test's component without the D-dimer units it may name ("Fibrin D-dimer FEU") */
+function plainComponent(test: CatalogTest): string {
+  return squeeze(test.component.replace(DIMER_UNITS, ' '));
+}
+
 /**
- * Whether two tests trend together, or one is the other with a method or
- * collection time named. Two variants that each name a method (D-dimer
- * FEU and DDU) mean different things, so they stay apart.
+ * Whether two tests trend together, or are one measurement of one sample
+ * by methods the name does not tell apart: one is the other with a method
+ * or collection time named, or each names a way of measuring it (a strip
+ * read by eye or by machine, D-dimer FEU by immunoassay). Values in other
+ * units of it (D-dimer FEU and DDU), or a calculated value and a measured
+ * one, mean different things, so they stay apart.
  */
 function isSameFit(catalog: Catalog, a: CatalogTest, b: CatalogTest): boolean {
+  if (catalog.trendGroup(a.code) === catalog.trendGroup(b.code)) return true;
+  if (a.property !== b.property || a.system !== b.system) return false;
+  if (a.component === b.component && (!a.method || !b.method)) return true;
   return (
-    catalog.trendGroup(a.code) === catalog.trendGroup(b.code) ||
-    (a.component === b.component && a.property === b.property && a.system === b.system && (!a.method || !b.method))
+    plainComponent(a) === plainComponent(b) &&
+    testDimerUnits(a) === testDimerUnits(b) &&
+    (a.method === CALCULATED) === (b.method === CALCULATED) &&
+    // An enzyme's activity depends on the reaction measured (LDH lactate to
+    // pyruvate or back): two named methods give different numbers
+    a.property !== 'CCnc'
   );
 }
 
@@ -476,9 +533,12 @@ function groupRank(catalog: Catalog, code: string): number {
  */
 function usualMeaning(catalog: Catalog, rivals: Found[], systems: string[], sample: SampleSaid): Found | undefined {
   const kindOf = ({ preference }: Found): string => sampleKind(systems[preference]);
-  const likeliest = sampleKind(systems[Math.min(...rivals.map(({ preference }) => preference))]);
-  const fits = sample === 'named' ? rivals.filter((rival) => kindOf(rival) === likeliest) : rivals;
-  const meant = standingOut(catalog, fits);
+  const nearest = Math.min(...rivals.map(({ preference }) => preference));
+  const likeliest = sampleKind(systems[nearest]);
+  const ofKind = sample === 'named' ? rivals.filter((rival) => kindOf(rival) === likeliest) : rivals;
+  // A urine value is the urine's: when none stands out, its sediment's tests (cells seen per field) give way to the urine's
+  const urine = sample === 'named' && likeliest === 'Urine' ? ofKind.filter(({ preference }) => preference === nearest) : [];
+  const meant = standingOut(catalog, ofKind) ?? (urine.length ? standingOut(catalog, urine) : undefined);
   const isOpen = sample === 'loosely' && new Set(rivals.map(kindOf)).size > 1;
   return isOpen && meant && kindOf(meant) !== 'Bld' ? undefined : meant;
 }
@@ -662,6 +722,43 @@ function commonTests(catalog: Catalog, name: string, properties: string[], syste
 }
 
 /**
+ * The LOINC properties of results given with no unit: a presence or a
+ * reading on a scale (a dipstick's "negative", "++"), an identity or kind
+ * (a blood group, a colour), an interpretation, and pH and specific
+ * gravity, which have no unit. A value printed with no unit is one of
+ * these, never a quantity a unit would tell apart (Mass/volume or
+ * Moles/volume).
+ */
+const NO_UNIT_PROPERTIES = ['PrThr', 'Arb', 'Prid', 'Type', 'Imp', 'Aper', 'Color', 'LsCnc', 'SpGrav'];
+
+/**
+ * The tests found that give their value in the D-dimer units printed (FEU
+ * or DDU), when any does: never one in the other units
+ */
+function inUnits(found: Found[], units: string | undefined): Found[] {
+  if (!units) return found;
+  const named = found.filter(({ test }) => testDimerUnits(test) === units);
+  return named.length ? named : found.filter(({ test }) => testDimerUnits(test) === undefined);
+}
+
+/**
+ * The tests found as candidates are listed: among those that fit as well
+ * and are as likely of the sample, the one HemoIO describes first (the
+ * eGFR it describes before older formulas LOINC ranks higher)
+ */
+function describedFirst(found: Found[]): Found[] {
+  const described = (one: Found): number => Number(TEST_ADDONS[one.test.code] !== undefined);
+  // The search's order otherwise: by score, then sample, then rank (kept, as the sort is stable)
+  return [...found].sort((a, b) => b.score - a.score || a.preference - b.preference || described(b) - described(a));
+}
+
+/** A printed unit's UCUM reading, and the D-dimer units it names ("µg/L FEU": a mass per volume, in FEU) */
+function readUnit(unit: string): { ucum: string | null; units?: string } {
+  const units = dimerUnits(unit);
+  return { ucum: toUcum(units ? squeeze(unit.replace(/\{?\b(?:FEU|DDU)\b\}?/gi, ' ')) : unit), units };
+}
+
+/**
  * The LOINC test a printed value is, if one clearly fits, and the best
  * candidates. A code learned for this wording and unit wins, unless the
  * value's sample is said to be another. Otherwise the name is searched
@@ -670,11 +767,13 @@ function commonTests(catalog: Catalog, name: string, properties: string[], syste
  * the tests that fit as well differ in what the name does not say and one
  * is the usual meaning; a test LOINC does not count among its common ones
  * only when the name is one of its own and fits nothing else as well, and
- * one LOINC names with an adjustment (see isAdjusted) never. A
- * value whose unit says nothing is never matched, as nothing tells its
- * tests apart. When no name of a common test is the printed one, the most
- * common tests of the sample and unit are candidates too: the AI or the
- * user may know a wording LOINC does not ("Glicemia").
+ * one LOINC names with an adjustment (see isAdjusted) never. A value
+ * whose unit cannot be read is never matched, as nothing tells its tests
+ * apart. A value with no unit is matched only to a common test that has
+ * none (see NO_UNIT_PROPERTIES); otherwise the tests its name fits, of any
+ * property, are its candidates. When no name of a common test is the
+ * printed one, the most common tests of the sample and unit are candidates
+ * too: the AI or the user may know a wording LOINC does not ("Glicemia").
  */
 export function matchLocally(
   fullCatalog: Catalog,
@@ -682,8 +781,27 @@ export function matchLocally(
   learned?: (key: string) => string | undefined
 ): LocalMatch {
   const catalog = withSearchesKept(fullCatalog);
-  const ucum = toUcum(value.unit);
-  const properties = ucum ? ucumProperties(ucum) : [];
+  const { ucum } = readUnit(value.unit);
+  if (ucum || value.unit.trim() !== '') return matchIn(catalog, value, ucum ? ucumProperties(ucum) : [], learned);
+  const unitless = matchIn(catalog, value, NO_UNIT_PROPERTIES, learned);
+  if (unitless.status === 'match') return unitless;
+  // The unit may be missing: the tests the name fits whatever their unit are candidates too, best fits first
+  const any = matchIn(catalog, value, [], learned);
+  const candidates = [...unitless.candidates, ...any.candidates]
+    .filter((candidate, i, all) => all.findIndex(({ code }) => code === candidate.code) === i)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CANDIDATES);
+  return { status: candidates.length ? 'ambiguous' : 'none', candidates };
+}
+
+/** The local match of a value among tests of these properties (any, when none) */
+function matchIn(
+  catalog: Catalog,
+  value: PrintedValue,
+  properties: string[],
+  learned?: (key: string) => string | undefined
+): LocalMatch {
+  const { ucum, units } = readUnit(value.unit);
   const whole = spellGreekLetters(value.name.trim());
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
@@ -716,11 +834,11 @@ export function matchLocally(
   }
 
   const search = (searched: string, scope: Scope): Found[] => {
-    const byProperty = findByForms(catalog, searched, scope);
+    const byProperty = inUnits(findByForms(catalog, searched, scope), units);
     // A test HemoIO describes in the unit, only when no test of the unit's property fits but one LOINC adjusts
     const fits = ({ test, score }: Found): boolean => score >= MATCH_SCORE - SCORE_EPSILON && !isAdjusted(test);
     if (byProperty.some(fits)) return byProperty;
-    const withDescribed = findByForms(catalog, searched, { ...scope, described: true });
+    const withDescribed = inUnits(findByForms(catalog, searched, { ...scope, described: true }), units);
     return withDescribed.length ? withDescribed : byProperty;
   };
   let found = search(name, { systems, properties, ucum });
@@ -730,11 +848,12 @@ export function matchLocally(
     found = search(whole, { systems, properties, ucum });
   }
 
+  // A value with no unit says nothing of which common tests it may be
   const common = (): Candidate[] =>
-    commonTests(catalog, whole, properties, systems).map((test) => toCandidate(test, 0));
+    commonTests(catalog, whole, ucum ? properties : [], systems).map((test) => toCandidate(test, 0));
   // The closest fits, then the unit's common tests the name may mean
   const withCommon = (fits: Found[]): Candidate[] => {
-    const close = fits.slice(0, MAX_CANDIDATES / 2).map(({ test, score }) => toCandidate(test, score));
+    const close = describedFirst(fits).slice(0, MAX_CANDIDATES / 2).map(({ test, score }) => toCandidate(test, score));
     const usual = common().filter((test) => !close.some(({ code }) => code === test.code));
     return [...close, ...usual].slice(0, MAX_CANDIDATES);
   };
@@ -746,7 +865,7 @@ export function matchLocally(
   if (found.length === 0) return { status: 'none', candidates: common() };
   const fitting = withoutUnsaidChallenges(found);
   const [top] = fitting;
-  const candidates = found.slice(0, MAX_CANDIDATES).map(({ test, score }) => toCandidate(test, score));
+  const candidates = describedFirst(found).slice(0, MAX_CANDIDATES).map(({ test, score }) => toCandidate(test, score));
   if (properties.length === 0) return { status: 'ambiguous', candidates };
   // A name of a common test equal to the printed one; another's may be one of its many related names
   const isOwnName = top.score === 1 && isCommon(catalog, top.test.code);
@@ -786,7 +905,7 @@ export function matchLocally(
   if (!meant || meant.score < MATCH_SCORE - SCORE_EPSILON) return unsure;
   // A rare test only by a name of its own that fits nothing else as well; an adjusted one never
   if (isAdjusted(meant.test)) return unsure;
-  if (!isCommon(catalog, meant.test.code) && (meant.score < 1 || fits.length > 1)) return unsure;
+  if (!isCommon(catalog, meant.test.code) && (meant.score < 1 || fits.length > 1 || !ucum)) return unsure;
   if (mayBeMeasured(catalog, meant, rivals[representatives.indexOf(meant)] ?? [])) return unsure;
   if (sample === 'loosely' && sampleKind(meant.test.system) === 'Ser/Plas' && meant.test.system !== 'Ser/Plas/Bld') {
     // Said of blood, loosely: a serum test only when LOINC has no blood test of it that trends apart
