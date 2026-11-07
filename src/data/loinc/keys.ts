@@ -5,14 +5,22 @@
 
 const UNKNOWN_PREFIX = 'unknown:';
 
+/** Unicode hyphens, dashes and minus signs, which a PDF or a word processor prints for "-" */
+const DASHES = /[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g;
+
+/** Text with every Unicode dash or hyphen as "-": "non‑HDL" (a non-breaking hyphen) is "non-HDL" */
+export function foldDashes(text: string): string {
+  return text.replace(DASHES, '-');
+}
+
 /**
- * A name as every lookup reads it: case, spacing, accent encoding and the
- * accents of Latin letters aside ("velocità", "velocita" and "velocita'" are
- * one word; an apostrophe ending a word is a typed accent, one inside a
- * word an elision)
+ * A name as every lookup reads it: case, spacing, dashes, accent encoding
+ * and the accents of Latin letters aside ("velocità", "velocita" and
+ * "velocita'" are one word; an apostrophe ending a word is a typed accent,
+ * one inside a word an elision)
  */
 export function nameKey(name: string): string {
-  return name
+  return foldDashes(name)
     .normalize('NFD')
     .replace(/(\p{Script=Latin})\p{M}+/gu, '$1')
     .replace(/(\p{L})'(?=\s|$)/gu, '$1')

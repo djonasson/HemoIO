@@ -7,8 +7,9 @@ import { isPerHundredCounted } from '@/utils/unitSpelling';
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { unitsMatch } from '@services/units';
-import { toUcum, ucumProperties } from '@services/units/ucum';
+import { readUnitMarker, toUcum, ucumProperties } from '@services/units/ucum';
 import { needsTest } from './identification';
+import { testDimerUnits } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
@@ -92,15 +93,19 @@ export type UnitFit = 'fits' | 'misfits' | 'unknown';
  * reads it as the test's kind of quantity, and misfits when it surely is
  * not (a U/L value as a mass concentration, a daily amount as a
  * concentration). A unit UCUM cannot read, or that tells nothing certain,
- * is not judged.
+ * is not judged. A unit naming D-dimer units (FEU, DDU) misfits a test in
+ * the other ones, which are about two-fold apart.
  */
 export function unitFit(biomarker: MatchedBiomarker, catalog: Catalog): UnitFit {
   const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
-  const ucum = biomarker.unit.trim() ? toUcum(biomarker.unit) : null;
+  const { unit: plain, marker } = readUnitMarker(biomarker.unit);
+  const ucum = plain ? toUcum(plain) : null;
   if (!test || !ucum) return 'unknown';
+  const testMarker = testDimerUnits(test);
+  if (marker && testMarker && marker !== testMarker) return 'misfits';
   const addon = getAddon(catalog, test.code);
   const offered = [...(addon?.canonicalUnit ? [addon.canonicalUnit] : []), ...(addon?.alternativeUnits ?? [])];
-  const fitsOffered = offered.some((unit) => unitsMatch(unit, biomarker.unit) || toUcum(unit) === ucum);
+  const fitsOffered = offered.some((unit) => unitsMatch(unit, plain) || toUcum(unit) === ucum);
   if (fitsOffered || test.units.includes(ucum)) return 'fits';
   const kinds = ucumProperties(ucum).map(quantityKind);
   if (kinds.length === 0) return 'unknown';

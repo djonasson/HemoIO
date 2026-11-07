@@ -419,7 +419,7 @@ test.describe('Unit Conversion - International Aliases', () => {
     await openApp(page);
     await analyzeReport(page, [
       {
-        name: 'Rapporto proteine/creatinina - screening (urine)',
+        name: 'Rapporto nefrina/creatinina - screening (urine)',
         value: 132,
         unit: 'mg/g cr',
         confidence: 0.95,
@@ -431,7 +431,7 @@ test.describe('Unit Conversion - International Aliases', () => {
         confidence: 0.95,
       },
       {
-        name: 'Eritroblasti',
+        name: 'Normoblasti',
         value: 0.2,
         unit: '/100WBC',
         confidence: 0.95,
@@ -446,8 +446,8 @@ test.describe('Unit Conversion - International Aliases', () => {
 
     await expect(reviewRows(page)).toHaveCount(3);
     await expect(page.getByText("Unit doesn't fit the test")).toHaveCount(0);
-    // The catalog finds no test for these two yet: they are saved under their names
-    for (const name of ['Rapporto proteine/creatinina', 'Eritroblasti']) {
+    // The catalog finds no test for these two: they are saved under their names
+    for (const name of ['Rapporto nefrina/creatinina', 'Normoblasti']) {
       await changeTest(page, reviewRow(page, name), NOT_A_LOINC_TEST);
     }
     await continueToConfirm(page);

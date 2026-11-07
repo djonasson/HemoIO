@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { convertUcum, toUcum, ucumConversion, ucumProperties } from './ucum';
+import { convertUcum, readUnitMarker, toUcum, ucumConversion, ucumProperties } from './ucum';
 
 describe('toUcum', () => {
   it.each([
@@ -89,6 +89,26 @@ describe('toUcum', () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+describe('readUnitMarker', () => {
+  it.each([
+    ['ng/mL FEU', 'ng/mL', 'FEU'],
+    ['ng/mL (FEU)', 'ng/mL', 'FEU'],
+    ['ng/mL [FEU]', 'ng/mL', 'FEU'],
+    ['mg/L FEU.', 'mg/L', 'FEU'],
+    ['ng/mL - FEU', 'ng/mL', 'FEU'],
+    ['µg/L{FEU}', 'µg/L', 'FEU'],
+    ['FEU µg/mL', 'µg/mL', 'FEU'],
+    ['ng/mL ddu', 'ng/mL', 'DDU'],
+  ])('reads %s as %s in %s', (printed, unit, marker) => {
+    expect(readUnitMarker(printed)).toEqual({ unit, marker });
+  });
+
+  it('reads a unit naming no D-dimer units as it is', () => {
+    expect(readUnitMarker(' mg/dL ')).toEqual({ unit: 'mg/dL' });
+    expect(readUnitMarker('')).toEqual({ unit: '' });
   });
 });
 

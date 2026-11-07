@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUnknownKey, nameKey, unknownBiomarkerKey } from './keys';
+import { foldDashes, isUnknownKey, nameKey, unknownBiomarkerKey } from './keys';
 
 describe('unknownBiomarkerKey', () => {
   it('builds stable keys for values that are not a LOINC test', () => {
@@ -45,6 +45,16 @@ describe('nameKey', () => {
     expect(nameKey('  Glicemia   À ')).toBe(nameKey('glicemia à'.normalize('NFD').normalize('NFC')));
     expect(nameKey('À')).toBe('a');
   });
+});
+
+describe('foldDashes', () => {
+  it.each(['\u2010', '\u2011', '\u2012', '\u2013', '\u2014', '\u2015', '\u2212', '\uFE58', '\uFE63', '\uFF0D'])(
+    'reads the dash %s as a hyphen',
+    (dash) => {
+      expect(foldDashes(`non${dash}HDL`)).toBe('non-HDL');
+      expect(nameKey(`Colesterolo non${dash}HDL`)).toBe('colesterolo non-hdl');
+    }
+  );
 });
 
 describe('nameKey and accents', () => {
