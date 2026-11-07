@@ -11,22 +11,32 @@
 import type { LabResult, TestValue, UserNote, UserPreferences } from '@/types';
 import type { ParsedBackupData } from './jsonImport';
 
+/** The records a restore stores */
+interface RestoredData {
+  labResults: LabResult[];
+  testValues: TestValue[];
+  userNotes: UserNote[];
+  userPreferences?: Omit<UserPreferences, 'id'>;
+}
+
 /**
  * The database operation a restore needs (implemented by EncryptedDb)
  */
 export interface RestoreTarget {
-  replaceLabData(data: {
-    labResults: LabResult[];
-    testValues: TestValue[];
-    userNotes: UserNote[];
-    userPreferences?: Omit<UserPreferences, 'id'>;
-  }): Promise<RestoreSummary>;
+  replaceLabData(data: RestoredData): Promise<RestoreSummary>;
+}
+
+/** A database that can restore only while nothing changed its data (implemented by EncryptedDb) */
+export interface GuardedRestoreTarget {
+  replaceLabData(data: RestoredData, stamp: string): Promise<RestoreSummary | null>;
 }
 
 export interface RestoreSummary {
   labResults: number;
   testValues: number;
   notes: number;
+  /** The stored data's stamp as the restore left it (EncryptedDb.storedDataStamp) */
+  stamp: string;
 }
 
 /**
@@ -40,12 +50,29 @@ export async function restoreBackup(
   db: RestoreTarget,
   data: ParsedBackupData
 ): Promise<RestoreSummary> {
-  return db.replaceLabData({
+  return db.replaceLabData(restoredData(data));
+}
+
+/**
+ * As restoreBackup, but only while the stored data is as it was when
+ * `stamp` was taken: resolves null, replacing nothing, when a change was
+ * saved since
+ */
+export async function restoreBackupIfUnchanged(
+  db: GuardedRestoreTarget,
+  data: ParsedBackupData,
+  stamp: string
+): Promise<RestoreSummary | null> {
+  return db.replaceLabData(restoredData(data), stamp);
+}
+
+function restoredData(data: ParsedBackupData): RestoredData {
+  return {
     labResults: data.labResults,
     testValues: data.testValues,
     userNotes: data.userNotes,
     userPreferences: data.userPreferences ? withoutId(data.userPreferences) : undefined,
-  });
+  };
 }
 
 function withoutId<T extends { id?: number }>(record: T): Omit<T, 'id'> {

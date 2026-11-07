@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { endOfDay, isWithinDays, toLocalDay } from './localDate';
+import { endOfDay, isWithinDays, toLocalDay, toLocalDayString } from './localDate';
 
 describe('toLocalDay', () => {
   it('reads a picker day as local midnight', () => {
@@ -30,5 +30,12 @@ describe('isWithinDays', () => {
     expect(isWithinDays(noon, toLocalDay('2024-01-16'), null)).toBe(false);
     expect(isWithinDays(noon, null, toLocalDay('2024-01-14'))).toBe(false);
     expect(isWithinDays(noon, null, null)).toBe(true);
+  });
+});
+
+describe('toLocalDayString', () => {
+  it('writes the local day, padded', () => {
+    expect(toLocalDayString(new Date(2024, 0, 5, 23, 30))).toBe('2024-01-05');
+    expect(toLocalDayString(new Date(2024, 11, 31, 0, 0))).toBe('2024-12-31');
   });
 });

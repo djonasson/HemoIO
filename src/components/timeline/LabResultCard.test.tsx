@@ -71,6 +71,15 @@ function createMockResult(
 }
 
 describe('LabResultCard', () => {
+  it('shows "No date" for a result without a valid date', () => {
+    const result = createMockResult({ date: new Date('garbage') });
+    renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
+
+    expect(screen.getByText('No date')).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Lab result with no date' })).toBeInTheDocument();
+  });
+
   it('should render lab date', () => {
     const result = createMockResult();
     renderWithProviders(<LabResultCard result={result} onDelete={() => {}} />);
@@ -328,5 +337,14 @@ describe('LabResultCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hemoglobin, open trend' }));
 
     expect(onOpenTrend).toHaveBeenCalledWith('marker-1', new Date('2024-01-15T12:00:00Z'), 1);
+  });
+
+  it('offers no trend links on an undated result: its values are on no trend', () => {
+    const result = createMockResult({ date: new Date('garbage') });
+    renderWithProviders(
+      <LabResultCard result={result} onDelete={() => {}} defaultExpanded onOpenTrend={vi.fn()} />
+    );
+
+    expect(screen.queryByRole('button', { name: 'Hemoglobin, open trend' })).not.toBeInTheDocument();
   });
 });

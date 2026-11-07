@@ -8,8 +8,14 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { DatesProvider } from '@mantine/dates';
 import { ExportDialog } from './ExportDialog';
-import type { LabResultForExport, ExportDataSources } from '@services/export';
+import { downloadCsv, downloadJson, type LabResultForExport, type ExportDataSources } from '@services/export';
 import type { LabResult, TestValue } from '@/types';
+
+vi.mock('@services/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@services/export')>()),
+  downloadJson: vi.fn(),
+  downloadCsv: vi.fn(),
+}));
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -292,6 +298,95 @@ describe('ExportDialog', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Clear the choice' }));
       expect(await screen.findByText(/1 test value\b/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /^Export$/ })).toBeEnabled();
+    });
+  });
+
+  describe('records kept aside', () => {
+    const LEFT_OUT =
+      "3 records that can't be opened are not in this backup. Download them from the banner to keep them.";
+
+    async function chooseJson(): Promise<void> {
+      await userEvent.click(screen.getByRole('textbox', { name: /select export format/i }));
+      await userEvent.click(await screen.findByRole('option', { name: 'JSON (Full Backup)' }));
+    }
+
+    it('a backup with set-aside records asks before exporting', async () => {
+      const onClose = vi.fn();
+      renderWithProviders(<ExportDialog {...defaultProps} onClose={onClose} setAsideCount={3} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      expect(await screen.findByText(LEFT_OUT)).toBeInTheDocument();
+      expect(downloadJson).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole('button', { name: 'Export anyway' }));
+      expect(downloadJson).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it('cancelling downloads nothing', async () => {
+      renderWithProviders(<ExportDialog {...defaultProps} setAsideCount={3} />);
+      await chooseJson();
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+      await screen.findByText(LEFT_OUT);
+
+      // Focus on the safe choice, which says why it is asked
+      const cancel = screen.getByRole('button', { name: 'Cancel' });
+      await waitFor(() => expect(cancel).toHaveFocus());
+      expect(cancel).toHaveAccessibleDescription(LEFT_OUT);
+      expect(screen.getByRole('alert')).toHaveTextContent(LEFT_OUT);
+      await userEvent.click(cancel);
+
+      expect(downloadJson).not.toHaveBeenCalled();
+      // Back to the export's options, focus on Export
+      expect(screen.queryByText(LEFT_OUT)).not.toBeInTheDocument();
+      await waitFor(() => expect(screen.getByRole('button', { name: /^Export$/ })).toHaveFocus());
+    });
+
+    it('a CSV says what it leaves out, with no extra step', async () => {
+      renderWithProviders(<ExportDialog {...defaultProps} setAsideCount={3} />);
+
+      expect(screen.getByText(LEFT_OUT)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+      expect(downloadCsv).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads the data again when the export runs, so a change saved meanwhile is in it', async () => {
+      const current = createMockDataSources();
+      current.labResults[0].labName = 'Saved meanwhile';
+      const loadExportData = vi.fn(async () => ({
+        fullDataSources: current,
+        labResultsData: [createMockLabResultForExport()],
+      }));
+      renderWithProviders(<ExportDialog {...defaultProps} loadExportData={loadExportData} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      await waitFor(() => expect(downloadJson).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(downloadJson).mock.calls[0][0]).toContain('Saved meanwhile');
+    });
+
+    it('exports nothing when the data cannot be read again', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderWithProviders(<ExportDialog {...defaultProps} loadExportData={async () => null} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      await waitFor(() => expect(consoleError).toHaveBeenCalledWith('Export failed'));
+      expect(downloadJson).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
+    it('a backup with nothing set aside exports at once', async () => {
+      renderWithProviders(<ExportDialog {...defaultProps} />);
+      await chooseJson();
+
+      await userEvent.click(screen.getByRole('button', { name: /^Export$/ }));
+
+      expect(downloadJson).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/can't be opened/)).not.toBeInTheDocument();
     });
   });
 

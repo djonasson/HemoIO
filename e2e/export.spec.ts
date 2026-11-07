@@ -334,3 +334,44 @@ test.describe('Export after changes in this session', () => {
     expect(backup.labResults[0].date).toMatch(/^2024-02-20/);
   });
 });
+
+test.describe('Export of results without a date', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    // The undated result holds the only Glucose value; Hemoglobin is also in the dated one
+    await seedLabData(page, {
+      labResults: [{ ...SEED_LAB_RESULTS[0], date: null }, SEED_LAB_RESULTS[1]],
+    });
+    await openExportDialog(page);
+  });
+
+  async function downloadCsvRows(page: Page): Promise<string[]> {
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+    return fs.readFileSync(await download.path(), 'utf-8').trim().split(/\r?\n/);
+  }
+
+  // Scenario: The CSV holds results without a date
+  test('offers and exports the tests of an undated result', async ({ page }) => {
+    await exportDialog(page).getByRole('textbox', { name: 'Select biomarkers to include' }).click();
+    await expect(page.getByRole('option', { name: 'Glucose' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    const rows = await downloadCsvRows(page);
+
+    // The undated result's row starts with an empty Date field
+    expect(rows.find((row) => row.includes('Glucose'))).toMatch(/^,Quest Diagnostics,Glucose,/);
+  });
+
+  // Scenario: A date range leaves results without a date out of the CSV
+  test('leaves an undated result out when a date range is set', async ({ page }) => {
+    await exportDialog(page).getByRole('textbox', { name: 'Select date range' }).click();
+    await page.getByRole('option', { name: 'Last Year' }).click();
+
+    const rows = await downloadCsvRows(page);
+
+    expect(rows.some((row) => row.includes('Glucose'))).toBe(false);
+  });
+});

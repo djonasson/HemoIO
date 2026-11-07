@@ -13,6 +13,7 @@ import {
 } from './encryptedImport';
 import { exportToEncryptedJson } from '../export/encryptedExport';
 import { exportToJson } from '../export/jsonExport';
+import { buildSetAsideFile } from '../export/setAsideExport';
 import type { ExportDataSources } from '../export/jsonExport';
 import { UNKNOWN_KEY_BACKUP_MESSAGE } from './jsonImport';
 import type { Settings } from '@/types';
@@ -78,6 +79,19 @@ describe('encryptedImport', () => {
       expect(result.success).toBe(true);
       expect(result.encryptedBackup).toBeDefined();
       expect(result.encryptedBackup?.type).toBe(ENCRYPTED_BACKUP_TYPE_ID);
+    });
+
+    it('refuses the sealed file of unreadable records, saying it is not a backup', () => {
+      const sealed = buildSetAsideFile(
+        [{ id: 1, table: 'labResults', row: { id: 1000, encrypted: 'c2VhbGVk' }, savedToFile: 0 }],
+        new Date()
+      );
+
+      expect(detectBackupType(sealed)).toEqual({
+        type: 'standard',
+        success: false,
+        error: 'This file holds records HemoIO could not read. It is not a backup and cannot be restored.',
+      });
     });
 
     it('should detect standard backup', () => {
@@ -242,6 +256,27 @@ describe('encryptedImport', () => {
       expect(result.labResults[0].date).toBeInstanceOf(Date);
       expect(result.labResults[0].createdAt).toBeInstanceOf(Date);
       expect(result.exportedAt).toBeInstanceOf(Date);
+    });
+
+    it('reads dates as a plain backup does: an undated result stays undated, a bad stamp is repaired', async () => {
+      const password = 'SecurePassword123!';
+      const undated = { ...mockDataSources.labResults[0], date: new Date(NaN) };
+      const plain = JSON.parse(exportToJson({ ...mockDataSources, labResults: [undated] }));
+      // A note whose creation stamp cannot be read
+      plain.userNotes[0].createdAt = 'not a date';
+      const { payload, metadata } = await encryptForBackup(JSON.stringify(plain), password);
+      const encrypted = JSON.stringify({
+        type: ENCRYPTED_BACKUP_TYPE_ID,
+        version: ENCRYPTED_BACKUP_SCHEMA_VERSION,
+        encryption: metadata,
+        payload,
+      });
+
+      const result = await parseEncryptedBackup(encrypted, password);
+
+      // Listed under "No date", never on 1 January 1970
+      expect(Number.isNaN(result.labResults[0].date.getTime())).toBe(true);
+      expect(result.userNotes[0].createdAt).toEqual(new Date('2024-01-15'));
     });
 
     it('refuses a backup made before tests were identified by LOINC', async () => {

@@ -19,7 +19,6 @@ import {
   Divider,
   SegmentedControl,
   PasswordInput,
-  Badge,
   Checkbox,
 } from '@mantine/core';
 import {
@@ -55,8 +54,10 @@ import {
   type ParsedEncryptedBackupData,
 } from '@services/import';
 import { AI_PROVIDER_NAMES } from '@services/ai';
-import type { BackupType } from '@/types/backup';
+import { setAsideLeftOutLine } from '@components/storage/setAsideCopy';
 import { BackupPasswordInput } from './BackupPasswordInput';
+import { RestoreConfirmation } from './RestoreConfirmation';
+import type { BackupType } from '@/types/backup';
 
 /**
  * Props for BackupRestore component
@@ -85,6 +86,8 @@ export interface BackupRestoreProps {
    * provider (Ollama) that needs none. Defaults to hasApiKey.
    */
   hasAIConfiguration?: boolean;
+  /** Records HemoIO cannot open: no backup holds them, and a restore keeps them aside */
+  setAsideCount?: number;
 }
 
 export interface RestoreOptions {
@@ -103,6 +106,7 @@ export function BackupRestore({
   getApiKey,
   hasApiKey = false,
   hasAIConfiguration = hasApiKey,
+  setAsideCount = 0,
 }: BackupRestoreProps): React.ReactNode {
   // A backup's AI configuration decides where lab reports are sent, so it
   // only replaces an existing setup when the user opts in
@@ -114,6 +118,8 @@ export function BackupRestore({
   const [exportPasswordConfirm, setExportPasswordConfirm] = useState('');
   const [isExportPasswordValid, setIsExportPasswordValid] = useState(false);
   const [showExportPasswordModal, setShowExportPasswordModal] = useState(false);
+  // A backup that leaves set-aside records out is made only once the user agrees
+  const [confirmingLeftOut, setConfirmingLeftOut] = useState(false);
 
   // Restore state
   const [isRestoring, setIsRestoring] = useState(false);
@@ -202,13 +208,19 @@ export function BackupRestore({
   }, [dataSources, loadDataSources, exportPassword, isExportPasswordValid, getApiKey]);
 
   // Handle backup type selection and create
-  const handleCreateBackup = useCallback(() => {
+  const startBackup = useCallback(() => {
+    setConfirmingLeftOut(false);
     if (backupType === 'encrypted') {
       handleCreateEncryptedBackup();
     } else {
       handleCreateStandardBackup();
     }
   }, [backupType, handleCreateEncryptedBackup, handleCreateStandardBackup]);
+
+  const handleCreateBackup = useCallback(() => {
+    if (setAsideCount > 0) setConfirmingLeftOut(true);
+    else startBackup();
+  }, [setAsideCount, startBackup]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (file: File | null) => {
@@ -490,6 +502,28 @@ export function BackupRestore({
         </Stack>
       </Paper>
 
+      {/* What a backup leaves out, asked before it is made */}
+      <Modal
+        opened={confirmingLeftOut}
+        onClose={() => setConfirmingLeftOut(false)}
+        title="Some records are not in this backup"
+        centered
+      >
+        <Stack gap="md">
+          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+            {setAsideLeftOutLine(setAsideCount)}
+          </Alert>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setConfirmingLeftOut(false)} data-autofocus>
+              Cancel
+            </Button>
+            <Button leftSection={<IconDownload size={16} />} onClick={startBackup}>
+              Export anyway
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       {/* Export Password Modal for Encrypted Backups */}
       <Modal
         opened={showExportPasswordModal}
@@ -591,78 +625,36 @@ export function BackupRestore({
         title="Restore from Backup"
         centered
       >
-        <Stack gap="md">
-          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-            This will replace all your current data with the data from the backup. This
-            action cannot be undone.
-          </Alert>
-
-          {importPreview && (
-            <Paper p="sm" withBorder>
-              <Stack gap="xs">
-                <Group gap="xs">
-                  <Text size="sm" fw={500}>
-                    Backup Contents
-                  </Text>
-                  {importPreview.wasEncrypted === true && (
-                    <Badge size="xs" color="green" leftSection={<IconLock size={10} />}>
-                      Encrypted
-                    </Badge>
-                  )}
-                </Group>
-                <Text size="sm" c="dimmed">
-                  Created: {importPreview.exportedAt.toLocaleDateString()}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  {importPreview.labResultCount} lab result
-                  {importPreview.labResultCount !== 1 ? 's' : ''},{' '}
-                  {importPreview.testValueCount} test value
-                  {importPreview.testValueCount !== 1 ? 's' : ''},{' '}
-                  {importPreview.noteCount} note
-                  {importPreview.noteCount !== 1 ? 's' : ''}
-                </Text>
-                {importPreview.hasApiKey === true && (
-                  <Text size="sm" c="green">
-                    <Group gap="xs">
-                      <IconKey size={14} />
-                      <span>Includes API key</span>
-                    </Group>
-                  </Text>
-                )}
-              </Stack>
-            </Paper>
-          )}
-
-          {aiSummary && (
-            <Checkbox
-              checked={restoreAIConfig}
-              onChange={(event) => setRestoreAIConfig(event.currentTarget.checked)}
-              label="Also restore AI configuration"
-              description={
-                `Sets the AI provider to ${AI_PROVIDER_NAMES[aiSummary.provider]}` +
-                (aiSummary.model ? ` (${aiSummary.model})` : '') +
-                (aiSummary.apiKeyLastFour
-                  ? ` and the API key to one ending in ${aiSummary.apiKeyLastFour}`
-                  : '') +
-                '. Lab reports will then be analyzed with this configuration.' +
-                (hasApiKey && aiSummary.apiKeyLastFour
-                  ? ' Your current API key will be replaced.'
-                  : hasAIConfiguration
-                    ? ' Your current AI provider and model will be replaced.'
-                    : '')
-              }
-            />
-          )}
-
-          <Group justify="flex-end" gap="sm">
-            <Button variant="subtle" onClick={handleCancelRestore}>
-              Cancel
-            </Button>
-            <Button color="red" onClick={handleConfirmRestore} loading={isRestoring}>
-              Restore
-            </Button>
-          </Group>
-        </Stack>
+        {importPreview && (
+          <RestoreConfirmation
+            preview={importPreview}
+            setAsideCount={setAsideCount}
+            onConfirm={handleConfirmRestore}
+            onCancel={handleCancelRestore}
+            isRestoring={isRestoring}
+          >
+            {aiSummary && (
+              <Checkbox
+                checked={restoreAIConfig}
+                onChange={(event) => setRestoreAIConfig(event.currentTarget.checked)}
+                label="Also restore AI configuration"
+                description={
+                  `Sets the AI provider to ${AI_PROVIDER_NAMES[aiSummary.provider]}` +
+                  (aiSummary.model ? ` (${aiSummary.model})` : '') +
+                  (aiSummary.apiKeyLastFour
+                    ? ` and the API key to one ending in ${aiSummary.apiKeyLastFour}`
+                    : '') +
+                  '. Lab reports will then be analyzed with this configuration.' +
+                  (hasApiKey && aiSummary.apiKeyLastFour
+                    ? ' Your current API key will be replaced.'
+                    : hasAIConfiguration
+                      ? ' Your current AI provider and model will be replaced.'
+                      : '')
+                }
+              />
+            )}
+          </RestoreConfirmation>
+        )}
       </Modal>
     </>
   );

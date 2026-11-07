@@ -8,22 +8,31 @@
  * first. Folder access granted again or another folder chosen starts over.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '@contexts';
-import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
 import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { assessFolderCopy, type FolderCopyAssessment, type FolderCopyProblem } from '@services/sync';
 import { useEncryptedDb } from './useEncryptedDb';
+import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData } from '@services/import';
 
 export type FolderRestorePrompt =
   | {
       kind: 'offer';
       data: ParsedBackupData;
+      /** The copy's revision: a restore records it as seen, so the next sync finds no conflict */
+      revision: string | null;
       folderName: string | null;
       /** The browser gained data since unlock, which a restore replaces */
       replacesBrowserData: boolean;
+      /**
+       * The stored data as the question found it (EncryptedDb.storedDataStamp):
+       * a restore replaces only that, never a change saved since
+       */
+      stamp: string;
     }
   | { kind: 'unreadable'; reason: FolderCopyProblem; folderName: string | null };
 
@@ -41,6 +50,8 @@ export interface UseFolderRestoreResult {
   /** Folder storage is on but nothing reaches the folder: no access yet, or "Not now" */
   syncHeld: boolean;
   decide: (decision: FolderRestoreDecision) => void;
+  /** Look at the folder and this browser again, as when folder access changes */
+  recheck: () => void;
 }
 
 /** Checking, sync allowed, held after "Not now", or asking the user */
@@ -48,21 +59,24 @@ type Status = 'checking' | 'sync' | 'held' | FolderRestorePrompt;
 
 export function useFolderRestore(): UseFolderRestoreResult {
   const { db, isReady } = useEncryptedDb();
-  const { encryptionKey } = useAuth();
+  const { encryptionKey, storedLock } = useAuth();
+  // Read when a check starts: a password change needs no new check
+  const lockRef = useRef(storedLock);
+  useLayoutEffect(() => {
+    lockRef.current = storedLock;
+  }, [storedLock]);
   const [status, setStatus] = useState<Status>('checking');
   // Bumped when folder access changes, to check the folder again
   const [generation, setGeneration] = useState(0);
   // Whether this session's database was empty when first checked
   const emptyAtUnlock = useRef<{ db: unknown; empty: boolean }>({ db: null, empty: false });
 
-  useEffect(
-    () =>
-      onFolderAccessChanged(() => {
-        setStatus('checking');
-        setGeneration((g) => g + 1);
-      }),
-    []
-  );
+  const recheck = useCallback(() => {
+    setStatus('checking');
+    setGeneration((g) => g + 1);
+  }, []);
+
+  useEffect(() => onFolderAccessChanged(recheck), [recheck]);
 
   useEffect(() => {
     if (!isFolderStorageOn() || !db || !isReady || !encryptionKey) return;
@@ -70,11 +84,14 @@ export function useFolderRestore(): UseFolderRestoreResult {
 
     async function check(database: NonNullable<typeof db>, key: CryptoKey): Promise<void> {
       let browserHasData: boolean;
+      let stamp: string;
       try {
+        // Stamped first: a change saved after it is never replaced by the offer
+        stamp = await database.storedDataStamp();
         browserHasData = await database.hasLabData();
       } catch {
         // Not logged with the error, which could name stored data. Sync stays held.
-        console.error('Could not check this browser for lab data before syncing to the folder');
+        logFailure('Could not check this browser for lab data before syncing to the folder');
         return;
       }
       // Data added while folder access waited (an import, say) is not what the
@@ -88,13 +105,13 @@ export function useFolderRestore(): UseFolderRestoreResult {
         return;
       }
 
-      const folder = new FileSystemStorageProvider();
+      const folder = currentFolder();
       let assessment: FolderCopyAssessment;
       let folderName: string | null = null;
       try {
         // Without access nothing can be written either: wait to be told it was granted
         if ((await folder.getPermissionState()) !== 'granted') return;
-        assessment = await assessFolderCopy(folder, key);
+        assessment = await assessFolderCopy(folder, key, lockRef.current);
         if (assessment.kind !== 'sync') folderName = await folder.getDirectoryName();
       } catch {
         assessment = { kind: 'unreadable', reason: 'read-failed' };
@@ -109,7 +126,14 @@ export function useFolderRestore(): UseFolderRestoreResult {
         assessment.kind === 'sync'
           ? 'sync'
           : assessment.kind === 'offer'
-            ? { kind: 'offer', data: assessment.data, folderName, replacesBrowserData: browserHasData }
+            ? {
+                kind: 'offer',
+                data: assessment.data,
+                revision: assessment.revision,
+                folderName,
+                replacesBrowserData: browserHasData,
+                stamp,
+              }
             : { kind: 'unreadable', reason: assessment.reason, folderName }
       );
     }
@@ -124,6 +148,8 @@ export function useFolderRestore(): UseFolderRestoreResult {
     if (decision === 'sync') {
       // Decided: from now on the browser's own data is what counts
       emptyAtUnlock.current = { ...emptyAtUnlock.current, empty: false };
+    } else {
+      notifyFolderSyncPaused();
     }
     setStatus(decision === 'sync' ? 'sync' : 'held');
   }, []);
@@ -133,5 +159,6 @@ export function useFolderRestore(): UseFolderRestoreResult {
     prompt: typeof status === 'object' ? status : null,
     syncHeld: isFolderStorageOn() && (status === 'checking' || status === 'held'),
     decide,
+    recheck,
   };
 }

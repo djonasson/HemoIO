@@ -53,6 +53,19 @@ Feature: Export Lab Results
     When I clear the choice
     Then the export button should be enabled
 
+  # Exports keep every record: with no date range the CSV holds undated results too
+  Scenario: The CSV holds results without a date
+    Given I have a lab result without a date that holds the only "Glucose" value
+    When I open the export dialog
+    Then the biomarker choice should offer "Glucose"
+    When I export to CSV with no date range
+    Then the CSV should hold the "Glucose" value with an empty date
+
+  Scenario: A date range leaves results without a date out of the CSV
+    Given I have a lab result without a date that holds the only "Glucose" value
+    When I export to CSV for a date range
+    Then the CSV should not hold the "Glucose" value
+
   Scenario: Export all data to JSON
     When I click the "Export" button
     And I select "JSON" format
@@ -73,6 +86,13 @@ Feature: Export Lab Results
     Then the exported file should contain only the lab result from "2024-02-20"
 
   # Export Dialog
+  # Unit-tested (ExportDialog): another tab cannot be made to save on cue
+  Scenario: Export includes changes saved while the dialog is open
+    Given the export dialog is open
+    When a change is saved in another tab of this browser
+    And I export my data
+    Then the export should include that change
+
   Scenario: Export dialog shows available options
     When I click the "Export" button
     Then I should see the export dialog

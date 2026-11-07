@@ -71,6 +71,33 @@ describe('EncryptedDb: records with an invalid date', () => {
   });
 });
 
+describe('EncryptedDb: records with an invalid date, exported and listed apart', () => {
+  async function seed() {
+    const { db } = await openTestDb();
+    const add = (date: Date, labName: string) =>
+      db.addLabResult({ date, labName, createdAt: now, updatedAt: now });
+    await add(invalid, 'Undated');
+    await add(new Date('2024-01-01'), 'January');
+    await add(new Date('2024-02-01'), 'February');
+    await db.addNote({ content: 'broken', tags: [], createdAt: invalid, updatedAt: invalid });
+    await db.addNote({ content: 'fine', tags: [], createdAt: now, updatedAt: now });
+    return db;
+  }
+
+  it('exportAllData keeps a lab result and a note whose date is invalid, after the dated ones', async () => {
+    const exported = await (await seed()).exportAllData();
+
+    expect(exported.labResults.map((r) => r.labName)).toEqual(['February', 'January', 'Undated']);
+    expect(exported.userNotes.map((n) => n.content)).toEqual(['fine', 'broken']);
+  });
+
+  it('getUndatedLabResults returns only results without a valid date', async () => {
+    const db = await seed();
+
+    expect((await db.getUndatedLabResults()).map((r) => r.labName)).toEqual(['Undated']);
+  });
+});
+
 describe('EncryptedDb: a record that cannot be decrypted', () => {
   it('is skipped, so the others are still listed', async () => {
     const first = await openTestDb();
@@ -91,6 +118,25 @@ describe('EncryptedDb: a record that cannot be decrypted', () => {
     expect((await db.getAllLabResults()).map((r) => r.labName)).toEqual(['Readable']);
     // Says so without the record's content
     expect(warn).toHaveBeenCalledWith('Skipped a stored record that could not be decrypted');
+  });
+
+  it('is counted for an export that asks, which still holds the others', async () => {
+    const first = await openTestDb();
+    await first.db.addLabResult({ date: now, labName: 'Other key', createdAt: now, updatedAt: now });
+    await first.db.addNote({ content: 'other key', tags: [], createdAt: now, updatedAt: now });
+    const otherKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+      'encrypt',
+      'decrypt',
+    ]);
+    const db = new EncryptedDb(otherKey, first.database);
+    await db.addLabResult({ date: now, labName: 'Readable', createdAt: now, updatedAt: now });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const skipped = vi.fn();
+
+    const exported = await db.exportAllData(skipped);
+
+    expect(exported.labResults.map((r) => r.labName)).toEqual(['Readable']);
+    expect(skipped.mock.calls.reduce((sum, [count]) => sum + count, 0)).toBe(2);
   });
 
   it('as preferences, reads as none and is replaced by the next save', async () => {

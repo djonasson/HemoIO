@@ -92,3 +92,14 @@ Feature: Page Layout
     When I review the values found in a lab report
     Then the page should not scroll sideways
     And the lab date and lab name should each use the full width
+
+  Scenario Outline: A notice that stays until I close it never covers the header
+    Given my screen is <width> pixels wide
+    And a notice is showing that stays until I close it
+    Then I should still be able to lock the application from the header
+
+    Examples:
+      | width |
+      | 320   |
+      | 390   |
+      | 1920  |

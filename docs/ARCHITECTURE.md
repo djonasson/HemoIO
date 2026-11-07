@@ -184,6 +184,10 @@ everything the user stores per test is keyed by a code.
   and date format.
 - **UserNote**: A note on a lab result, a value, or a test (by trend code).
 - **Settings**: Device configuration (storage provider, AI provider and key).
+- **SetAsideRow**: A stored row the session key cannot open, kept aside
+  rather than deleted: the table it came from, the row exactly as stored
+  (readable IDs and links, ciphertext), and whether the user has saved it
+  to a file (`savedToFile`). See Unreadable Records.
 
 ### Trend Codes
 
@@ -213,12 +217,13 @@ All user data is stored in IndexedDB via Dexie.js:
 ```typescript
 // Current schema: only IDs and links are indexed, the rest is encrypted
 const db = new Dexie('HemoIO');
-db.version(7).stores({
+db.version(8).stores({
   labResults: '++id',
   testValues: '++id, labResultId',
   userPreferences: '++id',
   settings: '++id',
   userNotes: '++id, labResultId, testValueId',
+  setAside: '++id',
 });
 ```
 
@@ -226,11 +231,63 @@ Version 7 moved tests onto LOINC codes. There is no migration: the upgrade
 clears lab results, values, notes and preferences and keeps the settings,
 and backups made before it are refused with a message saying why.
 
+Version 8 adds the `setAside` table, where rows the session key cannot open
+are kept (see Unreadable Records). It has no upgrade function: nothing is
+migrated.
+
+### Unreadable Records
+
+A row the session key cannot decrypt was sealed under another data key (a
+second setup in another tab, or leftovers of an earlier setup whose
+credentials were lost), or is damaged. HemoIO never deletes such a row on
+its own, and never lets it be lost by a later step:
+
+- **The unlock sweep.** Every unlock, setup and recovery runs
+  `settleUnreadable` before the app reads anything. It decrypts every row
+  outside any transaction, in a read-only pass; only when a row is to move
+  does it open one write transaction, which moves a row into `setAside` only
+  if its ciphertext is still the one that was tried, and then returns the
+  set-aside rows that the key now opens (a key recovered from a folder can
+  make old rows readable again). IDs are kept unless taken meanwhile. A
+  failed sweep is logged with a fixed message and does not stop the unlock;
+  the next unlock tries again.
+- **Writes that meet unreadable rows.** A restore moves unreadable lab rows
+  aside instead of clearing them, and a preferences save moves unreadable
+  preferences aside first (the user is told once a session). A row written
+  since the sweep by another tab under another key is skipped on read, with
+  a fixed-text warning.
+- **The banner.** It says how many records cannot be opened, never what
+  they hold, and offers two ways to settle them: a sealed file (the rows
+  exactly as stored, still encrypted; a restore refuses it), saved through
+  the save picker where the browser has one, or a delete the user confirms,
+  which deletes only the rows the confirmation counted. A row counts as
+  saved only once the picker wrote the file, or once the user says a plain
+  download saved.
+- **Exports and restores say so.** A backup export that leaves set-aside
+  records out asks first; a restore confirmation says how many are kept
+  aside and will not be deleted.
+- **Folder sync waits.** While any set-aside row is unsaved, the folder copy
+  may be the only place that still holds those records: sync neither writes
+  over it nor loads a newer copy over this browser's data, and says it is
+  paused.
+
+Counting stored data ("does this browser hold HemoIO data?") counts readable
+and unreadable rows apart, so the setup wizard can tell a fresh browser
+from one that lost only its credentials. In that case setup first offers to
+keep the stored data aside and set up anew, to clear it, or to set up from
+a folder copy.
+
 ### Encryption
 
 Data is encrypted at rest using the Web Crypto API:
 
-- User's password derives an encryption key (PBKDF2)
+- A random data key (DEK) encrypts everything. It is stored wrapped by a
+  key derived from the password (the KEK, PBKDF2 with 600,000 iterations):
+  the "lock" (`StoredCredentialsV2`: KEK salt, iterations, wrap IV, wrapped
+  key, and `changedAt`). A password change re-wraps the same DEK; no data
+  is re-encrypted. Credentials of the earlier format (v1, where the key was
+  derived from the password directly) are converted to a lock at unlock,
+  wrapping the same key.
 - AES-GCM for symmetric encryption
 - Encryption happens at the data layer before storage
 - Decryption requires authentication each session
@@ -260,6 +317,130 @@ class GoogleDriveStorageProvider implements StorageProvider { ... }
 ```
 
 Initial release supports local storage. Cloud providers can be added without changing core logic.
+
+### Folder Sync
+
+With folder storage on (File System Access API, Chromium only), the
+database is copied to a folder the user chose, which a sync service such as
+Dropbox or OneDrive may share with their other computers. The folder holds:
+
+- `hemoio-data.encrypted`: the folder copy, the only sealed file that
+  carries the lock;
+- `hemoio-lock.json`: the current lock again, as plain JSON
+  `{ format: "hemoio-folder-lock", version: 1, lock }`, so a password can
+  still unwrap the DEK when the copy is missing or its header is damaged;
+- `hemoio-data.previous.encrypted`: the copy a write replaced, to undo a
+  bad write from. A replaced copy becomes the previous copy only when it
+  holds at least half the records of the one already there, so a browser
+  that lost its data cannot push the full history out in two writes;
+- `hemoio-backups/`: dated backups (below).
+
+**The envelope.** A folder copy is JSON `{ format: "hemoio-folder-copy",
+version: 1, lock, sealed }`. Only the format, its version and the lock are
+plaintext: with them, and the password, a browser that lost its credentials
+or another computer can open the copy. `sealed` is the AES-GCM ciphertext
+of the sync file, sealed under the DEK with the header (in a fixed key
+order) as additional data, so a lock edited in the file, or swapped for
+another, makes the copy fail to open rather than be adopted. Nothing else
+is readable: no record counts, and no health data in file names. A copy in
+the earlier raw format (IV and ciphertext, no lock) is still read by a
+browser that has its credentials.
+
+**The sync file** inside is `{ version, exportedAt, revision, ancestors,
+data }`. `version` is the backup schema version, so a restore reads a copy
+as it reads a backup. `revision` is a new UUID with every write, and
+`ancestors` lists the revisions the copy was built on, newest first (the
+copy it replaced, then that copy's ancestors), up to 200.
+
+**Only the current lock is kept.** The previous copy and every dated
+backup are sealed with `lock: null`. A password change re-wraps the same
+DEK, so an older lock left in an older file would let an old password
+unwrap the key that opens the current copy too. The lock file holds the
+same lock as the copy: a sync writes it, when it differs, before every
+copy that carries a lock (setup, a password change), and brings it up to
+date when it leaves the copy unchanged (a lock adopted from another
+computer); recovery writes it too. Restoring the previous copy or a backup
+from Settings uses the session key, which an unlocked session always has.
+The DEK never rotates, so the lock file and the copy cannot disagree on
+the key, only on the password.
+
+**A password change on another computer.** A sync writes the later of this
+browser's lock and the folder's (by `changedAt`, sealed in the additional
+data, so a replayed older envelope never wins). A later lock in the folder
+is adopted, and the user is told to use the new password at the next
+unlock, but only from a copy whose body opened under the session key: only
+a holder of the DEK can have written it. Other tabs pick the adopted lock
+up from the `storage` event, keeping their session key.
+
+**The sync state.** Each browser remembers the revision it last read or
+wrote and a SHA-256 digest of its own data at that moment
+(`hemoio_folder_sync_state` in localStorage, encrypted with the session
+key, so nothing about the folder can be read there without the password).
+The digest is over a canonical, ID-free form of the lab data and
+preferences; the settings belong to each computer and are left out.
+
+**Each sync** runs at unlock, every 30 seconds, after a restore or a
+password change, and when the set-aside rows change. It exports the database, decrypts the folder copy
+in memory and decides:
+
+- the folder copy is left alone when it cannot be opened (`unreadable`), was
+  made by another setup (`another-setup`), by a newer HemoIO (`newer`) or
+  before LOINC (`before-loinc`), when this browser holds no health records
+  but the copy does (`empty`), or while set-aside rows are unsaved
+  (`set-aside`). The user is told why;
+- a copy this browser saw last (same revision, or the same data it saw then)
+  is written over when this browser changed something, and left as it is
+  when nothing changed, unless only the lock must reach the folder;
+- a copy written elsewhere since is never written over unseen. It is
+  **loaded automatically** only when this browser changed nothing since it
+  last saw the folder, the copy descends from that one (`lastSeen.revision`
+  is among its `ancestors`), and it takes no health records away. Clocks
+  are never trusted: an older copy put back from a cloud drive's history,
+  one saved at the same moment elsewhere, or one more than 200 writes ahead
+  is asked about instead. Before loading, this browser's data is kept as an
+  autobackup, and a failed backup loads nothing. The rows are stamped before
+  that backup's export, and the load replaces them only while they are as
+  stamped, checked inside the replacing transaction: a change saved at any
+  moment meanwhile is kept, nothing is loaded, and the next sync asks;
+- otherwise the user **chooses**. The dialog shows both sides as counts and
+  dates, never values, and says why it asks (both changed, a copy that is
+  not a newer version, or a newer copy that holds no lab results while this
+  browser does): load the folder copy (this browser's data is kept as a
+  dated backup first, under the same stamp check as an automatic load, so a
+  change saved meanwhile loads nothing and the question is asked again), keep this computer's data (the folder copy is kept
+  as a dated backup first, and the new copy names both sides as ancestors,
+  so the other computer then loads it without asking), or decide later,
+  which holds syncs for the session. A choice writes over only the copy the
+  user saw; one changed meanwhile asks again.
+
+**Dated backups** (`hemoio-backups/`) come in two kinds, each keeping its
+own 10 newest, so routine loads never push out the user's choices:
+`hemoio-backup-<time>.encrypted`, the side of a choice not taken, and
+`hemoio-autobackup-<time>.encrypted`, this computer's data kept before an
+automatic load. Times are UTC to the millisecond. Pruning never deletes the
+backup just saved, nor one shown in an open restore confirmation in this
+tab. Settings > Data lists both kinds and restores one after a confirmation;
+the current folder copy is kept as a dated backup first, once per
+confirmation, unless it cannot be opened, in which case it is left as it is.
+
+**Restoring when this browser lost its data.** At unlock, a browser with no
+readable data whose folder holds a copy is offered to restore it, with its
+counts and date; syncs wait for the answer. "Replace folder copy" keeps the
+folder copy as a dated backup before the next sync writes over it.
+
+**Other tabs after a replace.** Loading a folder copy (by itself or by
+choice) and every restore replace the lab records under new IDs. The tab
+that did it posts `{ type: "replaced" }` on the `hemoio-data`
+BroadcastChannel, which carries no data; other unlocked tabs of this
+browser reload their preferences, alert acknowledgements and lab results,
+as the tab that restored does, so no edit or note goes to an old ID.
+
+**One at a time across tabs.** Every sync holds the `hemoio-folder-sync`
+Web Lock, and so do the answers to its questions (a conflict choice,
+"Replace folder copy", recording a restored copy as seen), which run after
+the syncs already asked for: two tabs never sync the folder at once. A load
+runs inside the sync that found it and never asks for another sync, which
+would wait for it in turn.
 
 ## Security Architecture
 
@@ -301,16 +482,82 @@ Initial release supports local storage. Cloud providers can be added without cha
 
 ### Key Management
 
-- Encryption key derived from password using PBKDF2 with high iteration count
-- Key exists only in memory during session
+- The data key is wrapped by a key derived from the password using PBKDF2
+  with a high iteration count; a lock asking for more than 6,000,000
+  iterations (ten times what setup uses) is rejected everywhere, so a lock
+  planted in a folder cannot keep unlocking busy
+- Keys exist only in memory during a session
 - Optional 2FA adds additional verification (not part of key derivation)
 - No key recovery possible without password (by design)
+- A password change re-wraps the data key; it never rotates it. A wrapped
+  key copied before the change (from a cloud drive's file history, say, or
+  an old copy of localStorage) therefore still opens the data with the old
+  password. Rotating the key would mean re-encrypting all data, and is out
+  of scope. Keeping the lock only in the current folder copy limits the
+  folder to one lock going forward.
+
+### Setup, Recovery and Start Over
+
+**Setup in two tabs.** Setup, recovery from a folder, the conversion of v1
+credentials and the setup wizard's count or clear of stored data each hold
+the `hemoio-setup` Web Lock, and read the stored credentials again under it:
+when another tab finished setup first, this tab unlocks with them (or shows
+the unlock screen) instead of making a second data key. Other tabs leave
+setup when credentials appear (`storage` event). Credentials, once written,
+are never taken back by setup: another tab may already have sealed records
+under them.
+
+**Recovery from the folder.** At first run, "I already have a folder copy"
+asks for the folder and the password used there. The lock is the current
+copy's when its header can be read, else the lock file's; it must be a
+valid v2 lock and the password must unwrap it. The unwrapped key is then
+tried on the current copy, the previous copy, and the dated backups,
+newest first: the first body that opens under it, with its header as
+additional data, proves the key (AES-GCM authenticates it), and that file
+is the one restored. A lock planted in the copy or as the lock file proves
+nothing unless a body opens under its key; until one does, nothing is
+stored. A current copy that opens but cannot be restored (a newer HemoIO's,
+or one from before LOINC) is reported, never passed over for an older one.
+Then, under `hemoio-setup`, the lock is saved, folder storage is chosen and
+the folder kept, the unlock sweep runs (returning set-aside rows the
+recovered key opens), and the file is restored when this browser holds no
+readable lab data, its revision marked seen, and the lock file written.
+When the file restored was the previous copy or a backup, the current copy
+was missing or damaged: the restored data is written as the new copy
+(with the lock, built on the restored revision, under
+`hemoio-folder-sync`), so syncing goes on, and the user is told which file
+was restored and when it was saved. Data still in the browser is left for
+the first sync, which asks when it differs from the copy. The password
+stays the same.
+
+**Start over** (Settings > Security, after an offer to export and a typed
+confirmation) drops the session key at once, so no sync or decryption
+starts, then takes `hemoio-setup` and, nested in it, `hemoio-folder-sync`,
+waiting for any sync in flight. It empties every table but `setAside` and
+removes every `hemoio_` key in localStorage and the stored folder handle.
+The set-aside rows stay because a key recovered from a folder copy may
+open them: the dialog says how many stay, and after the reload setup's
+existing-data step offers recovery from the folder (which returns the rows
+that key opens), keeping them aside, or clearing them. The folder and its
+files are never touched. The page then reloads, whatever the outcome,
+so no state of the old setup (API key caches, AI choices, preferences)
+stays in memory. Removing the credentials sends other tabs back to setup,
+and a tab that held the old setup, locked or unlocked, reloads too.
+
+**Lock order.** The two Web Locks are only ever nested as `hemoio-setup`
+then `hemoio-folder-sync`; a sync never asks for the setup lock, so they
+cannot deadlock.
 
 ### Sensitive Data Handling
 
-- API keys stored encrypted in settings
+- API keys stored encrypted in settings; one that cannot be decrypted is
+  treated as not set
 - Decrypted only when needed for API calls
 - Never logged or exposed in error messages
+- Keys, salts, passwords, locks, revisions and health data are never
+  logged: failures that could name stored data log a fixed message, never
+  the caught error
+- Dialogs and banners about stored data show counts and dates, never values
 
 ## Document Analysis Pipeline
 

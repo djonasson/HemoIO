@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { startNewSetup } from './steps/app.steps';
 
 // Helper to clear localStorage before each test
 async function clearStorage(page: Page) {
@@ -8,6 +9,7 @@ async function clearStorage(page: Page) {
 
 // Helper to complete password step
 async function completePasswordStep(page: Page) {
+  await startNewSetup(page);
   await page.getByPlaceholder('Enter your password').fill('MySecurePass123!');
   await page.getByPlaceholder('Confirm your password').fill('MySecurePass123!');
 }
@@ -20,6 +22,7 @@ test.describe('Keyboard Navigation', () => {
       await page.reload();
       // Wait for wizard to be visible
       await expect(page.getByRole('heading', { name: 'Welcome to HemoIO' })).toBeVisible();
+      await startNewSetup(page);
     });
 
     test('Enter key submits password step when valid', async ({ page }) => {
@@ -132,6 +135,7 @@ test.describe('Keyboard Navigation', () => {
       await page.goto('/');
       await clearStorage(page);
       await page.reload();
+      await startNewSetup(page);
     });
 
     test('Tab moves focus through interactive elements', async ({ page }) => {

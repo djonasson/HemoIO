@@ -3,10 +3,14 @@
  *
  * Loads and decrypts the lab results once for every view. Views reload them
  * only after a write (an import, a restore or a deletion), never on navigation.
+ * The loader shows only on a session's first load: a reload keeps the
+ * results on screen until the new ones are in, so no card is unmounted (P44).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { LabResult } from '@/types';
 import { useEncryptedDb } from '@hooks/useEncryptedDb';
+import { logFailure } from '@/utils/logFailure';
 import {
   LabResultsContext,
   enrichTestValue,
@@ -17,6 +21,7 @@ import {
 export function LabResultsProvider({ children }: { children: ReactNode }): ReactNode {
   const { db, isReady } = useEncryptedDb();
   const [allResults, setAllResults] = useState<LabResultWithDetails[]>([]);
+  const [undatedResults, setUndatedResults] = useState<LabResultWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,39 +32,50 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
   useEffect(() => {
     sessionDb.current = isReady ? db : null;
   }, [db, isReady]);
+  // The database whose results were loaded once: later loads show no loader
+  const loadedDb = useRef<unknown>(null);
 
   const refresh = useCallback(async () => {
     if (!db || !isReady) {
       setAllResults([]);
+      setUndatedResults([]);
       setIsLoading(false);
       return;
     }
     const isCurrent = () => sessionDb.current === db;
 
-    setIsLoading(true);
+    if (loadedDb.current !== db) setIsLoading(true);
     setError(null);
 
     try {
-      const labResults = await db.getAllLabResults();
-      const resultsWithDetails = await Promise.all(
-        labResults.map(async (labResult) => {
-          const testValues = labResult.id ? await db.getTestValuesByLabResult(labResult.id) : [];
-          const enrichedTestValues = testValues.map(enrichTestValue);
-          return {
-            ...labResult,
-            testValues: enrichedTestValues,
-            abnormalCount: enrichedTestValues.filter(
-              (tv) => tv.status === 'low' || tv.status === 'high'
-            ).length,
-            totalCount: testValues.length,
-          };
-        })
-      );
-      if (isCurrent()) setAllResults(resultsWithDetails);
+      const withDetails = (labResults: LabResult[]): Promise<LabResultWithDetails[]> =>
+        Promise.all(
+          labResults.map(async (labResult) => {
+            const testValues = labResult.id ? await db.getTestValuesByLabResult(labResult.id) : [];
+            const enrichedTestValues = testValues.map(enrichTestValue);
+            return {
+              ...labResult,
+              testValues: enrichedTestValues,
+              abnormalCount: enrichedTestValues.filter(
+                (tv) => tv.status === 'low' || tv.status === 'high'
+              ).length,
+              totalCount: testValues.length,
+            };
+          })
+        );
+      const [dated, undated] = await Promise.all([
+        db.getAllLabResults().then(withDetails),
+        db.getUndatedLabResults().then(withDetails),
+      ]);
+      if (isCurrent()) {
+        setAllResults(dated);
+        setUndatedResults(undated);
+        loadedDb.current = db;
+      }
     } catch (err) {
       if (!isCurrent()) return;
       setError(err instanceof Error ? err.message : 'Failed to load lab results');
-      console.error('Error fetching lab results:', err);
+      logFailure('Could not load the lab results');
     } finally {
       if (isCurrent()) setIsLoading(false);
     }
@@ -81,13 +97,14 @@ export function LabResultsProvider({ children }: { children: ReactNode }): React
       await db.deleteLabResult(id);
       // Committed: remove it from the shared state at once, so every view updates
       setAllResults((prev) => prev.filter((r) => r.id !== id));
+      setUndatedResults((prev) => prev.filter((r) => r.id !== id));
     },
     [db]
   );
 
   const value = useMemo<LabResultsStore>(
-    () => ({ allResults, isLoading, error, refresh, deleteResult }),
-    [allResults, isLoading, error, refresh, deleteResult]
+    () => ({ allResults, undatedResults, isLoading, error, refresh, deleteResult }),
+    [allResults, undatedResults, isLoading, error, refresh, deleteResult]
   );
 
   return <LabResultsContext.Provider value={value}>{children}</LabResultsContext.Provider>;

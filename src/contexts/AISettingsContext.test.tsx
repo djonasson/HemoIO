@@ -99,7 +99,7 @@ describe('useAISettings', () => {
       );
     });
 
-    it('should prefer IndexedDB values over localStorage during migration', async () => {
+    it("the setup wizard's choices win over a settings row an earlier setup left", async () => {
       localStorage.setItem('hemoio_ai_provider', 'ollama');
       localStorage.setItem('hemoio_openai_model', 'gpt-3.5');
       mockGetSettings.mockResolvedValue({
@@ -115,9 +115,13 @@ describe('useAISettings', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Should use IndexedDB values (not localStorage)
-      expect(result.current.aiProvider).toBe('anthropic');
-      expect(result.current.openaiModel).toBe('gpt-4');
+      // Only the wizard writes these keys: what it chose is used, and stored
+      expect(result.current.aiProvider).toBe('ollama');
+      expect(result.current.openaiModel).toBe('gpt-3.5');
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ aiProvider: 'ollama', openaiModel: 'gpt-3.5' })
+      );
+      expect(localStorage.getItem('hemoio_ai_provider')).toBeNull();
     });
 
     it('should not save anything if no localStorage values exist', async () => {

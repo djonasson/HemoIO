@@ -270,6 +270,7 @@ describe('EncryptedDb: biomarker data at rest', () => {
         testValues: ['encrypted', 'id', 'labResultId'],
         userNotes: ['encrypted', 'id', 'labResultId', 'testValueId'],
         userPreferences: ['encrypted', 'id'],
+        setAside: [],
       });
       const raw = await stored(database);
       for (const text of ['mmol/mol', '2024-03-01', '2024-01-15', 'HPLC', 'Quest', '48']) {

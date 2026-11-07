@@ -26,6 +26,10 @@ vi.mock('@data/storage/folderAccessEvents', () => ({
   notifyFolderAccessChanged: vi.fn(),
 }));
 
+vi.mock('./FolderBackups', () => ({
+  FolderBackups: () => <section aria-label="Folder backups" />,
+}));
+
 const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -44,7 +48,7 @@ describe('StorageSettings', () => {
 
   describe('with local storage', () => {
     it('renders local storage option', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(screen.getByText('Local Storage')).toBeInTheDocument();
       expect(
@@ -53,13 +57,13 @@ describe('StorageSettings', () => {
     });
 
     it('shows active badge for local storage when selected', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(screen.getByText('Active')).toBeInTheDocument();
     });
 
     it('shows note about unsupported browser when filesystem not supported', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(
         screen.getByText(/Local Directory storage is not supported in this browser/i)
@@ -67,7 +71,7 @@ describe('StorageSettings', () => {
     });
 
     it('allows switching storage providers', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(
         screen.getByText(/Choose where to store your encrypted data/i)
@@ -81,7 +85,7 @@ describe('StorageSettings', () => {
     });
 
     it('renders filesystem storage when selected', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       // Local storage option should still be visible
       expect(screen.getByText('Local Storage')).toBeInTheDocument();
@@ -90,16 +94,68 @@ describe('StorageSettings', () => {
 
   describe('storage provider selection', () => {
     it('renders radiogroup for storage selection', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(screen.getByRole('radiogroup')).toBeInTheDocument();
     });
 
     it('shows storage location header', () => {
-      renderWithProviders(<StorageSettings />);
+      renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
       expect(screen.getByText('Storage Location')).toBeInTheDocument();
     });
+  });
+});
+
+describe('StorageSettings folder backups', () => {
+  function folderProvider(permission: 'granted' | 'prompt'): void {
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn().mockResolvedValue('Health');
+        getPermissionState = vi.fn().mockResolvedValue(permission);
+      } as unknown as typeof FileSystemStorageProvider
+    );
+  }
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(false);
+    vi.clearAllMocks();
+  });
+
+  it('lists them when folder storage is on and the folder is open to HemoIO', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    folderProvider('granted');
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    expect(await screen.findByRole('region', { name: 'Folder backups' })).toBeInTheDocument();
+  });
+
+  it('hides them until access is granted, then lists them', async () => {
+    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
+    vi.mocked(isFileSystemAccessSupported).mockReturnValue(true);
+    vi.mocked(FileSystemStorageProvider).mockImplementation(
+      class {
+        getDirectoryName = vi.fn().mockResolvedValue('Health');
+        getPermissionState = vi.fn().mockResolvedValue('prompt');
+        requestPermission = vi.fn().mockResolvedValue('granted');
+      } as unknown as typeof FileSystemStorageProvider
+    );
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    const grant = await screen.findByRole('button', { name: 'Grant Access' });
+    expect(screen.queryByRole('region', { name: 'Folder backups' })).not.toBeInTheDocument();
+    await userEvent.click(grant);
+
+    expect(await screen.findByRole('region', { name: 'Folder backups' })).toBeInTheDocument();
+  });
+
+  it('does not list them with local storage', () => {
+    folderProvider('granted');
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
+
+    expect(screen.queryByRole('region', { name: 'Folder backups' })).not.toBeInTheDocument();
   });
 });
 
@@ -129,7 +185,7 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
   it('after access is granted again', async () => {
     localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
     folderProvider('prompt');
-    renderWithProviders(<StorageSettings />);
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Grant Access' }));
 
@@ -139,7 +195,7 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
   it('after another folder is chosen', async () => {
     localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
     folderProvider('granted');
-    renderWithProviders(<StorageSettings />);
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Change' }));
 
@@ -153,7 +209,7 @@ describe('StorageSettings tells folder sync when folder access changes', () => {
       // Sync reads the storage choice when told, so it must be saved by then
       expect(localStorage.getItem(STORAGE_PROVIDER_KEY)).toBe('filesystem');
     });
-    renderWithProviders(<StorageSettings />);
+    renderWithProviders(<StorageSettings onRestore={vi.fn()} />);
 
     await userEvent.click(screen.getByRole('radio', { name: /Local Directory/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Select Folder & Switch' }));

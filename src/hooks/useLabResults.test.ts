@@ -87,6 +87,7 @@ const mockTestValues: Record<number, TestValue[]> = {
 function createMockDb() {
   return {
     getAllLabResults: vi.fn().mockResolvedValue(mockLabResults),
+    getUndatedLabResults: vi.fn().mockResolvedValue([]),
     getTestValuesByLabResult: vi.fn((id: number) =>
       Promise.resolve(mockTestValues[id] || [])
     ),
@@ -228,6 +229,25 @@ describe('useLabResults', () => {
     // Should only show March and June results
     expect(result.current.results).toHaveLength(2);
     expect(result.current.results.map((r) => r.id)).toEqual([3, 2]);
+  });
+
+  it('counts the undated results a date filter hides', async () => {
+    const mockDb = createMockDb();
+    const undated = { id: 9, date: new Date('garbage'), labName: 'Undated Lab', createdAt: new Date(), updatedAt: new Date() };
+    mockDb.getUndatedLabResults.mockResolvedValue([undated]);
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
+    await waitFor(() => expect(result.current.undatedResults).toHaveLength(1));
+    expect(result.current.hiddenUndatedCount).toBe(0);
+
+    act(() => result.current.setFilters({ startDate: new Date('2024-03-01') }));
+
+    expect(result.current.undatedResults).toEqual([]);
+    expect(result.current.hiddenUndatedCount).toBe(1);
+
+    // One the search leaves out is not hidden by the date filter
+    act(() => result.current.setFilters({ startDate: new Date('2024-03-01'), searchTerm: 'Quest' }));
+    expect(result.current.hiddenUndatedCount).toBe(0);
   });
 
   it('includes results from the whole of the end day', async () => {
@@ -400,7 +420,8 @@ describe('useLabResults', () => {
 
     expect(result.current.error).toBe('Database error');
     expect(result.current.results).toEqual([]);
-    expect(consoleError).toHaveBeenCalledWith('Error fetching lab results:', expect.any(Error));
+    // Fixed text: the error could name stored data
+    expect(consoleError).toHaveBeenCalledWith('Could not load the lab results');
   });
 
   it('should handle errors during delete', async () => {
@@ -451,6 +472,28 @@ describe('useLabResults', () => {
     });
 
     expect(mockDb.getAllLabResults).toHaveBeenCalled();
+  });
+
+  it('shows the loader only on the first load: a refresh keeps the results on screen (P44)', async () => {
+    const mockDb = createMockDb();
+    vi.mocked(useEncryptedDb).mockReturnValue({ db: mockDb as any, isReady: true });
+    const { result } = renderHook(() => useLabResults(), { wrapper: LabResultsProvider });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    let finish: (results: LabResult[]) => void = () => {};
+    mockDb.getAllLabResults.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+
+    let refreshing: Promise<void> = Promise.resolve();
+    act(() => {
+      refreshing = result.current.refresh();
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.results).toHaveLength(3);
+    await act(async () => {
+      finish(mockLabResults.slice(0, 1));
+      await refreshing;
+    });
+    expect(result.current.results).toHaveLength(1);
   });
 
   it('should return unknown status when no reference range', async () => {

@@ -8,8 +8,13 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { setupOrUnlock, unlockApp } from './steps/app.steps';
-import { lockApp } from './steps/changePassword.steps';
+import { TEST_PASSWORD, setupOrUnlock, unlockApp } from './steps/app.steps';
+import {
+  NEW_PASSWORD,
+  SecuritySettingsPage,
+  expectPasswordRejected,
+  lockApp,
+} from './steps/changePassword.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import {
   FOLDER_COPY,
@@ -19,10 +24,29 @@ import {
   failedSyncNotice,
   loseBrowserData,
   skippedSyncNotice,
+  syncAttempts,
   storeDataInFolder,
   useTestFolder,
 } from './steps/folderSync.steps';
-import { FolderRestoreDialog } from './steps/folderRestore.steps';
+import {
+  FolderRestoreDialog,
+  folderCopyHash,
+  writeForeignFolderCopy,
+} from './steps/folderRestore.steps';
+import {
+  currentFolderData,
+  folderFileRevision,
+  readFolderCopyText,
+  readFolderEnvelope,
+  saveCopyAsAnotherComputer,
+  storedLockChangedAt,
+} from './steps/otherComputer.steps';
+import {
+  seedUnreadableRecords,
+  setAsideBanner,
+  setAsideSavedFlags,
+  withSavePicker,
+} from './steps/unreadableRecords.steps';
 
 const MORE_LAB_RESULTS = [
   ...SEED_LAB_RESULTS,
@@ -34,6 +58,9 @@ const MORE_LAB_RESULTS = [
     updatedAt: '2024-03-12T09:00:00.000Z',
   },
 ];
+
+/** The password another computer changed to */
+const OTHER_PASSWORD = 'Other-Computer-Passw0rd!';
 
 const NEW_LAB_RESULT = {
   id: 1,
@@ -96,6 +123,11 @@ test.describe('Folder Sync Safety', () => {
     return (await folder.read(FOLDER_COPY))!;
   }
 
+  /** The revision of a file in the folder, which a copy keeps when it becomes the previous copy */
+  function revisionOf(page: Page, fileName: string, password = TEST_PASSWORD): Promise<string | null> {
+    return folderFileRevision(page, fileName, password);
+  }
+
   test('an empty browser does not overwrite the folder copy', async ({ page }) => {
     const synced = await syncResults(page);
 
@@ -138,17 +170,21 @@ test.describe('Folder Sync Safety', () => {
 
   test('the previous folder copy is kept next to the new one', async ({ page }) => {
     const synced = await syncResults(page);
+    const syncedRevision = await revisionOf(page, FOLDER_COPY);
 
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
 
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
-    expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(synced);
+    expect(await revisionOf(page, PREVIOUS_FOLDER_COPY)).toBe(syncedRevision);
+    // Only the current copy carries the password lock
+    expect(JSON.parse(atob((await folder.read(PREVIOUS_FOLDER_COPY))!)).lock).toBeNull();
   });
 
   test('a full copy is not pushed out by smaller ones', async ({ page }) => {
     // Setup, a reload or relock and three restores: each unlock derives the key again
     test.slow();
-    const full = await syncResults(page);
+    await syncResults(page);
+    const full = await revisionOf(page, FOLDER_COPY);
     await loseBrowserData(page);
     await unlockApp(page);
     await replaceFolderCopyInstead(page);
@@ -157,7 +193,7 @@ test.describe('Folder Sync Safety', () => {
     await seedLabData(page, { labResults: [NEW_LAB_RESULT], testValues: [] });
     await seedLabData(page, { labResults: [NEW_LAB_RESULT, LATER_LAB_RESULT], testValues: [] });
 
-    expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(full);
+    expect(await revisionOf(page, PREVIOUS_FOLDER_COPY)).toBe(full);
   });
 
   test('opening the app without changes keeps the previous copy', async ({ page }) => {
@@ -167,6 +203,7 @@ test.describe('Folder Sync Safety', () => {
     await seedLabData(page, { labResults: MORE_LAB_RESULTS });
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
     const beforeLastChange = await folder.read(FOLDER_COPY);
+    const beforeLastChangeRevision = await revisionOf(page, FOLDER_COPY);
 
     // Unlocking syncs at once; with nothing changed it must not write
     await lockApp(page);
@@ -174,7 +211,7 @@ test.describe('Folder Sync Safety', () => {
     await seedLabData(page, { labResults: EVEN_MORE_LAB_RESULTS });
 
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(beforeLastChange);
-    expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBe(beforeLastChange);
+    expect(await revisionOf(page, PREVIOUS_FOLDER_COPY)).toBe(beforeLastChangeRevision);
   });
 
   test('a folder copy saved with another password is not replaced', async ({ page }) => {
@@ -213,5 +250,128 @@ test.describe('Folder Sync Safety', () => {
     await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(first);
     expect(await folder.read(PREVIOUS_FOLDER_COPY)).toBeNull();
     await expect(skippedSyncNotice(page)).toHaveCount(0);
+  });
+
+  test('records that cannot be opened pause the folder sync', async ({ page }) => {
+    // Scenario: Records that cannot be opened pause the folder sync
+    // A save picker, so the download counts as saved without a question
+    await withSavePicker(page, 'save');
+    await page.reload();
+    await unlockApp(page);
+    const synced = await syncResults(page);
+    await seedUnreadableRecords(page, { labResults: 1, testValues: 2 });
+    await expect(setAsideBanner(page)).toContainText('Folder sync is paused');
+
+    const attempts = await syncAttempts(page);
+
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+
+    // The sync the added result starts has run, and held back
+    await expect.poll(() => syncAttempts(page)).toBeGreaterThan(attempts);
+    await expect(skippedSyncNotice(page)).toBeVisible();
+    await expect(skippedSyncNotice(page)).toContainText("Some stored records can't be opened");
+    expect(await folder.read(FOLDER_COPY)).toBe(synced);
+
+    await setAsideBanner(page).getByRole('button', { name: 'Download sealed file' }).click();
+
+    await expect.poll(() => setAsideSavedFlags(page)).toEqual([1, 1, 1]);
+    await expect(skippedSyncNotice(page)).toHaveCount(0);
+    await expect.poll(() => folder.read(FOLDER_COPY)).not.toBe(synced);
+  });
+
+  test('the folder copy keeps the password lock beside the data', async ({ page }) => {
+    // Scenario: The folder copy keeps the password lock beside the data
+    await syncResults(page);
+
+    const text = await readFolderCopyText(page);
+    const file = JSON.parse(text);
+    expect(file.format).toBe('hemoio-folder-copy');
+    expect(typeof file.lock.wrappedKey).toBe('string');
+    expect(Object.keys(file).sort()).toEqual(['format', 'lock', 'sealed', 'version']);
+    expect(text).not.toContain('Hemoglobin');
+    expect(text).not.toContain('718-7');
+  });
+
+  test('a password change reaches the folder', async ({ page }) => {
+    // Scenario: A password change reaches the folder
+    await syncResults(page);
+    const before = (await readFolderEnvelope(page)).header.lock?.changedAt;
+
+    await new SecuritySettingsPage(page).change(TEST_PASSWORD, NEW_PASSWORD);
+
+    await expect
+      .poll(async () => (await readFolderEnvelope(page)).header.lock?.changedAt)
+      .not.toBe(before);
+    const after = (await readFolderEnvelope(page)).header.lock?.changedAt as string;
+    expect(new Date(after).getTime()).toBeGreaterThan(new Date(before as string).getTime());
+    expect(after).toBe(await storedLockChangedAt(page));
+  });
+
+  test('a password changed on another computer is picked up at the next sync', async ({ page }) => {
+    // Scenario: A password changed on another computer is picked up at the next sync
+    test.slow();
+    await syncResults(page);
+    const later = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    // Its sync saves the data it had from the folder again, with the new lock
+    await saveCopyAsAnotherComputer(page, {
+      password: TEST_PASSWORD,
+      data: await currentFolderData(page, TEST_PASSWORD),
+      newPassword: NEW_PASSWORD,
+      changedAt: later,
+    });
+
+    // I keep working: adding results syncs, and the sync finds the later lock
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+    await expect.poll(() => storedLockChangedAt(page)).toBe(later);
+    await expect(page.getByPlaceholder('Search by lab name')).toBeVisible();
+    const notice = page.getByRole('alert').filter({ hasText: 'Password changed on another computer' });
+    await expect(notice).toContainText('Use the new password the next time you unlock HemoIO.');
+    // It stays until dismissed
+    await notice.getByRole('button').click();
+    await expect(notice).toHaveCount(0);
+
+    await lockApp(page);
+    await expectPasswordRejected(page, TEST_PASSWORD);
+    await unlockApp(page, NEW_PASSWORD);
+  });
+
+  test('when both computers change the password, the later change wins', async ({ page }) => {
+    // Scenario: When both computers change the password, the later change wins
+    test.slow();
+    await syncResults(page);
+    const otherChange = new Date(Date.now() - 60 * 1000).toISOString();
+    await new SecuritySettingsPage(page).change(TEST_PASSWORD, NEW_PASSWORD);
+    const ours = await storedLockChangedAt(page);
+    await expect.poll(async () => (await readFolderEnvelope(page)).header.lock?.changedAt).toBe(ours);
+
+    // The other computer's change was made earlier, and reached the folder only now
+    await saveCopyAsAnotherComputer(page, {
+      password: NEW_PASSWORD,
+      data: await currentFolderData(page, NEW_PASSWORD),
+      newPassword: OTHER_PASSWORD,
+      changedAt: otherChange,
+    });
+    await seedLabData(page, { labResults: MORE_LAB_RESULTS });
+
+    await expect.poll(async () => (await readFolderEnvelope(page)).header.lock?.changedAt).toBe(ours);
+    expect(await storedLockChangedAt(page)).toBe(ours);
+    await lockApp(page);
+    await expectPasswordRejected(page, OTHER_PASSWORD);
+    await unlockApp(page, NEW_PASSWORD);
+  });
+
+  test('a folder from another setup is explained', async ({ page }) => {
+    // Scenario: A folder from another setup is explained
+    await writeForeignFolderCopy(page, 'another-setup', folder.name);
+    const foreign = await folderCopyHash(page, folder.name);
+
+    await seedLabData(page);
+
+    await expect(skippedSyncNotice(page)).toBeVisible();
+    await expect(skippedSyncNotice(page)).toContainText("another HemoIO setup's copy");
+    await expect(skippedSyncNotice(page)).toContainText(
+      'Choose a different folder in Settings > Data, or use Start over in Settings > Security to set up from that copy.'
+    );
+    expect(await folderCopyHash(page, folder.name)).toBe(foreign);
   });
 });

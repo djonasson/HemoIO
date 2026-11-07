@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useExportData } from './useExportData';
 import { createCatalog, type Catalog } from '@data/loinc/catalog';
+import { notifySetAsideChanged } from '@data/db/setAsideEvents';
 
 // Mock useEncryptedDb
 const mockDb = {
@@ -14,6 +15,18 @@ const mockDb = {
   getAllNotes: vi.fn(),
   getPreferences: vi.fn(),
   getSettings: vi.fn(),
+  countSetAside: vi.fn(),
+  // Reads the same lists as EncryptedDb.exportAllData, so each is mocked once
+  exportAllData: vi.fn(async () => {
+    const [labResults, testValues, userNotes, preferences, settings] = await Promise.all([
+      mockDb.getAllLabResults(),
+      mockDb.getAllTestValues(),
+      mockDb.getAllNotes(),
+      mockDb.getPreferences(),
+      mockDb.getSettings(),
+    ]);
+    return { labResults, testValues, userNotes, preferences, settings };
+  }),
 };
 
 const catalogs = vi.hoisted(() => ({ current: undefined as Catalog | undefined }));
@@ -22,6 +35,11 @@ vi.mock('@contexts/useCatalog', async () => {
   const fixture = fixtureCatalog();
   return { useCatalog: () => catalogs.current ?? fixture };
 });
+
+const sessionKey = vi.hoisted(() => ({}) as CryptoKey);
+vi.mock('@contexts/useAuth', () => ({
+  useAuth: () => ({ encryptionKey: sessionKey }),
+}));
 
 vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: () => ({
@@ -36,6 +54,43 @@ describe('useExportData', () => {
     catalogs.current = undefined;
     mockDb.getPreferences.mockResolvedValue(undefined);
     mockDb.getSettings.mockResolvedValue(undefined);
+    mockDb.countSetAside.mockResolvedValue({ total: 0, unsaved: 0 });
+  });
+
+  it('reports the set-aside summary', async () => {
+    mockDb.getAllLabResults.mockResolvedValue([]);
+    mockDb.getAllTestValues.mockResolvedValue([]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+    mockDb.countSetAside.mockResolvedValueOnce({ total: 3, unsaved: 1 });
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => expect(result.current.setAside).toEqual({ total: 3, unsaved: 1 }));
+
+    // Counted again when the set-aside rows change, such as after a delete
+    mockDb.countSetAside.mockResolvedValueOnce({ total: 0, unsaved: 0 });
+    act(() => notifySetAsideChanged());
+    await waitFor(() => expect(result.current.setAside).toEqual({ total: 0, unsaved: 0 }));
+  });
+
+  it('offers a test that only undated results hold, as the CSV holds them too', async () => {
+    const dated = { id: 1, date: new Date('2024-01-15'), labName: 'A', createdAt: new Date(), updatedAt: new Date() };
+    const undated = { ...dated, id: 2, date: new Date('garbage') };
+    mockDb.getAllLabResults.mockResolvedValue([dated, undated]);
+    mockDb.getAllTestValues.mockResolvedValue([
+      { id: 1, labResultId: 1, biomarkerKey: 'marker-1', value: 1, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+      { id: 2, labResultId: 2, biomarkerKey: 'marker-1', value: 2, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+      { id: 3, labResultId: 2, biomarkerKey: 'marker-2', value: 3, unit: 'u', createdAt: new Date(), updatedAt: new Date() },
+    ]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // With no date range the CSV holds undated results, so their tests are offered too
+    expect(result.current.biomarkerOptions.map((option) => option.value)).toEqual(['marker-1', 'marker-2']);
+    // The backup still holds every value
+    expect(result.current.dataSources.testValues).toHaveLength(3);
   });
 
   it('should include preferences and settings so backups carry them', async () => {
@@ -76,6 +131,20 @@ describe('useExportData', () => {
     rerender({ enabled: false });
     rerender({ enabled: true });
     await waitFor(() => expect(mockDb.getAllLabResults).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps a lab result without a valid date in the backup and in the CSV rows', async () => {
+    const dated = { id: 1, date: new Date('2024-01-15'), labName: 'A', createdAt: new Date(), updatedAt: new Date() };
+    const undated = { ...dated, id: 2, date: new Date('garbage') };
+    mockDb.getAllLabResults.mockResolvedValue([dated, undated]);
+    mockDb.getAllTestValues.mockResolvedValue([]);
+    mockDb.getAllNotes.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useExportData());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.dataSources.labResults).toHaveLength(2);
+    expect(result.current.labResultsData.map((r) => r.labResult.id)).toEqual([1, 2]);
   });
 
   it('should return empty data sources when db returns empty arrays', async () => {
@@ -134,7 +203,9 @@ describe('useExportData', () => {
   });
 
   it('should return biomarker options from test values', async () => {
-    mockDb.getAllLabResults.mockResolvedValue([]);
+    mockDb.getAllLabResults.mockResolvedValue([
+      { id: 1, date: new Date(), labName: 'Lab', createdAt: new Date(), updatedAt: new Date() },
+    ]);
     mockDb.getAllTestValues.mockResolvedValue([
       {
         id: 1,
@@ -283,7 +354,7 @@ describe('useExportData', () => {
     });
 
     expect(result.current.error).toBe('Database error');
-    expect(consoleError).toHaveBeenCalledWith('Error fetching export data:', expect.any(Error));
+    expect(consoleError).toHaveBeenCalledWith('Could not load the data to export');
   });
 
   it('should refresh data when refresh is called', async () => {

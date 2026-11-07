@@ -39,6 +39,8 @@ export interface LabResultForExport {
  * Format a date based on the specified format
  */
 function formatDate(date: Date, format: 'iso' | 'us' | 'eu' = 'iso'): string {
+  // A result without a valid date is exported with an empty Date field
+  if (Number.isNaN(date.getTime())) return '';
   switch (format) {
     case 'us':
       return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;

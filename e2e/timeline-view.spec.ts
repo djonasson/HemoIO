@@ -16,7 +16,7 @@
 
 import { test, expect } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './steps/app.steps';
-import { seedLabData } from './steps/data.steps';
+import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import {
   BIOMARKERS,
   deleteWithKeyboard,
@@ -614,5 +614,31 @@ test.describe('Timeline with Data', () => {
     await openFromMenu(page, 'Trends');
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(2);
+  });
+});
+
+test.describe('Timeline date filter and results without a date', () => {
+  // Scenario: A date filter says it hides the results without a date
+  test('says the results without a date are hidden by the date filter', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, {
+      labResults: [
+        { ...SEED_LAB_RESULTS[0], labName: 'Undated Clinic', date: null },
+        SEED_LAB_RESULTS[1],
+      ],
+      testValues: [],
+    });
+    await goToTimeline(page);
+    const main = page.getByRole('main');
+    const note = main.getByText('1 result without a date is hidden while a date range is set.');
+    await expect(labResultCards(page)).toHaveCount(2);
+    await expect(note).toHaveCount(0);
+
+    await pickDate(page, 'Filter from date', '2024-01-01');
+
+    await expect(labResultCards(page)).toHaveCount(1);
+    await expect(labResultCards(page).filter({ hasText: 'Undated Clinic' })).toHaveCount(0);
+    await expect(note).toBeVisible();
   });
 });

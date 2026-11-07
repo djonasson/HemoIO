@@ -21,6 +21,7 @@ import {
   writeForeignFolderCopy,
 } from './steps/folderRestore.steps';
 import { loseBrowserData } from './steps/folderSync.steps';
+import { FOLDER_BACKUPS, folderBackupNames, folderFileHeader } from './steps/otherComputer.steps';
 
 /**
  * Background: folder storage on, holding a copy of two lab results, three
@@ -161,8 +162,15 @@ test.describe('Restore from the folder copy', () => {
     const dialog = new FolderRestoreDialog(page);
     await dialog.replace.click();
     await expect(dialog.dialog).toContainText('will be replaced');
+    await expect(dialog.dialog).toContainText('kept as a dated backup');
     await dialog.confirmReplace.click();
     await expect(dialog.dialog).toBeHidden();
+    // The copy offered is kept first, without the lock
+    const names = await folderBackupNames(page, FOLDER_NAME);
+    expect(names).toEqual([expect.stringMatching(/^hemoio-backup-\d{8}T\d{9}Z\.encrypted$/)]);
+    expect(await folderFileHeader(page, `${FOLDER_BACKUPS}/${names[0]}`, FOLDER_NAME)).toMatchObject({
+      lock: null,
+    });
 
     // From now on saves reach the folder: a one-result backup replaces the copy
     await seedLabData(page, { labResults: [SEED_LAB_RESULTS[0]], testValues: [] });
@@ -175,9 +183,32 @@ test.describe('Restore from the folder copy', () => {
     await expect(dialog.offer()).toContainText('1 lab result');
   });
 
-  test('a copy saved with another password is reported, not offered or changed', async ({ page }) => {
+  test('a copy from another setup is explained, not offered or changed', async ({ page }) => {
+    // Scenario: Folder copy from another setup
     await folderWithCopy(page);
-    await writeForeignFolderCopy(page, 'other-password');
+    await writeForeignFolderCopy(page, 'another-setup');
+    const hash = await folderCopyHash(page);
+    await loseBrowserData(page);
+    await unlockApp(page);
+
+    const dialog = new FolderRestoreDialog(page);
+    await expect(dialog.unreadable()).toBeVisible();
+    await expect(dialog.dialog).toContainText(
+      `The copy in “${FOLDER_NAME}” belongs to another HemoIO setup, made with a different key.`
+    );
+    await expect(dialog.dialog).toContainText(
+      "HemoIO must be set up again from that folder's copy"
+    );
+    await expect(dialog.restore).toHaveCount(0);
+    await expect(dialog.replace).toHaveCount(0);
+    await expect(dialog.notNow).toBeFocused();
+    await expectFolderCopyUnchanged(page, hash);
+  });
+
+  test('an older copy saved with another key is reported, not offered or changed', async ({ page }) => {
+    // Scenario: Older folder copy saved with another key
+    await folderWithCopy(page);
+    await writeForeignFolderCopy(page, 'legacy-other-key');
     const hash = await folderCopyHash(page);
     await loseBrowserData(page);
     await unlockApp(page);

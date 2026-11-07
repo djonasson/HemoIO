@@ -2,12 +2,59 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { useContext, useEffect } from 'react';
 import { AuthProvider, AuthContext, type AuthContextValue } from './AuthContext';
-import { createStoredCredentials, decryptString, encryptString } from '@data/encryption';
+import {
+  createStoredCredentials,
+  decryptString,
+  encryptString,
+  getEncryptionKey,
+} from '@data/encryption';
 import {
   createCredentialsV2,
+  isCredentialsV1,
   isCredentialsV2,
+  keyMatchesCredentials,
   rewrapCredentials,
+  type StoredCredentialsV2,
 } from '@data/encryption/keyWrapping';
+import { createEncryptedDb } from '@data/db';
+import { clearStoredData, clearStoredDataButSetAside } from '@data/db/storedRows';
+import { clearLocalHemoIOStorage } from '@data/storage/browserStorage';
+import { FileSystemStorageProvider } from '@data/storage/FileSystemStorageProvider';
+import { installFakeWebLocks } from '@/test/fakeWebLocks';
+import { withWebLock } from '@/utils/withWebLock';
+import { reloadPage } from '@/utils/reloadPage';
+
+// The sweep that sets unreadable records aside reads the database: tested in
+// encryptedDb.setAside.test.ts, here only when and how it is called
+const { settleUnreadable } = vi.hoisted(() => ({
+  settleUnreadable: vi.fn<() => Promise<{ returned: number; setAside: number }>>(),
+}));
+vi.mock('@data/db', () => ({
+  createEncryptedDb: vi.fn(() => ({ settleUnreadable })),
+}));
+
+// Start over clears the database and storage: tested in storedRows.test.ts
+// and browserStorage.test.ts, here only when, and under which locks, it is called
+vi.mock('@data/db/storedRows', () => ({
+  clearStoredData: vi.fn(),
+  clearStoredDataButSetAside: vi.fn(),
+}));
+vi.mock('@data/storage/browserStorage', () => ({
+  clearLocalHemoIOStorage: vi.fn(),
+}));
+
+// jsdom cannot navigate: whether and when the page reloads is what is tested
+vi.mock('@/utils/reloadPage', () => ({ reloadPage: vi.fn() }));
+
+// Counted where two setups must make one data key; otherwise the real one
+vi.mock('@data/encryption/keyWrapping', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@data/encryption/keyWrapping')>();
+  return {
+    ...actual,
+    createCredentialsV2: vi.fn(actual.createCredentialsV2),
+    keyMatchesCredentials: vi.fn(actual.keyMatchesCredentials),
+  };
+});
 
 const CREDENTIALS_KEY = 'hemoio_credentials';
 const OLD = 'Old-Passw0rd!';
@@ -65,9 +112,26 @@ function lock() {
   act(() => auth.lock());
 }
 
+/** What another tab's write of the credentials looks like to this one */
+function storageEventFromAnotherTab(newValue: string | null, key: string | null = CREDENTIALS_KEY) {
+  act(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
+  });
+}
+
 describe('AuthContext', () => {
   beforeEach(() => {
     localStorage.clear();
+    settleUnreadable.mockReset();
+    settleUnreadable.mockResolvedValue({ returned: 0, setAside: 0 });
+    vi.mocked(reloadPage).mockReset();
+    vi.mocked(clearStoredData).mockReset();
+    vi.mocked(clearStoredDataButSetAside).mockReset();
+    vi.mocked(clearStoredDataButSetAside).mockResolvedValue();
+    vi.mocked(clearLocalHemoIOStorage).mockReset();
+    vi.mocked(clearLocalHemoIOStorage).mockImplementation(async () => {
+      localStorage.removeItem(CREDENTIALS_KEY);
+    });
   });
 
   afterEach(() => {
@@ -131,6 +195,239 @@ describe('AuthContext', () => {
       expect(auth.encryptionKey).toBe(preparedWith);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
     });
+
+    it('moves unreadable records aside with the new key before unlocking', async () => {
+      renderAuth();
+      let statusDuringSweep = '';
+      settleUnreadable.mockImplementation(async () => {
+        statusDuringSweep = screen.getByTestId('status').textContent ?? '';
+        return { returned: 0, setAside: 0 };
+      });
+
+      await act(async () => {
+        await auth.setupPassword(OLD);
+      });
+
+      expect(statusDuringSweep).toBe('needs_setup');
+      expect(createEncryptedDb).toHaveBeenLastCalledWith(auth.encryptionKey);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+  });
+
+  describe('setup across tabs', () => {
+    it('setup over credentials another tab saved unlocks with them', async () => {
+      renderAuth();
+      // Saved by another tab after this one loaded; its storage event not yet seen
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      store(theirs);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(OLD);
+      });
+
+      expect(outcome).toBe('unlocked-existing');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).not.toBeNull();
+    });
+
+    it('setup with a password that does not open them goes to locked', async () => {
+      renderAuth();
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      store(theirs);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(NEW);
+      });
+
+      expect(outcome).toBe('existing-locked');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('setup over existing credentials does not run prepare', async () => {
+      renderAuth();
+      store((await createCredentialsV2(OLD, 1000)).credentials);
+      const prepare = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        await auth.setupPassword(OLD, prepare);
+      });
+      await act(async () => {
+        await auth.setupPassword(NEW, prepare);
+      });
+
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('a failed setup step keeps the credentials and unlocks', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderAuth();
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(OLD, () => Promise.reject(new Error('quota')));
+      });
+
+      // Other tabs may already use them: once written, never taken back
+      expect(outcome).toBe('created');
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).not.toBeNull();
+      expect(error).toHaveBeenCalledWith('Could not store the setup choices');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('quota');
+    });
+
+    it('a new setup reports created', async () => {
+      renderAuth();
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.setupPassword(OLD);
+      });
+
+      expect(outcome).toBe('created');
+    });
+
+    it('two setups at once create one data key', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        renderAuth();
+        vi.mocked(createCredentialsV2).mockClear();
+
+        let outcomes: string[] = [];
+        await act(async () => {
+          outcomes = await Promise.all([auth.setupPassword(OLD), auth.setupPassword(OLD)]);
+        });
+
+        expect(createCredentialsV2).toHaveBeenCalledTimes(1);
+        expect(outcomes).toEqual(['created', 'unlocked-existing']);
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup', 'hemoio-setup']);
+        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('credentials appearing in storage leave setup', async () => {
+      renderAuth();
+      const theirs = JSON.stringify((await createCredentialsV2(OLD, 1000)).credentials);
+      localStorage.setItem(CREDENTIALS_KEY, theirs);
+
+      storageEventFromAnotherTab(theirs);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(await unlock(OLD)).toBe(true);
+    });
+
+    it('credentials appearing in storage leave an unlocked tab as it is', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+
+      storageEventFromAnotherTab(localStorage.getItem(CREDENTIALS_KEY));
+
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(auth.encryptionKey).toBe(key);
+    });
+
+    it('credentials removed in another tab return to setup', async () => {
+      await setUp();
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      storageEventFromAnotherTab(null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('another tab that was unlocked reloads when the credentials are removed', async () => {
+      await setUp();
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      storageEventFromAnotherTab(null);
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('another tab that was locked reloads when localStorage is cleared', async () => {
+      await setUp();
+      lock();
+      localStorage.clear();
+
+      storageEventFromAnotherTab(null, null);
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('a tab in needs_setup does not reload when credentials are removed', async () => {
+      renderAuth();
+
+      storageEventFromAnotherTab(null);
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it('credentials changed, not removed, in another tab do not reload', async () => {
+      await setUp();
+
+      storageEventFromAnotherTab(localStorage.getItem(CREDENTIALS_KEY));
+
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it('localStorage cleared in another tab returns to setup', async () => {
+      await setUp();
+      localStorage.clear();
+
+      // What clear() sends: no key
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(auth.encryptionKey).toBeNull();
+    });
+
+    it('a storage event with no key while credentials remain leaves setup', async () => {
+      renderAuth();
+      store((await createCredentialsV2(OLD, 1000)).credentials);
+
+      storageEventFromAnotherTab(null, null);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+    });
+
+    it.each([
+      ['the credentials removed', CREDENTIALS_KEY],
+      ['localStorage cleared', null],
+    ])('%s in another tab drops the key, even with credentials in storage again', async (_label, key) => {
+      await setUp();
+      // Removed, then another setup's credentials written, before this tab hears of either
+      const theirs = (await createCredentialsV2(NEW, 1000)).credentials;
+      store(theirs);
+
+      storageEventFromAnotherTab(null, key);
+
+      expect(auth.encryptionKey).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+      expect(auth.storedLock).toEqual(theirs);
+      expect(await unlock(NEW)).toBe(true);
+    });
+
+    it('storage events for other keys change nothing', async () => {
+      renderAuth();
+      localStorage.setItem('hemoio_ai_provider', 'openai');
+
+      act(() => {
+        window.dispatchEvent(new StorageEvent('storage', { key: 'hemoio_ai_provider', newValue: 'openai' }));
+      });
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+    });
   });
 
   describe('unlock', () => {
@@ -141,6 +438,43 @@ describe('AuthContext', () => {
       expect(await unlock(OLD)).toBe(true);
       expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
       expect(auth.encryptionKey).not.toBeNull();
+    });
+
+    it('unlock moves unreadable records aside before unlocking', async () => {
+      await setUp();
+      lock();
+      let finishSweep: () => void = () => {};
+      settleUnreadable.mockReturnValue(
+        new Promise((resolve) => {
+          finishSweep = () => resolve({ returned: 0, setAside: 3 });
+        })
+      );
+
+      let unlocked: Promise<boolean> = Promise.resolve(false);
+      act(() => {
+        unlocked = auth.unlock(OLD);
+      });
+      await vi.waitFor(() => expect(settleUnreadable).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+
+      await act(async () => {
+        finishSweep();
+        expect(await unlocked).toBe(true);
+      });
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(createEncryptedDb).toHaveBeenLastCalledWith(auth.encryptionKey);
+    });
+
+    it('a failed sweep still unlocks and logs no error detail', async () => {
+      await setUp();
+      lock();
+      settleUnreadable.mockRejectedValue(new Error('labResults row 7: Glucose'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(error.mock.calls).toEqual([['Could not check stored records against this key']]);
     });
 
     it('stays locked with a wrong password', async () => {
@@ -165,6 +499,19 @@ describe('AuthContext', () => {
       renderAuth();
 
       expect(await unlock(OLD)).toBe(false);
+    });
+
+    it('credentials removed from storage unheard return to setup, not to the ones in memory', async () => {
+      await setUp();
+      lock();
+      // Removed without a storage event reaching this tab (or before it is handled)
+      localStorage.removeItem(CREDENTIALS_KEY);
+
+      expect(await unlock(OLD)).toBe(false);
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(auth.encryptionKey).toBeNull();
+      expect(auth.storedLock).toBeNull();
     });
 
     it('returns false for credentials of an unknown version', async () => {
@@ -192,6 +539,281 @@ describe('AuthContext', () => {
       lock();
 
       expect(await unlock(NEW)).toBe(true);
+    });
+  });
+
+  describe('v1 credentials at unlock', () => {
+    it('converts v1 credentials to v2 at unlock without changing the data key', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      // Saved by the earlier app, under the key PBKDF2 derives from the password
+      const ciphertext = await encryptString('Annual checkup', await getEncryptionKey(OLD, v1));
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(isCredentialsV2(storedCredentials())).toBe(true);
+      expect(auth.storedLock).toEqual(storedCredentials());
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+      lock();
+      expect(await unlock('Wrong-Passw0rd!')).toBe(false);
+      expect(await unlock(OLD)).toBe(true);
+      expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+    });
+
+    it('setup over v1 credentials another tab left converts them, under the setup lock it holds', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        const v1 = await createStoredCredentials(OLD);
+        renderAuth();
+        store(v1);
+        const ciphertext = await encryptString('Annual checkup', await getEncryptionKey(OLD, v1));
+
+        let outcome;
+        await act(async () => {
+          outcome = await auth.setupPassword(OLD);
+        });
+
+        expect(outcome).toBe('unlocked-existing');
+        expect(isCredentialsV2(storedCredentials())).toBe(true);
+        expect(await decryptString(ciphertext, auth.encryptionKey!)).toBe('Annual checkup');
+        // Taken once, by setup: the conversion inside did not ask again
+        expect(locks.requests.filter((r) => r.name === 'hemoio-setup')).toHaveLength(1);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('skips the conversion when another tab changed the credentials meanwhile', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      const theirs = (await createCredentialsV2(OLD, 1000)).credentials;
+      vi.mocked(keyMatchesCredentials).mockImplementationOnce(async () => {
+        // Another tab converts them, or changes the password, while this one checks
+        store(theirs);
+        return true;
+      });
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(storedCredentials()).toEqual(theirs);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+
+    it('a failed conversion leaves the v1 credentials and unlocks', async () => {
+      const v1 = await createStoredCredentials(OLD);
+      store(v1);
+      vi.mocked(keyMatchesCredentials).mockResolvedValueOnce(false);
+      renderAuth();
+
+      expect(await unlock(OLD)).toBe(true);
+
+      expect(storedCredentials()).toEqual(v1);
+      expect(isCredentialsV1(storedCredentials())).toBe(true);
+      expect(auth.storedLock).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+  });
+
+  describe('recoverFromFolder', () => {
+    it('recoverFromFolder saves the lock, sweeps before prepare, and unlocks', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        renderAuth();
+        const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+        const order: string[] = [];
+        let statusDuringPrepare = '';
+        let heldDuringPrepare: string | null = null;
+        settleUnreadable.mockImplementation(async () => {
+          order.push('sweep started');
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          order.push('sweep done');
+          return { returned: 2, setAside: 1 };
+        });
+        const prepare = vi.fn(async (preparedWith: CryptoKey) => {
+          order.push('prepare');
+          expect(preparedWith).toBe(key);
+          expect(storedCredentials()).toEqual(lock);
+          statusDuringPrepare = screen.getByTestId('status').textContent ?? '';
+          heldDuringPrepare = locks.held();
+        });
+
+        let outcome: string | undefined;
+        await act(async () => {
+          outcome = await auth.recoverFromFolder(lock, key, prepare);
+        });
+
+        expect(order).toEqual(['sweep started', 'sweep done', 'prepare']);
+        expect(createEncryptedDb).toHaveBeenLastCalledWith(key);
+        expect(statusDuringPrepare).toBe('needs_setup');
+        expect(heldDuringPrepare).toBe('hemoio-setup');
+        expect(outcome).toBe('created');
+        expect(storedCredentials()).toEqual(lock);
+        expect(auth.storedLock).toEqual(lock);
+        expect(auth.encryptionKey).toBe(key);
+        expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('recoverFromFolder runs onSaved right after saving the lock, before the sweep', async () => {
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+      const order: string[] = [];
+      settleUnreadable.mockImplementation(async () => {
+        order.push('sweep');
+        return { returned: 0, setAside: 0 };
+      });
+      const onSaved = vi.fn(async () => {
+        order.push('saved');
+        expect(storedCredentials()).toEqual(lock);
+      });
+
+      await act(async () => {
+        await auth.recoverFromFolder(lock, key, async () => void order.push('prepare'), onSaved);
+      });
+
+      expect(order).toEqual(['saved', 'sweep', 'prepare']);
+    });
+
+    it('a failed onSaved still unlocks, logging no detail', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, undefined, () =>
+          Promise.reject(new Error('/home/someone/Health'))
+        );
+      });
+
+      expect(outcome).toBe('created');
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('Health');
+    });
+
+    it('recoverFromFolder defers to credentials another tab saved', async () => {
+      renderAuth();
+      const theirs = (await createCredentialsV2(NEW, 1000)).credentials;
+      store(theirs);
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+      const prepare = vi.fn().mockResolvedValue(undefined);
+      const onSaved = vi.fn().mockResolvedValue(undefined);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, prepare, onSaved);
+      });
+
+      expect(outcome).toBe('existing-locked');
+      expect(storedCredentials()).toEqual(theirs);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(settleUnreadable).not.toHaveBeenCalled();
+      expect(auth.encryptionKey).toBeNull();
+      expect(screen.getByTestId('status')).toHaveTextContent('locked');
+    });
+
+    it('a failed restore keeps the saved lock and unlocks, logging no detail', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      renderAuth();
+      const { credentials: lock, key } = await createCredentialsV2(OLD, 1000);
+
+      let outcome: string | undefined;
+      await act(async () => {
+        outcome = await auth.recoverFromFolder(lock, key, () => Promise.reject(new Error('Glucose 95')));
+      });
+
+      expect(outcome).toBe('created');
+      expect(storedCredentials()).toEqual(lock);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      expect(JSON.stringify(error.mock.calls)).not.toContain('Glucose');
+    });
+  });
+
+  describe('the lock in the folder', () => {
+    /** The lock another computer made when it changed the password to NEW */
+    async function lockChangedTo(password: string, changedAt: string): Promise<StoredCredentialsV2> {
+      const rewrapped = await rewrapCredentials(OLD, password, storedCredentials() as never, 1000);
+      return { ...rewrapped!.credentials, changedAt };
+    }
+
+    it('adopts a later folder lock and needs the new password next unlock', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+      const later = await lockChangedTo(NEW, new Date(Date.now() + 60_000).toISOString());
+
+      let adopted = false;
+      act(() => {
+        adopted = auth.adoptFolderLock(later);
+      });
+
+      expect(adopted).toBe(true);
+      expect(storedCredentials()).toEqual(later);
+      expect(auth.storedLock).toEqual(later);
+      expect(auth.encryptionKey).toBe(key);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+      lock();
+      expect(await unlock(OLD)).toBe(false);
+      expect(await unlock(NEW)).toBe(true);
+    });
+
+    it('ignores an earlier folder lock', async () => {
+      await setUp();
+      const ours = storedCredentials();
+      const earlier = await lockChangedTo(NEW, '2020-01-01T00:00:00.000Z');
+
+      let adopted = true;
+      act(() => {
+        adopted = auth.adoptFolderLock(earlier);
+      });
+
+      expect(adopted).toBe(false);
+      expect(storedCredentials()).toEqual(ours);
+      expect(auth.storedLock).toEqual(ours);
+      lock();
+      expect(await unlock(OLD)).toBe(true);
+    });
+
+    it('compares with the lock in storage, which another tab may have changed', async () => {
+      await setUp();
+      const theirs = await lockChangedTo(NEW, new Date(Date.now() + 120_000).toISOString());
+      const folder = await lockChangedTo('Folder-Passw0rd!', new Date(Date.now() + 60_000).toISOString());
+      store(theirs);
+
+      let adopted = true;
+      act(() => {
+        adopted = auth.adoptFolderLock(folder);
+      });
+
+      expect(adopted).toBe(false);
+      expect(storedCredentials()).toEqual(theirs);
+    });
+
+    it('a lock changed in another tab is the one this tab syncs with', async () => {
+      await setUp();
+      const key = auth.encryptionKey;
+      const theirs = await lockChangedTo(NEW, new Date(Date.now() + 60_000).toISOString());
+      store(theirs);
+
+      storageEventFromAnotherTab(JSON.stringify(theirs));
+
+      expect(auth.storedLock).toEqual(theirs);
+      expect(auth.encryptionKey).toBe(key);
+      expect(screen.getByTestId('status')).toHaveTextContent('unlocked');
+    });
+
+    it('a password change gives the new lock', async () => {
+      await setUp();
+
+      await act(async () => {
+        await auth.changePassword(OLD, NEW);
+      });
+
+      expect(auth.storedLock).toEqual(storedCredentials());
     });
   });
 
@@ -316,6 +938,53 @@ describe('AuthContext', () => {
       expect(storedCredentials()).toEqual(other);
     });
 
+    it('a lock that another tab saved during the change is kept, and nothing is saved', async () => {
+      await setUp();
+      const key = auth.encryptionKey!;
+      // Another tab adopts a later folder lock while this one rewraps
+      const theirs = (await rewrapCredentials(OLD, 'Their-Passw0rd!', storedCredentials() as StoredCredentialsV2))!
+        .credentials;
+      vi.mocked(keyMatchesCredentials).mockImplementationOnce(async (...args) => {
+        store(theirs);
+        const actual = await vi.importActual<typeof import('@data/encryption/keyWrapping')>(
+          '@data/encryption/keyWrapping'
+        );
+        return actual.keyMatchesCredentials(...args);
+      });
+
+      let result;
+      await act(async () => {
+        result = await auth.changePassword(OLD, NEW);
+      });
+
+      expect(result).toEqual({ ok: false, reason: 'changed_elsewhere' });
+      expect(storedCredentials()).toEqual(theirs);
+      expect(auth.encryptionKey).toBe(key);
+    });
+
+    it('reads and saves the credentials holding the setup lock', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        const heldAtSave: Array<string | null> = [];
+        const setItem = Storage.prototype.setItem;
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+          if (key === CREDENTIALS_KEY) heldAtSave.push(locks.held());
+          setItem.call(this, key, value);
+        });
+
+        let result;
+        await act(async () => {
+          result = await auth.changePassword(OLD, NEW);
+        });
+
+        expect(result).toEqual({ ok: true });
+        expect(heldAtSave).toEqual(['hemoio-setup']);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
     it('a change finishes even if the app locks meanwhile', async () => {
       await setUp();
 
@@ -328,6 +997,166 @@ describe('AuthContext', () => {
 
       expect(result).toEqual({ ok: true });
       expect(await unlock(NEW)).toBe(true);
+    });
+  });
+
+  describe('startOver', () => {
+    async function startOver(): Promise<void> {
+      await act(async () => {
+        await auth.startOver();
+      });
+    }
+
+    it('startOver returns to setup', async () => {
+      await setUp();
+      expect(auth.startingOver).toBe(false);
+
+      await startOver();
+
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      expect(screen.getByTestId('setup-complete')).toHaveTextContent('no');
+      expect(auth.encryptionKey).toBeNull();
+      expect(auth.storedLock).toBeNull();
+    });
+
+    it('the tab that starts over reloads once the clears are done', async () => {
+      await setUp();
+      vi.mocked(clearLocalHemoIOStorage).mockImplementation(async () => {
+        expect(reloadPage).not.toHaveBeenCalled();
+      });
+
+      await startOver();
+
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(reloadPage).mock.invocationCallOrder[0]
+      );
+    });
+
+    it('startOver clears every local store but the rows set aside, and never touches the folder', async () => {
+      const folderWrites = [
+        vi.spyOn(FileSystemStorageProvider.prototype, 'save'),
+        vi.spyOn(FileSystemStorageProvider.prototype, 'saveBackup'),
+        vi.spyOn(FileSystemStorageProvider.prototype, 'deleteBackup'),
+      ];
+      await setUp();
+
+      await startOver();
+
+      expect(clearStoredDataButSetAside).toHaveBeenCalledTimes(1);
+      // Rows no key here opened may open with a folder's key: setup offers them
+      expect(clearStoredData).not.toHaveBeenCalled();
+      expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(clearStoredDataButSetAside).mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(clearLocalHemoIOStorage).mock.invocationCallOrder[0]
+      );
+      for (const write of folderWrites) expect(write).not.toHaveBeenCalled();
+    });
+
+    it('drops the key first, then clears holding the setup and folder-sync locks', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        // Held by a setup in another tab until released, so the order shows
+        let releaseSetup = (): void => {};
+        const otherSetup = withWebLock(
+          'hemoio-setup',
+          () => new Promise<void>((resolve) => (releaseSetup = resolve))
+        );
+        locks.requests.length = 0;
+        const seen: string[] = [];
+        const record = (what: string) => async () => {
+          seen.push(`${what} holding ${locks.heldNames().join(' + ')}`);
+        };
+        vi.mocked(clearStoredDataButSetAside).mockImplementation(record('clearStoredDataButSetAside'));
+        vi.mocked(clearLocalHemoIOStorage).mockImplementation(record('clearLocalHemoIOStorage'));
+
+        let pending: Promise<void> = Promise.resolve();
+        await act(async () => {
+          pending = auth.startOver();
+        });
+        // The key left before either lock was held; the app says what is happening
+        expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+        expect(auth.encryptionKey).toBeNull();
+        expect(auth.startingOver).toBe(true);
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup']);
+        expect(seen).toEqual([]);
+
+        await act(async () => {
+          releaseSetup();
+          await otherSetup;
+          await pending;
+        });
+
+        expect(locks.requests.map((request) => request.name)).toEqual(['hemoio-setup', 'hemoio-folder-sync']);
+        expect(seen).toEqual([
+          'clearStoredDataButSetAside holding hemoio-setup + hemoio-folder-sync',
+          'clearLocalHemoIOStorage holding hemoio-setup + hemoio-folder-sync',
+        ]);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('a sync in flight finishes before the clear', async () => {
+      const locks = installFakeWebLocks();
+      try {
+        await setUp();
+        const seen: string[] = [];
+        vi.mocked(clearStoredDataButSetAside).mockImplementation(async () => {
+          seen.push('cleared');
+        });
+        let finishSync = (): void => {};
+        const sync = withWebLock('hemoio-folder-sync', async () => {
+          await new Promise<void>((resolve) => {
+            finishSync = resolve;
+          });
+          seen.push('sync written');
+        });
+
+        let pending: Promise<void> = Promise.resolve();
+        await act(async () => {
+          pending = auth.startOver();
+        });
+        // The key is gone at once, but nothing is cleared while the sync runs
+        expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+        expect(clearStoredDataButSetAside).not.toHaveBeenCalled();
+
+        await act(async () => {
+          finishSync();
+          await sync;
+          await pending;
+        });
+
+        expect(seen).toEqual(['sync written', 'cleared']);
+      } finally {
+        locks.uninstall();
+      }
+    });
+
+    it('a failed clear logs a fixed message, stays in setup and still reloads', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await setUp();
+      vi.mocked(clearStoredDataButSetAside).mockRejectedValue(new Error('labResults row 7 secret'));
+
+      let failed = false;
+      await act(async () => {
+        await auth.startOver().catch(() => {
+          failed = true;
+        });
+      });
+
+      expect(failed).toBe(true);
+      expect(screen.getByTestId('status')).toHaveTextContent('needs_setup');
+      // The tab reloads on failure too, after the failure is logged
+      expect(reloadPage).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        vi.mocked(reloadPage).mock.invocationCallOrder[0]
+      );
+      // The credentials still go, so setup offers to deal with the rows left
+      expect(clearLocalHemoIOStorage).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith('Could not clear the data stored in this browser');
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('secret');
     });
   });
 });

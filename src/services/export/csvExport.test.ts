@@ -178,6 +178,25 @@ describe('csvExport', () => {
       expect(csv).toContain('2024-03-20');
     });
 
+    it('writes a result without a date with an empty Date field', () => {
+      const data = createMockExportData();
+      data[0].labResult = { ...data[0].labResult, date: new Date(Number.NaN) };
+
+      const lines = exportToCsv(data).split('\n');
+
+      // Every value is kept; the undated result's rows start with an empty date
+      expect(lines).toHaveLength(5);
+      expect(lines[1].startsWith(',')).toBe(true);
+    });
+
+    it('leaves out a result without a date when a date range is set', () => {
+      const data = createMockExportData();
+      data[1].labResult = { ...data[1].labResult, date: new Date(Number.NaN) };
+
+      expect(exportToCsv(data, { startDate: new Date('2024-01-01') }).split('\n')).toHaveLength(3);
+      expect(exportToCsv(data, { endDate: new Date('2024-12-31') }).split('\n')).toHaveLength(3);
+    });
+
     it('should filter by biomarker IDs', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data, { biomarkerKeys: ['2345-7'] }); // Only Glucose

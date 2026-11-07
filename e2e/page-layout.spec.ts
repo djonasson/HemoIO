@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { openFromMenu, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import {
@@ -23,6 +23,7 @@ import { analyzeReport } from './steps/unitConversion.steps';
 import { expandLabResult, labResultCard } from './steps/timeline.steps';
 import { removeTempFile } from './steps/tempFiles';
 import { noteSeed } from './steps/userNotes.steps';
+import { writeUnreadableRecords } from './steps/unreadableRecords.steps';
 import {
   MENU_PAGES,
   NARROW_PHONE_SCREEN,
@@ -277,5 +278,27 @@ test.describe('Page Layout', () => {
         'Values of lab-report.pdf, scrollable'
       );
     });
+  });
+
+  test.describe('persistent notices', () => {
+    for (const screen of [NARROW_PHONE_SCREEN, PHONE_SCREEN, WIDE_SCREEN]) {
+      // Scenario Outline: A notice that stays until I close it never covers the header
+      test(`a notice that stays never covers the lock button, ${screen.width}px wide`, async ({ page }) => {
+        await page.setViewportSize(screen);
+        await page.goto('/');
+        await setupOrUnlock(page);
+        // Unreadable preferences, then a change to them: a notice that stays until closed
+        await writeUnreadableRecords(page, { labResults: 0, testValues: 0, preferences: true });
+        await openSettingsTab(page, 'Display');
+        await page.locator('.mantine-SegmentedControl-root').getByText('Dark').click();
+        const notice = page.getByRole('alert').filter({ hasText: 'Earlier preferences kept aside' });
+        await expect(notice).toBeVisible();
+
+        // A click Playwright refuses when another element would receive it
+        await page.getByRole('button', { name: 'Lock application' }).click({ timeout: 5000 });
+
+        await expect(page.getByText('Enter your password to unlock your lab data')).toBeVisible();
+      });
+    }
   });
 });

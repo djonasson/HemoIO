@@ -57,10 +57,14 @@ export interface LabResultCardProps {
   toggleRef?: React.Ref<HTMLDivElement>;
 }
 
+/** Shown in place of the date of a result that has no valid one */
+const NO_DATE = 'No date';
+
 /**
  * Format a date for display
  */
 function formatDate(date: Date): string {
+  if (Number.isNaN(date.getTime())) return NO_DATE;
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -72,6 +76,7 @@ function formatDate(date: Date): string {
  * Format a date for short display
  */
 function formatDateShort(date: Date): string {
+  if (Number.isNaN(date.getTime())) return NO_DATE;
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
@@ -96,6 +101,7 @@ export function LabResultCard({
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const cardRef = useRef<HTMLDivElement>(null);
+  const isUndated = Number.isNaN(result.date.getTime());
 
   useEffect(() => {
     // Opened from elsewhere (e.g. a note): bring the card into view and move
@@ -168,7 +174,7 @@ export function LabResultCard({
         radius="md"
         shadow={expanded ? 'sm' : undefined}
         role="region"
-        aria-label={`Lab result from ${formatDate(result.date)}`}
+        aria-label={isUndated ? 'Lab result with no date' : `Lab result from ${formatDate(result.date)}`}
       >
         <Stack gap="sm">
           {/* Header: a click anywhere on it expands. Wraps on a narrow screen
@@ -189,7 +195,7 @@ export function LabResultCard({
               role="button"
               aria-expanded={expanded}
               aria-controls={`lab-result-${result.id}-content`}
-              aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result from ${formatDate(result.date)}`}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} lab result ${isUndated ? 'with no date' : `from ${formatDate(result.date)}`}`}
             >
               {/* Expand/collapse icon: the header is the button */}
               <ThemeIcon variant="transparent" color="gray" aria-hidden="true">
@@ -266,7 +272,8 @@ export function LabResultCard({
               <TestValuesList
                 testValues={result.testValues}
                 onOpenTrend={
-                  onOpenTrend
+                  // An undated value is on no trend: nothing to open it at
+                  onOpenTrend && !Number.isNaN(result.date.getTime())
                     ? (biomarkerKey, testValueId) => onOpenTrend(biomarkerKey, result.date, testValueId)
                     : undefined
                 }
@@ -301,8 +308,15 @@ export function LabResultCard({
       >
         <Stack gap="md">
           <Text>
-            Are you sure you want to delete this lab result from{' '}
-            <strong>{formatDate(result.date)}</strong>?
+            Are you sure you want to delete this lab result{' '}
+            {isUndated ? (
+              <strong>with no date</strong>
+            ) : (
+              <>
+                from <strong>{formatDate(result.date)}</strong>
+              </>
+            )}
+            ?
           </Text>
           <Text c="dimmed" size="sm">
             This will permanently remove the lab result and all {result.totalCount}{' '}

@@ -118,7 +118,7 @@ describe('restoreBackup', () => {
     const summary = await restoreBackup(db, data);
 
     expect((await db.getAllTestValues()).map((tv) => tv.value).sort()).toEqual([1, 2]);
-    expect(summary).toEqual({ labResults: 2, testValues: 2, notes: 3 });
+    expect(summary).toMatchObject({ labResults: 2, testValues: 2, notes: 3 });
   });
 
   it('keeps the encrypted fields readable', async () => {

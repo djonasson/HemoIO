@@ -11,8 +11,9 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import * as fs from 'fs';
-import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
+import { goToNotes, noteCards } from './steps/userNotes.steps';
 import { goToTimeline, labResultCards } from './steps/timeline.steps';
 import { configureAnthropic, mockAnthropicApi } from './steps/aiModelSelection.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
@@ -340,6 +341,59 @@ test.describe('Restore Flow', () => {
     } finally {
       cleanupBackupFile(backupPath);
     }
+  });
+
+  test('another open tab shows the restored data without my reloading it', async ({ page }) => {
+    // Scenario: Another open tab shows the restored data without my reloading it
+    await page.goto('/');
+    await setupOrUnlock(page);
+    const second = await page.context().newPage();
+    await second.goto('/');
+    await unlockApp(second);
+    await goToTimeline(second);
+    await expect(labResultCards(second)).toHaveCount(0);
+    let secondLoads = 0;
+    second.on('load', () => secondLoads++);
+
+    await page.bringToFront();
+    await navigateToSettings(page);
+    const backupPath = createBackupFile(createValidBackupData());
+    try {
+      await uploadBackupFile(page, backupPath);
+      await page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByText(/Restore Complete/i)).toBeVisible({ timeout: 10000 });
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
+
+    await expect(labResultCards(second)).toHaveCount(MOCK_LAB_RESULTS.length);
+    expect(secondLoads).toBe(0);
+    await second.close();
+  });
+
+  test('another open tab shows the restored notes without my reloading it', async ({ page }) => {
+    // Scenario: Another open tab shows the restored data without my reloading it
+    await page.goto('/');
+    await setupOrUnlock(page);
+    const second = await page.context().newPage();
+    await second.goto('/');
+    await unlockApp(second);
+    const secondNotes = await goToNotes(second);
+    await expect(noteCards(secondNotes)).toHaveCount(0);
+
+    await page.bringToFront();
+    await navigateToSettings(page);
+    const backupPath = createBackupFile(createValidBackupData());
+    try {
+      await uploadBackupFile(page, backupPath);
+      await page.getByRole('dialog', { name: 'Restore from Backup' }).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByText(/Restore Complete/i)).toBeVisible({ timeout: 10000 });
+    } finally {
+      cleanupBackupFile(backupPath);
+    }
+
+    await expect(noteCards(secondNotes)).toHaveCount(MOCK_USER_NOTES.length);
+    await second.close();
   });
 
   test('should cancel restore when clicking cancel', async ({ page }) => {
@@ -958,5 +1012,63 @@ test.describe('Encrypted backup restores the API key', () => {
       await otherContext.close();
       removeTempFile(backupPath);
     }
+  });
+});
+
+test.describe('Records with an invalid date', () => {
+  // Scenario: A lab result without a valid date is restored and kept
+  // Scenario: Results without a date are listed last, under "No date"
+  test('keeps a lab result without a date, lists it under "No date" and exports it', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, {
+      labResults: [{ ...SEED_LAB_RESULTS[0], labName: 'Undated Clinic', date: null }, SEED_LAB_RESULTS[1]],
+      testValues: [],
+    });
+
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(2);
+    const heading = page.getByRole('heading', { name: 'No date' });
+    await expect(heading).toBeVisible();
+    const dated = labResultCards(page).filter({ hasText: 'LabCorp' });
+    const undated = labResultCards(page).filter({ hasText: 'Undated Clinic' });
+    await expect(undated).toContainText('No date');
+    const [datedBox, headingBox, undatedBox] = await Promise.all([
+      dated.boundingBox(),
+      heading.boundingBox(),
+      undated.boundingBox(),
+    ]);
+    expect(datedBox!.y).toBeLessThan(headingBox!.y);
+    expect(headingBox!.y).toBeLessThan(undatedBox!.y);
+
+    // The next backup still holds it, so a restore of that backup does not delete it
+    await openSettingsTab(page, 'Data');
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: /create backup/i }).click();
+    const download = await downloadPromise;
+    const backup = JSON.parse(fs.readFileSync(await download.path(), 'utf-8'));
+    expect(backup.labResults).toHaveLength(2);
+  });
+
+  // Scenario: A note with an unreadable creation date is restored with a repaired date
+  test('restores a note whose creation date is unreadable', async ({ page }) => {
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, {
+      userNotes: [
+        {
+          id: 1,
+          labResultId: 1,
+          content: 'Note with a broken date',
+          tags: [],
+          createdAt: 'garbage',
+          updatedAt: '2024-01-16T09:00:00.000Z',
+        },
+      ],
+    });
+
+    const main = await goToNotes(page);
+    await expect(noteCards(main)).toHaveCount(1);
+    await expect(main.getByText('Note with a broken date')).toBeVisible();
   });
 });

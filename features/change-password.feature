@@ -76,6 +76,45 @@ Feature: Change password
     And I press Enter
     Then I should see "Password changed. Use your new password next time you unlock HemoIO."
 
+  Scenario: Changing the password updates the lock in my folder
+    Given I am logged into the application
+    And my data is stored in a local folder
+    And my lab results have been synced to my folder
+    When I change my password
+    Then the password lock in my folder copy should be the new one
+    And my data in the folder should still be readable with the new password
+
+  # Unit-tested: folderSync.test.ts, useFilesystemSync.test.ts, ChangePassword.test.tsx
+  Scenario: The new lock reaches my folder even while folder sync is paused
+    Given I am logged into the application
+    And my data is stored in a local folder
+    And folder sync is paused, waiting for me to save or delete unreadable records
+    When I change my password
+    Then the password lock in my folder copy should be the new one
+    And the data in my folder copy should be unchanged
+
+  # Unit-tested: ChangePassword.test.tsx
+  Scenario: The folder cannot take the new lock yet
+    Given I am logged into the application
+    And my data is stored in a local folder that HemoIO cannot write to
+    When I change my password
+    Then I should see "Password changed. HemoIO could not update the lock in your folder yet; it will try again at the next sync."
+
+  # Unit-tested: AuthContext.test.tsx, ChangePassword.test.tsx
+  Scenario: The password changes elsewhere while I am changing it
+    Given I am logged into the application
+    And a newer password from my folder or another tab arrives while I change my password
+    When the change would finish
+    Then the newer password is kept
+    And I should see "Password not changed: it was changed meanwhile, in another tab or on another computer. Try again with the current password."
+
+  # Unit-tested: AuthContext.test.tsx
+  Scenario: Unlocking after another tab started over
+    Given another tab has removed HemoIO's setup from this browser
+    And this tab has not heard of it yet
+    When I try to unlock with my old password
+    Then I should be taken to setup
+
   Scenario: Backups are not affected
     Given I am logged into the application
     When I am on the Security tab of Settings

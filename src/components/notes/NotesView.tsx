@@ -49,7 +49,9 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
       ),
     [catalog, stored]
   );
-  const { results, isLoading: isLoadingResults } = useLabResults();
+  const { results: datedResults, undatedResults, isLoading: isLoadingResults } = useLabResults();
+  // A note on an undated result is still on a result, never a deleted one
+  const results = useMemo(() => [...datedResults, ...undatedResults], [datedResults, undatedResults]);
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);

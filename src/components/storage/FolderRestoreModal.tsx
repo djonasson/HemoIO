@@ -10,14 +10,24 @@ import { useState } from 'react';
 import { Alert, Button, Group, List, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { pluralize } from '@/utils/pluralize';
 import type { FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
-import { PRE_LOINC_BACKUP_MESSAGE, type ParsedBackupData } from '@services/import';
-import type { FolderCopyProblem } from '@services/sync';
+import type { ParsedBackupData } from '@services/import';
+import { folderCopyProblemMessage } from './folderCopyProblemMessage';
 
 export interface FolderRestoreModalProps {
   prompt: FolderRestorePrompt | null;
-  /** Restore the copy into this browser; rejects when the restore failed */
-  onRestore: (data: ParsedBackupData) => Promise<void>;
+  /**
+   * Restore the copy into this browser; rejects when the restore failed.
+   * False when the data changed while the user decided: nothing was
+   * restored, and the question is asked again.
+   */
+  onRestore: (data: ParsedBackupData) => Promise<boolean>;
+  /**
+   * Keep the folder copy as a dated backup, so that the sync may write over
+   * it; rejects, choosing nothing, when the backup cannot be saved
+   */
+  onReplace: () => Promise<void>;
   onDecide: (decision: FolderRestoreDecision) => void;
 }
 
@@ -25,53 +35,33 @@ const OFFER_TITLE = 'Restore your data from the folder?';
 const UNREADABLE_TITLE = "The folder copy can't be read";
 const REPLACE_TITLE = 'Replace the folder copy?';
 
-function count(n: number, singular: string): string {
-  return `${n} ${singular}${n === 1 ? '' : 's'}`;
-}
-
-function problemMessage(reason: FolderCopyProblem, folder: string): string {
-  switch (reason) {
-    case 'cannot-decrypt':
-      return (
-        `The copy in ${folder} can't be opened with your password. It was saved with a ` +
-        'different password or by an earlier setup of HemoIO, or the file is damaged.'
-      );
-    case 'not-a-copy':
-      return `The file in ${folder} isn't a folder copy HemoIO can read, or it is damaged.`;
-    case 'newer-version':
-      return (
-        `The copy in ${folder} was saved by a newer version of HemoIO. ` +
-        'Update HemoIO on this device to restore it.'
-      );
-    case 'before-loinc':
-      return PRE_LOINC_BACKUP_MESSAGE;
-    case 'read-failed':
-      return `HemoIO couldn't read the file in ${folder}. Check that the folder is available.`;
-  }
-}
-
 export function FolderRestoreModal({
   prompt,
   onRestore,
+  onReplace,
   onDecide,
 }: FolderRestoreModalProps): React.ReactNode {
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
+  const [replaceFailed, setReplaceFailed] = useState(false);
   // The last prompt stays on screen while the dialog closes; a new one starts afresh
   const [shown, setShown] = useState(prompt);
   if (prompt !== null && prompt !== shown) {
     setShown(prompt);
     setConfirmingReplace(false);
     setRestoreFailed(false);
+    setReplaceFailed(false);
   }
   const decide = onDecide;
 
   const handleRestore = async (data: ParsedBackupData): Promise<void> => {
     setIsRestoring(true);
     setRestoreFailed(false);
+    let restored: boolean;
     try {
-      await onRestore(data);
+      restored = await onRestore(data);
     } catch {
       setRestoreFailed(true);
       return;
@@ -79,6 +69,21 @@ export function FolderRestoreModal({
       setIsRestoring(false);
     }
     // Only now: the first write to the folder then holds the restored data
+    if (restored) decide('sync');
+  };
+
+  const handleReplace = async (): Promise<void> => {
+    setIsReplacing(true);
+    setReplaceFailed(false);
+    try {
+      await onReplace();
+    } catch {
+      // Not shown: the reason could name stored data, and nothing was chosen
+      setReplaceFailed(true);
+      return;
+    } finally {
+      setIsReplacing(false);
+    }
     decide('sync');
   };
 
@@ -97,14 +102,23 @@ export function FolderRestoreModal({
         <>
           <Text size="sm">
             From now on HemoIO saves this browser&apos;s data to {folder}, and the copy there
-            will be replaced. If you might need it, first copy the file hemoio-data.encrypted
-            from the folder somewhere safe.
+            will be replaced. It is kept as a dated backup in the folder first.
           </Text>
+          {replaceFailed && (
+            <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              Nothing was changed: the folder copy could not be kept as a backup.
+            </Alert>
+          )}
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setConfirmingReplace(false)} data-autofocus>
+            <Button
+              variant="default"
+              onClick={() => setConfirmingReplace(false)}
+              disabled={isReplacing}
+              data-autofocus
+            >
               Back
             </Button>
-            <Button color="red" onClick={() => decide('sync')}>
+            <Button color="red" onClick={() => void handleReplace()} loading={isReplacing}>
               Replace folder copy
             </Button>
           </Group>
@@ -115,10 +129,13 @@ export function FolderRestoreModal({
     if (shown.kind === 'unreadable') {
       return (
         <>
-          <Text size="sm">{problemMessage(shown.reason, folder)}</Text>
+          <Text size="sm">{folderCopyProblemMessage(shown.reason, folder)}</Text>
           <Text size="sm">
-            The file has not been changed, and HemoIO will not write over it. To keep syncing,
-            choose another folder in Settings, on the Data tab.
+            {/* The explanation of another setup's copy says already that it is not written over */}
+            {shown.reason === 'another-setup'
+              ? 'The file has not been changed.'
+              : 'The file has not been changed, and HemoIO will not write over it.'}{' '}
+            To keep syncing, choose another folder in Settings, on the Data tab.
           </Text>
           {/* The sync never writes over a copy it cannot read: there is no replacing it */}
           <Group justify="flex-end">
@@ -139,12 +156,12 @@ export function FolderRestoreModal({
             : `This browser has no lab data, but ${folder} has a copy:`}
         </Text>
         <List size="sm">
-          <List.Item>{count(labResults.length, 'lab result')}</List.Item>
-          <List.Item>{count(testValues.length, 'test value')}</List.Item>
-          <List.Item>{count(userNotes.length, 'note')}</List.Item>
+          <List.Item>{pluralize(labResults.length, 'lab result')}</List.Item>
+          <List.Item>{pluralize(testValues.length, 'test value')}</List.Item>
+          <List.Item>{pluralize(userNotes.length, 'note')}</List.Item>
         </List>
         <Text size="sm">
-          Saved {formatDateTime(exportedAt)}
+          {Number.isNaN(exportedAt.getTime()) ? 'Save date unknown' : `Saved ${formatDateTime(exportedAt)}`}
         </Text>
         {shown.replacesBrowserData && (
           <Text size="sm" fw={500}>
@@ -178,7 +195,7 @@ export function FolderRestoreModal({
       opened={prompt !== null}
       // Escape is "Back" on the confirmation, else "Not now"; never during a restore
       onClose={() => {
-        if (isRestoring) return;
+        if (isRestoring || isReplacing) return;
         if (confirmingReplace) setConfirmingReplace(false);
         else decide('hold');
       }}

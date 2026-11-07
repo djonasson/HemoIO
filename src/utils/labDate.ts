@@ -5,11 +5,13 @@
  * "03/04/2024", which could be either day first or month first) is treated
  * as "no date", so the user is asked for it instead of a wrong day being saved.
  */
+
+import { toLocalDayString } from './localDate';
+
 function isoDay(year: number, month: number, day: number): string | null {
   const date = new Date(year, month - 1, day);
   const real = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
-  if (!real) return null;
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return real ? toLocalDayString(date) : null;
 }
 
 export function normalizeLabDate(value: string | null | undefined): string | null {

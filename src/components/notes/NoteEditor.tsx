@@ -26,6 +26,7 @@ import {
   IconList,
   IconListNumbers,
 } from '@tabler/icons-react';
+import { useUnsavedEdit } from '@hooks/useUnsavedEdit';
 import { applyNoteFormat, type NoteFormat } from '@/utils/noteFormatting';
 
 /**
@@ -99,6 +100,12 @@ export function NoteEditor({
   const pendingSelection = useRef<[number, number] | null>(null);
   const [activeFormat, setActiveFormat] = useState(0);
   const toolbarButtons = useRef<Array<HTMLButtonElement | null>>([]);
+  // A typed note is data: an automatic load from the folder waits for it
+  useUnsavedEdit(
+    content !== initialContent ||
+      tags.length !== initialTags.length ||
+      tags.some((tag, i) => tag !== initialTags[i])
+  );
 
   // Restore the selection after React has written the formatted text
   useLayoutEffect(() => {

@@ -152,6 +152,8 @@ describe('useAlerts', () => {
 
   function mockResults(results: LabResultWithDetails[]): void {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -164,6 +166,8 @@ describe('useAlerts', () => {
 
   it('should return empty alerts when no results', () => {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: false,
       error: null,
@@ -181,6 +185,8 @@ describe('useAlerts', () => {
 
   it('counts the values checked against a reference range', () => {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2026-01-01', [
           createMockTestValue(1, 1, { status: 'normal' }),
@@ -202,6 +208,8 @@ describe('useAlerts', () => {
 
   it('should return loading state from useLabResults', () => {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: true,
       error: null,
@@ -218,6 +226,8 @@ describe('useAlerts', () => {
 
   it('should return error state from useLabResults', () => {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: false,
       error: 'Database error',
@@ -241,6 +251,8 @@ describe('useAlerts', () => {
     });
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [createMockResult(1, '2024-01-15', [testValue])],
       isLoading: false,
       error: null,
@@ -271,6 +283,8 @@ describe('useAlerts', () => {
     });
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [createMockResult(1, '2024-01-15', [testValue])],
       isLoading: false,
       error: null,
@@ -299,6 +313,8 @@ describe('useAlerts', () => {
     });
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [createMockResult(1, '2024-01-15', [testValue])],
       isLoading: false,
       error: null,
@@ -335,6 +351,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -433,6 +451,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -470,6 +490,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -515,6 +537,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -556,6 +580,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -581,6 +607,8 @@ describe('useAlerts', () => {
     });
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [createMockResult(1, '2024-01-15', [testValue])],
       isLoading: false,
       error: null,
@@ -617,6 +645,8 @@ describe('useAlerts', () => {
     ];
 
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results,
       isLoading: false,
       error: null,
@@ -840,6 +870,8 @@ describe('useAlerts', () => {
   it('returns refresh from the lab results', () => {
     const refresh = vi.fn();
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [],
       isLoading: false,
       error: null,

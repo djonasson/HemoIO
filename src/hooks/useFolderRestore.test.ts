@@ -4,6 +4,9 @@ import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { assessFolderCopy, type FolderCopyAssessment } from '@services/sync';
 import type { ParsedBackupData } from '@services/import';
 import { useFolderRestore } from './useFolderRestore';
+import { notifyFolderSyncPaused } from '@components/storage/notifyFolderSyncPaused';
+
+vi.mock('@components/storage/notifyFolderSyncPaused', () => ({ notifyFolderSyncPaused: vi.fn() }));
 
 vi.mock('@/utils/fileSystemSupport', () => ({
   isFileSystemAccessSupported: vi.fn(() => true),
@@ -30,7 +33,8 @@ vi.mock('@services/sync', () => ({
 const hasLabData = vi.fn<() => Promise<boolean>>();
 const KEY = {} as CryptoKey;
 // The same instance on every render, as the real hook memoizes it
-const DB = { hasLabData };
+const storedDataStamp = vi.fn(async () => 'stamp-1');
+const DB = { hasLabData, storedDataStamp };
 
 vi.mock('./useEncryptedDb', () => ({
   useEncryptedDb: () => ({ db: DB, isReady: true }),
@@ -77,7 +81,7 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(false);
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
     expect(result.current.prompt).toBeNull();
-    expect(assessFolderCopy).toHaveBeenCalledWith(expect.anything(), KEY);
+    expect(assessFolderCopy).toHaveBeenCalledWith(expect.anything(), KEY, undefined);
   });
 
   it('allows sync without reading the folder when the browser has data', async () => {
@@ -89,8 +93,16 @@ describe('useFolderRestore', () => {
     expect(assessFolderCopy).not.toHaveBeenCalled();
   });
 
+  it("the offer carries the copy's revision", async () => {
+    assessAs({ kind: 'offer', data: COPY, revision: 'r42' });
+
+    const { result } = renderHook(() => useFolderRestore());
+
+    await waitFor(() => expect(result.current.prompt).toMatchObject({ kind: 'offer', revision: 'r42' }));
+  });
+
   it('offers the copy, with the folder name, and holds sync until the user decides', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
 
     const { result } = renderHook(() => useFolderRestore());
 
@@ -98,8 +110,10 @@ describe('useFolderRestore', () => {
       expect(result.current.prompt).toEqual({
         kind: 'offer',
         data: COPY,
+        revision: 'r1',
         folderName: 'Health',
         replacesBrowserData: false,
+        stamp: 'stamp-1',
       })
     );
     expect(result.current.syncAllowed).toBe(false);
@@ -110,22 +124,23 @@ describe('useFolderRestore', () => {
     expect(result.current.syncAllowed).toBe(true);
   });
 
-  it('reports a copy it cannot read', async () => {
-    assessAs({ kind: 'unreadable', reason: 'cannot-decrypt' });
+  it.each(['cannot-decrypt', 'another-setup'] as const)('reports a copy it cannot read (%s)', async (reason) => {
+    assessAs({ kind: 'unreadable', reason });
 
     const { result } = renderHook(() => useFolderRestore());
 
     await waitFor(() =>
       expect(result.current.prompt).toEqual({
         kind: 'unreadable',
-        reason: 'cannot-decrypt',
+        reason,
         folderName: 'Health',
       })
     );
+    expect(result.current.syncAllowed).toBe(false);
   });
 
   it('"Not now" closes the prompt and keeps sync held', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
 
@@ -133,11 +148,13 @@ describe('useFolderRestore', () => {
 
     expect(result.current.prompt).toBeNull();
     expect(result.current.syncAllowed).toBe(false);
+    // The hold says so itself
+    expect(notifyFolderSyncPaused).toHaveBeenCalledTimes(1);
   });
 
   it('waits for folder access, then checks', async () => {
     permission.mockResolvedValue('prompt');
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(permission).toHaveBeenCalled());
     expect(assessFolderCopy).not.toHaveBeenCalled();
@@ -154,7 +171,7 @@ describe('useFolderRestore', () => {
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
 
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     act(() => notifyFolderAccessChanged());
 
     expect(result.current.syncAllowed).toBe(false);
@@ -176,7 +193,7 @@ describe('useFolderRestore', () => {
 
   it('still asks when the browser, empty at unlock, gained data before folder access, and says so', async () => {
     permission.mockResolvedValue('prompt');
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(permission).toHaveBeenCalled());
 
@@ -190,7 +207,7 @@ describe('useFolderRestore', () => {
   });
 
   it('once the user lets sync go ahead, later checks go by what the browser has', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
     act(() => result.current.decide('sync'));
@@ -212,7 +229,7 @@ describe('useFolderRestore', () => {
 
     // Results imported and synced; then another folder, with an older copy
     hasLabData.mockResolvedValue(true);
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     act(() => notifyFolderAccessChanged());
 
     await waitFor(() => expect(result.current.syncAllowed).toBe(true));
@@ -220,7 +237,7 @@ describe('useFolderRestore', () => {
   });
 
   it('says whether sync is held, which a held restore elsewhere should mention', async () => {
-    assessAs({ kind: 'offer', data: COPY });
+    assessAs({ kind: 'offer', data: COPY, revision: 'r1' });
     const { result } = renderHook(() => useFolderRestore());
     await waitFor(() => expect(result.current.prompt).not.toBeNull());
     // Asking is not held: the answer decides

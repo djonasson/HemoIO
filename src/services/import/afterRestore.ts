@@ -34,3 +34,8 @@ export function afterRestoreAdvice(steps: AfterRestoreStep[], failed: string[]):
     .map((step) => step.remedy ?? RELOAD);
   return [...new Set(remedies)].join(' ');
 }
+
+/** "Failed: <steps>. <what to do>", for the notice that follows */
+export function failedStepsMessage(steps: AfterRestoreStep[], failed: string[]): string {
+  return `Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`;
+}

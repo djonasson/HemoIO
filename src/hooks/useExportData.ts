@@ -8,7 +8,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { testDisplayName, testName, trendCode } from '@data/loinc/display';
 import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
-import type { TestValue } from '@/types';
+import { useSetAsideRecords } from './useSetAsideRecords';
+import { logFailure } from '@/utils/logFailure';
+import type { SetAsideSummary, TestValue } from '@/types';
 import type { ExportDataSources, LabResultForExport } from '@services/export';
 
 /** A test to filter the export by, with every stored key its values have */
@@ -28,14 +30,18 @@ export interface UseExportDataResult {
   dataSources: ExportDataSources;
   /** Lab results with test values and biomarker names for CSV export */
   labResultsData: LabResultForExport[];
-  /** Available biomarker options for filtering, one per test */
+  /** Available biomarker options for filtering, one per test with a value */
   biomarkerOptions: ExportBiomarkerOption[];
+  /** Records HemoIO cannot open, which no export holds */
+  setAside: SetAsideSummary;
   /** Whether data is loading */
   isLoading: boolean;
   /** Error if loading failed */
   error: string | null;
   /** Reload from the database; resolves with what was loaded, null if nothing could be */
   refresh: () => Promise<ExportDataSources | null>;
+  /** Reload, for an export about to run: the CSV's results and the backup's records; null if nothing could be */
+  loadExportData: () => Promise<{ fullDataSources: ExportDataSources; labResultsData: LabResultForExport[] } | null>;
 }
 
 /**
@@ -69,6 +75,8 @@ export interface UseExportDataOptions {
 export function useExportData({ enabled = true }: UseExportDataOptions = {}): UseExportDataResult {
   const catalog = useCatalog();
   const { db, isReady } = useEncryptedDb();
+  // Kept current as rows are set aside, saved or deleted
+  const { summary: setAside } = useSetAsideRecords();
   const [dataSources, setDataSources] = useState<ExportDataSources>({
     labResults: [],
     testValues: [],
@@ -84,7 +92,10 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Fetch all data from database
    */
-  const fetchData = useCallback(async (): Promise<ExportDataSources | null> => {
+  const fetchData = useCallback(async (): Promise<{
+    fullDataSources: ExportDataSources;
+    labResultsData: LabResultForExport[];
+  } | null> => {
     if (!db || !isReady) {
       setIsLoading(false);
       return null;
@@ -94,14 +105,15 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
     setError(null);
 
     try {
-      // Fetch all data in parallel
-      const [labResults, testValues, userNotes, userPreferences, settings] = await Promise.all([
-        db.getAllLabResults(),
-        db.getAllTestValues(),
-        db.getAllNotes(),
-        db.getPreferences(),
-        db.getSettings(),
-      ]);
+      // Every record, those without a valid date included: a backup that left
+      // them out would let the next restore delete them
+      const {
+        labResults,
+        testValues,
+        userNotes,
+        preferences: userPreferences,
+        settings,
+      } = await db.exportAllData();
 
       // Build data sources for JSON export. Exporters decide what of the
       // settings a backup may contain (standard backups omit the API key).
@@ -124,8 +136,6 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         testValuesByLabResult.set(tv.labResultId, existing);
       }
 
-      // Name each test as every view does, and offer each test once,
-      // whatever codes of its trend group its values were saved under
       const biomarkerNames = new Map<string, string>();
       const tests = new Map<string, ExportBiomarkerOption>();
       for (const tv of testValues) {
@@ -143,7 +153,6 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
         tests.set(test, option);
       }
 
-      // Build lab results data
       const resultsData: LabResultForExport[] = labResults.map((labResult) => ({
         labResult,
         testValues: testValuesByLabResult.get(labResult.id!) || [],
@@ -153,11 +162,12 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
       setLabResultsData(resultsData);
 
       setBiomarkerOptions([...tests.values()].sort((a, b) => a.label.localeCompare(b.label)));
-      return sources;
+      return { fullDataSources: sources, labResultsData: resultsData };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load export data';
       setError(message);
-      console.error('Error fetching export data:', err);
+      // Fixed text: the error could name stored data
+      logFailure('Could not load the data to export');
       return null;
     } finally {
       setIsLoading(false);
@@ -171,14 +181,19 @@ export function useExportData({ enabled = true }: UseExportDataOptions = {}): Us
   /**
    * Refresh data from database
    */
-  const refresh = useCallback(() => fetchData(), [fetchData]);
+  const refresh = useCallback(
+    async (): Promise<ExportDataSources | null> => (await fetchData())?.fullDataSources ?? null,
+    [fetchData]
+  );
 
   return {
     dataSources,
     labResultsData,
     biomarkerOptions,
+    setAside,
     isLoading,
     error,
     refresh,
+    loadExportData: fetchData,
   };
 }

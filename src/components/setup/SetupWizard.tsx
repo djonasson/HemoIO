@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Container,
   Stepper,
@@ -10,6 +10,8 @@ import {
   Stack,
   ThemeIcon,
   Alert,
+  Center,
+  Loader,
   useMatches,
 } from '@mantine/core';
 import {
@@ -21,18 +23,30 @@ import {
   IconArrowRight,
   IconRocket,
 } from '@tabler/icons-react';
-import { PasswordStep} from './PasswordStep';
+import { PasswordStep } from './PasswordStep';
+import { ExistingDataStep } from './ExistingDataStep';
+import { FolderRecoveryStep } from './FolderRecoveryStep';
+import { SetupStartStep } from './SetupStartStep';
+import { notifySetUpElsewhere, notifySetupChoicesNotSaved, notifySetupFailed } from './setupNotices';
 import { StorageStep } from './StorageStep';
 import { AIConfigStep } from './AIConfigStep';
 import { useAuth } from '@contexts';
+import { loadStoredCredentials, mayChangeCredentials } from '@contexts/credentialsStorage';
 import { useFormKeyboardSubmit } from '@hooks';
+import { useExistingBrowserData } from '@hooks/useExistingBrowserData';
+import { useFolderRecovery } from '@hooks/useFolderRecovery';
 import { ENCRYPTED_API_KEY_STORAGE_KEY } from '@hooks/useEncryptedApiKey';
 import type { StorageProviderType, AIProviderType } from '@/types';
+import type { SetupOutcome } from '@contexts/AuthContext';
 import { isAIConfigured } from './aiConfigUtils';
 import { isPasswordStepValid } from './passwordUtils';
 import { isStorageStepValid } from './storageUtils';
 import { encryptString } from '@data/encryption';
-import { STORAGE_PROVIDER_KEY } from '@data/storage/storageChoice';
+import { saveStorageChoice } from '@data/storage/storageChoice';
+import { currentFolder } from '@data/storage/StorageProviderFactory';
+import { isFileSystemAccessSupported } from '@/utils/fileSystemSupport';
+import { logFailure } from '@/utils/logFailure';
+import type { FolderUnlockProblem } from '@services/sync';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -40,6 +54,15 @@ interface SetupWizardProps {
 
 export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const { setupPassword } = useAuth();
+  const existingData = useExistingBrowserData();
+  // Kept aside or cleared: the wizard goes on to its first step
+  const [existingDataSettled, setExistingDataSettled] = useState(false);
+  const folderRecovery = useFolderRecovery();
+  // A folder copy can be used only where the browser can open folders
+  const [foldersSupported] = useState(isFileSystemAccessSupported);
+  // The first screen (the existing data, or where folders can be used, the
+  // choice of how to start), recovery from a folder copy, or the wizard
+  const [screen, setScreen] = useState<'start' | 'folder' | 'wizard'>('start');
 
   // Responsive stepper orientation - vertical on small screens
   const stepperOrientation = useMatches({
@@ -48,7 +71,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   });
 
   const [activeStep, setActiveStep] = useState(0);
+  // The provider that picks the folder keeps it to itself until setup
+  // completes: another tab may set up first, and its folder must stay
+  const [folder] = useState(() => currentFolder());
+  const selectFolder = useCallback(() => folder.selectDirectory({ persist: false }), [folder]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Guards against a second submit before React re-renders the loading button
+  const submittingRef = useRef(false);
 
   // Step 1: Password
   const [password, setPassword] = useState('');
@@ -63,6 +92,39 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
   const [aiProvider, setAiProvider] = useState<AIProviderType | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [ollamaModel, setOllamaModel] = useState<string | undefined>(undefined);
+
+  // What this tab chose, by name only: lost if another tab's setup comes first
+  const unsavedChoices: string[] = [
+    ...(storageProvider === 'filesystem' ? ['folder storage'] : []),
+    ...(aiProvider ? ['AI provider'] : []),
+    ...(aiProvider && apiKey ? ['API key'] : []),
+  ];
+  const unsavedChoicesRef = useRef(unsavedChoices);
+  unsavedChoicesRef.current = unsavedChoices;
+  // Whether the user has begun: past the first screen, anything typed, or a
+  // clear confirmed
+  const clearConfirmedRef = useRef(false);
+  const startedRef = useRef(false);
+  startedRef.current =
+    existingDataSettled ||
+    screen === 'folder' ||
+    clearConfirmedRef.current ||
+    activeStep > 0 ||
+    password !== '' ||
+    confirmPassword !== '';
+
+  // Another tab finished setup while this one was on it: AuthContext moves
+  // to the login screen; say why, once the user had begun. A submit in
+  // progress says so itself, from its outcome.
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent): void => {
+      if (!mayChangeCredentials(event) || !loadStoredCredentials()) return;
+      if (submittingRef.current || !startedRef.current) return;
+      notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const canProceed = useMemo((): boolean => {
     switch (activeStep) {
@@ -97,36 +159,86 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     }
   }, [activeStep]);
 
+  /** Runs a submit with the storage listener muted: its outcome says itself whether another tab came first */
+  const whileSubmitting = useCallback(async <T,>(submit: () => Promise<T>): Promise<T> => {
+    submittingRef.current = true;
+    try {
+      return await submit();
+    } finally {
+      submittingRef.current = false;
+    }
+  }, []);
+
   const handleComplete = useCallback(async () => {
+    if (submittingRef.current) return;
     setIsSubmitting(true);
+    // Set when the choices could not be stored after the password lock was
+    // saved: setup still finishes, and says what was not kept
+    let choicesFailed = false;
+    let outcome: SetupOutcome;
     try {
       // Stored before the app unlocks, so the providers that load at unlock
       // (API key, AI settings) start with them
-      await setupPassword(password, async (encryptionKey) => {
-        localStorage.setItem(STORAGE_PROVIDER_KEY, storageProvider);
+      outcome = await whileSubmitting(() => setupPassword(password, async (encryptionKey) => {
+        try {
+          if (storageProvider === 'filesystem') await folder.persistDirectory();
+          saveStorageChoice(storageProvider);
 
-        if (aiProvider) {
-          localStorage.setItem('hemoio_ai_provider', aiProvider);
+          if (aiProvider) {
+            localStorage.setItem('hemoio_ai_provider', aiProvider);
 
-          if (apiKey) {
-            const encryptedApiKey = await encryptString(apiKey, encryptionKey);
-            localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+            if (apiKey) {
+              const encryptedApiKey = await encryptString(apiKey, encryptionKey);
+              localStorage.setItem(ENCRYPTED_API_KEY_STORAGE_KEY, encryptedApiKey);
+            }
+
+            if (aiProvider === 'ollama' && ollamaModel) {
+              localStorage.setItem('hemoio_ollama_model', ollamaModel);
+            }
           }
-
-          if (aiProvider === 'ollama' && ollamaModel) {
-            localStorage.setItem('hemoio_ollama_model', ollamaModel);
-          }
+        } catch {
+          choicesFailed = true;
         }
-      });
-
-      onComplete();
-    } catch (error) {
-      console.error('Setup failed:', error);
-      // TODO: Show error to user
+      }));
+    } catch {
+      // Only before the password lock was saved, so nothing was set up.
+      // Fixed text: the error could name the credentials. The wizard stays,
+      // to be submitted again
+      logFailure('Setup failed');
+      notifySetupFailed();
+      return;
     } finally {
       setIsSubmitting(false);
     }
-  }, [password, setupPassword, onComplete, storageProvider, aiProvider, apiKey, ollamaModel]);
+
+    // Outside the try: the password lock is saved by now, so nothing here may
+    // report "Setup failed"
+    if (outcome === 'existing-locked') {
+      // The login screen shows in place of the wizard
+      notifySetUpElsewhere(unsavedChoicesRef.current, { unlock: true });
+      return;
+    }
+    if (outcome === 'unlocked-existing') {
+      notifySetUpElsewhere(unsavedChoicesRef.current);
+    } else if (choicesFailed) {
+      notifySetupChoicesNotSaved(unsavedChoicesRef.current);
+    }
+    onComplete();
+  }, [password, setupPassword, whileSubmitting, onComplete, storageProvider, folder, aiProvider, apiKey, ollamaModel]);
+
+  const handleRecover = useCallback(
+    async (folderPassword: string): Promise<FolderUnlockProblem | 'existing-locked' | null> => {
+      const result = await whileSubmitting(() => folderRecovery.recover(folderPassword));
+      if (result === 'existing-locked') {
+        // The login screen shows in place of the wizard
+        notifySetUpElsewhere(['folder storage'], { unlock: true });
+      } else if (result === null) {
+        onComplete();
+      }
+      return result;
+    },
+    [folderRecovery, whileSubmitting, onComplete]
+  );
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -160,6 +272,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
             onStorageChange={setStorageProvider}
             selectedDirectoryName={selectedDirectoryName}
             onDirectorySelect={setSelectedDirectoryName}
+            selectDirectory={selectFolder}
           />
         );
       case 2:
@@ -186,17 +299,87 @@ export function SetupWizard({ onComplete }: SetupWizardProps): React.ReactNode {
     }
   };
 
+  const welcome = (
+    <div>
+      <Title order={1} ta="center">
+        Welcome to HemoIO
+      </Title>
+      <Text c="dimmed" ta="center" mt="sm">
+        Let's set up your secure lab results tracker
+      </Text>
+    </div>
+  );
+
+  // Never set up over stored data without saying so: counted first
+  if (existingData.rows === null) {
+    return (
+      <Container size="sm" py="xl">
+        <Stack gap="xl">
+          {welcome}
+          <Center>
+            <Loader type="dots" aria-label="Checking this browser for HemoIO data" />
+          </Center>
+        </Stack>
+      </Container>
+    );
+  }
+
+  const firstScreen = (content: React.ReactNode): React.ReactNode => (
+    <Container size="sm" py="xl">
+      <Stack gap="xl">
+        {welcome}
+        <Paper withBorder shadow="sm" p="xl" radius="md">
+          {content}
+        </Paper>
+      </Stack>
+    </Container>
+  );
+
+  if (screen === 'folder') {
+    return firstScreen(
+      <FolderRecoveryStep
+        folderName={folderRecovery.folderName}
+        onChooseFolder={folderRecovery.chooseFolder}
+        onRecover={handleRecover}
+        onBack={() => setScreen('start')}
+      />
+    );
+  }
+
+  const openFolderCopy = foldersSupported ? () => setScreen('folder') : undefined;
+
+  if (existingData.rows > 0 && !existingDataSettled) {
+    return firstScreen(
+      <ExistingDataStep
+        onKeep={() => {
+          setExistingDataSettled(true);
+          setScreen('wizard');
+        }}
+        onClear={async () => {
+          clearConfirmedRef.current = true;
+          startedRef.current = true;
+          // Not cleared when another tab finished setup meanwhile:
+          // that tab's storage event takes this one to the login screen
+          if (await existingData.clear()) {
+            setExistingDataSettled(true);
+            setScreen('wizard');
+          }
+        }}
+        onFolderCopy={openFolderCopy}
+      />
+    );
+  }
+
+  if (openFolderCopy && screen === 'start') {
+    return firstScreen(
+      <SetupStartStep onSetUp={() => setScreen('wizard')} onFolderCopy={openFolderCopy} />
+    );
+  }
+
   return (
     <Container size="sm" py="xl">
       <Stack gap="xl">
-        <div>
-          <Title order={1} ta="center">
-            Welcome to HemoIO
-          </Title>
-          <Text c="dimmed" ta="center" mt="sm">
-            Let's set up your secure lab results tracker
-          </Text>
-        </div>
+        {welcome}
 
         <Stepper
           active={activeStep}

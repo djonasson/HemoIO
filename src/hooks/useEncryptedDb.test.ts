@@ -33,6 +33,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -50,6 +55,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -68,6 +78,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());
@@ -87,6 +102,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -114,6 +134,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result, rerender } = renderHook(() => useEncryptedDb());
@@ -128,6 +153,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     rerender();
@@ -147,6 +177,11 @@ describe('useEncryptedDb', () => {
       setupPassword: vi.fn(),
       changePassword: vi.fn(),
       isSetupComplete: vi.fn(),
+      storedLock: null,
+      adoptFolderLock: vi.fn(),
+      recoverFromFolder: vi.fn(),
+      startOver: vi.fn(),
+      startingOver: false,
     });
 
     const { result } = renderHook(() => useEncryptedDb());

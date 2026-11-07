@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { hasUnsavedEdits } from '@/utils/unsavedEdits';
 import { NoteEditor } from './NoteEditor';
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -17,6 +18,18 @@ describe('NoteEditor', () => {
     onSave: vi.fn(),
     onCancel: vi.fn(),
   };
+
+  it('holds automatic loads from the folder while it holds unsaved text (P44)', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<NoteEditor {...defaultProps} />);
+    expect(await hasUnsavedEdits()).toBe(false);
+
+    await user.type(screen.getByRole('textbox', { name: /note content/i }), 'Felt tired');
+    expect(await hasUnsavedEdits()).toBe(true);
+
+    unmount();
+    expect(await hasUnsavedEdits()).toBe(false);
+  });
 
   describe('rendering', () => {
     it('should render the editor', () => {

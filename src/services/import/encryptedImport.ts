@@ -19,7 +19,8 @@ import {
 } from '@/types/backup';
 import { decryptFromBackup } from '@data/encryption/backupEncryption';
 import { isValidBackupData } from '../export/jsonExport';
-import { assertKnownTestKeys, assertSupportedBackupVersion } from './jsonImport';
+import { SET_ASIDE_FILE_FORMAT } from '../export/setAsideExport';
+import { parseBackupData } from './jsonImport';
 import type { ParsedBackupData } from './jsonImport';
 
 /**
@@ -31,6 +32,9 @@ export interface ParsedEncryptedBackupData extends ParsedBackupData {
   /** Whether this was an encrypted backup */
   wasEncrypted: boolean;
 }
+
+const SET_ASIDE_FILE_REFUSED =
+  'This file holds records HemoIO could not read. It is not a backup and cannot be restored.';
 
 /**
  * Detects the type of backup file from its content
@@ -57,6 +61,11 @@ export function detectBackupType(content: string): BackupTypeDetectionResult {
         type: 'standard',
         success: true,
       };
+    }
+
+    // The sealed file of unreadable records is easily taken for a backup
+    if (typeof data === 'object' && data !== null && data.format === SET_ASIDE_FILE_FORMAT) {
+      return { type: 'standard', success: false, error: SET_ASIDE_FILE_REFUSED };
     }
 
     return {
@@ -154,31 +163,10 @@ export async function parseEncryptedBackup(
     throw new Error('Invalid backup data structure');
   }
 
-  assertSupportedBackupVersion(backupData.schemaVersion);
-  assertKnownTestKeys(backupData);
-
-  // Deserialize dates
+  // Read as a plain backup is: the version and keys checked, and dates
+  // parsed so that an undated result stays undated and a bad stamp is repaired
   return {
-    labResults: backupData.labResults.map((lr) => ({
-      ...lr,
-      date: new Date(lr.date as unknown as string),
-      createdAt: new Date(lr.createdAt as unknown as string),
-      updatedAt: new Date(lr.updatedAt as unknown as string),
-    })),
-    testValues: backupData.testValues.map((tv) => ({
-      ...tv,
-      createdAt: new Date(tv.createdAt as unknown as string),
-      updatedAt: new Date(tv.updatedAt as unknown as string),
-    })),
-    userNotes: backupData.userNotes.map((note) => ({
-      ...note,
-      createdAt: new Date(note.createdAt as unknown as string),
-      updatedAt: new Date(note.updatedAt as unknown as string),
-    })),
-    settings: backupData.settings,
-    userPreferences: backupData.userPreferences,
-    schemaVersion: backupData.schemaVersion,
-    exportedAt: new Date(backupData.exportedAt),
+    ...parseBackupData(backupData),
     // Include full settings with API key
     fullSettings: backupData.fullSettings
       ? {

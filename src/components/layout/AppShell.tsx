@@ -37,12 +37,15 @@ import {
   useFolderRestore,
   useAISettings,
   useAlerts,
-  useAlertState,
-  useLabResults,
-  usePreferences,
+  useAfterRestore,
+  useApplyFolderCopy,
   useSaveImport,
   useNavigation,
+  useSetAsideRecords,
+  useFolderStorageOn,
+  useDataReplacedElsewhere,
 } from '@hooks';
+import { announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -51,20 +54,16 @@ import { NotesView } from '@components/notes';
 import { SettingsPage } from '@components/settings';
 import { ExportDialog } from '@components/export';
 import { DictionaryView } from '@components/dictionary';
-import { FolderRestoreModal } from '@components/storage';
+import { FolderConflictModal, FolderRestoreModal, SetAsideBanner } from '@components/storage';
 import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
-import {
-  afterRestoreAdvice,
-  restoreAISettings,
-  restoreBackup,
-  runAfterRestore,
-  type AfterRestoreStep,
-} from '@services/import';
-import type { ParsedBackupData } from '@services/import';
+import { failedStepsMessage, restoreAISettings, restoreBackup, restoreBackupIfUnchanged } from '@services/import';
+import { HEADER_HEIGHT } from './headerHeight';
+import { logFailure } from '@/utils/logFailure';
+import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { AppView, FolderRestoreDecision, ViewFocus } from '@hooks';
+import type { AppView, ViewFocus } from '@hooks';
 
 interface AppShellProps {
   children?: React.ReactNode;
@@ -136,23 +135,51 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     labResultsData,
     biomarkerOptions,
     isLoading: isLoadingExportData,
+    loadExportData,
   } = useExportData({
     enabled: exportDialogOpen,
   });
+  const setAsideRecords = useSetAsideRecords();
+  const folderStorageOn = useFolderStorageOn();
   const { setAiProvider, setOpenaiModel, setAnthropicModel, setOllamaModel } = useAISettings();
   const { setApiKey } = useEncryptedApiKey();
   const { unacknowledgedCount: alertCount } = useAlerts();
-  const { refresh: refreshLabResults } = useLabResults();
-  const { reload: reloadPreferences } = usePreferences();
-  const { reload: reloadAlertState } = useAlertState();
+
+  const afterRestore = useAfterRestore();
+  const applyFolderCopy = useApplyFolderCopy();
+
+  // Another tab of this browser replaced the data (a folder copy loaded, a
+  // restore), under new IDs: reload what this tab shows, as a restore here
+  // does, so no edit or note goes to an old ID
+  useDataReplacedElsewhere(
+    useCallback(() => {
+      void afterRestore('showing the updated results').then(({ steps, failed }) => {
+        if (failed.length === 0) return;
+        notifications.show({
+          title: 'Updated in Another Tab, With Problems',
+          message: failedStepsMessage(steps, failed),
+          color: 'yellow',
+        });
+      });
+    }, [afterRestore])
+  );
 
   // Folder sync waits until the copy in the folder is known to be safe to replace
   const folderRestore = useFolderRestore();
-  const { syncNow, issue: folderSyncIssue } = useFilesystemSync({
+  const {
+    syncNow,
+    issue: folderSyncIssue,
+    conflict: folderConflict,
+    held: folderConflictHeld,
+    resolveConflict,
+    acknowledgeFolderCopy,
+    replaceFolderCopy,
+  } = useFilesystemSync({
     enabled: folderRestore.syncAllowed,
+    applyFolderCopy,
   });
   useFolderSyncNotice(folderSyncIssue);
-  const folderSyncHeld = folderRestore.syncHeld;
+  const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
   const handleNavClick = useCallback(
     (view: AppView) => {
@@ -193,7 +220,12 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
 
   const handleRestore = useCallback(
     // Callers show a failure themselves, where the restore was asked for
-    async (data: ParsedBackupData, options: RestoreOptions) => {
+    // Given `unchangedSince` (EncryptedDb.storedDataStamp), only while the
+    // data is as stamped: null, restoring nothing, when a change was saved since
+    async (
+      data: ParsedBackupData,
+      options: RestoreOptions & { unchangedSince?: string }
+    ): Promise<RestoreSummary | null> => {
       if (!db || !isReady) {
         throw new Error('Database not available');
       }
@@ -201,14 +233,18 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       setIsRestoring(true);
 
       try {
-        const restored = await restoreBackup(db, data);
+        const restored =
+          options.unchangedSince === undefined
+            ? await restoreBackup(db, data)
+            : await restoreBackupIfUnchanged(db, data, options.unchangedSince);
+        if (restored === null) return null;
+        // Other tabs of this browser hold the old IDs: they reload
+        announceDataReplaced();
 
         // The data is replaced: from here on a failure is not a failed restore
-        const steps: AfterRestoreStep[] = [
-          // A backup can bring unit preferences, personal targets and acknowledgements
-          { name: 'loading your preferences', run: reloadPreferences },
-          { name: 'loading your alert acknowledgements', run: reloadAlertState },
-          ...(options.restoreAISettings
+        const { steps, failed } = await afterRestore(
+          'showing the restored results',
+          options.restoreAISettings
             ? [
                 {
                   name: 'applying the AI configuration',
@@ -225,10 +261,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
                     }),
                 },
               ]
-            : []),
-          { name: 'showing the restored results', run: refreshLabResults },
-        ];
-        const failed = await runAfterRestore(steps);
+            : []
+        );
         // The folder sync tells of its own failure, as it does for every sync
         void syncNow().catch(() => undefined);
 
@@ -246,13 +280,14 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               }
             : {
                 title: 'Data Restored, With Problems',
-                message: `${summary} Failed: ${failed.join(', ')}. ${afterRestoreAdvice(steps, failed)}`,
+                message: `${summary} ${failedStepsMessage(steps, failed)}`,
                 color: 'yellow',
               }
         );
 
         // Navigate to timeline to show restored data
         openView('timeline');
+        return restored;
       } catch (err) {
         notifySaveFailed('Restore failed', err, 'Your data was not changed.');
         throw err;
@@ -263,9 +298,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [
       db,
       isReady,
-      reloadPreferences,
-      reloadAlertState,
-      refreshLabResults,
+      afterRestore,
       syncNow,
       folderSyncHeld,
       setAiProvider,
@@ -277,26 +310,53 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     ]
   );
 
-  const handleFolderRestore = useCallback(
-    // The folder copy has no AI configuration to restore
-    (data: ParsedBackupData) => handleRestore(data, { restoreAISettings: false }),
+  // Settings shows a failed restore itself; what was restored is told here
+  const handleSettingsRestore = useCallback(
+    async (data: ParsedBackupData, options: RestoreOptions): Promise<void> => {
+      await handleRestore(data, options);
+    },
     [handleRestore]
   );
 
-  const { decide: decideFolderRestore } = folderRestore;
-  const handleFolderDecision = useCallback(
-    (decision: FolderRestoreDecision) => {
-      decideFolderRestore(decision);
-      if (decision === 'hold') {
+  // A restore from a backup file in Settings is left as a change made here:
+  // the next sync writes it over the copy it last saw, or asks when that copy
+  // changed on another computer meanwhile. The folder copy restored here is
+  // the one now in the browser, so it is recorded as seen.
+  const offer = folderRestore.prompt?.kind === 'offer' ? folderRestore.prompt : null;
+  const offeredRevision = offer?.revision ?? null;
+  const offeredStamp = offer?.stamp;
+  const { recheck: recheckFolderRestore } = folderRestore;
+  const handleFolderRestore = useCallback(
+    async (data: ParsedBackupData): Promise<boolean> => {
+      // The folder copy has no AI configuration to restore. Only while the
+      // data is as when the question was asked: a change saved since (in
+      // another tab) is not replaced unasked.
+      const restored = await handleRestore(data, { restoreAISettings: false, unchangedSince: offeredStamp });
+      if (restored === null) {
         notifications.show({
-          title: 'Folder Sync Paused',
-          message:
-            'Nothing is saved to your folder for now, and the copy there is unchanged. HemoIO asks again when you next unlock, or when you grant folder access or choose a folder in Settings.',
+          title: 'Your Data Changed',
+          message: 'Your data changed while you decided, so nothing was restored. HemoIO asks again.',
           color: 'yellow',
         });
+        recheckFolderRestore();
+        return false;
       }
+      try {
+        await acknowledgeFolderCopy(offeredRevision, restored.stamp);
+      } catch {
+        // The restore is done; the next sync compares the data with the copy instead
+        logFailure('Could not record the restored folder copy as seen');
+      }
+      return true;
     },
-    [decideFolderRestore]
+    [handleRestore, acknowledgeFolderCopy, offeredRevision, offeredStamp, recheckFolderRestore]
+  );
+
+  // "Replace folder copy": the copy is kept as a backup first, and the next
+  // sync writes over it without asking again
+  const handleFolderReplace = useCallback(
+    () => replaceFolderCopy(offeredRevision),
+    [replaceFolderCopy, offeredRevision]
   );
 
   return (
@@ -304,11 +364,13 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
       <FolderRestoreModal
         prompt={folderRestore.prompt}
         onRestore={handleFolderRestore}
-        onDecide={handleFolderDecision}
+        onReplace={handleFolderReplace}
+        onDecide={folderRestore.decide}
       />
+      <FolderConflictModal conflict={folderConflict} onResolve={resolveConflict} />
 
       <MantineAppShell
-        header={{ height: 60 }}
+        header={{ height: HEADER_HEIGHT }}
         navbar={{
           width: 260,
           breakpoint: 'sm',
@@ -409,6 +471,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
+          <SetAsideBanner
+            total={setAsideRecords.summary.total}
+            unsaved={setAsideRecords.summary.unsaved}
+            folderStorageOn={folderStorageOn}
+            onDownload={setAsideRecords.download}
+            onConfirmSaved={setAsideRecords.confirmSaved}
+            onSnapshot={setAsideRecords.snapshot}
+            onDelete={setAsideRecords.remove}
+          />
           {children ?? (
             <MainContent
               view={activeView}
@@ -418,7 +489,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               focus={focus}
               visit={visit}
               onOpen={openView}
-              onRestore={handleRestore}
+              onRestore={handleSettingsRestore}
               isRestoring={isRestoring}
             />
           )}
@@ -432,6 +503,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         fullDataSources={dataSources}
         isLoading={isLoadingExportData}
         biomarkerOptions={biomarkerOptions}
+        setAsideCount={setAsideRecords.summary.total}
+        loadExportData={loadExportData}
       />
     </>
   );

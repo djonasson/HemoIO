@@ -22,6 +22,7 @@ import {
   EncryptedApiKeyContext,
   type UseEncryptedApiKeyResult,
 } from '@hooks/useEncryptedApiKey';
+import { logFailure } from '@/utils/logFailure';
 
 const LEGACY_API_KEY_STORAGE_KEY = 'hemoio_ai_api_key';
 
@@ -47,7 +48,16 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         const encryptedKey = localStorage.getItem(ENCRYPTED_API_KEY_STORAGE_KEY);
         if (encryptedKey) {
           // Decrypt to get last 4 chars
-          const decrypted = await decryptString(encryptedKey, encryptionKey!);
+          const decrypted = await decryptString(encryptedKey, encryptionKey!).catch(() => null);
+          if (decrypted === null) {
+            // Encrypted under another key, or damaged: it is not an API key
+            // any more, so it is removed and reported as not set
+            localStorage.removeItem(ENCRYPTED_API_KEY_STORAGE_KEY);
+            console.warn('Removed a stored API key that could not be decrypted');
+            setHasApiKey(false);
+            setApiKeyLastFour(undefined);
+            return;
+          }
           setHasApiKey(true);
           setApiKeyLastFour(decrypted.slice(-4));
           setIsLoading(false);
@@ -70,8 +80,9 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         // No key found
         setHasApiKey(false);
         setApiKeyLastFour(undefined);
-      } catch (error) {
-        console.error('Error checking API key:', error);
+      } catch {
+        // Fixed messages: an error could hold the key or what it encrypts
+        logFailure('Could not read the stored API key');
         setHasApiKey(false);
         setApiKeyLastFour(undefined);
       } finally {
@@ -95,8 +106,8 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
       }
 
       return await decryptString(encryptedKey, encryptionKey);
-    } catch (error) {
-      console.error('Error decrypting API key:', error);
+    } catch {
+      logFailure('Could not decrypt the stored API key');
       return null;
     }
   }, [isReady, encryptionKey]);
@@ -118,7 +129,7 @@ function useEncryptedApiKeyState(): UseEncryptedApiKeyResult {
         setHasApiKey(true);
         setApiKeyLastFour(apiKey.slice(-4));
       } catch (error) {
-        console.error('Error encrypting API key:', error);
+        logFailure('Could not encrypt the API key');
         throw error;
       }
     },

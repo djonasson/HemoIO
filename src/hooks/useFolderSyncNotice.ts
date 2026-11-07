@@ -5,6 +5,7 @@
 
 import { useEffect } from 'react';
 import { notifications } from '@mantine/notifications';
+import { showPersistentNotice } from '@components/common/showPersistentNotice';
 import type { FolderSyncIssue } from './useFilesystemSync';
 
 export const FOLDER_SYNC_NOTICE_ID = 'folder-sync';
@@ -26,6 +27,13 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
       'or it is damaged. HemoIO left it as it is. ' +
       'To keep syncing, choose a different folder in Settings > Data.',
   },
+  'another-setup': {
+    title: SKIPPED,
+    message:
+      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. " +
+      'Choose a different folder in Settings > Data, or use Start over in Settings > Security ' +
+      'to set up from that copy.',
+  },
   newer: {
     title: SKIPPED,
     message:
@@ -38,6 +46,12 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
       'The copy in your folder was saved before tests were identified by LOINC, ' +
       'so it cannot be restored, and HemoIO left it as it is. ' +
       'To keep syncing, choose a different folder in Settings > Data.',
+  },
+  'set-aside': {
+    title: SKIPPED,
+    message:
+      "Some stored records can't be opened, and your folder copy may still hold them. " +
+      'HemoIO left it as it is. Download or delete the unreadable records to sync again.',
   },
   failed: {
     title: 'Folder sync failed',
@@ -55,12 +69,7 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null): void {
   useEffect(() => {
     if (!issue) return;
 
-    notifications.show({
-      id: FOLDER_SYNC_NOTICE_ID,
-      ...NOTICES[issue],
-      color: 'yellow',
-      autoClose: false,
-    });
+    showPersistentNotice({ id: FOLDER_SYNC_NOTICE_ID, ...NOTICES[issue], color: 'yellow' });
     return () => {
       notifications.hide(FOLDER_SYNC_NOTICE_ID);
     };

@@ -148,3 +148,10 @@ export interface UserNote {
   /** When the note was last updated */
   updatedAt: Date;
 }
+
+/** How many stored records the session key cannot open, kept aside */
+export interface SetAsideSummary {
+  total: number;
+  /** Those not yet in a downloaded file */
+  unsaved: number;
+}

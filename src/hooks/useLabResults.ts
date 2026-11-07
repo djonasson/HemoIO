@@ -53,6 +53,10 @@ export interface LabResultFilters {
 export interface UseLabResultsResult {
   /** Lab results with details, sorted by date (newest first) */
   results: LabResultWithDetails[];
+  /** Results without a valid date, listed after the dated ones; none while a date filter is set */
+  undatedResults: LabResultWithDetails[];
+  /** Results without a valid date that the search matches but a date filter hides */
+  hiddenUndatedCount: number;
   /** Whether data is currently loading */
   isLoading: boolean;
   /** Error message if fetch failed */
@@ -72,6 +76,8 @@ export interface UseLabResultsResult {
  */
 export interface LabResultsStore {
   allResults: LabResultWithDetails[];
+  /** Results without a valid date: kept out of allResults, so out of every date-based view */
+  undatedResults: LabResultWithDetails[];
   isLoading: boolean;
   error: string | null;
   /** Reload from the database; called after imports and restores */
@@ -151,7 +157,7 @@ export function useLabResults(): UseLabResultsResult {
   if (!store) {
     throw new Error('useLabResults must be used within a LabResultsProvider');
   }
-  const { allResults, isLoading, error, refresh, deleteResult } = store;
+  const { allResults, undatedResults, isLoading, error, refresh, deleteResult } = store;
   const [filters, setFilters] = useState<LabResultFilters>({});
 
   /**
@@ -181,8 +187,19 @@ export function useLabResults(): UseLabResultsResult {
     return results;
   }, [allResults, filters]);
 
+  // A result with no date is in no date range; the search still applies
+  const searchedUndated = useMemo(() => {
+    const search = filters.searchTerm?.toLowerCase();
+    return search
+      ? undatedResults.filter((r) => r.labName.toLowerCase().includes(search))
+      : undatedResults;
+  }, [undatedResults, filters.searchTerm]);
+  const dateFiltered = Boolean(filters.startDate || filters.endDate);
+
   return {
     results: filteredResults,
+    undatedResults: dateFiltered ? [] : searchedUndated,
+    hiddenUndatedCount: dateFiltered ? searchedUndated.length : 0,
     isLoading,
     error,
     filters,

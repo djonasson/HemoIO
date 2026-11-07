@@ -5,6 +5,7 @@ import {
   createCredentialsV2,
   isCredentialsV1,
   isCredentialsV2,
+  isLaterLock,
   keyMatchesCredentials,
   rewrapCredentials,
   unlockV2,
@@ -154,6 +155,14 @@ describe('keyWrapping', () => {
       expect(isCredentialsV1(null)).toBe(false);
       expect(isCredentialsV2('v2')).toBe(false);
     });
+
+    it('rejects a lock whose iterations no setup would use, so a planted one cannot hang unlocking', async () => {
+      const { credentials: v2 } = await createCredentialsV2('Old-Passw0rd!', FAST);
+
+      expect(isCredentialsV2({ ...v2, iterations: 10 * KEK_PBKDF2_ITERATIONS })).toBe(true);
+      expect(isCredentialsV2({ ...v2, iterations: 10 * KEK_PBKDF2_ITERATIONS + 1 })).toBe(false);
+      expect(isCredentialsV2({ ...v2, iterations: 1e10 })).toBe(false);
+    });
   });
 
   describe('keyMatchesCredentials', () => {
@@ -174,6 +183,56 @@ describe('keyWrapping', () => {
       const { credentials, key } = await createCredentialsV2('Old-Passw0rd!', FAST);
 
       expect(await keyMatchesCredentials(key, 'Wrong-1!', credentials)).toBe(false);
+    });
+  });
+
+  describe('when a lock was made', () => {
+    it('new and rewrapped credentials record when they were made', async () => {
+      const start = Date.now();
+      const { credentials } = await createCredentialsV2('Old-Passw0rd!', FAST);
+      const rewrapped = await rewrapCredentials('Old-Passw0rd!', 'New-Passw0rd!', credentials, FAST);
+
+      for (const lock of [credentials, rewrapped!.credentials]) {
+        expect(typeof lock.changedAt).toBe('string');
+        expect(new Date(lock.changedAt!).toISOString()).toBe(lock.changedAt);
+        expect(new Date(lock.changedAt!).getTime()).toBeGreaterThanOrEqual(start);
+        expect(isCredentialsV2(lock)).toBe(true);
+      }
+      expect(new Date(rewrapped!.credentials.changedAt!).getTime()).toBeGreaterThanOrEqual(
+        new Date(credentials.changedAt!).getTime()
+      );
+    });
+
+    it('isLaterLock treats a missing date as oldest', async () => {
+      const { credentials } = await createCredentialsV2('Old-Passw0rd!', FAST);
+      const undated = { ...credentials, changedAt: undefined };
+      const earlier = { ...credentials, changedAt: '2020-01-01T00:00:00.000Z' };
+
+      expect(isLaterLock(earlier, undated)).toBe(true);
+      expect(isLaterLock(undated, earlier)).toBe(false);
+      expect(isLaterLock(undated, undated)).toBe(false);
+      expect(isLaterLock(credentials, earlier)).toBe(true);
+      expect(isLaterLock(earlier, credentials)).toBe(false);
+      // The same time is no later
+      expect(isLaterLock(credentials, { ...credentials })).toBe(false);
+    });
+
+    it('isLaterLock: any lock is later than null', async () => {
+      const { credentials } = await createCredentialsV2('Old-Passw0rd!', FAST);
+
+      expect(isLaterLock(credentials, null)).toBe(true);
+      expect(isLaterLock({ ...credentials, changedAt: undefined }, null)).toBe(true);
+    });
+
+    it('isCredentialsV2 rejects an invalid changedAt', async () => {
+      const { credentials } = await createCredentialsV2('Old-Passw0rd!', FAST);
+
+      expect(isCredentialsV2({ ...credentials, changedAt: 'last Tuesday' })).toBe(false);
+      expect(isCredentialsV2({ ...credentials, changedAt: 1_700_000_000_000 })).toBe(false);
+      expect(isCredentialsV2({ ...credentials, changedAt: null })).toBe(false);
+      const withoutDate = { ...credentials };
+      delete withoutDate.changedAt;
+      expect(isCredentialsV2(withoutDate)).toBe(true);
     });
   });
 });

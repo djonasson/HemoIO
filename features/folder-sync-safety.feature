@@ -37,6 +37,7 @@ Feature: Folder Sync Safety
     When I add more lab results
     Then my folder should hold a new copy with all of my lab results
     And my folder should keep the copy from before, as the previous copy
+    And only the new copy should hold my password lock; the previous copy should hold none
 
   Scenario: A full copy is not pushed out by smaller ones
     Given my lab results have been synced to my folder
@@ -58,7 +59,15 @@ Feature: Folder Sync Safety
     Given my folder holds a copy that my current password cannot open
     When I add lab results
     Then I should see that the folder sync was skipped because the folder copy cannot be read
-    And I should be told to choose a different folder to keep syncing
+    And I should be told to choose a different folder in Settings > Data
+    And the copy in my folder should be left as it was
+
+  # Unit-tested (folderSync, folderCopy): a half-synced cloud file
+  Scenario: A damaged folder copy that carries my own lock is called damaged
+    Given my folder copy carries my password lock but its data is damaged
+    When the folder sync runs
+    Then I should be told the folder copy cannot be read: saved by a different setup, or damaged
+    And I should not be told it belongs to another HemoIO setup
     And the copy in my folder should be left as it was
 
   Scenario: Choosing a different folder lets the sync start again
@@ -76,3 +85,82 @@ Feature: Folder Sync Safety
     Then my folder should hold a copy of my lab results
     And there should be no previous copy yet
     And no message about a skipped folder sync should be shown
+
+  Scenario: Records that cannot be opened pause the folder sync
+    Given the records HemoIO cannot open are kept aside and not yet saved
+    When I add lab results
+    Then my folder copy should be left as it was
+    And I should see that the folder sync was skipped because some records cannot be opened
+    When I download the unreadable records as a sealed file
+    Then the message about the skipped folder sync should go away
+    And my folder copy should be updated
+
+  # Unit-tested: folderSyncRun.test.ts, encryptedDb.robustness.test.ts
+  Scenario: Records stored since unlocking that cannot be opened also pause the folder sync
+    Given another tab stored records this session cannot open after I unlocked
+    When the folder sync runs
+    Then my folder copy should be left as it was
+    And I should see that the folder sync was skipped because some records cannot be opened
+
+  Scenario: The folder copy keeps the password lock beside the data
+    Given my lab results have been synced to my folder
+    Then my folder copy should hold my password lock beside the encrypted data
+    And nothing in the folder copy should show how many records it holds or the names of my tests
+
+  Scenario: A password change reaches the folder
+    Given my lab results have been synced to my folder
+    When I change my password in Settings
+    Then the password lock in my folder copy should be the new one
+
+  Scenario: A password changed on another computer is picked up at the next sync
+    Given my lab results have been synced to my folder
+    And I changed my password on another computer that syncs to the same folder
+    When I keep working on this computer
+    Then I should be able to keep working without unlocking again
+    And I should be told that my password was changed on another computer, and to use the new one next time
+    And the next time I unlock, my old password should no longer work
+    And my new password should unlock HemoIO
+
+  Scenario: When both computers change the password, the later change wins
+    Given my lab results have been synced to my folder
+    And I changed my password on another computer
+    And later I changed my password on this computer
+    When the folder sync runs
+    Then my folder copy should hold the password lock from this computer's later change
+    And my password from this computer should still unlock HemoIO
+
+  # Unit-tested: useFilesystemSync.test.ts
+  Scenario: A sync that waited for another tab writes nothing once it is no longer wanted
+    Given another tab of this browser is syncing my folder
+    And a sync on this tab is waiting for it to finish
+    When I lock HemoIO or switch folder storage off on this tab meanwhile
+    Then this tab should not write to my folder once the other tab is done
+
+  # Unit-tested: folderAccessEvents.test.ts, useFilesystemSync.test.ts
+  Scenario: Choosing another folder in one tab is heard in the others
+    Given HemoIO is open in two tabs of this browser
+    And one tab asks me what to do about the copy in my folder
+    When I choose another folder in the other tab
+    Then the question about the old folder should go away
+    And the next sync should look at the new folder
+
+  # Unit-tested: folderSync.test.ts
+  Scenario: A new lock that cannot reach the folder does not hide why the sync was skipped
+    Given the records HemoIO cannot open are kept aside and not yet saved
+    And I changed my password, and my folder cannot be written to
+    When the folder sync runs
+    Then I should see that the folder sync was skipped because some records cannot be opened
+
+  # Unit-tested: folderLockFile.test.ts
+  Scenario: The lock file never goes back to an older password
+    Given I changed my password on another computer
+    And its lock file reached this computer before its folder copy
+    When this computer syncs and finds the folder copy unchanged
+    Then the lock file should keep the newer password lock
+
+  Scenario: A folder from another setup is explained
+    Given my folder holds a copy made by another HemoIO setup, with a different key
+    When I add lab results
+    Then I should see that the folder sync was skipped because my folder holds another setup's copy
+    And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
+    And the copy in my folder should be left as it was

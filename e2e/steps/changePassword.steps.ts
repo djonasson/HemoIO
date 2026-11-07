@@ -3,7 +3,7 @@
  */
 
 import { expect, type Locator, type Page } from '@playwright/test';
-import { openSettingsTab } from './app.steps';
+import { CREDENTIALS_KEY, openSettingsTab, storedCredentials } from './app.steps';
 
 export const NEW_PASSWORD = 'N3w-Secure-Passw0rd!';
 
@@ -73,7 +73,7 @@ export async function expectPasswordRejected(page: Page, password: string): Prom
  */
 export async function seedV1Credentials(page: Page, password: string): Promise<void> {
   await page.goto('/');
-  await page.evaluate(async (pw) => {
+  await page.evaluate(async ({ pw, credentialsKey }) => {
     const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const verificationSalt = crypto.getRandomValues(new Uint8Array(16));
@@ -91,21 +91,19 @@ export async function seedV1Credentials(page: Page, password: string): Promise<v
     );
     localStorage.clear();
     localStorage.setItem(
-      'hemoio_credentials',
+      credentialsKey,
       JSON.stringify({
         salt: toBase64(salt),
         verificationSalt: toBase64(verificationSalt),
         verificationHash: toBase64(new Uint8Array(hash)),
       })
     );
-  }, password);
+  }, { pw: password, credentialsKey: CREDENTIALS_KEY });
   await page.reload();
   await expect(page.getByText('Enter your password to unlock your lab data')).toBeVisible();
 }
 
 /** The format of the stored credentials: 2, or undefined for v1 */
 export async function storedCredentialsVersion(page: Page): Promise<unknown> {
-  return page.evaluate(
-    () => JSON.parse(localStorage.getItem('hemoio_credentials') ?? '{}').version
-  );
+  return (JSON.parse((await storedCredentials(page)) ?? '{}') as { version?: unknown }).version;
 }

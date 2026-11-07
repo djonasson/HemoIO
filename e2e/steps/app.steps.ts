@@ -9,10 +9,32 @@ import { expect, type Page, type Route } from '@playwright/test';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 
+/** Mirrors CREDENTIALS_STORAGE_KEY in src/data/encryption: where the password lock is kept */
+export const CREDENTIALS_KEY = 'hemoio_credentials';
+
+/** The stored password lock, as text, or null */
+export function storedCredentials(page: Page): Promise<string | null> {
+  return page.evaluate((name) => localStorage.getItem(name), CREDENTIALS_KEY);
+}
+
+/**
+ * When I choose to set HemoIO up anew — where folders can be used, first run
+ * starts with a choice between that and a folder copy; elsewhere setup starts
+ * on the password step. Ends on the password step.
+ */
+export async function startNewSetup(page: Page): Promise<void> {
+  const start = page.getByRole('button', { name: 'Set up HemoIO' });
+  const passwordField = page.getByPlaceholder(/enter your password/i);
+  await expect(start.or(passwordField)).toBeVisible();
+  if (await start.isVisible()) await start.click();
+  await expect(passwordField).toBeVisible();
+}
+
 /**
  * Complete the first-run setup wizard with local storage and no AI provider
  */
 export async function completeSetup(page: Page, password: string = TEST_PASSWORD): Promise<void> {
+  await startNewSetup(page);
   await page.getByPlaceholder(/enter your password/i).fill(password);
   await page.getByPlaceholder(/confirm your password/i).fill(password);
   await page.getByRole('button', { name: 'Go to next step' }).click();
@@ -44,7 +66,9 @@ export async function unlockApp(page: Page, password: string = TEST_PASSWORD): P
  * checking visibility immediately (which races the app's first render).
  */
 export async function setupOrUnlock(page: Page, password: string = TEST_PASSWORD): Promise<void> {
-  const setupScreen = page.getByPlaceholder(/confirm your password/i);
+  const setupScreen = page
+    .getByPlaceholder(/confirm your password/i)
+    .or(page.getByRole('button', { name: 'Set up HemoIO' }));
   const unlockScreen = page.getByRole('button', { name: /unlock/i });
   await expect(setupScreen.or(unlockScreen)).toBeVisible();
 

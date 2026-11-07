@@ -41,6 +41,28 @@ describe('useFolderSyncNotice', () => {
     expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
   });
 
+  it('the another-setup message points to Start over', () => {
+    renderHook(() => useFolderSyncNotice('another-setup'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.title).toBe('Folder sync skipped');
+    expect(notice.message).toBe(
+      "Your folder holds another HemoIO setup's copy, so HemoIO left it as it is. Choose a different folder in Settings > Data, or use Start over in Settings > Security to set up from that copy."
+    );
+    expect(notice.autoClose).toBe(false);
+  });
+
+  it('explains the set-aside pause', () => {
+    renderHook(() => useFolderSyncNotice('set-aside'));
+
+    const notice = vi.mocked(notifications.show).mock.calls[0][0];
+    expect(notice.title).toBe('Folder sync skipped');
+    expect(notice.message).toBe(
+      "Some stored records can't be opened, and your folder copy may still hold them. HemoIO left it as it is. Download or delete the unreadable records to sync again."
+    );
+    expect(notice.autoClose).toBe(false);
+  });
+
   it('asks for an update when a newer version saved the copy', () => {
     renderHook(() => useFolderSyncNotice('newer'));
 

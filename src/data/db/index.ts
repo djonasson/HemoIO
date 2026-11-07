@@ -7,6 +7,22 @@ import type {
   UserNote,
 } from '@/types';
 
+/** The tables whose records are sealed: everything but IDs and links encrypted */
+export type SealedTable = 'labResults' | 'testValues' | 'userNotes' | 'userPreferences';
+
+/**
+ * A record the session key could not open, kept aside instead of being
+ * deleted: it may open with another key, such as one recovered later
+ */
+export interface SetAsideRow {
+  id?: number;
+  table: SealedTable;
+  /** The row exactly as it was stored: readable IDs and links, and its ciphertext */
+  row: Record<string, unknown>;
+  /** 1 once it is in a downloaded file: folder sync no longer waits for it */
+  savedToFile: 0 | 1;
+}
+
 /**
  * HemoIO Database
  *
@@ -19,6 +35,7 @@ export class HemoIODatabase extends Dexie {
   userPreferences!: EntityTable<UserPreferences, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
   userNotes!: EntityTable<UserNote, 'id'>;
+  setAside!: EntityTable<SetAsideRow, 'id'>;
 
   constructor(name = 'HemoIO') {
     super(name);
@@ -97,6 +114,17 @@ export class HemoIODatabase extends Dexie {
           )
         );
       });
+
+    // Version 8: records the session key cannot open are moved aside, never
+    // deleted. Nothing is migrated.
+    this.version(8).stores({
+      labResults: '++id',
+      testValues: '++id, labResultId',
+      userPreferences: '++id',
+      settings: '++id',
+      userNotes: '++id, labResultId, testValueId',
+      setAside: '++id',
+    });
   }
 }
 

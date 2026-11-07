@@ -4,6 +4,7 @@ import {
   blockTestCatalog,
   expectTestCatalogError,
   setupOrUnlock,
+  startNewSetup,
 } from './steps/app.steps';
 import { SEED_TEST_VALUES, seedLabData } from './steps/data.steps';
 import {
@@ -21,6 +22,7 @@ async function setupUser(page: Page, password: string = 'MySecurePass123!') {
   await page.reload();
 
   // Complete setup wizard
+  await startNewSetup(page);
   const passwordInput = page.getByPlaceholder('Enter your password');
   const confirmInput = page.getByPlaceholder('Confirm your password');
 

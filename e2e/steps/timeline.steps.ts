@@ -156,7 +156,7 @@ export async function goToTrends(page: Page): Promise<void> {
  * All lab result cards on the timeline, in display order
  */
 export function labResultCards(page: Page): Locator {
-  return page.getByRole('main').getByRole('region', { name: /^Lab result from / });
+  return page.getByRole('main').getByRole('region', { name: /^Lab result (from|with no date)/ });
 }
 
 /**

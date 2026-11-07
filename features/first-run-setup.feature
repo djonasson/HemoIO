@@ -3,12 +3,34 @@ Feature: First-Run Setup Wizard
   I want to configure my HemoIO application
   So that I can start securely storing my lab results
 
+  Where the browser can open folders (the File System Access API), first run
+  begins by asking how to start: set HemoIO up anew, or from a folder copy
+  (see setup-from-folder.feature). The password step is then reached by
+  choosing "Set up HemoIO". Elsewhere setup begins on the password step.
+
   Scenario: New user sees setup wizard on first launch
     Given I am a new user
     And the application has no existing data
     When I open the application
     Then I should see the setup wizard
     And I should see a welcome message
+
+  Scenario: Where folders can be used, first run asks how to start
+    Given I am a new user
+    And the browser supports the File System Access API
+    When I open the application
+    Then I should be asked "How would you like to start?"
+    And I should be offered "Set up HemoIO" and "I already have a folder copy"
+    And "Set up HemoIO" should have focus
+    When I choose "Set up HemoIO"
+    Then I should be on the password step of the setup wizard
+
+  Scenario: Where folders cannot be used, setup starts on the password step
+    Given I am a new user
+    And the browser does not support the File System Access API
+    When I open the application
+    Then I should be on the password step of the setup wizard
+    And I should not be offered "I already have a folder copy"
 
   Scenario: User creates a password
     Given I am on the password step of the setup wizard
@@ -87,3 +109,67 @@ Feature: First-Run Setup Wizard
     Then I should see the login screen
     And my actual password should not be stored anywhere
     And only the password verification hash should be stored
+
+  Scenario: Setting up in two tabs makes one setup
+    Given I have opened HemoIO in two tabs of a new browser
+    When I finish setup in both tabs at the same time, with the same password
+    Then only one password lock should be created
+    And both tabs should open HemoIO with that lock
+    And the tab that finished second should tell me the choices made in it were not saved
+
+  Scenario: The tab whose password does not open the first setup is told to unlock
+    Given I have opened HemoIO in two tabs of a new browser
+    When I finish setup in both tabs at the same time, with different passwords
+    Then only one password lock should be created
+    And the tab that finished second should show the login screen
+    And it should tell me "HemoIO was set up in another tab. Unlock with that password."
+
+  Scenario: A tab still on setup leaves it once another tab has finished
+    Given I have opened HemoIO in two tabs of a new browser
+    And I have begun setup in the second tab
+    When I finish setup in the first tab
+    Then the second tab should show the login screen without being reloaded
+    And it should tell me that HemoIO was set up in another tab, and that the choices made in it were not saved
+
+  Scenario: Setup tells me when this browser already holds data
+    Given this browser holds HemoIO data from an earlier setup
+    And the password lock of that setup is gone
+    When I open the application
+    Then before anything else I should see "This browser already holds HemoIO data"
+    And I should be told "It was saved by an earlier setup whose password lock is gone, so this setup can't open it."
+    And "Keep it aside and set up anew" should be the default choice
+    And, where folders can be used, I should also be offered "I already have a folder copy"
+
+  Scenario: I can keep the existing data aside and set up anew
+    Given setup tells me this browser already holds HemoIO data
+    When I choose "Keep it aside and set up anew"
+    And I finish setup
+    Then the data should be kept aside, not deleted
+    And I should be told how many stored records can't be opened
+
+  # Unit-tested (AISettingsContext)
+  Scenario: The AI provider I choose in setup is used, whatever an earlier setup chose
+    Given setup tells me this browser already holds HemoIO data
+    When I choose "Keep it aside and set up anew"
+    And I choose Ollama as my AI provider in setup
+    And I finish setup
+    Then my AI provider should be Ollama
+
+  Scenario: I can clear the existing data, after confirming
+    Given setup tells me this browser already holds HemoIO data
+    When I choose "Clear it and set up anew…"
+    Then I should be asked to confirm before anything is cleared
+    When I cancel
+    Then nothing should be cleared
+    When I choose "Clear it and set up anew…" again
+    And I confirm with "Clear and set up anew"
+    Then the data should be cleared
+    And the earlier setup's storage choice and folder should be forgotten
+    And setup should go on to its first step
+    And after I finish setup no records should be kept aside
+
+  Scenario: Pressing Get Started twice sets up once
+    Given I am on the setup completion step
+    When I press Get Started twice quickly
+    Then the password lock should be created only once
+    And I should be taken to the dashboard

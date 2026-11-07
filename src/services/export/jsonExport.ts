@@ -80,10 +80,12 @@ export function sanitizeSettings(settings: Settings | null): Partial<Settings> |
 }
 
 /**
- * Convert Date objects to ISO strings for JSON serialization
+ * Convert Date objects to ISO strings for JSON serialization. An invalid
+ * date (toISOString would throw) is written as null, which a restore reads
+ * back as an invalid date.
  */
-function serializeDate(date: Date): string {
-  return date.toISOString();
+export function serializeDate(date: Date): string | null {
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**

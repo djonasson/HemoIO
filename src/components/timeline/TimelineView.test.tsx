@@ -94,6 +94,8 @@ describe('TimelineView', () => {
   it('should render loading state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: true,
       error: null,
       filters: {},
@@ -110,6 +112,8 @@ describe('TimelineView', () => {
   it('should render error state', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: 'Database connection failed',
       filters: {},
@@ -144,6 +148,8 @@ describe('TimelineView', () => {
     };
     vi.mocked(useLabResults).mockReturnValue({
       results: [result],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -164,6 +170,8 @@ describe('TimelineView', () => {
     const mockRefresh = vi.fn();
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: 'Database error',
       filters: {},
@@ -184,6 +192,8 @@ describe('TimelineView', () => {
   it('should render empty state when no results', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -204,6 +214,8 @@ describe('TimelineView', () => {
     const handleNavigate = vi.fn();
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -227,6 +239,8 @@ describe('TimelineView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       results: mockResults,
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -246,6 +260,8 @@ describe('TimelineView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       results: mockResults,
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -262,6 +278,8 @@ describe('TimelineView', () => {
   it('should show no results message when filters match nothing', () => {
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: { searchTerm: 'nonexistent' },
@@ -280,6 +298,8 @@ describe('TimelineView', () => {
     const mockSetFilters = vi.fn();
     vi.mocked(useLabResults).mockReturnValue({
       results: [],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: { searchTerm: 'nonexistent' },
@@ -301,6 +321,8 @@ describe('TimelineView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       results: mockResults,
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -343,6 +365,8 @@ describe('TimelineView', () => {
         const [results, setResults] = useState(initial);
         return {
           results,
+          undatedResults: [],
+          hiddenUndatedCount: 0,
           isLoading: false,
           error: null,
           filters: {},
@@ -396,6 +420,8 @@ describe('TimelineView', () => {
 
     vi.mocked(useLabResults).mockReturnValue({
       results: mockResults,
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       isLoading: false,
       error: null,
       filters: {},
@@ -417,6 +443,8 @@ describe('TimelineView', () => {
     async function deleteFirstResult(deleteResult: () => Promise<void>) {
       vi.mocked(useLabResults).mockReturnValue({
         results: [createMockResult(1, '2024-01-15', 'Quest Diagnostics')],
+        undatedResults: [],
+        hiddenUndatedCount: 0,
         isLoading: false,
         error: null,
         filters: {},
@@ -465,8 +493,70 @@ describe('TimelineView', () => {
     });
   });
 
+  it('lists undated results last under "No date"', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [createMockResult(1, '2024-01-15', 'Quest Diagnostics')],
+      undatedResults: [createMockResult(2, 'garbage', 'Undated Lab')],
+      hiddenUndatedCount: 0,
+      isLoading: false,
+      error: null,
+      filters: {},
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
+
+    const heading = screen.getByRole('heading', { name: 'No date' });
+    const dated = screen.getByText('Quest Diagnostics');
+    const undated = screen.getByText('Undated Lab');
+    expect(dated.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(heading.compareDocumentPosition(undated) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says undated results are hidden while a date filter is set', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [createMockResult(1, '2024-01-15', 'Quest Diagnostics')],
+      undatedResults: [],
+      hiddenUndatedCount: 2,
+      isLoading: false,
+      error: null,
+      filters: { startDate: new Date('2024-01-01') },
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
+
+    expect(
+      screen.getByText('2 results without a date are hidden while a date range is set.')
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing of undated results when none are hidden', () => {
+    vi.mocked(useLabResults).mockReturnValue({
+      results: [createMockResult(1, '2024-01-15', 'Quest Diagnostics')],
+      undatedResults: [],
+      hiddenUndatedCount: 0,
+      isLoading: false,
+      error: null,
+      filters: { startDate: new Date('2024-01-01') },
+      setFilters: vi.fn(),
+      refresh: vi.fn(),
+      deleteResult: vi.fn(),
+    });
+
+    renderWithProviders(<TimelineView onNavigateToImport={() => {}} />);
+
+    expect(screen.queryByText(/without a date/)).not.toBeInTheDocument();
+  });
+
   it('opens the requested lab result', () => {
     vi.mocked(useLabResults).mockReturnValue({
+      undatedResults: [],
+      hiddenUndatedCount: 0,
       results: [
         createMockResult(1, '2024-01-15', 'Quest Diagnostics'),
         createMockResult(2, '2024-03-20', 'LabCorp'),

@@ -19,6 +19,11 @@ interface StorageStepProps {
   selectedDirectoryName?: string | null;
   /** Called when a directory is selected */
   onDirectorySelect?: (directoryName: string) => void;
+  /**
+   * Shows the folder picker; the folder is kept only once setup completes.
+   * Without it, a provider of its own picks and keeps the folder at once.
+   */
+  selectDirectory?: () => Promise<FileSystemDirectoryHandle | null>;
 }
 
 interface StorageOptionProps {
@@ -108,6 +113,7 @@ function StorageStep({
   onStorageChange,
   selectedDirectoryName,
   onDirectorySelect,
+  selectDirectory,
 }: StorageStepProps): React.ReactNode {
   const [isSelectingDirectory, setIsSelectingDirectory] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
@@ -120,8 +126,9 @@ function StorageStep({
     setDirectoryError(null);
 
     try {
-      const provider = new FileSystemStorageProvider();
-      const handle = await provider.selectDirectory();
+      const handle = selectDirectory
+        ? await selectDirectory()
+        : await new FileSystemStorageProvider().selectDirectory();
 
       if (handle) {
         onDirectorySelect?.(handle.name);
@@ -135,7 +142,7 @@ function StorageStep({
     } finally {
       setIsSelectingDirectory(false);
     }
-  }, [onDirectorySelect]);
+  }, [onDirectorySelect, selectDirectory]);
 
   return (
     <Stack gap="lg">

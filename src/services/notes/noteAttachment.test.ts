@@ -5,8 +5,13 @@ import type { UserNote } from '@/types';
 const lookup: AttachmentLookup = {
   labResults: new Map([
     [1, { labName: 'Quest Diagnostics', date: new Date('2024-01-15T12:00:00Z') }],
+    // A result whose date could not be read
+    [3, { labName: 'LabCorp', date: new Date(NaN) }],
   ]),
-  testValues: new Map([[2, { value: 125, unit: 'mg/dL', labResultId: 1 }]]),
+  testValues: new Map([
+    [2, { value: 125, unit: 'mg/dL', labResultId: 1 }],
+    [4, { value: 5.4, unit: '%', labResultId: 3 }],
+  ]),
   biomarkerName: (key) => (key === 'glucose' ? 'Glucose' : key),
 };
 
@@ -15,6 +20,22 @@ function note(extra: Partial<UserNote>): UserNote {
 }
 
 describe('describeNoteAttachment', () => {
+  it('names an undated lab result "No date", never an invalid date', () => {
+    expect(describeNoteAttachment(note({ labResultId: 3 }), lookup)).toEqual({
+      kind: 'lab-result',
+      label: 'LabCorp · No date',
+      labResultId: 3,
+    });
+  });
+
+  it('a measurement on an undated result leads to its test, with no date to show on a trend', () => {
+    expect(describeNoteAttachment(note({ biomarkerKey: 'glucose', testValueId: 4 }), lookup)).toEqual({
+      kind: 'biomarker',
+      label: 'Glucose · 5.4 % · No date',
+      biomarkerKey: 'glucose',
+    });
+  });
+
   it('describes a measurement note', () => {
     expect(
       describeNoteAttachment(note({ biomarkerKey: 'glucose', testValueId: 2, labResultId: 1 }), lookup)

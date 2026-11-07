@@ -14,6 +14,7 @@ import {
   type SavedValue,
 } from '@hooks/usePreferences';
 import { learnFromSaved } from '@data/loinc/learnedTests';
+import { logFailure } from '@/utils/logFailure';
 import type { UserPreferences } from '@/types';
 
 interface Maps {
@@ -62,7 +63,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
         setMaps(storedRef.current);
         setIsLoaded(true);
       })
-      .catch(() => console.error('Failed to load preferences'));
+      .catch(() => logFailure('Failed to load preferences'));
     return () => {
       cancelled = true;
     };

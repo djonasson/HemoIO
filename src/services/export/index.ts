@@ -25,6 +25,14 @@ export {
 } from './jsonExport';
 
 export {
+  buildSetAsideFile,
+  saveSealedFile,
+  setAsideFileName,
+  SET_ASIDE_FILE_FORMAT,
+  type SealedFileSave,
+} from './setAsideExport';
+
+export {
   exportToEncryptedJson,
   generateEncryptedBackupFilename,
   downloadEncryptedBackup,

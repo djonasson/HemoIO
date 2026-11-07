@@ -12,11 +12,14 @@ import { useAuth } from '@contexts';
 import { useFormKeyboardSubmit } from '@hooks';
 import { PasswordStrengthMeter } from '@components/common/PasswordStrengthMeter';
 import { isPasswordStepValid } from '@components/setup/passwordUtils';
+import { isFolderStorageOn } from '@data/storage/storageChoice';
+import { pushLockToFolder } from '@services/sync/folderLockPush';
 
 const WRONG_PASSWORD = 'Current password is incorrect';
 const SAME_PASSWORD = 'New password must be different from your current password';
 
-type Outcome = 'success' | 'failed' | null;
+/** 'folder-behind': changed, but the folder copy still carries the old lock */
+type Outcome = 'success' | 'folder-behind' | 'changed-elsewhere' | 'failed' | null;
 
 export function ChangePassword(): React.ReactNode {
   const { changePassword } = useAuth();
@@ -56,6 +59,9 @@ export function ChangePassword(): React.ReactNode {
       setOutcome(null);
       setCurrentError(null);
       const result = await changePassword(currentPassword, newPassword);
+      // The new lock goes into the folder at once, whatever holds the data
+      // there: until it does, the old password still opens the folder copy
+      const folderBehind = result.ok && isFolderStorageOn() && !(await pushLockToFolder());
       submittingRef.current = false;
 
       setIsSubmitting(false);
@@ -63,9 +69,11 @@ export function ChangePassword(): React.ReactNode {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setOutcome('success');
+        setOutcome(folderBehind ? 'folder-behind' : 'success');
       } else if (result.reason === 'wrong_password') {
         setCurrentError(WRONG_PASSWORD);
+      } else if (result.reason === 'changed_elsewhere') {
+        setOutcome('changed-elsewhere');
       } else if (result.reason === 'failed') {
         setOutcome('failed');
       }
@@ -85,6 +93,18 @@ export function ChangePassword(): React.ReactNode {
       {outcome === 'success' && (
         <Alert role="status" color="green" variant="light" icon={<IconCheck size={16} />}>
           Password changed. Use your new password next time you unlock HemoIO.
+        </Alert>
+      )}
+      {outcome === 'folder-behind' && (
+        <Alert role="status" color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
+          Password changed. HemoIO could not update the lock in your folder yet; it will try again
+          at the next sync.
+        </Alert>
+      )}
+      {outcome === 'changed-elsewhere' && (
+        <Alert role="alert" color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+          Password not changed: it was changed meanwhile, in another tab or on another computer. Try
+          again with the current password.
         </Alert>
       )}
       {outcome === 'failed' && (

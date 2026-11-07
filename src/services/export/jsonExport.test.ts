@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   exportToJson,
+  serializeDate,
   generateBackupFilename,
   downloadJson,
   getBackupStats,
@@ -119,6 +120,20 @@ describe('jsonExport', () => {
       const data = JSON.parse(json) as BackupData;
 
       expect(data.labResults).toHaveLength(2);
+    });
+
+    it('serializeDate writes a valid date as ISO and an invalid one as null', () => {
+      expect(serializeDate(new Date('2024-01-15T10:00:00Z'))).toBe('2024-01-15T10:00:00.000Z');
+      expect(serializeDate(new Date('garbage'))).toBeNull();
+    });
+
+    it('writes an invalid date as null instead of failing', () => {
+      const sources = createMockDataSources();
+      sources.labResults[0] = { ...sources.labResults[0], date: new Date('garbage') };
+      const data = JSON.parse(exportToJson(sources)) as { labResults: { date: unknown }[] };
+
+      expect(data.labResults).toHaveLength(2);
+      expect(data.labResults[0].date).toBeNull();
     });
 
     it('should include all test values', () => {

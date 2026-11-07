@@ -57,13 +57,38 @@ export interface ParsedBackupData {
 }
 
 /**
- * Parse a date string or return as-is if already a Date
+ * Parse a date string or return as-is if already a Date. A missing, null or
+ * unreadable value gives an invalid Date, never 1970 (new Date(null)).
  */
-function parseDate(value: Date | string): Date {
+export function parseDate(value: unknown): Date {
   if (value instanceof Date) {
     return value;
   }
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return new Date(NaN);
+  }
   return new Date(value);
+}
+
+function isValidDate(date: Date): boolean {
+  return !Number.isNaN(date.getTime());
+}
+
+/**
+ * The two stamps of a record. An invalid createdAt is repaired from
+ * updatedAt, else the backup's exportedAt, else the restore time; an invalid
+ * updatedAt from createdAt. A record is never refused for them.
+ */
+function parseStamps(
+  data: { createdAt: unknown; updatedAt: unknown },
+  exportedAt: Date
+): { createdAt: Date; updatedAt: Date } {
+  const updated = parseDate(data.updatedAt);
+  let createdAt = parseDate(data.createdAt);
+  if (!isValidDate(createdAt)) {
+    createdAt = isValidDate(updated) ? updated : isValidDate(exportedAt) ? exportedAt : new Date();
+  }
+  return { createdAt, updatedAt: isValidDate(updated) ? updated : createdAt };
 }
 
 /** Serialized data structure (dates as strings) */
@@ -88,14 +113,14 @@ interface SerializedUserNote extends Omit<UserNote, 'createdAt' | 'updatedAt'> {
  * Note: We preserve the original id for mapping purposes during restore.
  * The id will be stripped when actually inserting into the database.
  */
-function deserializeLabResult(data: SerializedLabResult): LabResult {
+function deserializeLabResult(data: SerializedLabResult, exportedAt: Date): LabResult {
   return {
     ...data,
     // Keep original id for mapping during restore (will be stripped on insert)
     id: data.id,
+    // Kept as it is, valid or not: an undated result is listed under "No date"
     date: parseDate(data.date),
-    createdAt: parseDate(data.createdAt),
-    updatedAt: parseDate(data.updatedAt),
+    ...parseStamps(data, exportedAt),
   };
 }
 
@@ -103,15 +128,14 @@ function deserializeLabResult(data: SerializedLabResult): LabResult {
  * Deserialize test value from backup
  * Note: We preserve original ids for mapping purposes during restore.
  */
-function deserializeTestValue(data: SerializedTestValue): TestValue {
+function deserializeTestValue(data: SerializedTestValue, exportedAt: Date): TestValue {
   return {
     ...data,
     // Keep original id for reference (will be stripped on insert)
     id: data.id,
     // Keep labResultId for mapping (will be updated during restore)
     labResultId: data.labResultId,
-    createdAt: parseDate(data.createdAt),
-    updatedAt: parseDate(data.updatedAt),
+    ...parseStamps(data, exportedAt),
   };
 }
 
@@ -119,15 +143,14 @@ function deserializeTestValue(data: SerializedTestValue): TestValue {
  * Deserialize user note from backup
  * Note: We preserve original ids for reference during restore.
  */
-function deserializeUserNote(data: SerializedUserNote): UserNote {
+function deserializeUserNote(data: SerializedUserNote, exportedAt: Date): UserNote {
   return {
     ...data,
     // Keep original id for reference (will be stripped on insert)
     id: data.id,
     // Keep labResultId for mapping (may need to be updated during restore)
     labResultId: data.labResultId,
-    createdAt: parseDate(data.createdAt),
-    updatedAt: parseDate(data.updatedAt),
+    ...parseStamps(data, exportedAt),
   };
 }
 
@@ -210,21 +233,23 @@ export function parseBackupData(data: unknown): ParsedBackupData {
   assertSupportedBackupVersion(data.schemaVersion);
   assertKnownTestKeys(data);
 
+  const exportedAt = parseDate(data.exportedAt);
+
   // Deserialize data (cast since JSON parsing gives strings for dates)
   return {
     labResults: data.labResults.map((lr) =>
-      deserializeLabResult(lr as unknown as SerializedLabResult)
+      deserializeLabResult(lr as unknown as SerializedLabResult, exportedAt)
     ),
     testValues: data.testValues.map((tv) =>
-      deserializeTestValue(tv as unknown as SerializedTestValue)
+      deserializeTestValue(tv as unknown as SerializedTestValue, exportedAt)
     ),
     userNotes: data.userNotes.map((note) =>
-      deserializeUserNote(note as unknown as SerializedUserNote)
+      deserializeUserNote(note as unknown as SerializedUserNote, exportedAt)
     ),
     settings: data.settings,
     userPreferences: data.userPreferences,
     schemaVersion: data.schemaVersion,
-    exportedAt: new Date(data.exportedAt),
+    exportedAt,
   };
 }
 

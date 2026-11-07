@@ -8,26 +8,93 @@
  * Browser support: Chrome/Edge 86+ only (Firefox and Safari not supported)
  */
 
+import { notifyFolderBackupsChanged } from './folderAccessEvents';
 import type { StorageProvider } from '@/types';
 
 /**
- * The folder copy: the encrypted JSON sync file
- * (`{ version, exportedAt, data }`, see `services/sync/folderSync.ts`),
- * AES-GCM encrypted with the session data key, IV first.
+ * The folder copy: the JSON sync file (`{ version, exportedAt, revision,
+ * ancestors, data }`, see `services/sync/folderSync.ts`), sealed in the
+ * envelope beside the password lock (`services/sync/folderEnvelope.ts`)
  */
 export const FOLDER_DATA_FILE_NAME = 'hemoio-data.encrypted';
 
 /**
- * An earlier folder copy, to undo a bad write from: the bytes of a copy a
- * write replaced, unchanged, so it has the same format and encryption as
- * FOLDER_DATA_FILE_NAME. The sync decides which replaced copy is kept here
- * (never one holding less than the copy already here, see
- * `services/sync/folderSync.ts`). Only one is kept, so a synced folder does
- * not fill up with copies of health data.
+ * An earlier folder copy, to undo a bad write from: the content of a copy a
+ * write replaced, sealed again in the same envelope but without the lock
+ * (only the current copy carries it). The sync decides which replaced copy
+ * is kept here (never one holding less than half of the copy already here,
+ * see `services/sync/folderSync.ts`). Only one is kept, so a synced folder
+ * does not fill up with copies of health data.
  */
 export const FOLDER_PREVIOUS_FILE_NAME = 'hemoio-data.previous.encrypted';
 
+/**
+ * The current password lock, beside the copy, as plain JSON (see
+ * `services/sync/folderLockFile.ts`): rewritten whenever the copy's lock is,
+ * so recovery can unwrap the data key when the copy itself is gone or damaged
+ */
+export const FOLDER_LOCK_FILE_NAME = 'hemoio-lock.json';
+
+/**
+ * The folder's dated backups, in a folder of their own beside the copy: the
+ * side of a conflict the user did not choose, and this computer's data kept
+ * before a newer copy was loaded, sealed like the copy but without the lock
+ * (see `services/sync/folderBackups.ts`)
+ */
+export const FOLDER_BACKUPS_DIR_NAME = 'hemoio-backups';
+
 const HANDLE_STORAGE_KEY = 'hemoio_filesystem_handle';
+
+/** The database that keeps the chosen folder's handle; the folder itself is elsewhere */
+const HANDLE_DATABASE_NAME = 'HemoIO-FileSystemHandles';
+const HANDLE_STORE_NAME = 'handles';
+
+function openHandleDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DATABASE_NAME, 1);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(HANDLE_STORE_NAME)) {
+        db.createObjectStore(HANDLE_STORE_NAME);
+      }
+    };
+  });
+}
+
+/**
+ * One request on the handle store, in a transaction of its own: resolves
+ * with the request's result once the transaction is done, rejects when it
+ * fails. The database is closed either way.
+ */
+export async function inHandleStore<T>(
+  mode: IDBTransactionMode,
+  request: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  const db = await openHandleDatabase();
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(HANDLE_STORE_NAME, mode);
+      const pending = request(transaction.objectStore(HANDLE_STORE_NAME));
+      transaction.oncomplete = () => resolve(pending.result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Forgets which folder was chosen: empties the handle store. The folder and
+ * its files are not touched. Rejects when the store cannot be emptied.
+ */
+export async function clearFolderHandleStore(): Promise<void> {
+  await inHandleStore('readwrite', (store) => store.clear());
+}
 
 /**
  * Permission state for directory access
@@ -68,6 +135,67 @@ export class FileSystemStorageProvider implements StorageProvider {
   /** The previous copy's bytes, or null when the folder holds none */
   async loadPrevious(): Promise<ArrayBuffer | null> {
     return this.readFile(await this.getGrantedHandle(), FOLDER_PREVIOUS_FILE_NAME);
+  }
+
+  /** The lock file's bytes, or null when the folder holds none */
+  async loadLock(): Promise<ArrayBuffer | null> {
+    return this.readFile(await this.getGrantedHandle(), FOLDER_LOCK_FILE_NAME);
+  }
+
+  /** Write the lock file */
+  async saveLock(bytes: ArrayBuffer): Promise<void> {
+    await this.writeFile(await this.getGrantedHandle(), FOLDER_LOCK_FILE_NAME, bytes);
+  }
+
+  /**
+   * The names of the files in the backups folder; none when there is no such
+   * folder. An empty file, or one that cannot be read, is left out: there is
+   * nothing in it to restore, and it must not count as one of the backups
+   * kept when the oldest are pruned.
+   */
+  async listBackups(): Promise<string[]> {
+    const backups = await this.getBackupsHandle(false);
+    if (!backups) return [];
+    const files: FileSystemFileHandle[] = [];
+    for await (const [, entry] of backups.entries()) {
+      if (entry.kind === 'file') files.push(entry as FileSystemFileHandle);
+    }
+    // Only the sizes: no file's content is read
+    const sizes = await Promise.all(files.map((file) => file.getFile().then((f) => f.size, () => 0)));
+    return files.filter((_, i) => sizes[i] > 0).map((file) => file.name);
+  }
+
+  /** Write a backup into the backups folder, made when missing */
+  async saveBackup(name: string, bytes: ArrayBuffer): Promise<void> {
+    const backups = await this.getBackupsHandle(true);
+    await this.writeFile(backups!, name, bytes);
+    notifyFolderBackupsChanged();
+  }
+
+  /** A backup's bytes; throws when there is no such backup */
+  async loadBackup(name: string): Promise<ArrayBuffer> {
+    const backups = await this.getBackupsHandle(false);
+    const bytes = backups && (await this.readFile(backups, name));
+    if (!bytes) throw new Error('No such backup');
+    return bytes;
+  }
+
+  async deleteBackup(name: string): Promise<void> {
+    const backups = await this.getBackupsHandle(false);
+    if (!backups) return;
+    await backups.removeEntry(name);
+    notifyFolderBackupsChanged();
+  }
+
+  /** The backups folder; null when it is missing and not to be made */
+  private async getBackupsHandle(create: boolean): Promise<FileSystemDirectoryHandle | null> {
+    const handle = await this.getGrantedHandle();
+    try {
+      return await handle.getDirectoryHandle(FOLDER_BACKUPS_DIR_NAME, { create });
+    } catch (error) {
+      if (!create && error instanceof DOMException && error.name === 'NotFoundError') return null;
+      throw error;
+    }
   }
 
   /**
@@ -142,29 +270,41 @@ export class FileSystemStorageProvider implements StorageProvider {
 
   /**
    * The browser writes to a temporary file and swaps it in on close, so a
-   * failed write leaves the file as it was
+   * failed write leaves the file as it was. A file the write created is
+   * removed again: it would be left empty.
    */
   private async writeFile(
     handle: FileSystemDirectoryHandle,
     name: string,
     data: ArrayBuffer
   ): Promise<void> {
+    const existed = await handle.getFileHandle(name).then(
+      () => true,
+      () => false
+    );
     const fileHandle = await handle.getFileHandle(name, { create: true });
-    const writable = await fileHandle.createWritable();
     try {
-      await writable.write(data);
-      await writable.close();
+      const writable = await fileHandle.createWritable();
+      try {
+        await writable.write(data);
+        await writable.close();
+      } catch (error) {
+        // Abort can fail on a stream already closing; the write's error is the one to report
+        await writable.abort().catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
-      // Abort can fail on a stream already closing; the write's error is the one to report
-      await writable.abort().catch(() => undefined);
+      if (!existed) await handle.removeEntry(name).catch(() => undefined);
       throw error;
     }
   }
 
   /**
-   * Show the directory picker and store the selected handle
+   * Show the directory picker and store the selected handle. With
+   * `persist: false` it is kept in this provider only, until
+   * persistDirectory: so a choice that is not taken up changes nothing.
    */
-  async selectDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  async selectDirectory({ persist = true }: { persist?: boolean } = {}): Promise<FileSystemDirectoryHandle | null> {
     try {
       const handle = await window.showDirectoryPicker({
         mode: 'readwrite',
@@ -172,7 +312,7 @@ export class FileSystemStorageProvider implements StorageProvider {
       });
 
       this.directoryHandle = handle;
-      await this.persistHandle(handle);
+      if (persist) await this.persistHandle(handle);
 
       return handle;
     } catch (error) {
@@ -187,6 +327,14 @@ export class FileSystemStorageProvider implements StorageProvider {
       }
       throw error;
     }
+  }
+
+  /** Store the directory chosen with `persist: false`, as the one HemoIO uses */
+  async persistDirectory(): Promise<void> {
+    if (!this.directoryHandle) {
+      throw new Error('No directory selected. Please select a folder first.');
+    }
+    await this.persistHandle(this.directoryHandle);
   }
 
   /**
@@ -267,17 +415,7 @@ export class FileSystemStorageProvider implements StorageProvider {
    * Persist the directory handle to IndexedDB
    */
   private async persistHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-    const db = await this.openIndexedDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('handles', 'readwrite');
-      const store = transaction.objectStore('handles');
-      const request = store.put(handle, HANDLE_STORAGE_KEY);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-
-      transaction.oncomplete = () => db.close();
-    });
+    await inHandleStore('readwrite', (store) => store.put(handle, HANDLE_STORAGE_KEY));
   }
 
   /**
@@ -285,19 +423,10 @@ export class FileSystemStorageProvider implements StorageProvider {
    */
   private async loadHandle(): Promise<FileSystemDirectoryHandle | null> {
     try {
-      const db = await this.openIndexedDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction('handles', 'readonly');
-        const store = transaction.objectStore('handles');
-        const request = store.get(HANDLE_STORAGE_KEY);
-
-        request.onsuccess = () => {
-          resolve(request.result ?? null);
-        };
-        request.onerror = () => reject(request.error);
-
-        transaction.oncomplete = () => db.close();
-      });
+      const handle = await inHandleStore<FileSystemDirectoryHandle | undefined>('readonly', (store) =>
+        store.get(HANDLE_STORAGE_KEY)
+      );
+      return handle ?? null;
     } catch {
       return null;
     }
@@ -308,38 +437,9 @@ export class FileSystemStorageProvider implements StorageProvider {
    */
   private async deletePersistedHandle(): Promise<void> {
     try {
-      const db = await this.openIndexedDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction('handles', 'readwrite');
-        const store = transaction.objectStore('handles');
-        const request = store.delete(HANDLE_STORAGE_KEY);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-
-        transaction.oncomplete = () => db.close();
-      });
+      await inHandleStore('readwrite', (store) => store.delete(HANDLE_STORAGE_KEY));
     } catch {
       // Ignore errors when deleting
     }
-  }
-
-  /**
-   * Open IndexedDB for handle storage
-   */
-  private openIndexedDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('HemoIO-FileSystemHandles', 1);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains('handles')) {
-          db.createObjectStore('handles');
-        }
-      };
-    });
   }
 }

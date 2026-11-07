@@ -18,14 +18,7 @@ import {
   ENCRYPTED_BACKUP_EXTENSION,
 } from '@/types/backup';
 import { encryptForBackup } from '@data/encryption/backupEncryption';
-import { BACKUP_SCHEMA_VERSION, sanitizeSettings, type ExportDataSources } from './jsonExport';
-
-/**
- * Serialize date to ISO string
- */
-function serializeDate(date: Date): string {
-  return date.toISOString();
-}
+import { BACKUP_SCHEMA_VERSION, sanitizeSettings, serializeDate, type ExportDataSources } from './jsonExport';
 
 /**
  * Get current application version

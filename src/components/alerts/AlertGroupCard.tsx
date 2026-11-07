@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 import { indicatorColor, type TrendDirection } from '@services/alerts';
 import { RelativeTime } from '@components/common/RelativeTime';
+import { pluralize } from '@/utils/pluralize';
 import { EarlierResult } from './EarlierResult';
 import type { BiomarkerAlert, GroupedAlert } from '@hooks/useAlerts';
 
@@ -53,9 +54,6 @@ function statusIcon(alert: BiomarkerAlert, direction?: TrendDirection): React.Re
   return <IconAlertCircle size={16} />;
 }
 
-function plural(count: number, word: string): string {
-  return `${count} ${count === 1 ? word : `${word}s`}`;
-}
 
 export function AlertGroupCard({
   group,
@@ -83,8 +81,8 @@ export function AlertGroupCard({
         : 'Latest result has no reference range';
   const counts = (separator: string): string =>
     newCount > 0
-      ? `${plural(resultCount, 'result')}${separator}${newCount} new`
-      : plural(resultCount, 'result');
+      ? `${pluralize(resultCount, 'result')}${separator}${newCount} new`
+      : pluralize(resultCount, 'result');
   const open = onOpen ? () => onOpen(headline) : undefined;
 
   return (
@@ -219,7 +217,7 @@ export function AlertGroupCard({
                 <IconChevronDown size={14} aria-hidden="true" />
               )}
               <Text size="xs" c="var(--mantine-color-anchor)">
-                {opened ? 'Hide earlier results' : `Show ${plural(earlier.length, 'earlier result')}`}
+                {opened ? 'Hide earlier results' : `Show ${pluralize(earlier.length, 'earlier result')}`}
               </Text>
             </Group>
           </UnstyledButton>
