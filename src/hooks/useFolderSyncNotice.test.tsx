@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MantineProvider } from '@mantine/core';
+import type { ReactNode } from 'react';
 import { notifications } from '@mantine/notifications';
-import { FOLDER_SYNC_NOTICE_ID, useFolderSyncNotice } from './useFolderSyncNotice';
+import { FOLDER_SYNC_NOTICE_ID, useFolderSyncNotice, type FolderSyncNoticeActions } from './useFolderSyncNotice';
 import type { FolderSyncIssue } from './useFilesystemSync';
 
 vi.mock('@mantine/notifications', () => ({
@@ -32,13 +35,13 @@ describe('useFolderSyncNotice', () => {
     expect(notice.autoClose).toBe(false);
   });
 
-  it('tells the user to choose another folder when the copy cannot be opened', () => {
+  it('tells the user to choose another folder or replace the copy when it cannot be opened', () => {
     renderHook(() => useFolderSyncNotice('unreadable'));
 
     const notice = vi.mocked(notifications.show).mock.calls[0][0];
     expect(notice.message).toMatch(/cannot be read/);
     expect(notice.message).toMatch(/saved by a different HemoIO setup, or it is damaged/);
-    expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
+    expect(notice.message).toMatch(/choose another folder, or replace the folder copy with this computer's data/);
   });
 
   it('the another-setup message points to Start over', () => {
@@ -77,7 +80,7 @@ describe('useFolderSyncNotice', () => {
     const notice = vi.mocked(notifications.show).mock.calls[0][0];
     expect(notice.message).toMatch(/saved before tests were identified by LOINC/);
     expect(notice.message).toMatch(/left it as it is/);
-    expect(notice.message).toMatch(/choose a different folder in Settings > Data/);
+    expect(notice.message).toMatch(/choose another folder, or replace the folder copy/);
   });
 
   it('says when the folder could not be written, and that the browser keeps the data', () => {
@@ -112,5 +115,70 @@ describe('useFolderSyncNotice', () => {
     rerender({ reason: null });
 
     expect(notifications.hide).toHaveBeenCalledWith(FOLDER_SYNC_NOTICE_ID);
+  });
+
+  describe('with what can be done about a copy that cannot be read', () => {
+    const actions = (): FolderSyncNoticeActions => ({
+      chooseFolder: vi.fn(async () => true),
+      replace: vi.fn(),
+    });
+
+    /** The notice's message, rendered as the notifications would */
+    function renderNotice(): void {
+      const { message } = vi.mocked(notifications.show).mock.calls[0][0];
+      render(<MantineProvider env="test">{message as ReactNode}</MantineProvider>);
+    }
+
+    it.each([
+      ['unreadable', true],
+      ['before-loinc', true],
+      ['another-setup', false],
+    ] as const)('offers to choose another folder for %s, and to replace it: %s', (issue, replace) => {
+      renderHook(() => useFolderSyncNotice(issue, actions()));
+      renderNotice();
+
+      expect(screen.getByRole('button', { name: 'Choose another folder' })).toBeInTheDocument();
+      expect(screen.queryAllByRole('button', { name: 'Replace folder copy…' })).toHaveLength(replace ? 1 : 0);
+    });
+
+    it.each(['newer', 'empty', 'set-aside', 'failed'] as const)('offers nothing for %s', (issue) => {
+      renderHook(() => useFolderSyncNotice(issue, actions()));
+
+      // Plain text, as before
+      expect(typeof vi.mocked(notifications.show).mock.calls[0][0].message).toBe('string');
+    });
+
+    it('the buttons call the latest actions, for the issue shown', async () => {
+      const first = actions();
+      const latest = actions();
+      const { rerender } = renderHook(
+        ({ given }: { given: FolderSyncNoticeActions }) => useFolderSyncNotice('unreadable', given),
+        { initialProps: { given: first } }
+      );
+      rerender({ given: latest });
+      renderNotice();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
+
+      expect(latest.chooseFolder).toHaveBeenCalledTimes(1);
+      expect(latest.replace).toHaveBeenCalledWith('unreadable');
+      expect(first.chooseFolder).not.toHaveBeenCalled();
+      // Not shown again for new callbacks
+      expect(notifications.show).toHaveBeenCalledTimes(1);
+    });
+
+    it('says, without the reason, when the folder could not be chosen', async () => {
+      const given = actions();
+      vi.mocked(given.chooseFolder).mockRejectedValue(new Error('No access to /home/someone'));
+      renderHook(() => useFolderSyncNotice('another-setup', given));
+      renderNotice();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('The folder could not be chosen. Nothing was changed');
+      expect(alert).not.toHaveTextContent('/home/someone');
+    });
   });
 });

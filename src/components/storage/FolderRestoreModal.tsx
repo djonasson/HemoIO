@@ -3,7 +3,9 @@
  *
  * Asks what happens to the copy in the folder when this browser has no lab
  * data: restore it, decide later, or let sync replace it. Shown before folder
- * sync writes anything, so the copy is safe whatever the user picks.
+ * sync writes anything, so the copy is safe whatever the user picks. A copy
+ * that cannot be read comes with what can be done about it: choose another
+ * folder, replace it, or read the folder again (folderCopyProblemActions).
  */
 
 import { useState } from 'react';
@@ -13,7 +15,10 @@ import { formatDateTime } from '@/utils/formatDateTime';
 import { pluralize } from '@/utils/pluralize';
 import type { FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
+import type { FolderCopyProblem } from '@services/sync';
 import { folderCopyProblemMessage } from './folderCopyProblemMessage';
+import { folderCopyProblemActions, type FolderProblemActions } from './folderProblemActions';
+import { ReplaceFolderCopyConfirm } from './ReplaceFolderCopyConfirm';
 
 export interface FolderRestoreModalProps {
   prompt: FolderRestorePrompt | null;
@@ -25,27 +30,50 @@ export interface FolderRestoreModalProps {
   onRestore: (data: ParsedBackupData) => Promise<boolean>;
   /**
    * Keep the folder copy as a dated backup, so that the sync may write over
-   * it; rejects, choosing nothing, when the backup cannot be saved
+   * it; rejects, choosing nothing, when the backup cannot be saved. For a
+   * copy offered and for one that cannot be read alike.
    */
   onReplace: () => Promise<void>;
   onDecide: (decision: FolderRestoreDecision) => void;
+  /**
+   * Show the folder picker; called straight from the click, which the
+   * picker needs. Resolves false when cancelled (the question stays), and
+   * rejects when the folder could not be chosen.
+   */
+  onChooseFolder: () => Promise<boolean>;
+  /** Look at the folder again: "Try again" when the file could not be read */
+  onRecheck: () => void;
 }
 
 const OFFER_TITLE = 'Restore your data from the folder?';
 const UNREADABLE_TITLE = "The folder copy can't be read";
 const REPLACE_TITLE = 'Replace the folder copy?';
 
+/** What follows the problem: the file is untouched, and the ways on */
+function unreadableHint(reason: FolderCopyProblem, actions: FolderProblemActions): string {
+  if (actions.replace !== false) {
+    return "The file has not been changed. To keep syncing, choose another folder, or replace the folder copy with this computer's data.";
+  }
+  if (actions.tryAgain) return 'The file has not been changed. Try again, or choose another folder.';
+  // The explanation of another setup's copy says already that it is not written over
+  if (reason === 'another-setup') return 'The file has not been changed. To keep syncing, choose another folder.';
+  return 'The file has not been changed, and HemoIO will not write over it.';
+}
+
 export function FolderRestoreModal({
   prompt,
   onRestore,
   onReplace,
   onDecide,
+  onChooseFolder,
+  onRecheck,
 }: FolderRestoreModalProps): React.ReactNode {
   const [confirmingReplace, setConfirmingReplace] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [isReplacing, setIsReplacing] = useState(false);
   const [replaceFailed, setReplaceFailed] = useState(false);
+  const [chooseFailed, setChooseFailed] = useState(false);
   // The last prompt stays on screen while the dialog closes; a new one starts afresh
   const [shown, setShown] = useState(prompt);
   if (prompt !== null && prompt !== shown) {
@@ -53,8 +81,16 @@ export function FolderRestoreModal({
     setConfirmingReplace(false);
     setRestoreFailed(false);
     setReplaceFailed(false);
+    setChooseFailed(false);
   }
   const decide = onDecide;
+
+  const handleChooseFolder = (): void => {
+    setChooseFailed(false);
+    // Nothing awaited first: the picker needs the click's user activation.
+    // A folder chosen is looked at afresh, which closes this question.
+    onChooseFolder().catch(() => setChooseFailed(true));
+  };
 
   const handleRestore = async (data: ParsedBackupData): Promise<void> => {
     setIsRestoring(true);
@@ -99,46 +135,45 @@ export function FolderRestoreModal({
 
     if (confirmingReplace) {
       return (
-        <>
-          <Text size="sm">
-            From now on HemoIO saves this browser&apos;s data to {folder}, and the copy there
-            will be replaced. It is kept as a dated backup in the folder first.
-          </Text>
-          {replaceFailed && (
-            <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
-              Nothing was changed: the folder copy could not be kept as a backup.
-            </Alert>
-          )}
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              onClick={() => setConfirmingReplace(false)}
-              disabled={isReplacing}
-              data-autofocus
-            >
-              Back
-            </Button>
-            <Button color="red" onClick={() => void handleReplace()} loading={isReplacing}>
-              Replace folder copy
-            </Button>
-          </Group>
-        </>
+        <ReplaceFolderCopyConfirm
+          folder={folder}
+          warnOtherSetup={shown.kind === 'unreadable' && folderCopyProblemActions(shown.reason).replace === 'warn'}
+          isReplacing={isReplacing}
+          failed={replaceFailed}
+          onBack={() => setConfirmingReplace(false)}
+          onConfirm={() => void handleReplace()}
+        />
       );
     }
 
     if (shown.kind === 'unreadable') {
+      const actions = folderCopyProblemActions(shown.reason);
       return (
         <>
           <Text size="sm">{folderCopyProblemMessage(shown.reason, folder)}</Text>
-          <Text size="sm">
-            {/* The explanation of another setup's copy says already that it is not written over */}
-            {shown.reason === 'another-setup'
-              ? 'The file has not been changed.'
-              : 'The file has not been changed, and HemoIO will not write over it.'}{' '}
-            To keep syncing, choose another folder in Settings, on the Data tab.
-          </Text>
-          {/* The sync never writes over a copy it cannot read: there is no replacing it */}
+          <Text size="sm">{unreadableHint(shown.reason, actions)}</Text>
+          {chooseFailed && (
+            <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              The folder could not be chosen. Nothing was changed; try again, or choose a folder in
+              Settings, on the Data tab.
+            </Alert>
+          )}
           <Group justify="flex-end">
+            {actions.replace !== false && (
+              <Button variant="subtle" color="red" onClick={() => setConfirmingReplace(true)}>
+                Replace folder copy…
+              </Button>
+            )}
+            {actions.chooseFolder && (
+              <Button variant="default" onClick={handleChooseFolder}>
+                Choose another folder
+              </Button>
+            )}
+            {actions.tryAgain && (
+              <Button variant="default" onClick={onRecheck}>
+                Try again
+              </Button>
+            )}
             <Button variant="default" onClick={() => decide('hold')} data-autofocus>
               Not now
             </Button>

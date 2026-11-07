@@ -5,12 +5,13 @@
  */
 
 import { notifications } from '@mantine/notifications';
+import type { ReactNode } from 'react';
 
 export interface PersistentNotice {
   id: string;
   title: string;
-  /** Fixed text: never a value entered, nor an error's detail */
-  message: string;
+  /** Fixed text, or an element showing fixed text and buttons: never a value entered, nor an error's detail */
+  message: ReactNode;
   color?: string;
 }
 

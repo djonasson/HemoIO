@@ -21,8 +21,9 @@ export {
   setGlobalSyncCallback,
   type FolderConflict,
   type FolderConflictChoice,
+  type FolderSyncIssue,
 } from './useFilesystemSync';
-export { useFolderSyncNotice } from './useFolderSyncNotice';
+export { useFolderSyncNotice, type FolderSyncNoticeActions } from './useFolderSyncNotice';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';
 export { usePreferences, type PreferencesState, type PersonalTargetRange } from './usePreferences';

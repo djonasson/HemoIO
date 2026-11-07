@@ -34,7 +34,7 @@ import {
   FileSystemStorageProvider,
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
-import { notifyFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { notifyFolderAccessChanged, onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
 import type { ParsedBackupData } from '@services/import';
 import { FolderBackups } from './FolderBackups';
@@ -63,6 +63,9 @@ export function StorageSettings({
   const [isChanging, setIsChanging] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<StorageProviderType | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Bumped when folder access changes elsewhere (a folder chosen from the
+  // restore question or a sync notice, or in another tab), to show it here
+  const [folderGeneration, setFolderGeneration] = useState(0);
 
   const fileSystemSupported = isFileSystemAccessSupported();
 
@@ -74,8 +77,11 @@ export function StorageSettings({
     }
   }, []);
 
+  useEffect(() => onFolderAccessChanged(() => setFolderGeneration((g) => g + 1)), []);
+
   // Load filesystem status when provider is filesystem
   useEffect(() => {
+    let cancelled = false;
     async function loadFileSystemStatus() {
       if (storageProvider !== 'filesystem' || !fileSystemSupported) {
         return;
@@ -83,16 +89,20 @@ export function StorageSettings({
 
       const provider = new FileSystemStorageProvider();
       const name = await provider.getDirectoryName();
+      if (cancelled) return;
       setDirectoryName(name);
 
       if (name) {
         const state = await provider.getPermissionState();
-        setPermissionState(state);
+        if (!cancelled) setPermissionState(state);
       }
     }
 
     loadFileSystemStatus();
-  }, [storageProvider, fileSystemSupported]);
+    return () => {
+      cancelled = true;
+    };
+  }, [storageProvider, fileSystemSupported, folderGeneration]);
 
   const handleRequestPermission = useCallback(async () => {
     setIsRequestingPermission(true);
@@ -280,7 +290,7 @@ export function StorageSettings({
                   <IconCheck size={14} />
                 </ThemeIcon>
                 <Text size="sm" fw={500}>
-                  {directoryName}
+                  Current folder: “<span>{directoryName}</span>”
                 </Text>
                 <Button
                   size="xs"
@@ -299,7 +309,7 @@ export function StorageSettings({
                   <IconAlertTriangle size={14} />
                 </ThemeIcon>
                 <Text size="sm" c="dimmed">
-                  {directoryName}
+                  Current folder: “<span>{directoryName}</span>”
                 </Text>
                 <Button
                   size="xs"
@@ -334,6 +344,12 @@ export function StorageSettings({
               </>
             )}
           </Group>
+        )}
+
+        {directoryName && permissionState !== 'denied' && (
+          <Text size="xs" c="dimmed">
+            Browsers show only the folder&apos;s name, not where it is.
+          </Text>
         )}
 
         {!directoryName && (
