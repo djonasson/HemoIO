@@ -1047,6 +1047,12 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(codesOf(plain)).toEqual(expect.arrayContaining(['48065-7', '48066-5']));
   });
 
+  it('leaves LDH by either reaction to the AI or the user: the two methods give different numbers', () => {
+    const result = matchLocally(generated, { name: 'LDH', unit: 'U/L' });
+    expect(result.status).toBe('ambiguous');
+    expect(codesOf(result)).toEqual(expect.arrayContaining(['14804-9', '14805-6']));
+  });
+
   it('leaves an eGFR by a formula LOINC has no test for to the AI or the user, the eGFR HemoIO describes first', () => {
     const result = matchLocally(generated, { name: 'eGFR (formula EKFC)', unit: 'mL/min/1.73m²' });
     expect(result.status).toBe('ambiguous');

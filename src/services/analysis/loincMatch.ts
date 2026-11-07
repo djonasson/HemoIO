@@ -498,7 +498,10 @@ function isSameFit(catalog: Catalog, a: CatalogTest, b: CatalogTest): boolean {
   return (
     plainComponent(a) === plainComponent(b) &&
     testDimerUnits(a) === testDimerUnits(b) &&
-    (a.method === CALCULATED) === (b.method === CALCULATED)
+    (a.method === CALCULATED) === (b.method === CALCULATED) &&
+    // An enzyme's activity depends on the reaction measured (LDH lactate to
+    // pyruvate or back): two named methods give different numbers
+    a.property !== 'CCnc'
   );
 }
 
