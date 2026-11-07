@@ -59,8 +59,36 @@ Feature: Folder Sync Safety
     Given my folder holds a copy that my current password cannot open
     When I add lab results
     Then I should see that the folder sync was skipped because the folder copy cannot be read
-    And I should be told to choose a different folder in Settings > Data
+    And I should be offered to choose another folder, or to replace the folder copy
     And the copy in my folder should be left as it was
+
+  Scenario: Replace a folder copy that cannot be read, from the notice
+    Given my folder holds a copy that my current password cannot open
+    And the folder sync was skipped because the folder copy cannot be read
+    When I choose to replace the folder copy from the notice
+    Then I should be asked to confirm, and told the old file is kept first as a dated backup
+    And I should be warned that if the copy was made with another password or by someone else's setup, their data will no longer sync from this folder
+    When I confirm
+    Then my folder should hold the old file as a dated backup, sealed with my key and with no password lock
+    And my folder should hold a copy of my lab results that my password opens
+    And the message about the skipped folder sync should go away
+
+  Scenario: Change my mind about replacing from the notice
+    Given my folder holds a copy that my current password cannot open
+    And the folder sync was skipped because the folder copy cannot be read
+    When I choose to replace the folder copy from the notice
+    And I choose "Back"
+    Then the copy in my folder should be left as it was
+    And the message about the skipped folder sync should still be shown
+
+  Scenario: Choose another folder from the notice
+    Given my folder holds a copy that my current password cannot open
+    And the folder sync was skipped because the folder copy cannot be read
+    When I choose "Choose another folder" in the notice and pick an empty folder
+    Then the message about the skipped folder sync should go away
+    And the new folder should hold a copy of my lab results
+    And Settings > Data should show the new folder as the current folder
+    And the copy in the first folder should be left as it was
 
   # Unit-tested (folderSync, folderCopy): a half-synced cloud file
   Scenario: A damaged folder copy that carries my own lock is called damaged
@@ -163,4 +191,21 @@ Feature: Folder Sync Safety
     When I add lab results
     Then I should see that the folder sync was skipped because my folder holds another setup's copy
     And I should be told to choose a different folder, or to use Start over in Settings > Security to set up from that copy
+    And I should be offered to choose another folder
+    But I should not be offered to replace the folder copy, as other computers may still sync from it
     And the copy in my folder should be left as it was
+
+  # Unit-tested (useFolderSyncNotice): updating HemoIO is the way on
+  Scenario: A folder copy from a newer version offers no folder actions
+    Given my folder holds a copy saved by a newer version of HemoIO
+    When the folder sync runs
+    Then I should be told to reload HemoIO to update it
+    And I should not be offered to choose another folder or to replace the folder copy
+
+  # Unit-tested (folderSync): the choice covers only the file the user saw
+  Scenario: A folder copy that changed after I chose to replace it is not written over
+    Given I chose to replace a folder copy that cannot be read
+    And the file in my folder changed before the next sync
+    When the folder sync runs
+    Then the new file should be left as it was
+    And I should be told again that the folder sync was skipped
