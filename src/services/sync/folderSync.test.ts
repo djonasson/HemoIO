@@ -291,6 +291,111 @@ describe('writeFolderCopy', () => {
     });
   });
 
+  describe('a copy that cannot be read, which the user chose to replace', () => {
+    const idOf = (bytes: ArrayBuffer | null): Promise<string> => folderCopyId(bytes!, null);
+
+    it.each([
+      ['a legacy copy under another key', async () =>
+        sealed({ version: 4, exportedAt: '2024-01-01', data: withResults() }, await newKey())],
+      ['a copy whose header is damaged', async () =>
+        new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer as ArrayBuffer],
+      ['a copy saved before LOINC', async (k: CryptoKey) =>
+        sealed({ version: 3, exportedAt: '2024-01-01', data: withResults(3) }, k)],
+    ])('writes a fresh copy over %s, the very file kept', async (_label, make) => {
+      store.copy = await make(key);
+      store.previous = new TextEncoder().encode('an older previous copy').buffer as ArrayBuffer;
+      const previousBefore = store.previous;
+
+      const outcome = await write(store, withResults(2), key, {
+        ...context,
+        replacesUnreadable: await idOf(store.copy),
+      });
+
+      expect(outcome).toMatchObject({ status: 'written', folderLock: null });
+      const copy = await readCopy(store, key);
+      expect(copy.data.labResults).toHaveLength(2);
+      // Built on nothing: the file replaced has no revision anyone saw
+      expect(copy.ancestors).toEqual([]);
+      expect(folderLockOf(store)).toEqual(LOCK);
+      // No previous copy is made of what cannot be read
+      expect(store.previous).toBe(previousBefore);
+      expect(store.previousSaves).toBe(0);
+      // The lock file first, as for every write of a copy with a lock
+      expect(store.writes).toEqual(['lock', 'copy']);
+      expect(readLockFile(store.lockFile)).toEqual(LOCK);
+      expect(outcome.status === 'written' && outcome.state.revision).toBe(copy.revision);
+    });
+
+    it('writes even an empty browser over it: the user chose to', async () => {
+      store.copy = await sealed({ version: 3, exportedAt: '2024-01-01', data: withResults(3) }, key);
+
+      expect(
+        await write(store, empty(), key, { ...context, replacesUnreadable: await idOf(store.copy) })
+      ).toMatchObject({ status: 'written' });
+    });
+
+    it('protects a file that changed since it was chosen: the question comes back', async () => {
+      store.copy = new TextEncoder().encode('damaged, as first seen').buffer as ArrayBuffer;
+      const chosen = await idOf(store.copy);
+      store.copy = new TextEncoder().encode('damaged, written again meanwhile').buffer as ArrayBuffer;
+      const now = store.copy;
+
+      expect(await write(store, withResults(), key, { ...context, replacesUnreadable: chosen })).toEqual({
+        status: 'protected',
+        reason: 'unreadable',
+      });
+      expect(store.copy).toBe(now);
+      expect(store.saves).toBe(0);
+    });
+
+    it("never writes over another setup's copy, even when chosen", async () => {
+      await write(store, withResults(), await newKey(), { ...context, lock: OTHER_LOCK });
+      const foreign = store.copy;
+
+      expect(
+        await write(store, withResults(), key, { ...context, replacesUnreadable: await idOf(foreign) })
+      ).toEqual({ status: 'protected', reason: 'another-setup' });
+      expect(store.copy).toBe(foreign);
+    });
+
+    it('never writes over a copy from a newer HemoIO, even when chosen', async () => {
+      store.copy = await sealed(
+        { version: FOLDER_SYNC_FILE_VERSION + 1, exportedAt: '2030-01-01', data: withResults() },
+        key
+      );
+      const newer = store.copy;
+
+      expect(
+        await write(store, withResults(), key, { ...context, replacesUnreadable: await idOf(newer) })
+      ).toEqual({ status: 'protected', reason: 'newer' });
+      expect(store.copy).toBe(newer);
+    });
+
+    it('leaves a copy that opens to the usual rules: the choice is only for one that cannot be read', async () => {
+      await write(store, withResults(2), key, context);
+      const readable = store.copy;
+
+      // An empty browser never writes over a copy with results, chosen or not
+      expect(
+        await write(store, empty(), key, { ...context, replacesUnreadable: await idOf(readable) })
+      ).toMatchObject({ status: 'protected', reason: 'empty' });
+      expect(store.copy).toBe(readable);
+    });
+
+    it('still lets set-aside records protect the copy first', async () => {
+      store.copy = new TextEncoder().encode('damaged').buffer as ArrayBuffer;
+
+      expect(
+        await write(store, withResults(), key, {
+          ...context,
+          setAsideUnsaved: 1,
+          replacesUnreadable: await idOf(store.copy),
+        })
+      ).toMatchObject({ status: 'protected', reason: 'set-aside' });
+      expect(store.saves).toBe(0);
+    });
+  });
+
   describe('the lock beside the copy', () => {
     it('writes the lock beside the data, and a new revision each time', async () => {
       await write(store, withResults(1), key, context);

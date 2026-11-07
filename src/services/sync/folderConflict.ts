@@ -9,7 +9,7 @@
  */
 
 import { keepFolderBackup, type FolderBackupKind, type FolderBackupStore } from './folderBackups';
-import { resealWithoutLock } from './folderEnvelope';
+import { resealWithoutLock, sealDamagedCopy } from './folderEnvelope';
 import { digestFolderData, folderDataJson, sealFolderCopy } from './folderSync';
 import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { FolderCopySource } from './folderCopy';
@@ -71,6 +71,37 @@ export async function keepCurrentFolderCopy({
   const bytes = await folder.loadCurrent();
   if (bytes === null || bytes.byteLength === 0) return null;
   await keepFolderCopy({ key, backups, protect }, bytes);
+  return bytes;
+}
+
+/**
+ * Keep the file now in the folder, one that cannot be read as a current
+ * copy, as a conflict backup before the user's choice writes over it. A
+ * file the key opens (a copy saved before LOINC, say) is sealed again
+ * without its lock; any other is sealed whole under the key (P41), so no
+ * lock it carries is ever kept in plain text. Returns its bytes, or null
+ * when the folder holds none; rejects, keeping nothing, when the backup
+ * cannot be saved.
+ */
+export async function keepUnreadableFolderCopy({
+  key,
+  backups,
+  folder,
+}: {
+  key: CryptoKey;
+  backups: FolderBackupStore;
+  folder: FolderCopySource;
+}): Promise<ArrayBuffer | null> {
+  const bytes = await folder.loadCurrent();
+  if (bytes === null || bytes.byteLength === 0) return null;
+  let sealed: ArrayBuffer;
+  try {
+    sealed = await resealWithoutLock(bytes, key);
+  } catch {
+    // Another key, a damaged file, or a damaged header: kept as it lay
+    sealed = await sealDamagedCopy(bytes, key);
+  }
+  await keepFolderBackup(backups, sealed, { kind: 'conflict' });
   return bytes;
 }
 

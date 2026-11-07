@@ -32,7 +32,13 @@ export {
   type FolderBackupStore,
   type KeepFolderBackupOptions,
 } from './folderBackups';
-export { canKeepFolderCopy, keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
+export {
+  canKeepFolderCopy,
+  keepBrowserData,
+  keepCurrentFolderCopy,
+  keepFolderCopy,
+  keepUnreadableFolderCopy,
+} from './folderConflict';
 export {
   assessFolderCopy,
   readFolderCopy,

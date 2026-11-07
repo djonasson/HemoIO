@@ -23,6 +23,7 @@ import {
   keepBrowserData,
   keepCurrentFolderCopy,
   keepFolderCopy,
+  keepUnreadableFolderCopy,
   markFolderCopySeen,
 } from '@services/sync';
 import {
@@ -124,6 +125,13 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
    * Rejects, keeping nothing chosen, when the backup cannot be saved.
    */
   replaceFolderCopy: (revision: string | null) => Promise<void>;
+  /**
+   * "Replace folder copy" for a copy that cannot be read: keeps the file in
+   * the folder as a backup, then the next sync writes over that very file,
+   * if it still cannot be read. Rejects, keeping nothing chosen, when the
+   * backup cannot be saved.
+   */
+  replaceUnreadableCopy: () => Promise<void>;
 } {
   const { db, isReady } = useEncryptedDb();
   const { encryptionKey, storedLock, adoptFolderLock } = useAuth();
@@ -155,9 +163,10 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
   const heldForRef = useRef<CryptoKey | null>(null);
   const [heldFor, setHeldFor] = useState<CryptoKey | null>(null);
   const pendingRef = useRef<PendingConflict | null>(null);
-  // The copy the user chose to replace from the restore question, for the
-  // next sync of the session it was chosen in
-  const replaceNextRef = useRef<{ key: CryptoKey; id: string } | null>(null);
+  // The copy the user chose to replace from the restore question or the
+  // sync notice, for the next sync of the session it was chosen in;
+  // `unreadable`: a copy that cannot be read, identified by its bytes
+  const replaceNextRef = useRef<{ key: CryptoKey; id: string; unreadable: boolean } | null>(null);
   // Whether the folder may not hold this browser's lock yet: unknown at
   // first, and after every password change, until a sync finds it there.
   // While it may not, a sync that leaves the data as they are, or a held
@@ -194,7 +203,9 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
             // Taken once: a later sync asks again rather than replace another copy
             const chosen = replaceNextRef.current;
             replaceNextRef.current = null;
-            return replaces ?? (chosen?.key === session.key ? chosen.id : undefined);
+            if (replaces != null) return { replaces };
+            if (chosen?.key !== session.key) return undefined;
+            return chosen.unreadable ? { replacesUnreadable: chosen.id } : { replaces: chosen.id };
           },
           isEnabled: () => enabledRef.current,
           lockMayBeBehind: lockBehindRef.current,
@@ -428,11 +439,26 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
         // Locked meanwhile: the choice was for a session that has ended
         if (unlockedRef.current?.key !== session.key) return;
         // The sync that the hold's end starts writes over the copy kept
-        replaceNextRef.current = id === null ? null : { key: session.key, id };
+        replaceNextRef.current = id === null ? null : { key: session.key, id, unreadable: false };
       });
     },
     [afterSyncs]
   );
+
+  const replaceUnreadableCopy = useCallback(async (): Promise<void> => {
+    const session = unlockedRef.current;
+    if (!session) throw new Error('HemoIO is locked');
+    await afterSyncs(async () => {
+      const provider = currentFolder();
+      const bytes = await keepUnreadableFolderCopy({ key: session.key, backups: provider, folder: provider });
+      // By its bytes: what cannot be read has no revision to name
+      const id = bytes && (await folderCopyId(bytes, null));
+      // Locked meanwhile: the choice was for a session that has ended
+      if (unlockedRef.current?.key !== session.key) return;
+      // Nothing there to keep: the next sync writes as for an empty folder
+      replaceNextRef.current = id === null ? null : { key: session.key, id, unreadable: true };
+    });
+  }, [afterSyncs]);
 
   const acknowledgeFolderCopy = useCallback(
     async (revision: string | null, loadedStamp: string): Promise<void> => {
@@ -525,6 +551,7 @@ export function useFilesystemSync({ enabled = true, applyFolderCopy }: UseFilesy
     resolveConflict,
     acknowledgeFolderCopy,
     replaceFolderCopy,
+    replaceUnreadableCopy,
   };
 }
 

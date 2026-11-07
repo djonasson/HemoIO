@@ -15,7 +15,10 @@ import type { EncryptedDb } from '@data/db/encryptedDb';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import type { ParsedBackupData } from '@services/import';
 import type { FolderBackupStore } from './folderBackups';
-import type { FolderCopyStore, FolderSyncOutcome } from './folderSync';
+import type { FolderCopyStore, FolderSyncOutcome, FolderWriteContext } from './folderSync';
+
+/** The copy the user chose to replace, as the sync is given it */
+export type FolderReplaceChoice = Pick<FolderWriteContext, 'replaces' | 'replacesUnreadable'>;
 
 /** The unlocked database and the key a sync seals with */
 export interface SyncSession {
@@ -35,12 +38,14 @@ export interface RunFolderSyncOptions {
   /** This browser's lock, written beside the copy */
   lock: StoredCredentialsV2 | null;
   /**
-   * The copy the user chose to replace, if any. Asked for once the sync is
-   * past the hold's first check, and only when no set-aside record keeps the
-   * copy from being read, so a choice is used up only by a sync that goes on
-   * to read the folder. One that then fails to read it asks again.
+   * The copy the user chose to replace, if any: one that opened
+   * (`replaces`), or one that cannot be read (`replacesUnreadable`). Asked
+   * for once the sync is past the hold's first check, and only when no
+   * set-aside record keeps the copy from being read, so a choice is used up
+   * only by a sync that goes on to read the folder. One that then fails to
+   * read it asks again.
    */
-  takeReplaces: () => string | null | undefined;
+  takeReplaces: () => FolderReplaceChoice | undefined;
   /** False once the hold begins: checked before the folder copy is decrypted, and at the save */
   isEnabled: () => boolean;
   /** False once the folder is known to hold `lock` (FolderWriteContext.lockMayBeBehind) */
@@ -89,7 +94,7 @@ export async function runFolderSync(
       lock,
       setAsideUnsaved: unsaved,
       lastSeen,
-      ...(replaces !== undefined && { replaces }),
+      ...replaces,
       ...(lockMayBeBehind !== undefined && { lockMayBeBehind }),
     });
     return { outcome, lastSeen };

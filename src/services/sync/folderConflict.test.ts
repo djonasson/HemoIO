@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import { backupFileName, backupKind, type FolderBackupStore } from './folderBackups';
-import { canKeepFolderCopy, keepBrowserData, keepCurrentFolderCopy, keepFolderCopy } from './folderConflict';
-import { openEnvelope, readEnvelopeHeader } from './folderEnvelope';
+import {
+  canKeepFolderCopy,
+  keepBrowserData,
+  keepCurrentFolderCopy,
+  keepFolderCopy,
+  keepUnreadableFolderCopy,
+} from './folderConflict';
+import { isDamagedCopy, openDamagedCopy, openEnvelope, readEnvelopeHeader, sealEnvelope } from './folderEnvelope';
 import { digestFolderData, folderDataJson, sealFolderCopy, type FolderSyncData } from './folderSync';
 
 class MemoryBackups implements FolderBackupStore {
@@ -128,5 +134,58 @@ describe('keeping the side about to be replaced', () => {
     await expect(
       canKeepFolderCopy({ key, folder: { loadCurrent: async () => Promise.reject(new Error('gone')) } })
     ).rejects.toThrow();
+  });
+  describe('a copy that cannot be read, kept before it is replaced', () => {
+    const folderOf = (bytes: ArrayBuffer | null) => ({ loadCurrent: async () => bytes });
+
+    it('keeps one the key opens (a copy saved before LOINC) sealed again without its lock', async () => {
+      const plain = JSON.stringify({ version: 3, exportedAt: '2024-01-01', data: DATA });
+      const bytes = await sealEnvelope(new TextEncoder().encode(plain), key, LOCK);
+
+      expect(await keepUnreadableFolderCopy({ key, backups, folder: folderOf(bytes) })).toBe(bytes);
+
+      const [name] = backups.files.keys();
+      expect(backupKind(name)).toBe('conflict');
+      expect(readEnvelopeHeader(only())).toMatchObject({ lock: null });
+      expect(new TextDecoder().decode(only())).not.toContain(LOCK.wrappedKey);
+      expect(new TextDecoder().decode((await openEnvelope(only(), key)).plain)).toBe(plain);
+    });
+
+    it("keeps one under another key sealed whole under this key, its lock nowhere in plain text", async () => {
+      const otherKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      const foreign = (await sealFolderCopy(DATA, otherKey, LOCK)).bytes;
+
+      expect(await keepUnreadableFolderCopy({ key, backups, folder: folderOf(foreign) })).toBe(foreign);
+
+      const [name] = backups.files.keys();
+      expect(backupKind(name)).toBe('conflict');
+      expect(isDamagedCopy(only())).toBe(true);
+      expect(new TextDecoder().decode(only())).not.toContain(LOCK.wrappedKey);
+      expect(new Uint8Array(await openDamagedCopy(only(), key))).toEqual(new Uint8Array(foreign));
+    });
+
+    it('keeps a file with a damaged header, or random bytes, as it lay', async () => {
+      const damaged = new TextEncoder().encode('{"format":"hemoio-folder-copy","version":1}').buffer as ArrayBuffer;
+
+      await keepUnreadableFolderCopy({ key, backups, folder: folderOf(damaged) });
+
+      expect(new TextDecoder().decode(await openDamagedCopy(only(), key))).toBe(
+        '{"format":"hemoio-folder-copy","version":1}'
+      );
+    });
+
+    it('keeps nothing when the folder holds no file, or an empty one', async () => {
+      expect(await keepUnreadableFolderCopy({ key, backups, folder: folderOf(null) })).toBeNull();
+      expect(await keepUnreadableFolderCopy({ key, backups, folder: folderOf(new ArrayBuffer(0)) })).toBeNull();
+      expect(backups.files.size).toBe(0);
+    });
+
+    it('rejects when the backup cannot be saved', async () => {
+      backups.failSaves = true;
+
+      await expect(
+        keepUnreadableFolderCopy({ key, backups, folder: folderOf(new ArrayBuffer(8)) })
+      ).rejects.toThrow('Disk full');
+    });
   });
 });

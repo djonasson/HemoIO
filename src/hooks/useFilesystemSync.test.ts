@@ -15,6 +15,7 @@ import {
   keepBrowserData,
   keepCurrentFolderCopy,
   keepFolderCopy,
+  keepUnreadableFolderCopy,
   markFolderCopySeen,
   writeFolderCopy,
   type FolderSyncOutcome,
@@ -49,6 +50,7 @@ vi.mock('@services/sync/folderConflict', () => ({
   keepBrowserData: vi.fn(),
   keepFolderCopy: vi.fn(),
   keepCurrentFolderCopy: vi.fn(),
+  keepUnreadableFolderCopy: vi.fn(),
 }));
 
 // What this browser last saw of the folder copy, sealed in localStorage
@@ -151,6 +153,7 @@ describe('useFilesystemSync', () => {
     vi.mocked(keepBrowserData).mockResolvedValue(true);
     vi.mocked(keepFolderCopy).mockResolvedValue(undefined);
     vi.mocked(keepCurrentFolderCopy).mockResolvedValue(FOLDER_BYTES);
+    vi.mocked(keepUnreadableFolderCopy).mockResolvedValue(FOLDER_BYTES);
     vi.mocked(folderCopyId).mockImplementation(async (_bytes, revision) => revision ?? 'sha256:bytes');
     applyFolderCopy.mockResolvedValue('loaded-stamp');
     mockGetPermissionState.mockResolvedValue('granted');
@@ -1281,6 +1284,87 @@ describe('useFilesystemSync', () => {
 
         await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
         expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replaces');
+      });
+    });
+
+    describe('replacing a folder copy that cannot be read', () => {
+      it('keeps the file as a backup, then the next sync may write over that very file', async () => {
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+
+        await act(() => result.current.replaceUnreadableCopy());
+        expect(keepUnreadableFolderCopy).toHaveBeenCalledWith(expect.objectContaining({ key: mockKey }));
+        // By its bytes: a file that cannot be read has no revision
+        expect(folderCopyId).toHaveBeenCalledWith(FOLDER_BYTES, null);
+        expect(writeFolderCopy).not.toHaveBeenCalled();
+
+        rerender({ enabled: true });
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        const context = vi.mocked(writeFolderCopy).mock.calls[0][3];
+        expect(context).toMatchObject({ replacesUnreadable: 'sha256:bytes' });
+        expect(context).not.toHaveProperty('replaces');
+
+        // Once only
+        await act(() => result.current.syncNow());
+        expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).not.toHaveProperty('replacesUnreadable');
+      });
+
+      it('is taken up by the next sync of a session that syncs already (from the notice)', async () => {
+        const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+
+        await act(() => result.current.replaceUnreadableCopy());
+        await act(() => result.current.syncNow());
+
+        expect(vi.mocked(writeFolderCopy).mock.calls[1][3]).toMatchObject({ replacesUnreadable: 'sha256:bytes' });
+      });
+
+      it('chooses nothing when the folder holds no file to keep', async () => {
+        vi.mocked(keepUnreadableFolderCopy).mockResolvedValue(null);
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+
+        await act(() => result.current.replaceUnreadableCopy());
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replacesUnreadable');
+      });
+
+      it('chooses nothing when the backup cannot be saved', async () => {
+        vi.mocked(keepUnreadableFolderCopy).mockRejectedValue(new Error('Disk full'));
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+
+        await expect(act(() => result.current.replaceUnreadableCopy())).rejects.toThrow('Disk full');
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replacesUnreadable');
+      });
+
+      it('drops the choice when the folder changes before the sync it was for', async () => {
+        const { result, rerender } = renderHook(({ enabled }) => useFilesystemSync({ enabled, applyFolderCopy }), {
+          initialProps: { enabled: false },
+        });
+        await act(() => result.current.replaceUnreadableCopy());
+
+        act(() => notifyFolderAccessChanged());
+        rerender({ enabled: true });
+
+        await waitFor(() => expect(writeFolderCopy).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(writeFolderCopy).mock.calls[0][3]).not.toHaveProperty('replacesUnreadable');
+      });
+
+      it('rejects while locked', async () => {
+        auth.encryptionKey = null;
+        const { result } = renderHook(() => useFilesystemSync({ enabled: false, applyFolderCopy }));
+
+        await expect(result.current.replaceUnreadableCopy()).rejects.toThrow('HemoIO is locked');
+        expect(keepUnreadableFolderCopy).not.toHaveBeenCalled();
       });
     });
   });

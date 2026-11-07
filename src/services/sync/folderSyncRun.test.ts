@@ -194,7 +194,7 @@ describe('runFolderSync', () => {
       return data;
     });
     const store = folder();
-    const takeReplaces = vi.fn(() => 'r1');
+    const takeReplaces = vi.fn(() => ({ replaces: 'r1' }));
 
     const run = await runFolderSync({ db, key }, store, { lock: null, takeReplaces, isEnabled: () => true });
 
@@ -228,7 +228,7 @@ describe('runFolderSync', () => {
   it('keeps the choice to replace a copy while set-aside records keep the folder from being read', async () => {
     const { db, key } = await openTestDb();
     vi.spyOn(db, 'countSetAside').mockResolvedValue({ total: 1, unsaved: 1 });
-    const takeReplaces = vi.fn(() => 'r1');
+    const takeReplaces = vi.fn(() => ({ replaces: 'r1' }));
 
     await runFolderSync({ db, key }, folder(), { lock: null, takeReplaces, isEnabled: () => true });
 
