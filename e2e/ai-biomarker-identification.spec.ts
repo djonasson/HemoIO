@@ -107,6 +107,74 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
+  test("matches usual lab names LOINC's names lack by HemoIO's own names", async ({ page }) => {
+    // Scenario Outline: A usual lab name that LOINC's names lack is matched by HemoIO's own names
+    const examples: [ExtractedBiomarkerFixture, string][] = [
+      [{ name: 'Ematocrito', value: 42.1, unit: '%', confidence: 0.95 }, 'Hematocrit [Volume Fraction] of Blood by Automated count'],
+      [{ name: 'MPV', value: 10.3, unit: 'fL', confidence: 0.95 }, 'Platelet [Entitic mean volume] in Blood by Automated count'],
+      [{ name: 'RDW', value: 13.2, unit: '%', confidence: 0.95 }, 'Erythrocyte [DistWidth] in Blood by Automated count'],
+      [
+        { name: 'Eritroblasti', value: 0.1, unit: '%', confidence: 0.95 },
+        'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count',
+      ],
+      [
+        { name: 'Er-EMOGLOBINA GLICATA', value: 38, unit: 'mmol/mol', confidence: 0.95 },
+        'Hemoglobin A1c/Hemoglobin.total in Blood',
+      ],
+    ];
+    const ai = await analyzeReport(page, examples.map(([value]) => value));
+    for (const [value, testName] of examples) {
+      await expect(savedAsCell(rowFor(page, String(value.value)))).toHaveText(testName);
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('files one measurement made by several methods under the general test', async ({ page }) => {
+    // Scenario: One measurement made by several methods is filed under the general test without asking
+    const ai = await analyzeReport(page, [
+      { name: 'Eritrociti', value: 12, unit: '/µL', confidence: 0.95, specimenHint: 'urine' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '12'))).toHaveText('Erythrocytes [#/volume] in Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('never takes squamous cells for non-squamous ones', async ({ page }) => {
+    // Scenario: Squamous cells are never taken for non-squamous ones
+    await analyzeReport(page, [
+      { name: 'Cellule Ep. Squamose', value: 7, unit: '/µL', confidence: 0.95, specimenHint: 'urine' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '7'))).toHaveText(
+      'Epithelial cells.squamous [#/volume] in Urine by Automated count'
+    );
+  });
+
+  test('files a D-dimer printed in FEU under an FEU test', async ({ page }) => {
+    // Scenario: A D-dimer printed in fibrinogen equivalent units is filed under an FEU test
+    const ai = await analyzeReport(page, [{ name: 'D Dimero', value: 410, unit: 'µg/L FEU', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '410'))).toHaveText('Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('asks about a D-dimer that names neither FEU nor DDU', async ({ page }) => {
+    // Scenario: A D-dimer that names neither FEU nor DDU is asked about
+    const ai = await analyzeReport(page, [{ name: 'D Dimero', value: 420, unit: 'ng/mL', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates.map((c) => c.code)).toEqual(
+      expect.arrayContaining(['48065-7', '48066-5'])
+    );
+  });
+
+  test('asks about an eGFR by a formula LOINC has no test for, filtration rates first', async ({ page }) => {
+    // Scenario: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+    const ai = await analyzeReport(page, [
+      { name: 'eGFR (formula EKFC)', value: 88, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    const offered = ai.choiceRequests[0][0].candidates;
+    expect(offered[0].code).toBe('98979-8');
+    expect(offered.slice(0, 4).every((c) => c.name.startsWith('Glomerular filtration rate'))).toBe(true);
+  });
+
   test('lets the AI decide a value several tests fit', async ({ page }) => {
     // Scenario: A value several tests fit is decided by the AI
     await analyzeReport(page, [GLUCOSIO], 1, {
@@ -281,29 +349,28 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rowFor(page, '90'))).toHaveText(BLOOD_GLUCOSE);
   });
 
-  const URINE_PH: ExtractedBiomarkerFixture = { name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 };
-
-  test('never matches a value with no unit on its name alone', async ({ page }) => {
-    // Scenario: A value with no unit is never matched on its name alone
-    const ai = await analyzeReport(page, [URINE_PH], 1, {
-      testChoice: { choices: { 'pH (urine)': { code: '2756-5', confident: true } } },
-    });
-    expect(ai.choiceRequests).toHaveLength(1);
-    const [asked] = ai.choiceRequests[0];
-    expect(asked).toMatchObject({ name: 'pH (urine)', unit: '' });
-    expect(asked.candidates.map((c) => c.code)).toContain('2756-5');
+  test('matches a value with no unit to the common test that has none', async ({ page }) => {
+    // Scenario: A value with no unit is matched to the common test that has none
+    const ai = await analyzeReport(page, [{ name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 }]);
     await expect(savedAsCell(rowFor(page, '6'))).toHaveText('pH of Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
     await continueToConfirm(page);
+  });
+
+  test('reads a dipstick result with no unit as present or absent', async ({ page }) => {
+    // Scenario: A dipstick result with no unit is read as present or absent, never as an amount
+    await analyzeReport(page, [{ name: 'Nitriti', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine' }]);
+    await expect(savedAsCell(rowFor(page, '0'))).toHaveText('Nitrite [Presence] in Urine by Test strip');
   });
 
   test('asks me the test of a value with no unit the AI is not sure of', async ({ page }) => {
     // Scenario: I choose the test of a value with no unit the AI is not sure of
-    await analyzeReport(page, [URINE_PH]);
+    await analyzeReport(page, [{ name: 'Glucosio', value: 6, unit: '', confidence: 0.95 }]);
     const row = rowFor(page, '6');
     await expect(savedAsCell(row)).toHaveText('No test chosen');
     await expect(row.getByText('No unit in report')).toBeVisible();
     await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
-    await expect(main(page).getByText(/pH \(urine\) in ".*" needs a test/)).toBeVisible();
+    await expect(main(page).getByText(/Glucosio in ".*" needs a test/)).toBeVisible();
     await changeTest(page, row, NOT_A_LOINC_TEST);
     await continueToConfirm(page);
   });

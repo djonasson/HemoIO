@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { loadCatalog } from '@data/loinc/catalog';
 import { learnFromSaved } from '@data/loinc/learnedTests';
 import { identifyLocally, identifyValues, needsChoice, toLearn, unknownKeyOf } from './identification';
 import { applyBiomarkerName, chooseTest } from './reviewEdits';
@@ -58,7 +59,18 @@ describe('identifyLocally', () => {
     expect(needsChoice(identification)).toBe(false);
   });
 
-  it('never matches a value with no unit on its name alone: the AI or the user chooses among tests of any property', () => {
+  it('takes the common unitless test a value with no unit names, and never a Mass/volume test', async () => {
+    const generated = await loadCatalog();
+    expect(identifyLocally(generated, { name: 'pH', unit: '', specimenHint: 'urine' })).toMatchObject({
+      loincCode: '2756-5',
+      identifiedBy: 'local',
+      identificationFlags: [],
+    });
+    expect(identifyLocally(generated, { name: 'Nitriti', unit: '', specimenHint: 'urine' }).loincCode).toBe('5802-4');
+    // Reading the 13 MB catalog and building its search index take seconds on a busy machine
+  }, 60_000);
+
+  it('leaves a value with no unit that no unitless test fits to the AI or the user, among tests of any property', () => {
     const identification = identifyLocally(catalog, { name: 'P-Glucosio', unit: '' });
     expect(identification.identificationFlags).toEqual(['ambiguous', 'no-unit']);
     expect(identification.loincCode).toBeUndefined();

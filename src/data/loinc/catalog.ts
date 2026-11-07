@@ -6,6 +6,7 @@
  * The data file is large (about 13 MB), so it is fetched on first use as a
  * file of its own and never with the app's start.
  */
+import { TEST_ADDONS } from './addons';
 import { nameKey } from './keys';
 
 /** One LOINC test as the generated catalog holds it */
@@ -76,6 +77,11 @@ export interface Catalog {
   /** The tests one of whose names (or long common name) this is, whatever its case and spacing */
   named(name: string): CatalogTest[];
   /**
+   * The words of a text that no test's name has in any form, words saying
+   * nothing of a test (a sample, "total") aside: "ekfc" of "formula EKFC"
+   */
+  unknownWords(text: string): string[];
+  /**
    * What a code trends with: the group joining its mass and molar codes
    * when it holds others (for a rate, its mass and molar rate groups), else
    * the group joining its blood, serum and plasma codes, else the code
@@ -122,6 +128,8 @@ const STOP_WORDS: ReadonlySet<string> = new Set([
   'sangue', 'siero', 'plasma', 'urina', 'urine', 'totale', 'totali', 'livello', 'livelli', 'presenza',
   'rapporto', 'conta', 'conteggio', 'concentrazione', 'massa', 'frazione', 'chimica', 'esame', 'valore',
   'acido', 'di', 'del', 'della', 'nel', 'nelle', 'nei', 'su', 'e', 'o',
+  // Both: a screening says how the test is used, not which test it is ("Rapporto albumina/creatinina - screening")
+  'screening',
 ]);
 
 const CONJUNCTIONS: ReadonlySet<string> = new Set(['and', 'or', 'e', 'o']);
@@ -149,8 +157,24 @@ const MIN_STEM = 4;
 /** Most letters a close form may add to its stem (Italian endings) */
 const MAX_ENDING = 2;
 
+/**
+ * A name's words. "Non" is one word with the word it negates: a
+ * "non-squamous" cell is no squamous one, and "non-HDL" cholesterol no HDL.
+ */
 function wordsOf(name: string): string[] {
-  return name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return name
+    .replace(/(?<![\p{L}\p{N}])non[\s-]+(?=\p{L})/giu, 'non')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+/**
+ * The words a query writes shortened with a full stop: "Ep." of "Cellule
+ * Ep. Squamose". A full stop inside a name ("Epithelial cells.squamous")
+ * joins words, so only one before a space or the end shortens.
+ */
+function abbreviationsOf(query: string): Set<string> {
+  return new Set([...query.matchAll(/(?<![\p{L}\p{N}])(\p{L}{2,4})\.(?=\s|$)/gu)].map(([, word]) => word));
 }
 
 /** Whether one word is the other with a short ending: "uric" and "urico" */
@@ -228,6 +252,7 @@ export function byRank(a: CatalogTest, b: CatalogTest): number {
 interface Search {
   scoredSearch(query: string, filter?: CatalogSearchFilter): ScoredTest[];
   named(name: string): CatalogTest[];
+  unknownWords(text: string): string[];
 }
 
 /** Absorbs float error when a test's covered weight is compared with the query's */
@@ -310,9 +335,23 @@ function createSearch(file: CatalogFile): Search {
   const nameKeys: Set<string>[] = [];
   const nameKeysOf = (index: number): Set<string> => (nameKeys[index] ??= new Set(namesOf(index).map(wordsKey)));
 
+  // Name words by their first two letters, for the words a shortened query word begins
+  const wordsByStart = new Map<string, string[]>();
+  for (const word of testsByWord.keys()) {
+    if (word.length < 3 || !tellsTest(word)) continue;
+    const start = word.slice(0, 2);
+    wordsByStart.set(start, [...(wordsByStart.get(start) ?? []), word]);
+  }
+
   /** The name words a query word stands for, with how much each counts */
-  function matchesOf(word: string): { word: string; factor: number }[] {
+  function matchesOf(word: string, abbreviated = false): { word: string; factor: number }[] {
     const forms = new Set(wordsByInflection.get(inflectionStem(word)));
+    // A word written shortened stands for every telling name word it begins: "ep." for "epithelial"
+    if (abbreviated) {
+      for (const longer of wordsByStart.get(word.slice(0, 2)) ?? []) {
+        if (longer.length > word.length && longer.startsWith(word)) forms.add(longer);
+      }
+    }
     // A short word with an ending, when no name has the word itself: "urico" for "uric", but "calci" not for "calc"
     const short = word.slice(0, -1);
     if (
@@ -395,10 +434,10 @@ function createSearch(file: CatalogFile): Search {
     const phrase = nameKey(query);
     const queryKey = wordsKey(phrase);
     // A query of sample, quantity or other generic words alone names no test, unless it is a name
-    const words = [...new Set(wordsOf(phrase).flatMap(partsOf))].filter(tellsTest).map((word) => ({
-      word,
-      matches: matchesOf(word),
-    }));
+    const abbreviated = abbreviationsOf(phrase);
+    const words = [...new Set(wordsOf(phrase).flatMap(partsOf))]
+      .filter(tellsTest)
+      .map((word) => ({ word, matches: matchesOf(word, abbreviated.has(word)) }));
     if (words.length === 0) return namedByGenericWords(phrase, queryKey, filter);
     // A word matching nothing still counts against the fit, as a rare word would
     // A word counts as much as it tells, in whichever form a name has it
@@ -444,27 +483,73 @@ function createSearch(file: CatalogFile): Search {
     return scored;
   }
 
-  return { scoredSearch, named: (name) => (testsByName.get(nameKey(name)) ?? []).map((index) => file.tests[index]) };
+  const unknownWords = (text: string): string[] =>
+    wordsOf(nameKey(text)).filter(
+      (word) => /\p{L}/u.test(word) && !STOP_WORDS.has(word) && partsOf(word).every((part) => !testsByWord.has(part) && matchesOf(part).length === 0)
+    );
+
+  return {
+    scoredSearch,
+    named: (name) => (testsByName.get(nameKey(name)) ?? []).map((index) => file.tests[index]),
+    unknownWords,
+  };
 }
 
-/** The runtime catalog over a catalog file; lookups by code and the trend groups are built here */
-export function createCatalog(file: CatalogFile): Catalog {
-  const tests = new Map(file.tests.map((test) => [test.code, test]));
-  const groups = new Map(file.groups.map((group) => [group.id, group]));
+/** Names of tests by LOINC code */
+export type NamesByCode = Readonly<Record<string, readonly string[] | undefined>>;
+
+/** HemoIO's own names of the tests it describes (see TestAddon.names) */
+function addonNames(): NamesByCode {
+  return Object.fromEntries(Object.entries(TEST_ADDONS).map(([code, addon]) => [code, addon.names]));
+}
+
+/**
+ * The file with the extra names of a code given to each test it trends
+ * with, as a test's own names are: one name finds glucose in mg/dL and in
+ * mmol/L alike
+ */
+function withExtraNames(
+  file: CatalogFile,
+  extraNames: NamesByCode,
+  trendGroupOf: (code: string) => string,
+  codesOf: (trendGroup: string) => string[]
+): CatalogFile {
+  const added = new Map<string, string[]>();
+  for (const [code, names] of Object.entries(extraNames)) {
+    if (!names?.length) continue;
+    for (const member of codesOf(trendGroupOf(code))) added.set(member, [...(added.get(member) ?? []), ...names]);
+  }
+  if (added.size === 0) return file;
+  return {
+    ...file,
+    tests: file.tests.map((test) => {
+      const names = added.get(test.code);
+      return names ? { ...test, names: [...new Set([...test.names, ...names.map(nameKey)])] } : test;
+    }),
+  };
+}
+
+/**
+ * The runtime catalog over a catalog file; lookups by code and the trend
+ * groups are built here. The extra names (by default HemoIO's own, see
+ * TestAddon.names) count as names of the tests.
+ */
+export function createCatalog(source: CatalogFile, extraNames: NamesByCode = addonNames()): Catalog {
+  const groups = new Map(source.groups.map((group) => [group.id, group]));
 
   // A rate's, or a ratio's, mass and molar groups trend as the first of them
   const jointGroups = new Map<string, string>();
-  for (const group of [...file.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+  for (const group of [...source.groups].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     const key = jointKey(group);
     if (key && !jointGroups.has(key)) jointGroups.set(key, group.id);
   }
 
   const membersOf = new Map<string, number>();
-  for (const id of file.tests.flatMap((test) => test.groups)) membersOf.set(id, (membersOf.get(id) ?? 0) + 1);
+  for (const id of source.tests.flatMap((test) => test.groups)) membersOf.set(id, (membersOf.get(id) ?? 0) + 1);
 
   const trendGroups = new Map<string, string>();
   const codesByTrendGroup = new Map<string, string[]>();
-  for (const test of file.tests) {
+  for (const test of source.tests) {
     const memberships = test.groups
       .map((id) => groups.get(id))
       .filter((group): group is CatalogGroup => group !== undefined)
@@ -481,6 +566,10 @@ export function createCatalog(file: CatalogFile): Catalog {
     if (codes) codes.push(test.code);
     else codesByTrendGroup.set(trend, [test.code]);
   }
+
+  const trendGroupOf = (code: string): string => trendGroups.get(code) ?? code;
+  const file = withExtraNames(source, extraNames, trendGroupOf, (trend) => codesByTrendGroup.get(trend) ?? [trend]);
+  const tests = new Map(file.tests.map((test) => [test.code, test]));
 
   // Built the first time a long name is looked up
   let longNames: Map<string, CatalogTest> | undefined;
@@ -515,7 +604,8 @@ export function createCatalog(file: CatalogFile): Catalog {
     common,
     byLongName,
     named: (name) => (search ??= createSearch(file)).named(name),
-    trendGroup: (code) => trendGroups.get(code) ?? code,
+    unknownWords: (text) => (search ??= createSearch(file)).unknownWords(text),
+    trendGroup: trendGroupOf,
     classLabel: (classCode) => CLASS_LABELS[classCode] ?? classCode,
     groupCodes: (trendGroup) =>
       codesByTrendGroup.get(trendGroup) ?? (tests.has(trendGroup) ? [trendGroup] : []),

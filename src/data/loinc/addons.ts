@@ -28,6 +28,13 @@ export interface TestAddon {
   highIndication?: string;
   /** What a low value may indicate */
   lowIndication?: string;
+  /**
+   * Usual Italian and English names and abbreviations of the test that
+   * LOINC's names lack ("ematocrito", "mpv"). The catalog counts them as
+   * names of the test and of every code it trends with, so the local match
+   * finds the test by them.
+   */
+  names?: string[];
 }
 
 /** Reticulocytes as a share of red cells, by automated count or with no method named */
@@ -71,6 +78,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate anemia or blood loss',
   },
   '4544-3': {
+    names: ['ematocrito'],
     shortName: 'Hematocrit',
     description: 'Percentage of blood volume made up of red blood cells.',
     referenceRange: { low: 36, high: 50, unit: '%' },
@@ -116,6 +124,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate iron deficiency or thalassemia',
   },
   '788-0': {
+    names: ['rdw'],
     shortName: 'Red Cell Distribution Width',
     description: 'Variation in red blood cell size.',
     referenceRange: { low: 11.5, high: 14.5, unit: '%' },
@@ -208,7 +217,14 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     highIndication: 'May indicate allergic reaction',
     lowIndication: 'Generally not clinically significant',
   },
+  '32623-1': {
+    names: ['mpv', 'volume piastrinico medio'],
+    shortName: 'Mean Platelet Volume',
+    description: 'Average size of platelets.',
+    canonicalUnit: 'fL',
+  },
   '30392-5': {
+    names: ['eritroblasti'],
     shortName: 'Nucleated Red Blood Cells',
     description: 'Immature red blood cells, normally absent from adult blood.',
     referenceRange: { low: 0, high: 0.1, unit: '10^9/L' },
@@ -218,6 +234,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding',
   },
   '58413-6': {
+    names: ['eritroblasti'],
     shortName: 'Nucleated Red Blood Cells Percentage',
     description: 'Immature red blood cells per 100 white blood cells, normally zero in adults.',
     canonicalUnit: '/100 WBC',
@@ -355,6 +372,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate malnutrition, alcoholism, diabetes, or medication effects',
   },
   '98979-8': {
+    names: ['egfr', 'filtrato glomerulare'],
     shortName: 'eGFR',
     description: 'Estimate of how well kidneys filter waste.',
     referenceRange: { low: 90, high: 120, unit: 'mL/min/1.73m²' },
@@ -551,6 +569,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate deficiency affecting vision',
   },
   '4548-4': {
+    names: ['emoglobina glicata'],
     shortName: 'Hemoglobin A1c',
     description: 'Average blood sugar over past 2-3 months.',
     referenceRange: { low: 4, high: 5.6, unit: '%' },
@@ -576,6 +595,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate acidosis or high protein diet',
   },
   '2965-2': {
+    names: ['densità relativa', 'peso specifico'],
     shortName: 'Urine Specific Gravity',
     description: 'Concentration of urine, reflects hydration status.',
     referenceRange: { low: 1.005, high: 1.03, unit: '1' },
@@ -600,12 +620,19 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding',
   },
   '5797-6': {
+    names: ['corpi chetonici'],
     shortName: 'Urine Ketones',
     description: 'Ketone bodies in urine from fat metabolism.',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['mmol/L'],
     highIndication: 'May indicate diabetic ketoacidosis or fasting',
     lowIndication: 'Normal finding',
+  },
+  // Ketones by dipstick read as present or absent, with no method named: the strip's variants trend apart
+  '33903-6': {
+    names: ['corpi chetonici'],
+    shortName: 'Urine Ketones Presence',
+    description: 'Ketone bodies in urine from fat metabolism, read as present or absent.',
   },
   '49137-3': {
     shortName: 'Urine Blood',

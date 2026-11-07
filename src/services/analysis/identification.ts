@@ -30,10 +30,11 @@ export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[
 /**
  * A printed value's test as far as it is known without the AI: the one
  * learned for its wording and unit (a learned "Not a LOINC test" too), else
- * the one test that clearly fits. A value the report gives no unit is never
- * matched on its name alone (nothing tells a mass from a molar test, or an
- * ordinal from a count): its candidates, of any property, are left to the
- * AI and the user, as those of any value several tests fit.
+ * the one test that clearly fits. A value the report gives no unit is
+ * matched only to a common test that has none (pH, specific gravity, a
+ * dipstick's presence), never to a quantity a unit would tell apart; else
+ * its candidates, of any property, are left to the AI and the user, as
+ * those of any value several tests fit.
  */
 export function identifyLocally(
   catalog: Catalog,
