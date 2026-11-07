@@ -470,12 +470,43 @@ describe('negated and shortened words', () => {
     expect(scores('Cellule Ep Squamose')['1-1']).toBeLessThan(0.9);
   });
 
-  it('lists the words of a text that no name has, words saying nothing of a test aside', () => {
-    expect(createCatalog(file).unknownWords('formula EKFC epatite siero')).toEqual(['formula', 'ekfc']);
+  it('reads a shortened word only as a word of the tests the other words fit, never alone', () => {
+    // "Ep." could be "epatite" too, but no hepatitis test has the other words
+    expect(scores('Cellule Ep. Squamose')['3-3']).toBeUndefined();
+    expect(scores('Ep.')['3-3']).toBeUndefined();
+  });
+
+  it('searches a negation joined to a word no name has as that word', () => {
+    expect(scores('non epatite')['3-3']).toBeGreaterThan(0);
+    expect(scores('nonepatite')['3-3']).toBeGreaterThan(0);
+  });
+
+  it('reads every Unicode dash of a query as a hyphen', () => {
+    expect(scores('cellule epiteliali non\u2010squamose')['2-2']).toBe(1);
+    expect(scores('cellule epiteliali non\u2011squamose')['2-2']).toBe(1);
   });
 });
 
 describe('extra names', () => {
+  it('fits an extra name only when the query holds all its telling words', () => {
+    const named = createCatalog(
+      { version: 't', groups: [], tests: [madeUpTest('1-1', ['platelet mean volume']), madeUpTest('2-2', ['erythrocyte mean volume'])] },
+      { '1-1': ['volume piastrinico medio'] }
+    );
+    const score = (query: string, code: string): number | undefined =>
+      named.scoredSearch(query).find(({ test }) => test.code === code)?.score;
+    expect(score('volume piastrinico medio', '1-1')).toBe(1);
+    // "Volume" says nothing of a test
+    expect(score('piastrinico medio', '1-1')).toBe(1);
+    expect(score('volume medio', '1-1')).toBeUndefined();
+    expect(score('medio', '1-1')).toBeUndefined();
+  });
+
+  it('counts the words of an extra name as held by every name of its test', () => {
+    const named = createCatalog({ version: 't', groups: [], tests: [madeUpTest('1-1', ['hba1c'])] }, { '1-1': ['emoglobina glicata'] });
+    expect(named.scoredSearch('emoglobina glicata hba1c')[0]).toMatchObject({ test: { code: '1-1' }, score: 0.9 });
+  });
+
   it("counts a code's extra names as names of it and of the codes it trends with", () => {
     const mass = { ...madeUpTest('1-1', ['glucose']), groups: ['G1'] };
     const molar = { ...madeUpTest('2-2', ['glucose']), property: 'SCnc', groups: ['G1'] };
@@ -489,6 +520,20 @@ describe('extra names', () => {
     const generated = await loadCatalog();
     expect(generated.named('ematocrito').map((test) => test.code)).toContain('4544-3');
     expect(generated.named('peso specifico').map((test) => test.code)).toEqual(['2965-2']);
+  });
+});
+
+describe('search of tests that fit alike', () => {
+  it('lists a measured test before one calculated from others', () => {
+    const calculated = { ...madeUpTest('1-1', ['ematocrito'], 1), method: 'Calculated' };
+    const measured = { ...madeUpTest('2-2', ['ematocrito'], 5), method: 'Automated count' };
+    const found = createCatalog({ version: 't', groups: [], tests: [calculated, measured] }).search('ematocrito');
+    expect(found.map((test) => test.code)).toEqual(['2-2', '1-1']);
+  });
+
+  it('puts the HbA1c HemoIO names before the calculated one for "emoglobina glicata hba1c"', async () => {
+    const [first] = (await loadCatalog()).scoredSearch('emoglobina glicata hba1c');
+    expect(first.test.code).toBe('4548-4');
   });
 });
 

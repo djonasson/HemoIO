@@ -8,9 +8,15 @@ Feature: Identifying the test of each value
   fits the printed name, its sample and its unit; the AI's confident choice
   among the tests that fit; else I choose in the review step. Besides
   LOINC's own names, the catalog knows the usual Italian and English names
-  of common tests that LOINC lacks ("Ematocrito", "MPV"). When the tests
-  that fit best are one measurement by several methods, the one naming no
-  method (else the most common) is taken without asking.
+  of common tests that LOINC lacks ("Ematocrito", "MPV"), each only as a
+  whole name. When the tests that fit best are one measurement by several
+  methods that give the same numbers, the one naming no method (else the
+  most common) is taken without asking; tests whose methods give different
+  numbers (clotting times, enzyme activities) are asked about. A method
+  named in brackets ("HPLC", "MDRD") picks the tests of that method, while
+  a brand or a standard LOINC does not name says nothing. A value printed
+  with no unit is matched only when its sample is named and only a test
+  with no unit fits its name.
 
   "Glucosio" below is printed under a blood heading, so glucose in blood and
   glucose in serum or plasma both fit it.
@@ -93,12 +99,57 @@ Feature: Identifying the test of each value
     Then the AI should be asked which test it is
     And the tests to choose from should include the FEU and the DDU tests
 
-  Scenario: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
-    Given a report prints "eGFR (formula EKFC)" in mL/min/1.73m²
+  Scenario: A D-dimer's units are read however the report sets them off
+    Given a report prints "D Dimero" in "ng/mL (FEU)"
+    When the report is analyzed
+    Then the value should be saved as "Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma"
+    And the AI should not be asked which test it is
+
+  Scenario Outline: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+    Given a report prints "<name>" in mL/min/1.73m²
     When the report is analyzed
     Then the AI should be asked which test it is
     And the first test to choose from should be the eGFR HemoIO describes
     And the filtration rates should come before any creatinine clearance
+
+    Examples:
+      | name                |
+      | eGFR (formula EKFC) |
+      | eGFR (Schwartz)     |
+      | eGFR (formula BIS)  |
+
+  Scenario Outline: An eGFR is filed under the formula its bracket names
+    Given a report prints "<name>" in mL/min/1.73m²
+    When the report is analyzed
+    Then the value should be saved under the eGFR test <code>
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                | code    | why                                                   |
+      | eGFR (CKD-EPI)      | 98979-8 | the CKD-EPI eGFR HemoIO describes                     |
+      | eGFR (CKD-EPI 2009) | 62238-1 | LOINC's CKD-EPI of no year, not the 2021 formula      |
+      | eGFR (formula MDRD) | 77147-7 | the MDRD formula of no population named               |
+      | eGFR (cistatina C)  | 50210-4 | the cystatin C-based formula, not a creatinine-based one |
+
+  Scenario: A method named in brackets picks its test, a brand beside it says nothing
+    Given a report prints "HbA1c (HPLC Tosoh)" in mmol/mol and "Albumina (BCG Roche)" in g/dL
+    When the report is analyzed
+    Then the HbA1c should be saved as "Hemoglobin A1c/Hemoglobin.total in Blood by HPLC"
+    And the albumin should be saved as "Albumin [Mass/volume] in Serum or Plasma by Bromocresol green (BCG) dye binding method"
+    And the AI should not be asked which test they are
+
+  Scenario: A value said to be calculated is never filed under a measured test
+    Given a report prints "Ematocrito (calcolato)" in %
+    And HemoIO's name "Ematocrito" is of the hematocrit counted by machine
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should include "Hematocrit [Volume Fraction] of Blood by calculation"
+
+  Scenario: A count per microscope field is filed under a test counted per field
+    Given a report prints "Batteri" in "per campo" under a urine heading
+    When the report is analyzed
+    Then the value should be saved as "Bacteria [#/area] in Urine sediment by Microscopy high power field"
+    And never under a count per volume
 
   Scenario: A value said to be of another sample is not given the test learned for its wording
     Given "Glucosio" in mg/dL was learned as "Glucose [Mass/volume] in Blood"
@@ -207,12 +258,19 @@ Feature: Identifying the test of each value
     When a report prints "Glicemia" in mg/dL and I rename it "Glucosio" before saving
     Then a later report printing "Glicemia" in mg/dL should be saved as "Glucose [Mass/volume] in Blood"
 
-  Scenario: A value with no unit is matched to the common test that has none
+  Scenario: A value with no unit is matched to the common test that has none, of the sample it names
     Given a report prints "pH (urine)" without a unit, as pH and specific gravity have none
     When the report is analyzed
     Then the value should be saved as "pH of Urine"
     And the AI should not be asked which test it is
     And I should be able to continue without giving it a unit
+
+  Scenario: A value with no unit and no sample named is asked about
+    Given a report prints "Ferritina" without a unit, with no sample named
+    And its unit may simply be missing from the report
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the tests to choose from should list the tests with no unit first, then those measured in a unit
 
   Scenario: A dipstick result with no unit is read as present or absent, never as an amount
     Given a report prints "Nitriti" without a unit under a urine heading

@@ -97,6 +97,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate bleeding risk or bone marrow problems',
   },
   '787-2': {
+    names: ['volume corpuscolare medio'],
     shortName: 'Mean Corpuscular Volume',
     description: 'Average size of red blood cells.',
     referenceRange: { low: 80, high: 100, unit: 'fL' },
