@@ -1022,6 +1022,7 @@ describe('matchLocally on names of real Italian reports', () => {
     ['Eritroblasti', '/100 WBC', undefined, '58413-6'],
     ['Filtrato glomerulare (eGFR)', 'mL/min/1,73m^2', undefined, '98979-8'],
     ['Corpi chetonici', 'mg/dL', 'urine', '5797-6'],
+    ['CREATINCHINASI - CK', 'U/L', undefined, '2157-6'],
     // "Er-", the red cells, names blood: the HbA1c HemoIO describes in mmol/mol
     ['Er-EMOGLOBINA GLICATA', 'mmol/mol', undefined, '4548-4'],
     // A dashed part that tells none of the tests apart says how the test is used, not which test it is

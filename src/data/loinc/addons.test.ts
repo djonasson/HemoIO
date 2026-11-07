@@ -9,8 +9,8 @@ const catalog = fixtureCatalog();
 const ADDONS = Object.entries(TEST_ADDONS);
 
 describe('TEST_ADDONS', () => {
-  it('keeps the ranges, descriptions and units of the 109 coded dictionary tests', () => {
-    expect(ADDONS).toHaveLength(109);
+  it('keeps the ranges, descriptions and units of the 110 coded dictionary tests', () => {
+    expect(ADDONS).toHaveLength(110);
     expect(TEST_ADDONS['2345-7']).toMatchObject({
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
       canonicalUnit: 'mg/dL',
@@ -187,6 +187,7 @@ const TERMS: [string, string][] = [
   ['704-7', 'Basophils [#/volume] in Blood by Automated count'],
   ['706-2', 'Basophils/Leukocytes in Blood by Automated count'],
   ['30392-5', 'Nucleated erythrocytes [#/volume] in Blood'],
+  ['2157-6', 'Creatine kinase [Enzymatic activity/volume] in Serum or Plasma'],
   ['32623-1', 'Platelet [Entitic mean volume] in Blood by Automated count'],
   ['58413-6', 'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count'],
   ['60474-4', 'Reticulocytes [#/volume] in Blood by Automated count'],

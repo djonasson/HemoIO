@@ -77,6 +77,7 @@ Feature: Identifying the test of each value
       | RDW                   | %        | Erythrocyte [DistWidth] in Blood by Automated count                   |
       | Eritroblasti          | %        | Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count |
       | Er-EMOGLOBINA GLICATA | mmol/mol | Hemoglobin A1c/Hemoglobin.total in Blood                              |
+      | CREATINCHINASI - CK   | U/L      | Creatine kinase [Enzymatic activity/volume] in Serum or Plasma        |
 
   Scenario: One measurement made by several methods is filed under the general test without asking
     Given a report prints "Eritrociti" in /µL under a urine heading

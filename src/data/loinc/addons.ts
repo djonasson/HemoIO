@@ -218,6 +218,13 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     highIndication: 'May indicate allergic reaction',
     lowIndication: 'Generally not clinically significant',
   },
+  '2157-6': {
+    // Italian reports often join "creatina chinasi" into one word
+    names: ['creatinchinasi'],
+    shortName: 'Creatine Kinase',
+    description: 'Muscle enzyme; rises after muscle damage or strain.',
+    canonicalUnit: 'U/L',
+  },
   '32623-1': {
     names: ['mpv', 'volume piastrinico medio'],
     shortName: 'Mean Platelet Volume',

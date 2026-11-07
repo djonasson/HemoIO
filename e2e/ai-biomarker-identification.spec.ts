@@ -121,6 +121,10 @@ test.describe('Identifying the test of each value', () => {
         { name: 'Er-EMOGLOBINA GLICATA', value: 38, unit: 'mmol/mol', confidence: 0.95 },
         'Hemoglobin A1c/Hemoglobin.total in Blood',
       ],
+      [
+        { name: 'CREATINCHINASI - CK', value: 143, unit: 'U/L', confidence: 0.95 },
+        'Creatine kinase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
     ];
     const ai = await analyzeReport(page, examples.map(([value]) => value));
     for (const [value, testName] of examples) {
