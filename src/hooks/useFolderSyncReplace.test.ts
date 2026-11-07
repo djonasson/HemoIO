@@ -1,17 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { chooseFolder } from '@data/storage/chooseFolder';
 import { useFolderSyncReplace, type UseFolderSyncReplaceOptions } from './useFolderSyncReplace';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
 import type { FolderReplaceChoice, FolderReplaceResult, FolderSyncIssue, UnreadableCopyTarget } from './useFilesystemSync';
 
-vi.mock('@data/storage/chooseFolder', () => ({ chooseFolder: vi.fn() }));
-
-vi.mock('@/utils/fileSystemSupport', () => ({
-  isFileSystemAccessSupported: vi.fn(() => true),
-}));
-
-const STORAGE_PROVIDER_KEY = 'hemoio_storage_provider';
-const FOLDER = { name: 'Health' } as unknown as FileSystemDirectoryHandle;
+const FOLDER = {} as FolderToken;
 const TARGET: UnreadableCopyTarget = { fileId: 'sha256:f1', folder: FOLDER };
 
 describe('useFolderSyncReplace', () => {
@@ -20,10 +13,8 @@ describe('useFolderSyncReplace', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
     replaceFolderCopy.mockResolvedValue('replaced');
     syncNow.mockResolvedValue(undefined);
-    vi.mocked(chooseFolder).mockResolvedValue(true);
   });
 
   function renderReplace(issue: FolderSyncIssue | null = 'unreadable', issueTarget: UnreadableCopyTarget | null = TARGET) {
@@ -56,7 +47,7 @@ describe('useFolderSyncReplace', () => {
   it('asks first, warning for a copy that may be someone else’s, then replaces the very file found', async () => {
     const { result } = renderReplace();
 
-    act(() => result.current.noticeActions.replace('unreadable'));
+    act(() => result.current.noticeActions.replace());
     expect(result.current.confirmation.opened).toBe(true);
     expect(result.current.confirmation.warnOtherSetup).toBe(true);
 
@@ -100,31 +91,32 @@ describe('useFolderSyncReplace', () => {
     expect(result.current.confirmation.opened).toBe(false);
   });
 
-  it('a close from an earlier opening leaves a later one open', () => {
+  it('closes the confirmation', () => {
     const { result } = renderReplace();
     act(() => result.current.issueState.askReplace());
-    const staleClose = result.current.confirmation.onClose;
+
     act(() => result.current.confirmation.onClose());
-    act(() => result.current.issueState.askReplace());
 
-    act(() => staleClose());
-
-    expect(result.current.confirmation.opened).toBe(true);
+    expect(result.current.confirmation.opened).toBe(false);
   });
 
-  it('chooses another folder from the notice', async () => {
-    const { result } = renderReplace();
+  it('keeps the notice actions the same object, so the notice is not shown again', () => {
+    const { result, rerender } = renderReplace();
+    const first = result.current.noticeActions;
 
-    await expect(result.current.noticeActions.chooseFolder()).resolves.toBe(true);
-    expect(chooseFolder).toHaveBeenCalledTimes(1);
+    rerender({ issue: 'before-loinc', issueTarget: { fileId: 'sha256:f2', folder: FOLDER } });
+
+    expect(result.current.noticeActions).toBe(first);
+    // Read at the click: the issue now shown
+    act(() => result.current.noticeActions.replace());
+    expect(result.current.confirmation.warnOtherSetup).toBe(false);
   });
 
-  it('chooses nothing once folder storage is switched off, and syncs so the notice goes', async () => {
-    localStorage.setItem(STORAGE_PROVIDER_KEY, 'local');
+  it('syncs, so the notice goes, once folder storage was switched off', () => {
     const { result } = renderReplace();
 
-    await expect(result.current.noticeActions.chooseFolder()).resolves.toBe(false);
-    expect(chooseFolder).not.toHaveBeenCalled();
+    act(() => result.current.noticeActions.onFolderStorageOff());
+
     expect(syncNow).toHaveBeenCalledTimes(1);
   });
 });

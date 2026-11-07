@@ -48,8 +48,6 @@ import {
   useDataReplacedElsewhere,
 } from '@hooks';
 import { announceDataReplaced } from '@data/db/dataReplacedEvents';
-import { chooseFolder } from '@data/storage/chooseFolder';
-import { isFolderStorageOn } from '@data/storage/storageChoice';
 import { ImportWizard, type ReviewedResult } from '@components/import';
 import { TimelineView } from '@components/timeline';
 import { TrendsView } from '@components/trends';
@@ -72,7 +70,7 @@ import { HEADER_HEIGHT } from './headerHeight';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
-import type { AppView, FolderReplaceResult, FolderRestorePrompt, ViewFocus } from '@hooks';
+import type { AppView, ViewFocus } from '@hooks';
 
 interface AppShellProps {
   children?: React.ReactNode;
@@ -370,39 +368,16 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     [handleRestore, acknowledgeFolderCopy, offeredRevision, offeredStamp, recheckFolderRestore]
   );
 
-  // "Replace folder copy", for the question the dialog shows: the copy is
-  // kept as a backup first, and the next sync writes over it without asking
-  // again; one that cannot be read, only while it still cannot be read
-  const handleFolderReplace = useCallback(
-    (prompt: FolderRestorePrompt): Promise<FolderReplaceResult> => {
-      if (prompt.kind === 'offer' && !prompt.damagedCurrent) {
-        return replaceFolderCopy({ kind: 'copy', revision: prompt.revision });
-      }
-      const target = prompt.kind === 'offer' ? prompt.damagedCurrent?.target : prompt.target;
-      // Not offered without one: there is no file to name
-      if (!target) return Promise.resolve('changed');
-      return replaceFolderCopy({ kind: 'unreadable', ...target });
-    },
-    [replaceFolderCopy]
-  );
-
-  // Switched off meanwhile: no folder to choose, and the question goes with the recheck
-  const chooseFolderForQuestion = useCallback((): Promise<boolean> => {
-    if (!isFolderStorageOn()) {
-      recheckFolderRestore();
-      return Promise.resolve(false);
-    }
-    return chooseFolder();
-  }, [recheckFolderRestore]);
-
   return (
     <FolderSyncIssueContext.Provider value={folderSyncReplace.issueState}>
       <FolderRestoreModal
         prompt={folderRestore.prompt}
         onRestore={handleFolderRestore}
-        onReplace={handleFolderReplace}
+        // "Replace folder copy": kept as a backup first, and the next sync
+        // writes over it without asking again; one that cannot be read, only
+        // while it still cannot be read
+        onReplace={replaceFolderCopy}
         onDecide={folderRestore.decide}
-        onChooseFolder={chooseFolderForQuestion}
         onRecheck={recheckFolderRestore}
       />
       <FolderConflictModal conflict={folderConflict} onResolve={resolveConflict} />

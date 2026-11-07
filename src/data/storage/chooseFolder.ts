@@ -6,27 +6,28 @@
 
 import { FileSystemStorageProvider } from './FileSystemStorageProvider';
 import { notifyFolderAccessChanged } from './folderAccessEvents';
+import { isFolderStorageOn } from './storageChoice';
 
 /**
- * Show the folder picker and keep the folder chosen, telling no one: for a
- * choice that is announced another way (switching storage on). Resolves its
- * name, or null when the picker was cancelled. Must be called straight from
- * a click, with nothing awaited before it: the picker needs the click's user
- * activation. Rejects when the folder cannot be chosen.
+ * How choosing ended: a folder chosen and kept, the picker cancelled
+ * (nothing changes), or folder storage switched off meanwhile, so there was
+ * no folder to choose and no picker was shown
  */
-export async function pickFolder(): Promise<string | null> {
-  const handle = await new FileSystemStorageProvider().selectDirectory();
-  return handle ? handle.name : null;
-}
+export type FolderChoice = 'chosen' | 'cancelled' | 'off';
 
 /**
- * Show the folder picker; resolves true once a folder is chosen, kept, and
- * the sync and Settings told; false when the picker was cancelled (nothing
- * changes then). Called as pickFolder is; rejects when the folder cannot be
- * chosen.
+ * Show the folder picker and keep the folder chosen. Must be called straight
+ * from a click, with nothing awaited before it: the picker needs the click's
+ * user activation. Rejects when the folder cannot be chosen.
+ *
+ * For folder storage that is on: 'off' once it was switched off, and the
+ * folder chosen is announced (notifyFolderAccessChanged). `switchingOn`: the
+ * choice that turns folder storage on, which announces itself (saving the
+ * storage choice): neither checked nor announced here.
  */
-export async function chooseFolder(): Promise<boolean> {
-  if ((await pickFolder()) === null) return false;
-  notifyFolderAccessChanged();
-  return true;
+export async function chooseFolder({ switchingOn = false }: { switchingOn?: boolean } = {}): Promise<FolderChoice> {
+  if (!switchingOn && !isFolderStorageOn()) return 'off';
+  if (!(await new FileSystemStorageProvider().selectDirectory())) return 'cancelled';
+  if (!switchingOn) notifyFolderAccessChanged();
+  return 'chosen';
 }

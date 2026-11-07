@@ -55,3 +55,8 @@ export {
   type FolderCopyReading,
   type UnreadableFolderCopy,
 } from './folderCopy';
+export {
+  folderCopyProblemActions,
+  folderSyncIssueActions,
+  type FolderProblemActions,
+} from './folderProblemActions';

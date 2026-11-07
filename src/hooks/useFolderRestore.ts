@@ -22,16 +22,19 @@ import {
 } from '@services/sync';
 import { useEncryptedDb } from './useEncryptedDb';
 import { logFailure } from '@/utils/logFailure';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
 import type { ParsedBackupData } from '@services/import';
-import type { UnreadableCopyTarget } from './useFilesystemSync';
+import type { FolderReplaceChoice } from './useFilesystemSync';
 
-/** A folder copy that cannot be read, as the question shows it */
-export interface UnreadableCopyPrompt {
-  reason: FolderCopyProblem;
-  /** Whether the user may choose to replace it: the sync's own decision */
-  replaceable: boolean;
-  /** The file and folder a replace is for; null when the file could not be read at all */
-  target: UnreadableCopyTarget | null;
+/**
+ * "Replace folder copy…" as the question offers it: what a replace is for
+ * (the copy offered, or the very file that cannot be read, in the folder it
+ * was found in), and whether the copy may be someone else's, so the
+ * confirmation warns
+ */
+export interface PromptReplace {
+  choice: FolderReplaceChoice;
+  warn: boolean;
 }
 
 export type FolderRestorePrompt =
@@ -49,9 +52,17 @@ export type FolderRestorePrompt =
        */
       stamp: string;
       /** The current copy cannot be read, and the previous copy is offered instead */
-      damagedCurrent?: UnreadableCopyPrompt;
+      damagedCurrent: boolean;
+      /** The copy offered, or a damaged current copy; null when it may not be replaced */
+      replace: PromptReplace | null;
     }
-  | ({ kind: 'unreadable'; folderName: string | null } & UnreadableCopyPrompt);
+  | {
+      kind: 'unreadable';
+      folderName: string | null;
+      reason: FolderCopyProblem;
+      /** Null when it may not be replaced (the sync's own decision), or the file could not be read at all */
+      replace: PromptReplace | null;
+    };
 
 /**
  * The user's answer: 'sync' when the copy was restored or may be replaced,
@@ -125,23 +136,24 @@ export function useFolderRestore(): UseFolderRestoreResult {
       const folder = currentFolder();
       let assessment: FolderCopyAssessment;
       let folderName: string | null = null;
-      let folderHandle: FileSystemDirectoryHandle | null = null;
+      let folderToken: FolderToken | null = null;
       try {
         // Without access nothing can be written either: wait to be told it was granted
         if ((await folder.getPermissionState()) !== 'granted') return;
         assessment = await assessFolderCopy(folder, key, lockRef.current);
         if (assessment.kind !== 'sync') {
-          folderName = await folder.getDirectoryName();
-          folderHandle = await folder.getFolderHandle();
+          // The folder the provider read the file from
+          const identity = await folder.folderIdentity();
+          folderName = identity?.name ?? null;
+          folderToken = identity?.token ?? null;
         }
       } catch {
-        assessment = { kind: 'unreadable', reason: 'read-failed', fileId: null, replaceable: false };
+        assessment = { kind: 'unreadable', reason: 'read-failed', fileId: null, replace: false };
       }
-      const unreadable = ({ reason, fileId, replaceable }: UnreadableFolderCopy): UnreadableCopyPrompt => ({
-        reason,
-        replaceable,
-        target: fileId === null ? null : { fileId, folder: folderHandle },
-      });
+      const replaceOf = ({ fileId, replace }: UnreadableFolderCopy): PromptReplace | null =>
+        replace === false || fileId === null
+          ? null
+          : { choice: { kind: 'unreadable', fileId, folder: folderToken }, warn: replace === 'warn' };
 
       if (cancelled) return;
       if (assessment.kind === 'sync') {
@@ -159,9 +171,12 @@ export function useFolderRestore(): UseFolderRestoreResult {
                 folderName,
                 replacesBrowserData: browserHasData,
                 stamp,
-                ...(assessment.damagedCurrent && { damagedCurrent: unreadable(assessment.damagedCurrent) }),
+                damagedCurrent: assessment.damagedCurrent !== undefined,
+                replace: assessment.damagedCurrent
+                  ? replaceOf(assessment.damagedCurrent)
+                  : { choice: { kind: 'copy', revision: assessment.revision }, warn: false },
               }
-            : { kind: 'unreadable', folderName, ...unreadable(assessment) }
+            : { kind: 'unreadable', folderName, reason: assessment.reason, replace: replaceOf(assessment) }
       );
     }
 

@@ -48,15 +48,15 @@ export async function keepBrowserData(
 }
 
 /**
- * Keep a folder copy, as its bytes were read, as a conflict backup: its
- * content unchanged, without its lock. Rejects when the key does not open it
- * or the backup cannot be saved.
+ * Keep a folder file, as its bytes were read, as a conflict backup, as
+ * backupOfFolderFile keeps it: the one rule for every file kept before it is
+ * replaced. Resolves the backup's name; rejects when it cannot be saved.
  */
 export async function keepFolderCopy(
   { key, backups, protect }: { key: CryptoKey; backups: FolderBackupStore; protect?: string[] },
   bytes: ArrayBuffer
-): Promise<void> {
-  await keepFolderBackup(backups, await resealWithoutLock(bytes, key), { kind: 'conflict', protect });
+): Promise<string> {
+  return keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict', protect });
 }
 
 /**
@@ -93,7 +93,7 @@ export async function keepCurrentFolderCopy({
 }): Promise<ArrayBuffer | null> {
   const bytes = await folder.loadCurrent();
   if (bytes === null || bytes.byteLength === 0) return null;
-  await keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict', protect });
+  await keepFolderCopy({ key, backups, protect }, bytes);
   return bytes;
 }
 
@@ -122,11 +122,9 @@ export async function keepFolderFilesBeforeReplace({
   if (bytes === null || bytes.byteLength === 0) return false;
   if ((await folderCopyId(bytes, null)) !== fileId) return false;
   if (!(await isReplaceableFolderCopy(bytes, key, ownLock))) return false;
-  const kept = await keepFolderBackup(backups, await backupOfFolderFile(bytes, key), { kind: 'conflict' });
+  const kept = await keepFolderCopy({ key, backups }, bytes);
   const previous = await folder.loadPrevious();
-  if (previous !== null && previous.byteLength > 0) {
-    await keepFolderBackup(backups, await backupOfFolderFile(previous, key), { kind: 'conflict', protect: [kept] });
-  }
+  if (previous !== null && previous.byteLength > 0) await keepFolderCopy({ key, backups, protect: [kept] }, previous);
   return true;
 }
 

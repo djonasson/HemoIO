@@ -3,11 +3,11 @@
  * or cannot write to the folder
  */
 
-import { createElement, useEffect, useLayoutEffect, useRef } from 'react';
+import { createElement, useEffect, useRef } from 'react';
 import { notifications } from '@mantine/notifications';
 import { showPersistentNotice } from '@components/common/showPersistentNotice';
 import { FolderSyncNoticeBody } from '@components/storage/FolderSyncNoticeBody';
-import { folderSyncIssueActions } from '@components/storage/folderProblemActions';
+import { folderSyncIssueActions } from '@services/sync';
 import type { FolderSyncIssue } from './useFilesystemSync';
 
 export const FOLDER_SYNC_NOTICE_ID = 'folder-sync';
@@ -64,15 +64,12 @@ const NOTICES: Record<FolderSyncIssue, { title: string; message: string }> = {
   },
 };
 
-/** What the notice's buttons do */
+/** What the notice's buttons do; the same object for as long as the notice may show, so it is not shown again */
 export interface FolderSyncNoticeActions {
-  /**
-   * Show the folder picker; called straight from the click. Resolves false
-   * when cancelled, and rejects when the folder could not be chosen.
-   */
-  chooseFolder: () => Promise<boolean>;
   /** Ask to confirm replacing the folder copy the issue is about */
-  replace: (issue: FolderSyncIssue) => void;
+  replace: () => void;
+  /** "Choose another folder" found folder storage switched off meanwhile */
+  onFolderStorageOff: () => void;
 }
 
 /**
@@ -80,22 +77,18 @@ export interface FolderSyncNoticeActions {
  * must not repeat it, and one that writes again takes it away. A copy that
  * cannot be read comes with what can be done about it (folderSyncIssueActions).
  */
-export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions?: FolderSyncNoticeActions): void {
-  // The latest, read at the click: the notice is not shown again for new callbacks
-  const actionsRef = useRef(actions);
-  useLayoutEffect(() => {
-    actionsRef.current = actions;
-  }, [actions]);
-
-  // Each notice shown gets a body of its own: nothing it showed carries over to the next
+export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions: FolderSyncNoticeActions): void {
+  // Each notice shown gets a body of its own, so nothing it showed carries
+  // over to the next: notifications are keyed by their id, so a notice shown
+  // again while the last one still fades out could otherwise keep its body
   const shownRef = useRef(0);
   useEffect(() => {
     if (!issue) return;
     shownRef.current += 1;
 
     const { title, message } = NOTICES[issue];
-    const available = actionsRef.current ? folderSyncIssueActions(issue) : null;
-    const offered = available !== null && (available.chooseFolder || available.replace !== false);
+    const available = folderSyncIssueActions(issue);
+    const offered = available.chooseFolder || available.replace !== false;
     showPersistentNotice({
       id: FOLDER_SYNC_NOTICE_ID,
       title,
@@ -104,8 +97,8 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions?: Fol
             key: `${issue}-${shownRef.current}`,
             message,
             actions: available,
-            onChooseFolder: () => actionsRef.current?.chooseFolder() ?? Promise.resolve(false),
-            onReplace: () => actionsRef.current?.replace(issue),
+            onFolderStorageOff: actions.onFolderStorageOff,
+            onReplace: actions.replace,
           })
         : message,
       color: 'yellow',
@@ -113,5 +106,5 @@ export function useFolderSyncNotice(issue: FolderSyncIssue | null, actions?: Fol
     return () => {
       notifications.hide(FOLDER_SYNC_NOTICE_ID);
     };
-  }, [issue]);
+  }, [issue, actions]);
 }

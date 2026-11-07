@@ -320,7 +320,7 @@ describe('assessFolderCopy', () => {
       kind: 'unreadable',
       reason: 'cannot-decrypt',
       fileId: await folderCopyId(bytes, null),
-      replaceable: true,
+      replace: 'warn',
     });
   });
 
@@ -332,7 +332,7 @@ describe('assessFolderCopy', () => {
     expect(await assessFolderCopy(source(bytes), await newKey())).toMatchObject({
       kind: 'unreadable',
       reason: 'another-setup',
-      replaceable: false,
+      replace: false,
     });
   });
 
@@ -350,7 +350,7 @@ describe('assessFolderCopy', () => {
     expect(assessment).toMatchObject({
       kind: 'offer',
       revision: 'r6',
-      damagedCurrent: { reason: 'not-a-copy', fileId: await folderCopyId(damaged, null), replaceable: true },
+      damagedCurrent: { reason: 'not-a-copy', fileId: await folderCopyId(damaged, null), replace: 'replace' },
     });
   });
 
@@ -381,7 +381,7 @@ describe('assessFolderCopy', () => {
 
     const assessment = await assessFolderCopy(source(new Error('disk on fire: /home/someone/Health')), await newKey());
 
-    expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed', fileId: null, replaceable: false });
+    expect(assessment).toEqual({ kind: 'unreadable', reason: 'read-failed', fileId: null, replace: false });
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });

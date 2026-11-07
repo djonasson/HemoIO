@@ -18,7 +18,7 @@ import type { FolderBackupStore } from './folderBackups';
 import type { FolderCopyStore, FolderSyncOutcome, FolderWriteContext } from './folderSync';
 
 /** The copy the user chose to replace, as the sync is given it */
-export type FolderReplaceChoice = Pick<FolderWriteContext, 'replaces' | 'replacesUnreadable'>;
+export type ReplacementToTake = Pick<FolderWriteContext, 'replaces' | 'replacesUnreadable'>;
 
 /** The unlocked database and the key a sync seals with */
 export interface SyncSession {
@@ -45,7 +45,7 @@ export interface RunFolderSyncOptions {
    * only by a sync that goes on to read the folder. One that then fails to
    * read it asks again.
    */
-  takeReplaces: () => FolderReplaceChoice | undefined;
+  takeReplaces: () => ReplacementToTake | undefined;
   /** False once the hold begins: checked before the folder copy is decrypted, and at the save */
   isEnabled: () => boolean;
   /** False once the folder is known to hold `lock` (FolderWriteContext.lockMayBeBehind) */

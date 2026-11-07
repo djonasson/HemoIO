@@ -1,38 +1,56 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { chooseFolder } from '@data/storage/chooseFolder';
 import { FolderSyncNoticeBody } from './FolderSyncNoticeBody';
-import type { FolderProblemActions } from './folderProblemActions';
+import type { FolderProblemActions } from '@services/sync';
 
-function renderBody(
-  actions: FolderProblemActions,
-  onChooseFolder = vi.fn(async (): Promise<boolean> => true)
-) {
+vi.mock('@data/storage/chooseFolder', () => ({
+  chooseFolder: vi.fn(),
+}));
+
+function renderBody(actions: FolderProblemActions) {
   const onReplace = vi.fn();
+  const onFolderStorageOff = vi.fn();
   render(
     <MantineProvider env="test">
       <FolderSyncNoticeBody
         message="The copy in your folder cannot be read."
         actions={actions}
-        onChooseFolder={onChooseFolder}
+        onFolderStorageOff={onFolderStorageOff}
         onReplace={onReplace}
       />
     </MantineProvider>
   );
-  return { onChooseFolder, onReplace };
+  return { onReplace, onFolderStorageOff };
 }
 
 describe('FolderSyncNoticeBody', () => {
+  beforeEach(() => {
+    vi.mocked(chooseFolder).mockReset();
+    vi.mocked(chooseFolder).mockResolvedValue('chosen');
+  });
+
   it('shows the message with both ways on, each doing its own', async () => {
-    const { onChooseFolder, onReplace } = renderBody({ chooseFolder: true, replace: 'warn', tryAgain: false });
+    const { onReplace, onFolderStorageOff } = renderBody({ chooseFolder: true, replace: 'warn', tryAgain: false });
 
     expect(screen.getByText('The copy in your folder cannot be read.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
 
-    expect(onChooseFolder).toHaveBeenCalledTimes(1);
+    expect(chooseFolder).toHaveBeenCalledTimes(1);
     expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onFolderStorageOff).not.toHaveBeenCalled();
+  });
+
+  it('tells the caller when folder storage was switched off meanwhile', async () => {
+    vi.mocked(chooseFolder).mockResolvedValue('off');
+    const { onFolderStorageOff } = renderBody({ chooseFolder: true, replace: false, tryAgain: false });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    expect(onFolderStorageOff).toHaveBeenCalledTimes(1);
   });
 
   it('offers no replace where the copy may not be replaced', () => {
@@ -43,12 +61,8 @@ describe('FolderSyncNoticeBody', () => {
   });
 
   it('says, without the reason, when the folder could not be chosen', async () => {
-    renderBody(
-      { chooseFolder: true, replace: false, tryAgain: false },
-      vi.fn(async (): Promise<boolean> => {
-        throw new Error('No access to /home/someone');
-      })
-    );
+    vi.mocked(chooseFolder).mockRejectedValue(new Error('No access to /home/someone'));
+    renderBody({ chooseFolder: true, replace: false, tryAgain: false });
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
 

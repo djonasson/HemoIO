@@ -4,10 +4,8 @@
  * the state Settings shows once the notice is dismissed.
  */
 
-import { useCallback, useMemo, useState } from 'react';
-import { folderSyncIssueActions } from '@components/storage/folderProblemActions';
-import { chooseFolder } from '@data/storage/chooseFolder';
-import { isFolderStorageOn } from '@data/storage/storageChoice';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { folderSyncIssueActions } from '@services/sync';
 import type { FolderReplaceChoice, FolderReplaceResult, FolderSyncIssue, UnreadableCopyTarget } from './useFilesystemSync';
 import type { FolderSyncIssueState } from './useFolderSyncIssue';
 import type { FolderSyncNoticeActions } from './useFolderSyncNotice';
@@ -20,7 +18,7 @@ export interface UseFolderSyncReplaceOptions {
 }
 
 export interface UseFolderSyncReplaceResult {
-  /** Props for ReplaceFolderCopyModal; `key` is new for each opening */
+  /** Props for ReplaceFolderCopyModal; `key` is new for each opening, so each starts afresh */
   confirmation: {
     key: number;
     opened: boolean;
@@ -28,14 +26,16 @@ export interface UseFolderSyncReplaceResult {
     onReplace: () => Promise<FolderReplaceResult | undefined>;
     onClose: () => void;
   };
+  /** The same object for the whole session: the notice is not shown again for new callbacks */
   noticeActions: FolderSyncNoticeActions;
   issueState: FolderSyncIssueState;
 }
 
+/** The confirmation open: the copy it is about */
 interface Asked {
-  opening: number;
   issue: FolderSyncIssue;
   target: UnreadableCopyTarget;
+  warn: boolean;
 }
 
 export function useFolderSyncReplace({
@@ -45,33 +45,33 @@ export function useFolderSyncReplace({
   syncNow,
 }: UseFolderSyncReplaceOptions): UseFolderSyncReplaceResult {
   const [asked, setAsked] = useState<Asked | null>(null);
-  // The last opening, kept while the confirmation closes
+  // The confirmation's opening, its key, kept while it closes
   const [opening, setOpening] = useState(0);
+  const openingsRef = useRef(0);
   // The confirmation is about the copy the sync found: once it finds another, or none, it closes
   if (asked !== null && (asked.issue !== issue || asked.target.fileId !== issueTarget?.fileId)) setAsked(null);
 
-  const replaceable = issue !== null && issueTarget !== null && folderSyncIssueActions(issue).replace !== false;
+  const replace = issue === null ? false : folderSyncIssueActions(issue).replace;
+  const replaceable = replace !== false && issueTarget !== null;
+
+  // Read at the click, so the notice's actions stay the same object
+  const latestRef = useRef({ issue, issueTarget, replace, syncNow });
+  useLayoutEffect(() => {
+    latestRef.current = { issue, issueTarget, replace, syncNow };
+  }, [issue, issueTarget, replace, syncNow]);
 
   const askReplace = useCallback(() => {
-    if (!replaceable || issue === null || issueTarget === null) return;
-    const next = opening + 1;
-    setOpening(next);
-    setAsked({ opening: next, issue, target: issueTarget });
-  }, [replaceable, issue, issueTarget, opening]);
+    const { issue: current, issueTarget: target, replace: offered } = latestRef.current;
+    if (current === null || target === null || offered === false) return;
+    openingsRef.current += 1;
+    setOpening(openingsRef.current);
+    setAsked({ issue: current, target, warn: offered === 'warn' });
+  }, []);
 
   const syncAgain = useCallback(() => {
     // A failure is told by the sync, as for every sync
-    void syncNow().catch(() => undefined);
-  }, [syncNow]);
-
-  const chooseAnotherFolder = useCallback((): Promise<boolean> => {
-    // Switched off meanwhile: nothing to choose, and the next sync takes the notice away
-    if (!isFolderStorageOn()) {
-      syncAgain();
-      return Promise.resolve(false);
-    }
-    return chooseFolder();
-  }, [syncAgain]);
+    void latestRef.current.syncNow().catch(() => undefined);
+  }, []);
 
   const onReplace = useCallback(async (): Promise<FolderReplaceResult | undefined> => {
     if (asked === null) return undefined;
@@ -82,15 +82,12 @@ export function useFolderSyncReplace({
     return result;
   }, [asked, replaceFolderCopy, syncAgain]);
 
-  const askedOpening = asked?.opening;
-  // Only the opening it belongs to: a replace that settles late never closes a later one
-  const onClose = useCallback(() => {
-    setAsked((current) => (current?.opening === askedOpening ? null : current));
-  }, [askedOpening]);
+  const onClose = useCallback(() => setAsked(null), []);
 
+  // Switched off meanwhile: the sync takes the notice away
   const noticeActions = useMemo<FolderSyncNoticeActions>(
-    () => ({ chooseFolder: chooseAnotherFolder, replace: () => askReplace() }),
-    [chooseAnotherFolder, askReplace]
+    () => ({ replace: askReplace, onFolderStorageOff: syncAgain }),
+    [askReplace, syncAgain]
   );
   const issueState = useMemo<FolderSyncIssueState>(() => ({ replaceable, askReplace }), [replaceable, askReplace]);
 
@@ -98,7 +95,7 @@ export function useFolderSyncReplace({
     confirmation: {
       key: opening,
       opened: asked !== null,
-      warnOtherSetup: asked !== null && folderSyncIssueActions(asked.issue).replace === 'warn',
+      warnOtherSetup: asked?.warn ?? false,
       onReplace,
       onClose,
     },

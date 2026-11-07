@@ -43,19 +43,22 @@ describe('useReplaceConfirm', () => {
     expect(result.current.isReplacing).toBe(false);
   });
 
-  it('starts afresh on reset', async () => {
-    const { result } = renderHook(() => useReplaceConfirm());
+  it('starts afresh once mounted again', async () => {
+    const first = renderHook(() => useReplaceConfirm());
     await act(async () => {
-      await result.current.run(() => Promise.reject(new Error('Disk full')));
+      await first.result.current.run(() => Promise.reject(new Error('Disk full')));
     });
+    expect(first.result.current.failed).toBe(true);
+    first.unmount();
 
-    act(() => result.current.reset());
+    const { result } = renderHook(() => useReplaceConfirm());
 
     expect(result.current.failed).toBe(false);
+    expect(result.current.isReplacing).toBe(false);
   });
 
-  it('lets a replace from before a reset settle unseen', async () => {
-    const { result } = renderHook(() => useReplaceConfirm());
+  it('lets a replace still running once unmounted settle unseen', async () => {
+    const { result, unmount } = renderHook(() => useReplaceConfirm());
     const succeeding = deferred<string>();
     const failing = deferred<string>();
 
@@ -63,20 +66,13 @@ describe('useReplaceConfirm', () => {
     let second!: Promise<{ value: string } | undefined>;
     act(() => {
       first = result.current.run(() => succeeding.promise);
-    });
-    act(() => result.current.reset());
-    act(() => {
       second = result.current.run(() => failing.promise);
     });
-    act(() => result.current.reset());
+    unmount();
 
-    await act(async () => {
-      succeeding.resolve('replaced');
-      failing.reject(new Error('Disk full'));
-      await expect(first).resolves.toBeUndefined();
-      await expect(second).resolves.toBeUndefined();
-    });
-    expect(result.current.failed).toBe(false);
-    expect(result.current.isReplacing).toBe(false);
+    succeeding.resolve('replaced');
+    failing.reject(new Error('Disk full'));
+    await expect(first).resolves.toBeUndefined();
+    await expect(second).resolves.toBeUndefined();
   });
 });

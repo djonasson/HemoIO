@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { arrayBufferToBase64, base64ToArrayBuffer, encrypt } from '@data/encryption';
 import { createCredentialsV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 import {
-  envelopeHeaderProblem,
   FOLDER_ENVELOPE_FORMAT,
   isDamagedCopy,
   openDamagedCopy,
@@ -138,12 +137,12 @@ describe('folderEnvelope', () => {
     });
 
     it.each([
-      ['an unknown version', { version: 2 }],
-      ['a lock that is not v2 credentials', { lock: { version: 2, kekSalt: 'x' } }],
-      ['a lock with an invalid date', { lock: 'LOCK_WITH_BAD_DATE' }],
-      ['no sealed part', { sealed: undefined }],
-      ['a sealed part that is not base64', { sealed: 'not base64!' }],
-    ])('reports a header with %s as damaged', async (_label, change) => {
+      ['an unknown version', { version: 2 }, 'newer'],
+      ['a lock that is not v2 credentials', { lock: { version: 2, kekSalt: 'x' } }, 'foreign-lock'],
+      ['a lock with an invalid date', { lock: 'LOCK_WITH_BAD_DATE' }, 'foreign-lock'],
+      ['no sealed part', { sealed: undefined }, 'damaged'],
+      ['a sealed part that is not base64', { sealed: 'not base64!' }, 'damaged'],
+    ])('reports a header with %s, and does not open it', async (_label, change, state) => {
       const { key, lock } = await newSetup();
       const file = JSON.parse(textOf(await sealEnvelope(encode(PLAIN), key, lock)));
       const edited =
@@ -151,7 +150,7 @@ describe('folderEnvelope', () => {
           ? { ...file, lock: { ...lock, changedAt: 'soon' } }
           : { ...file, ...change };
 
-      expect(readEnvelopeHeader(fileOf(JSON.stringify(edited)))).toBe('damaged');
+      expect(readEnvelopeHeader(fileOf(JSON.stringify(edited)))).toBe(state);
       await expect(openEnvelope(fileOf(JSON.stringify(edited)), key)).rejects.toThrow();
     });
 
@@ -229,23 +228,23 @@ describe('folderEnvelope', () => {
     it('names a newer envelope first, whatever its lock', async () => {
       const { credentials } = await createCredentialsV2('Passw0rd!', 1000);
 
-      expect(envelopeHeaderProblem(header({ version: 2, lock: credentials }))).toBe('newer');
-      expect(envelopeHeaderProblem(header({ version: 2, lock: { version: 3 } }))).toBe('newer');
+      expect(readEnvelopeHeader(header({ version: 2, lock: credentials }))).toBe('newer');
+      expect(readEnvelopeHeader(header({ version: 2, lock: { version: 3 } }))).toBe('newer');
     });
 
     it('names a lock that is not these credentials a foreign lock', () => {
-      expect(envelopeHeaderProblem(header({ version: 1, lock: { version: 3 } }))).toBe('foreign-lock');
-      expect(envelopeHeaderProblem(header({ version: 1, lock: 'a lock' }))).toBe('foreign-lock');
+      expect(readEnvelopeHeader(header({ version: 1, lock: { version: 3 } }))).toBe('foreign-lock');
+      expect(readEnvelopeHeader(header({ version: 1, lock: 'a lock' }))).toBe('foreign-lock');
     });
 
-    it('names nothing for a header this build reads, a damaged one, or no envelope', async () => {
+    it('reads a header this build reads, names a damaged one, and nothing for no envelope', async () => {
       const { credentials } = await createCredentialsV2('Passw0rd!', 1000);
 
-      expect(envelopeHeaderProblem(header({ version: 1, lock: credentials }))).toBeNull();
-      expect(envelopeHeaderProblem(header({ version: 1, lock: null }))).toBeNull();
-      expect(envelopeHeaderProblem(header({ version: 'one', lock: null }))).toBeNull();
-      expect(envelopeHeaderProblem(fileOf('not json'))).toBeNull();
-      expect(envelopeHeaderProblem(fileOf(JSON.stringify({ format: 'other', version: 9 })))).toBeNull();
+      expect(readEnvelopeHeader(header({ version: 1, lock: credentials }))).toMatchObject({ version: 1 });
+      expect(readEnvelopeHeader(header({ version: 1, lock: null }))).toMatchObject({ version: 1, lock: null });
+      expect(readEnvelopeHeader(header({ version: 'one', lock: null }))).toBe('damaged');
+      expect(readEnvelopeHeader(fileOf('not json'))).toBeNull();
+      expect(readEnvelopeHeader(fileOf(JSON.stringify({ format: 'other', version: 9 })))).toBeNull();
     });
 
     it('tells whether a file shows no lock in plain text', async () => {

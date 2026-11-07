@@ -34,7 +34,7 @@ import {
   FileSystemStorageProvider,
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
-import { chooseFolder, pickFolder } from '@data/storage/chooseFolder';
+import { chooseFolder } from '@data/storage/chooseFolder';
 import { notifyFolderAccessChanged, onFolderAccessChanged } from '@data/storage/folderAccessEvents';
 import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
 import { useFolderSyncIssue } from '@hooks/useFolderSyncIssue';
@@ -65,52 +65,43 @@ export function StorageSettings({
   const [isChanging, setIsChanging] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<StorageProviderType | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  // Bumped when folder access changes elsewhere (a folder chosen from the
-  // restore question or a sync notice, or in another tab), to show it here
-  const [folderGeneration, setFolderGeneration] = useState(0);
 
   const fileSystemSupported = isFileSystemAccessSupported();
   const folderSyncIssue = useFolderSyncIssue();
 
-  // The storage choice and the folder, as stored: read at first, and again
-  // whenever they change (here, from the restore question or a sync notice,
-  // or in another tab; switching storage tells the same)
+  /** The folder and its access, as stored, while folder storage is the choice */
+  const loadFileSystemStatus = useCallback(
+    async (provider: StorageProviderType, isCancelled: () => boolean): Promise<void> => {
+      if (provider !== 'filesystem' || !fileSystemSupported) return;
+      const storage = new FileSystemStorageProvider();
+      const name = await storage.getDirectoryName();
+      if (isCancelled()) return;
+      setDirectoryName(name);
+      if (name) {
+        const state = await storage.getPermissionState();
+        if (!isCancelled()) setPermissionState(state);
+      }
+    },
+    [fileSystemSupported]
+  );
+
+  // The storage choice, as stored: read at first, and the folder with it;
+  // read again whenever they change (here, from the restore question or a
+  // sync notice, or in another tab; switching storage tells the same)
   useEffect(() => {
+    let closed = false;
     const readStorageChoice = (): void => {
-      const savedProvider = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
-      if (savedProvider) setStorageProvider(savedProvider);
+      const saved = localStorage.getItem(STORAGE_PROVIDER_KEY) as StorageProviderType | null;
+      if (saved) setStorageProvider(saved);
+      void loadFileSystemStatus(saved ?? 'local', () => closed);
     };
     readStorageChoice();
-    return onFolderAccessChanged(() => {
-      readStorageChoice();
-      setFolderGeneration((g) => g + 1);
-    });
-  }, []);
-
-  // Load filesystem status when provider is filesystem
-  useEffect(() => {
-    let cancelled = false;
-    async function loadFileSystemStatus() {
-      if (storageProvider !== 'filesystem' || !fileSystemSupported) {
-        return;
-      }
-
-      const provider = new FileSystemStorageProvider();
-      const name = await provider.getDirectoryName();
-      if (cancelled) return;
-      setDirectoryName(name);
-
-      if (name) {
-        const state = await provider.getPermissionState();
-        if (!cancelled) setPermissionState(state);
-      }
-    }
-
-    loadFileSystemStatus();
+    const stop = onFolderAccessChanged(readStorageChoice);
     return () => {
-      cancelled = true;
+      closed = true;
+      stop();
     };
-  }, [storageProvider, fileSystemSupported, folderGeneration]);
+  }, [loadFileSystemStatus]);
 
   const handleRequestPermission = useCallback(async () => {
     setIsRequestingPermission(true);
@@ -134,42 +125,25 @@ export function StorageSettings({
     }
   }, []);
 
-  /** Pick a folder, telling no one: switching storage on tells sync itself */
-  const handleSelectDirectory = useCallback(async () => {
+  /**
+   * Show the folder picker, with the card busy and any failure shown;
+   * resolves whether a folder was chosen
+   */
+  const runPick = useCallback(async (switchingOn: boolean): Promise<boolean> => {
     setIsSelectingDirectory(true);
     setError(null);
-
     try {
-      const name = await pickFolder();
-      if (name) {
-        setDirectoryName(name);
-        setPermissionState('granted');
-      }
-      return name;
+      return (await chooseFolder({ switchingOn })) === 'chosen';
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to select directory');
-      }
-      return null;
+      setError(err instanceof Error ? err.message : 'Failed to select directory');
+      return false;
     } finally {
       setIsSelectingDirectory(false);
     }
   }, []);
 
   /** A folder chosen while folder storage is on: sync looks at the new folder, and so does this card */
-  const handleChangeDirectory = useCallback(async () => {
-    setIsSelectingDirectory(true);
-    setError(null);
-    try {
-      await chooseFolder();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to select directory');
-    } finally {
-      setIsSelectingDirectory(false);
-    }
-  }, []);
+  const handleChangeDirectory = useCallback(() => void runPick(false), [runPick]);
 
   const handleProviderChange = useCallback((newProvider: StorageProviderType) => {
     if (newProvider === storageProvider) return;
@@ -188,8 +162,9 @@ export function StorageSettings({
     try {
       // If switching to filesystem, need to select a directory first
       if (pendingProvider === 'filesystem') {
-        const selectedDir = await handleSelectDirectory();
-        if (!selectedDir) {
+        // Told no one: saving the storage choice tells sync, and this card, itself
+        const selected = await runPick(true);
+        if (!selected) {
           // User cancelled directory selection
           setIsChanging(false);
           setShowConfirmModal(false);
@@ -219,7 +194,7 @@ export function StorageSettings({
     } finally {
       setIsChanging(false);
     }
-  }, [pendingProvider, handleSelectDirectory]);
+  }, [pendingProvider, runPick]);
 
   const handleCancelSwitch = useCallback(() => {
     setShowConfirmModal(false);

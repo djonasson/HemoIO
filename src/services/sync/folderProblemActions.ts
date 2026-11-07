@@ -1,10 +1,12 @@
 /**
- * What the user may do about a folder copy that cannot be read: the same
- * choices where the restore question asks and where the sync notice tells.
+ * What the user may do about a folder copy that cannot be read: the one
+ * policy for the restore question, the sync notice, Settings and the sync
+ * itself (which copies it may write over once the user chose to replace
+ * them: REPLACEABLE in folderSync, derived from this table).
  */
 
-import type { FolderCopyProblem } from '@services/sync';
-import type { FolderSyncIssue } from '@hooks/useFilesystemSync';
+import type { FolderCopyProblem } from './folderCopy';
+import type { FolderProtectionReason } from './folderSync';
 
 export interface FolderProblemActions {
   /** Pick another folder to sync with */
@@ -18,10 +20,6 @@ export interface FolderProblemActions {
   /** Read the folder again: the file could not be read at all */
   tryAgain: boolean;
 }
-
-/** Choosing a folder failed: fixed text, never the error, which can name a path */
-export const CHOOSE_FOLDER_FAILED =
-  'The folder could not be chosen. Nothing was changed; try again, or choose a folder in Settings, on the Data tab.';
 
 const NONE: FolderProblemActions = { chooseFolder: false, replace: false, tryAgain: false };
 
@@ -48,19 +46,20 @@ export function folderCopyProblemActions(reason: FolderCopyProblem): FolderProbl
 }
 
 /**
- * For the sync notice. 'unreadable' cannot tell a damaged copy from one
- * under another key, so its replace warns. The notices about this browser's
- * own data, or a failed write, offer nothing.
+ * For the sync notice, by the same table: 'unreadable' cannot tell a
+ * damaged copy from one under another key, so it reads as 'cannot-decrypt'
+ * and its replace warns. The notices about this browser's own data, or a
+ * failed write, offer nothing.
  */
-export function folderSyncIssueActions(issue: FolderSyncIssue): FolderProblemActions {
+export function folderSyncIssueActions(issue: FolderProtectionReason | 'failed'): FolderProblemActions {
   switch (issue) {
-    case 'before-loinc':
-      return { ...NONE, chooseFolder: true, replace: 'replace' };
     case 'unreadable':
-      return { ...NONE, chooseFolder: true, replace: 'warn' };
+      return folderCopyProblemActions('cannot-decrypt');
+    case 'before-loinc':
     case 'another-setup':
-      return { ...NONE, chooseFolder: true };
+      return folderCopyProblemActions(issue);
     case 'newer':
+      return folderCopyProblemActions('newer-version');
     case 'empty':
     case 'set-aside':
     case 'failed':

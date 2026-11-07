@@ -1,15 +1,26 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { chooseFolder } from '@data/storage/chooseFolder';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { folderCopyProblemActions, type FolderCopyProblem } from '@services/sync';
 import { FolderRestoreModal } from './FolderRestoreModal';
-import type { FolderReplaceResult, FolderRestorePrompt } from '@hooks';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
+import type { FolderReplaceChoice, FolderReplaceResult, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
-import type { FolderCopyProblem } from '@services/sync';
 
 const SAVED_AT = new Date('2026-10-29T08:30:00.000Z');
-const HANDLE = { name: 'Health' } as unknown as FileSystemDirectoryHandle;
+const TOKEN = {} as FolderToken;
+
+vi.mock('@data/storage/chooseFolder', () => ({
+  chooseFolder: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(chooseFolder).mockReset();
+  vi.mocked(chooseFolder).mockResolvedValue('chosen');
+});
 
 function copyOf(labResults: number, testValues: number, notes: number): ParsedBackupData {
   return {
@@ -30,13 +41,14 @@ const OFFER: FolderRestorePrompt = {
   folderName: 'Health',
   replacesBrowserData: false,
   stamp: 'stamp-1',
+  damagedCurrent: false,
+  replace: { choice: { kind: 'copy', revision: 'r1' }, warn: false },
 };
 
 function renderModal(
   prompt: FolderRestorePrompt | null = OFFER,
   onRestore = vi.fn(async (): Promise<boolean> => true),
-  onReplace = vi.fn<(prompt: FolderRestorePrompt) => Promise<FolderReplaceResult>>(async () => 'replaced'),
-  onChooseFolder = vi.fn(async (): Promise<boolean> => true)
+  onReplace = vi.fn<(choice: FolderReplaceChoice) => Promise<FolderReplaceResult>>(async () => 'replaced')
 ) {
   const onDecide = vi.fn();
   const onRecheck = vi.fn();
@@ -47,12 +59,11 @@ function renderModal(
         onRestore={onRestore}
         onReplace={onReplace}
         onDecide={onDecide}
-        onChooseFolder={onChooseFolder}
         onRecheck={onRecheck}
       />
     </MantineProvider>
   );
-  return { onRestore, onReplace, onDecide, onChooseFolder, onRecheck };
+  return { onRestore, onReplace, onDecide, onRecheck };
 }
 
 describe('FolderRestoreModal', () => {
@@ -92,7 +103,7 @@ describe('FolderRestoreModal', () => {
   });
 
   it('counts in the singular and names no folder it does not know', () => {
-    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false, stamp: 's' });
+    renderModal({ kind: 'offer', data: copyOf(1, 1, 0), revision: null, folderName: null, replacesBrowserData: false, stamp: 's', damagedCurrent: false, replace: null });
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent('1 lab result');
@@ -184,7 +195,7 @@ describe('FolderRestoreModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
 
     await waitFor(() => expect(onDecide).toHaveBeenCalledWith('sync'));
-    expect(onReplace).toHaveBeenCalledTimes(1);
+    expect(onReplace).toHaveBeenCalledWith({ kind: 'copy', revision: 'r1' });
     expect(onReplace.mock.invocationCallOrder[0]).toBeLessThan(onDecide.mock.invocationCallOrder[0]);
   });
 
@@ -223,7 +234,6 @@ describe('FolderRestoreModal', () => {
           onRestore={vi.fn()}
           onReplace={vi.fn(async (): Promise<FolderReplaceResult> => 'replaced')}
           onDecide={onDecide}
-          onChooseFolder={vi.fn(async () => false)}
           onRecheck={vi.fn()}
         />
       </MantineProvider>
@@ -244,7 +254,6 @@ describe('FolderRestoreModal', () => {
           onRestore={vi.fn()}
           onReplace={vi.fn(async (): Promise<FolderReplaceResult> => 'replaced')}
           onDecide={onDecide}
-          onChooseFolder={vi.fn(async () => false)}
           onRecheck={vi.fn()}
         />
       </MantineProvider>
@@ -257,12 +266,17 @@ describe('FolderRestoreModal', () => {
     expect(screen.getByRole('dialog', { name: 'Restore your data from the folder?' })).toBeInTheDocument();
   });
 
-  const UNREADABLE = (reason: FolderCopyProblem, replaceable = reason !== 'read-failed'): FolderRestorePrompt => ({
+  // As the hook gives it: the replace the policy allows for the reason
+  const UNREADABLE = (
+    reason: FolderCopyProblem,
+    replaceable = folderCopyProblemActions(reason).replace !== false
+  ): FolderRestorePrompt => ({
     kind: 'unreadable',
     reason,
     folderName: 'Health',
-    replaceable,
-    target: { fileId: 'sha256:f1', folder: HANDLE },
+    replace: replaceable
+      ? { choice: { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN }, warn: reason === 'cannot-decrypt' }
+      : null,
   });
 
   it.each([
@@ -364,18 +378,20 @@ describe('FolderRestoreModal', () => {
   });
 
   it('opens the folder picker from "Choose another folder", decides nothing itself', async () => {
-    const { onChooseFolder, onDecide } = renderModal(UNREADABLE('cannot-decrypt'));
+    const { onDecide, onRecheck } = renderModal(UNREADABLE('cannot-decrypt'));
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
 
-    expect(onChooseFolder).toHaveBeenCalledTimes(1);
+    expect(chooseFolder).toHaveBeenCalledTimes(1);
+    expect(onRecheck).not.toHaveBeenCalled();
     // The folder chosen is looked at afresh, which closes the question
     expect(onDecide).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('stays as it was when the picker is cancelled', async () => {
-    const { onDecide } = renderModal(UNREADABLE('another-setup'), undefined, undefined, vi.fn(async () => false));
+    vi.mocked(chooseFolder).mockResolvedValue('cancelled');
+    const { onDecide } = renderModal(UNREADABLE('another-setup'));
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
 
@@ -385,16 +401,24 @@ describe('FolderRestoreModal', () => {
   });
 
   it('says, without the reason, when the folder could not be chosen', async () => {
-    const onChooseFolder = vi.fn(async (): Promise<boolean> => {
-      throw new Error('Cannot open /home/someone/Health');
-    });
-    renderModal(UNREADABLE('read-failed'), undefined, undefined, onChooseFolder);
+    vi.mocked(chooseFolder).mockRejectedValue(new Error('Cannot open /home/someone/Health'));
+    renderModal(UNREADABLE('read-failed'));
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('The folder could not be chosen. Nothing was changed');
     expect(alert).not.toHaveTextContent('/home/someone');
+  });
+
+  it('looks again when folder storage was switched off meanwhile', async () => {
+    vi.mocked(chooseFolder).mockResolvedValue('off');
+    const { onRecheck, onDecide } = renderModal(UNREADABLE('cannot-decrypt'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another folder' }));
+
+    await waitFor(() => expect(onRecheck).toHaveBeenCalledTimes(1));
+    expect(onDecide).not.toHaveBeenCalled();
   });
 
   it('explains a folder from another setup, and the another-setup message points to Start over', async () => {
@@ -421,7 +445,9 @@ describe('FolderRestoreModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy…' }));
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
 
-    await waitFor(() => expect(onReplace).toHaveBeenCalledWith(prompt));
+    await waitFor(() =>
+      expect(onReplace).toHaveBeenCalledWith({ kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN })
+    );
   });
 
   it('asks again, deciding nothing, when the folder or the file changed meanwhile', async () => {
@@ -446,7 +472,6 @@ describe('FolderRestoreModal', () => {
           onRestore={vi.fn()}
           onReplace={onReplace}
           onDecide={onDecide}
-          onChooseFolder={vi.fn(async () => false)}
           onRecheck={vi.fn()}
         />
       </MantineProvider>
@@ -501,8 +526,8 @@ describe('FolderRestoreModal', () => {
   });
 
   it('offers the previous copy when the latest is damaged, and a replace of the damaged file', async () => {
-    const damagedCurrent = { reason: 'cannot-decrypt', replaceable: true, target: { fileId: 'sha256:f1', folder: HANDLE } } as const;
-    const prompt = { ...OFFER, damagedCurrent } as FolderRestorePrompt;
+    const choice: FolderReplaceChoice = { kind: 'unreadable', fileId: 'sha256:f1', folder: TOKEN };
+    const prompt = { ...OFFER, damagedCurrent: true, replace: { choice, warn: true } } as FolderRestorePrompt;
     const { onReplace } = renderModal(prompt);
 
     const dialog = screen.getByRole('dialog', { name: 'Restore your data from the folder?' });
@@ -513,6 +538,6 @@ describe('FolderRestoreModal', () => {
     // The damaged file is the one replaced: the warning for a copy made elsewhere applies
     expect(screen.getByRole('dialog', { name: 'Replace the folder copy?' })).toHaveTextContent('another password');
     await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
-    await waitFor(() => expect(onReplace).toHaveBeenCalledWith(prompt));
+    await waitFor(() => expect(onReplace).toHaveBeenCalledWith(choice));
   });
 });

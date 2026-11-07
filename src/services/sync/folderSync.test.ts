@@ -109,7 +109,7 @@ async function plainOf(bytes: ArrayBuffer | null, key: CryptoKey): Promise<strin
 /** The lock the folder copy carries in its header */
 function folderLockOf(store: MemoryStore): StoredCredentialsV2 | null | undefined {
   const header = readEnvelopeHeader(store.copy!);
-  return header && header !== 'damaged' ? header.lock : undefined;
+  return typeof header === 'object' && header !== null ? header.lock : undefined;
 }
 
 type Context = Omit<FolderWriteContext, 'lastSeen'> & Partial<Pick<FolderWriteContext, 'lastSeen'>>;
@@ -657,7 +657,7 @@ describe('writeFolderCopy', () => {
 
       expect(folderLockOf(store)).toEqual(dated(LATER));
       const previous = readEnvelopeHeader(store.previous!);
-      expect(previous && previous !== 'damaged' && previous.lock).toBeNull();
+      expect(typeof previous === 'object' && previous !== null && previous.lock).toBeNull();
       // The same data and revision as the copy it was, under the session key
       expect(await plainOf(store.previous, key)).toBe(beforeChange);
       expect(new TextDecoder().decode(store.previous!)).not.toContain(dated(EARLIER).wrappedKey);

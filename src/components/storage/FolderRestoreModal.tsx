@@ -12,19 +12,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Button, Group, List, Modal, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useChooseFolder } from '@hooks/useChooseFolder';
-import { useReplaceConfirm } from '@hooks/useReplaceConfirm';
+import { folderCopyProblemActions, type FolderCopyProblem } from '@services/sync';
 import { formatDateTime } from '@/utils/formatDateTime';
 import { pluralize } from '@/utils/pluralize';
+import { CHOOSE_FOLDER_FAILED, YOUR_FOLDER } from './folderActionTexts';
 import { folderCopyProblemMessage } from './folderCopyProblemMessage';
-import {
-  CHOOSE_FOLDER_FAILED,
-  folderCopyProblemActions,
-  type FolderProblemActions,
-} from './folderProblemActions';
 import { ReplaceFolderCopyConfirm } from './ReplaceFolderCopyConfirm';
-import type { FolderReplaceResult, FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
+import type { FolderReplaceChoice, FolderReplaceResult, FolderRestoreDecision, FolderRestorePrompt } from '@hooks';
 import type { ParsedBackupData } from '@services/import';
-import type { FolderCopyProblem } from '@services/sync';
 
 export interface FolderRestoreModalProps {
   prompt: FolderRestorePrompt | null;
@@ -35,20 +30,15 @@ export interface FolderRestoreModalProps {
    */
   onRestore: (data: ParsedBackupData) => Promise<boolean>;
   /**
-   * Keep the folder copy the prompt shown is about as a dated backup, so
-   * that the sync may write over it; rejects, choosing nothing, when the
-   * backup cannot be saved. 'changed' when the folder or the file is no
-   * longer the one shown: nothing was kept, and the question is asked again.
+   * Keep the folder copy the prompt shown offers to replace (its
+   * `replace.choice`) as a dated backup, so that the sync may write over
+   * it; rejects, choosing nothing, when the backup cannot be saved.
+   * 'changed' when the folder or the file is no longer the one shown:
+   * nothing was kept, and the question is asked again.
    */
-  onReplace: (prompt: FolderRestorePrompt) => Promise<FolderReplaceResult>;
+  onReplace: (choice: FolderReplaceChoice) => Promise<FolderReplaceResult>;
   onDecide: (decision: FolderRestoreDecision) => void;
-  /**
-   * Show the folder picker; called straight from the click, which the
-   * picker needs. Resolves false when cancelled (the question stays), and
-   * rejects when the folder could not be chosen.
-   */
-  onChooseFolder: () => Promise<boolean>;
-  /** Look at the folder again: "Try again" when the file could not be read */
+  /** Look at the folder again: "Try again" when the file could not be read, or folder storage was switched off */
   onRecheck: () => void;
 }
 
@@ -57,11 +47,11 @@ const UNREADABLE_TITLE = "The folder copy can't be read";
 const REPLACE_TITLE = 'Replace the folder copy?';
 
 /** What follows the problem: the file is untouched, and the ways on */
-function unreadableHint(reason: FolderCopyProblem, actions: FolderProblemActions): string {
-  if (actions.replace !== false) {
+function unreadableHint(reason: FolderCopyProblem, canReplace: boolean, tryAgain: boolean): string {
+  if (canReplace) {
     return "The file has not been changed. To keep syncing, choose another folder, or replace the folder copy with this computer's data.";
   }
-  if (actions.tryAgain) return 'The file has not been changed. Try again, or choose another folder.';
+  if (tryAgain) return 'The file has not been changed. Try again, or choose another folder.';
   // The explanation of another setup's copy says already that it is not written over
   if (reason === 'another-setup') return 'The file has not been changed. To keep syncing, choose another folder.';
   return 'The file has not been changed, and HemoIO will not write over it.';
@@ -72,14 +62,14 @@ export function FolderRestoreModal({
   onRestore,
   onReplace,
   onDecide,
-  onChooseFolder,
   onRecheck,
 }: FolderRestoreModalProps): React.ReactNode {
   const [confirmingReplace, setConfirmingReplace] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const replacing = useReplaceConfirm();
-  const chooser = useChooseFolder(onChooseFolder);
+  // Switched off meanwhile: no folder to choose, and the question goes with the recheck
+  const chooser = useChooseFolder(onRecheck);
   // The last prompt stays on screen while the dialog closes; a new one starts afresh
   const [shown, setShown] = useState(prompt);
   if (prompt !== null && prompt !== shown) {
@@ -103,13 +93,7 @@ export function FolderRestoreModal({
     replaceButtonRef.current?.focus();
   }, [confirmingReplace]);
 
-  const openConfirmation = (): void => {
-    replacing.reset();
-    setConfirmingReplace(true);
-  };
-
   const backFromConfirmation = (): void => {
-    replacing.reset();
     focusReplaceRef.current = true;
     setConfirmingReplace(false);
   };
@@ -130,17 +114,15 @@ export function FolderRestoreModal({
     if (restored) decide('sync');
   };
 
-  const handleReplace = async (answered: FolderRestorePrompt): Promise<void> => {
-    const done = await replacing.run(() => onReplace(answered));
-    // Failed (shown), or the confirmation was left meanwhile
-    if (!done) return;
-    // Another question was asked meanwhile (another folder): this one no longer decides
+  /** The replace done, for the prompt it was confirmed on */
+  const replaced = (answered: FolderRestorePrompt, result: FolderReplaceResult): void => {
+    // Another question was asked meanwhile (another folder, or none): this one no longer decides
     if (promptRef.current !== answered) return;
-    if (done.value === 'changed') onRecheck();
+    if (result === 'changed') onRecheck();
     else decide('sync');
   };
 
-  const folder = shown?.folderName ? `“${shown.folderName}”` : 'your folder';
+  const folder = shown?.folderName ? `“${shown.folderName}”` : YOUR_FOLDER;
   const title = confirmingReplace
     ? REPLACE_TITLE
     : shown?.kind === 'offer'
@@ -149,27 +131,29 @@ export function FolderRestoreModal({
 
   const body = (): React.ReactNode => {
     if (!shown) return null;
+    const { replace } = shown;
 
-    // What a replace is about: the copy offered, or one that cannot be read
-    const unreadable = shown.kind === 'unreadable' ? shown : (shown.damagedCurrent ?? null);
-    const replaceAction = unreadable ? folderCopyProblemActions(unreadable.reason).replace : 'replace';
-    const canReplace = unreadable === null || (replaceAction !== false && unreadable.replaceable && unreadable.target !== null);
-
-    if (confirmingReplace) {
+    if (confirmingReplace && replace) {
       return (
         <ReplaceFolderCopyConfirm
           folder={folder}
-          warnOtherSetup={replaceAction === 'warn'}
-          isReplacing={replacing.isReplacing}
-          failed={replacing.failed}
+          warnOtherSetup={replace.warn}
           onBack={backFromConfirmation}
-          onConfirm={() => void handleReplace(shown)}
+          onReplace={() => onReplace(replace.choice)}
+          onReplaced={(result) => replaced(shown, result)}
+          onReplacingChange={setIsReplacing}
         />
       );
     }
 
-    const replaceButton = canReplace && (
-      <Button ref={replaceButtonRef} variant="subtle" color="red" onClick={openConfirmation} disabled={isRestoring}>
+    const replaceButton = replace && (
+      <Button
+        ref={replaceButtonRef}
+        variant="subtle"
+        color="red"
+        onClick={() => setConfirmingReplace(true)}
+        disabled={isRestoring}
+      >
         Replace folder copy…
       </Button>
     );
@@ -179,7 +163,7 @@ export function FolderRestoreModal({
       return (
         <>
           <Text size="sm">{folderCopyProblemMessage(shown.reason, folder)}</Text>
-          <Text size="sm">{unreadableHint(shown.reason, { ...actions, replace: canReplace && actions.replace })}</Text>
+          <Text size="sm">{unreadableHint(shown.reason, replace !== null, actions.tryAgain)}</Text>
           {chooser.failed && (
             <Alert role="alert" color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
               {CHOOSE_FOLDER_FAILED}
@@ -257,7 +241,7 @@ export function FolderRestoreModal({
       opened={prompt !== null}
       // Escape is "Back" on the confirmation, else "Not now"; never during a restore
       onClose={() => {
-        if (isRestoring || replacing.isReplacing) return;
+        if (isRestoring || isReplacing) return;
         if (confirmingReplace) backFromConfirmation();
         else decide('hold');
       }}

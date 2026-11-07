@@ -7,17 +7,15 @@
 
 import { Button, Group, Stack, Text } from '@mantine/core';
 import { useChooseFolder } from '@hooks/useChooseFolder';
-import { CHOOSE_FOLDER_FAILED, type FolderProblemActions } from './folderProblemActions';
+import { CHOOSE_FOLDER_FAILED } from './folderActionTexts';
+import type { FolderProblemActions } from '@services/sync';
 
 export interface FolderSyncNoticeBodyProps {
   /** Fixed text */
   message: string;
   actions: FolderProblemActions;
-  /**
-   * Show the folder picker: called straight from the click, which the
-   * picker needs. Resolves false when cancelled; rejects when it failed.
-   */
-  onChooseFolder: () => Promise<boolean>;
+  /** Folder storage was switched off meanwhile, so there was no folder to choose */
+  onFolderStorageOff: () => void;
   /** Ask to confirm replacing the folder copy */
   onReplace: () => void;
 }
@@ -25,10 +23,10 @@ export interface FolderSyncNoticeBodyProps {
 export function FolderSyncNoticeBody({
   message,
   actions,
-  onChooseFolder,
+  onFolderStorageOff,
   onReplace,
 }: FolderSyncNoticeBodyProps): React.ReactNode {
-  const chooser = useChooseFolder(onChooseFolder);
+  const chooser = useChooseFolder(onFolderStorageOff);
 
   return (
     <Stack gap="xs">

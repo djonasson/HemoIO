@@ -6,8 +6,9 @@
  * over it. Keyed by its host per opening, so each starts afresh.
  */
 
-import { Modal, Stack, getDefaultZIndex } from '@mantine/core';
-import { useReplaceConfirm } from '@hooks/useReplaceConfirm';
+import { useState } from 'react';
+import { Modal, getDefaultZIndex } from '@mantine/core';
+import { YOUR_FOLDER } from './folderActionTexts';
 import { ReplaceFolderCopyConfirm } from './ReplaceFolderCopyConfirm';
 
 export interface ReplaceFolderCopyModalProps {
@@ -30,16 +31,10 @@ export function ReplaceFolderCopyModal({
   onReplace,
   onClose,
 }: ReplaceFolderCopyModalProps): React.ReactNode {
-  const replacing = useReplaceConfirm();
+  const [isReplacing, setIsReplacing] = useState(false);
 
   const close = (): void => {
-    if (replacing.isReplacing) return;
-    replacing.reset();
-    onClose();
-  };
-
-  const handleConfirm = async (): Promise<void> => {
-    if (await replacing.run(onReplace)) onClose();
+    if (!isReplacing) onClose();
   };
 
   return (
@@ -53,16 +48,14 @@ export function ReplaceFolderCopyModal({
       // Above the notice it was opened from, which notifications otherwise draw over it
       zIndex={getDefaultZIndex('max')}
     >
-      <Stack gap="md">
-        <ReplaceFolderCopyConfirm
-          folder="your folder"
-          warnOtherSetup={warnOtherSetup}
-          isReplacing={replacing.isReplacing}
-          failed={replacing.failed}
-          onBack={close}
-          onConfirm={() => void handleConfirm()}
-        />
-      </Stack>
+      <ReplaceFolderCopyConfirm
+        folder={YOUR_FOLDER}
+        warnOtherSetup={warnOtherSetup}
+        onBack={close}
+        onReplace={onReplace}
+        onReplaced={onClose}
+        onReplacingChange={setIsReplacing}
+      />
     </Modal>
   );
 }

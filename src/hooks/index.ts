@@ -38,7 +38,7 @@ export {
   type UseFolderRestoreResult,
   type FolderRestorePrompt,
   type FolderRestoreDecision,
-  type UnreadableCopyPrompt,
+  type PromptReplace,
 } from './useFolderRestore';
 export { useSetAsideRecords, type UseSetAsideRecordsResult, type SealedDownload } from './useSetAsideRecords';
 export { useExistingBrowserData, type UseExistingBrowserDataResult } from './useExistingBrowserData';

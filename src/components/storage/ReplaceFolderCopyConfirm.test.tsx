@@ -4,23 +4,38 @@ import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import { ReplaceFolderCopyConfirm, type ReplaceFolderCopyConfirmProps } from './ReplaceFolderCopyConfirm';
 
-function renderConfirm(props: Partial<ReplaceFolderCopyConfirmProps> = {}) {
+type Props = ReplaceFolderCopyConfirmProps<string>;
+
+function renderConfirm(props: Partial<Props> = {}) {
   const onBack = vi.fn();
-  const onConfirm = vi.fn();
-  render(
+  const onReplace = vi.fn<Props['onReplace']>(async () => 'replaced');
+  const onReplaced = vi.fn<Props['onReplaced']>();
+  const onReplacingChange = vi.fn<Props['onReplacingChange']>();
+  const view = render(
     <MantineProvider env="test">
-      <ReplaceFolderCopyConfirm
+      <ReplaceFolderCopyConfirm<string>
         folder="“Health”"
         warnOtherSetup={false}
-        isReplacing={false}
-        failed={false}
         onBack={onBack}
-        onConfirm={onConfirm}
+        onReplace={onReplace}
+        onReplaced={onReplaced}
+        onReplacingChange={onReplacingChange}
         {...props}
       />
     </MantineProvider>
   );
-  return { onBack, onConfirm };
+  return { onBack, onReplace, onReplaced, onReplacingChange, unmount: view.unmount };
+}
+
+/** A replace that settles when told */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 describe('ReplaceFolderCopyConfirm', () => {
@@ -46,27 +61,52 @@ describe('ReplaceFolderCopyConfirm', () => {
     ).toBeInTheDocument();
   });
 
-  it('goes back or confirms', async () => {
-    const { onBack, onConfirm } = renderConfirm();
+  it('goes back', async () => {
+    const { onBack, onReplace } = renderConfirm();
 
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
 
     expect(onBack).toHaveBeenCalledTimes(1);
-    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onReplace).not.toHaveBeenCalled();
   });
 
-  it('says nothing changed when the backup failed', () => {
-    renderConfirm({ failed: true });
+  it('replaces, saying so meanwhile, then gives the result', async () => {
+    const replace = deferred<string>();
+    const { onReplaced, onReplacingChange } = renderConfirm({ onReplace: () => replace.promise });
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+    // Cannot go back while the backup is saved
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    expect(onReplacingChange).toHaveBeenLastCalledWith(true);
+
+    replace.resolve('replaced');
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledWith('replaced'));
+    expect(onReplacingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('says nothing changed when the backup failed, and gives nothing', async () => {
+    const { onReplaced } = renderConfirm({ onReplace: () => Promise.reject(new Error('Disk full')) });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
       'Nothing was changed: the folder copy could not be kept as a backup.'
     );
+    expect(onReplaced).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
   });
 
-  it('cannot go back while the backup is saved', () => {
-    renderConfirm({ isReplacing: true });
+  it('closed while it runs: lets the dialog close, and the replace settles unseen', async () => {
+    const replace = deferred<string>();
+    const { onReplaced, onReplacingChange, unmount } = renderConfirm({ onReplace: () => replace.promise });
+    await userEvent.click(screen.getByRole('button', { name: 'Replace folder copy' }));
 
-    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    unmount();
+    expect(onReplacingChange).toHaveBeenLastCalledWith(false);
+
+    replace.resolve('replaced');
+    await replace.promise;
+    await Promise.resolve();
+    expect(onReplaced).not.toHaveBeenCalled();
   });
 });

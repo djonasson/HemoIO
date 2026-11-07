@@ -8,20 +8,19 @@
 
 import { isPreLoincBackupVersion, type ParsedBackupData } from '@services/import';
 import { backupDate } from './folderBackups';
-import {
-  envelopeHeaderProblem,
-  isDamagedCopy,
-  openEnvelope,
-  readEnvelopeHeader,
-  type FolderEnvelopeHeader,
-} from './folderEnvelope';
+import { readEnvelopeHeader } from './folderEnvelope';
 import { readLockFile } from './folderLockFile';
+import { folderCopyProblemActions, type FolderProblemActions } from './folderProblemActions';
 import {
   FOLDER_SYNC_FILE_VERSION,
+  NOT_JSON_CONTENT,
   folderCopyId,
   isFolderSyncFile,
-  isReplaceableFolderCopy,
+  isReplaceableContent,
+  openFolderFile,
   parseFolderCopyData,
+  parseFolderContent,
+  type FolderFileUnopened,
 } from './folderSync';
 import { isCredentialsV2, isSameLock, unlockV2, type StoredCredentialsV2 } from '@data/encryption/keyWrapping';
 
@@ -61,54 +60,64 @@ export async function readFolderCopy(
   key: CryptoKey,
   ownLock: StoredCredentialsV2 | null = null
 ): Promise<FolderCopyReading> {
-  if (isDamagedCopy(bytes)) return { status: 'unreadable', reason: 'damaged-copy' };
-  // As the sync tells them (folderSync open()): never written over
-  const headerProblem = envelopeHeaderProblem(bytes);
-  if (headerProblem !== null) {
-    return { status: 'unreadable', reason: headerProblem === 'newer' ? 'newer-version' : 'another-setup' };
-  }
-  const read = readEnvelopeHeader(bytes);
-  // 'not-a-copy' here and 'unreadable' in the sync: both name a damaged header
-  if (read === 'damaged') return { status: 'unreadable', reason: 'not-a-copy' };
-  const header: FolderEnvelopeHeader | null = read;
+  return (await readFolderFile(bytes, key, ownLock)).reading;
+}
 
-  let plain: ArrayBuffer;
-  try {
-    plain = (await openEnvelope(bytes, key)).plain;
-  } catch {
-    if (!header?.lock) return { status: 'unreadable', reason: 'cannot-decrypt' };
-    // This browser's own lock beside a body that does not open: the file is damaged
-    if (ownLock !== null && isSameLock(ownLock, header.lock)) return { status: 'unreadable', reason: 'not-a-copy' };
-    return { status: 'unreadable', reason: 'another-setup' };
-  }
+/** How the restore question tells why a file did not open (openFolderFile, which the sync shares) */
+const UNOPENED_REASONS: Record<FolderFileUnopened, Exclude<FolderCopyProblem, 'read-failed'>> = {
+  'damaged-copy': 'damaged-copy',
+  newer: 'newer-version',
+  'another-setup': 'another-setup',
+  'damaged-header': 'not-a-copy',
+  'no-key': 'cannot-decrypt',
+  'own-lock-damaged': 'not-a-copy',
+};
 
-  let envelope: unknown;
-  try {
-    envelope = JSON.parse(new TextDecoder().decode(plain));
-  } catch {
-    return { status: 'unreadable', reason: 'not-a-copy' };
+/**
+ * readFolderCopy, and whether the sync would let the user replace the file
+ * (isReplaceableFolderCopy), from the same reading: the file is opened once
+ */
+async function readFolderFile(
+  bytes: ArrayBuffer,
+  key: CryptoKey,
+  ownLock: StoredCredentialsV2 | null
+): Promise<{ reading: FolderCopyReading; replaceable: boolean }> {
+  const opened = await openFolderFile(bytes, key, ownLock);
+  if (typeof opened === 'string') {
+    return {
+      reading: { status: 'unreadable', reason: UNOPENED_REASONS[opened] },
+      replaceable: opened !== 'newer' && opened !== 'another-setup',
+    };
   }
+  const { header } = opened;
+  const lock = header?.lock ?? null;
+  const envelope = parseFolderContent(opened.plain);
+  const unreadable = (reason: Exclude<FolderCopyProblem, 'read-failed'>) => ({
+    reading: { status: 'unreadable' as const, reason },
+    replaceable: isReplaceableContent(envelope, lock),
+  });
+
+  if (envelope === NOT_JSON_CONTENT) return unreadable('not-a-copy');
   // Its version first: a newer HemoIO may lay its data out in a way this one cannot check
   const version = (envelope as { version?: unknown } | null)?.version;
-  if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) {
-    return { status: 'unreadable', reason: 'newer-version' };
-  }
+  if (typeof version === 'number' && version > FOLDER_SYNC_FILE_VERSION) return unreadable('newer-version');
   if (!isFolderSyncFile(envelope) || !Number.isInteger(envelope.version) || envelope.version < 1) {
-    return { status: 'unreadable', reason: 'not-a-copy' };
+    return unreadable('not-a-copy');
   }
-  if (isPreLoincBackupVersion(envelope.version)) {
-    return { status: 'unreadable', reason: 'before-loinc' };
-  }
+  if (isPreLoincBackupVersion(envelope.version)) return unreadable('before-loinc');
 
   try {
     return {
-      status: 'readable',
-      data: parseFolderCopyData(envelope),
-      revision: header && typeof envelope.revision === 'string' ? envelope.revision : null,
-      lock: header?.lock ?? null,
+      reading: {
+        status: 'readable',
+        data: parseFolderCopyData(envelope),
+        revision: header && typeof envelope.revision === 'string' ? envelope.revision : null,
+        lock,
+      },
+      replaceable: false,
     };
   } catch {
-    return { status: 'unreadable', reason: 'not-a-copy' };
+    return unreadable('not-a-copy');
   }
 }
 
@@ -214,7 +223,8 @@ export async function unlockFolderCopy(
     return { ok: false, problem: 'read-failed' };
   }
   const header = current === null ? null : readEnvelopeHeader(current);
-  const headerLock = header && header !== 'damaged' ? header.lock : null;
+  // A header this build reads: a newer one, or an unknown lock, is told as damaged
+  const headerLock = header !== null && typeof header === 'object' ? header.lock : null;
   // Read only when needed: with no lock in the header, or one that refuses the password
   const lockFromFile = async (): Promise<StoredCredentialsV2 | null> =>
     readLockFile(await source.loadLock().catch(() => null));
@@ -223,7 +233,7 @@ export async function unlockFolderCopy(
     const fileLock = await lockFromFile();
     if (fileLock === null) {
       if (current === null) return { ok: false, problem: 'no-copy' };
-      return { ok: false, problem: header === 'damaged' ? 'not-a-copy' : 'no-lock' };
+      return { ok: false, problem: typeof header === 'string' ? 'not-a-copy' : 'no-lock' };
     }
     return unlockWithLock(source, current, password, fileLock);
   }
@@ -287,13 +297,14 @@ export interface FolderCopySource {
 /**
  * A folder copy that cannot be read: `fileId` names the file found
  * (folderCopyId(bytes, null)), null when it could not be read at all;
- * `replaceable`: whether the user may choose to replace it
- * (isReplaceableFolderCopy, the sync's own decision)
+ * `replace`: whether the user may choose to replace it, and whether that
+ * warns (folderProblemActions), false where the sync would not write over
+ * it (isReplaceableFolderCopy, the sync's own decision)
  */
 export interface UnreadableFolderCopy {
   reason: FolderCopyProblem;
   fileId: string | null;
-  replaceable: boolean;
+  replace: FolderProblemActions['replace'];
 }
 
 export type FolderCopyAssessment =
@@ -332,18 +343,21 @@ export async function assessFolderCopy(
   try {
     bytes = await folder.loadCurrent();
   } catch {
-    return { kind: 'unreadable', reason: 'read-failed', fileId: null, replaceable: false };
+    return { kind: 'unreadable', reason: 'read-failed', fileId: null, replace: false };
   }
   if (bytes === null) return { kind: 'sync' };
 
-  const reading = await readFolderCopy(bytes, key, ownLock);
+  const { reading, replaceable } = await readFolderFile(bytes, key, ownLock);
   if (reading.status === 'unreadable') {
+    const [fileId, previous] = await Promise.all([
+      folderCopyId(bytes, null),
+      CURRENT_IS_SOMEONES.has(reading.reason) ? null : readablePrevious(folder, key),
+    ]);
     const current: UnreadableFolderCopy = {
       reason: reading.reason,
-      fileId: await folderCopyId(bytes, null),
-      replaceable: await isReplaceableFolderCopy(bytes, key, ownLock),
+      fileId,
+      replace: replaceable && folderCopyProblemActions(reading.reason).replace,
     };
-    const previous = CURRENT_IS_SOMEONES.has(reading.reason) ? null : await readablePrevious(folder, key);
     if (previous) return { kind: 'offer', data: previous.data, revision: previous.revision, damagedCurrent: current };
     return { kind: 'unreadable', ...current };
   }

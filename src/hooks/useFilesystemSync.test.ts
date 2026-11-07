@@ -28,6 +28,7 @@ import { installFakeWebLocks } from '@/test/fakeWebLocks';
 import { withWebLock } from '@/utils/withWebLock';
 import { useFilesystemSync } from './useFilesystemSync';
 import type { StoredCredentialsV2 } from '@data/encryption/keyWrapping';
+import type { FolderToken } from '@data/storage/FileSystemStorageProvider';
 import type { ParsedBackupData } from '@services/import';
 
 // Mock file system support
@@ -66,16 +67,17 @@ const applyFolderCopy = vi.fn<(data: ParsedBackupData, unchangedSince?: string) 
 const mockGetPermissionState = vi.fn().mockResolvedValue('granted');
 const mockProviderCreated = vi.fn();
 const mockSave = vi.fn().mockResolvedValue(undefined);
-/** The folder handle the provider holds, and whether a handle is that folder */
-const FOLDER_HANDLE = { name: 'Lab Folder' } as unknown as FileSystemDirectoryHandle;
+/** The token naming the folder the provider holds, and whether a token names that folder */
+const FOLDER_TOKEN = {} as FolderToken;
 const mockIsCurrentFolder = vi.fn();
+const mockFolderIdentity = vi.fn();
 
 vi.mock('@data/storage/FileSystemStorageProvider', () => ({
   FileSystemStorageProvider: class MockFileSystemStorageProvider {
     getPermissionState = mockGetPermissionState;
     save = mockSave;
     getDirectoryName = vi.fn(async () => 'Lab Folder');
-    getFolderHandle = vi.fn(async () => FOLDER_HANDLE);
+    folderIdentity = mockFolderIdentity;
     isCurrentFolder = mockIsCurrentFolder;
     constructor() {
       mockProviderCreated();
@@ -156,10 +158,11 @@ describe('useFilesystemSync', () => {
     vi.mocked(saveFolderSyncState).mockResolvedValue(undefined);
     vi.mocked(markFolderCopySeen).mockResolvedValue(undefined);
     vi.mocked(keepBrowserData).mockResolvedValue(true);
-    vi.mocked(keepFolderCopy).mockResolvedValue(undefined);
+    vi.mocked(keepFolderCopy).mockResolvedValue('backup-name');
     vi.mocked(keepCurrentFolderCopy).mockResolvedValue(FOLDER_BYTES);
     vi.mocked(keepFolderFilesBeforeReplace).mockResolvedValue(true);
     mockIsCurrentFolder.mockResolvedValue(true);
+    mockFolderIdentity.mockResolvedValue({ token: FOLDER_TOKEN, name: 'Lab Folder' });
     vi.mocked(folderCopyId).mockImplementation(async (_bytes, revision) => revision ?? 'sha256:bytes');
     applyFolderCopy.mockResolvedValue('loaded-stamp');
     mockGetPermissionState.mockResolvedValue('granted');
@@ -673,7 +676,32 @@ describe('useFilesystemSync', () => {
       const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
 
       await waitFor(() => expect(result.current.issue).toBe('unreadable'));
-      expect(result.current.issueTarget).toEqual({ fileId: 'sha256:f1', folder: FOLDER_HANDLE });
+      expect(result.current.issueTarget).toEqual({ fileId: 'sha256:f1', folder: FOLDER_TOKEN });
+    });
+
+    it('reads the folder once for the same file found again', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValue({ status: 'protected', reason: 'unreadable', fileId: 'sha256:f1' });
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+      await waitFor(() => expect(result.current.issue).toBe('unreadable'));
+      const first = result.current.issueTarget;
+
+      await act(() => result.current.syncNow());
+
+      expect(mockFolderIdentity).toHaveBeenCalledTimes(1);
+      expect(result.current.issueTarget).toBe(first);
+    });
+
+    it('reads the folder afresh for the same file once another folder was chosen', async () => {
+      vi.mocked(writeFolderCopy).mockResolvedValue({ status: 'protected', reason: 'unreadable', fileId: 'sha256:f1' });
+      const { result } = renderHook(() => useFilesystemSync({ applyFolderCopy }));
+      await waitFor(() => expect(result.current.issue).toBe('unreadable'));
+      const other = {} as FolderToken;
+      mockFolderIdentity.mockResolvedValue({ token: other, name: 'Other' });
+
+      act(() => notifyFolderAccessChanged());
+      await act(() => result.current.syncNow());
+
+      expect(result.current.issueTarget?.folder).toBe(other);
     });
 
     it('names no file for a copy that may not be replaced', async () => {
@@ -1324,7 +1352,7 @@ describe('useFilesystemSync', () => {
     });
 
     describe('replacing a folder copy that cannot be read', () => {
-      const UNREADABLE_CHOICE = { kind: 'unreadable', fileId: 'sha256:f1', folder: FOLDER_HANDLE } as const;
+      const UNREADABLE_CHOICE = { kind: 'unreadable', fileId: 'sha256:f1', folder: FOLDER_TOKEN } as const;
 
       beforeEach(() => {
         localStorage.setItem(STORAGE_PROVIDER_KEY, 'filesystem');
@@ -1336,7 +1364,7 @@ describe('useFilesystemSync', () => {
         });
 
         await expect(act(() => result.current.replaceFolderCopy(UNREADABLE_CHOICE))).resolves.toBe('replaced');
-        expect(mockIsCurrentFolder).toHaveBeenCalledWith(FOLDER_HANDLE);
+        expect(mockIsCurrentFolder).toHaveBeenCalledWith(FOLDER_TOKEN);
         expect(keepFolderFilesBeforeReplace).toHaveBeenCalledWith(
           expect.objectContaining({ key: mockKey, ownLock: LOCK_A, fileId: 'sha256:f1' })
         );
