@@ -17,6 +17,8 @@ export type LearnedTests = Readonly<Record<string, string>>;
 export interface Identification {
   loincCode?: string;
   candidates: Candidate[];
+  /** The candidate the AI picked but was not sure of */
+  aiPick?: string;
   identifiedBy?: IdentifiedBy;
   identificationFlags: IdentificationFlag[];
   savedAsUnknown?: boolean;
@@ -81,7 +83,11 @@ function withChoice(value: MatchedBiomarker, choice: TestChoice | undefined): Ma
   }
   const picked = value.candidates.find((candidate) => candidate.code === choice.code);
   return picked
-    ? { ...value, candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)] }
+    ? {
+        ...value,
+        candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)],
+        aiPick: picked.code,
+      }
     : value;
 }
 
@@ -154,6 +160,7 @@ export function identificationOf(value: MatchedBiomarker): Identification {
   return {
     loincCode: value.loincCode,
     candidates: value.candidates,
+    aiPick: value.aiPick,
     identifiedBy: value.identifiedBy,
     identificationFlags: value.identificationFlags ?? [],
     savedAsUnknown: value.savedAsUnknown,

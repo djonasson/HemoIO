@@ -47,7 +47,7 @@ export function testList(page: Page): Locator {
 }
 
 /** A test in the open list, by its LOINC long name (shown with its code), or "Not a LOINC test" */
-export function testOption(list: Locator, testName: string): Locator {
+export function testOption(list: Locator | Page, testName: string): Locator {
   if (testName === NOT_A_LOINC_TEST) return list.getByRole('button', { name: testName, exact: true });
   const escaped = testName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return list.getByRole('button', { name: new RegExp(`^${escaped} · \\d+-\\d$`) });

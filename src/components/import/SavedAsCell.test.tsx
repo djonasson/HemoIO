@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { it, expect, vi } from 'vitest';
 import { CatalogContext } from '@contexts/useCatalog';
@@ -179,8 +179,72 @@ it('opens with an empty search after the list was closed', async () => {
   expect(screen.getByRole('textbox', { name: 'Search tests' })).toHaveValue('');
 });
 
-it('names the group of tests for screen readers', () => {
+it('names the table of tests for screen readers', () => {
   renderCell();
   openList();
-  expect(screen.getByRole('group', { name: 'Tests' })).toBeInTheDocument();
+  expect(screen.getByRole('table', { name: 'Tests' })).toBeInTheDocument();
+});
+
+it("sets the tests side by side, LOINC's name cut into what is measured, sample, method, units and code", () => {
+  renderCell();
+  openList();
+  const table = screen.getByRole('table', { name: 'Tests' });
+  expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+    'Test',
+    'Sample',
+    'Method',
+    'Units',
+    'Code',
+  ]);
+  const blood = within(table).getByRole('button', { name: `${BLOOD} · 2339-0` }).closest('tr')!;
+  expect(within(blood).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+    expect.stringContaining('Glucose · Mass/volume'),
+    'Whole Blood',
+    '—',
+    expect.stringContaining('fits mg/dL'),
+    '2339-0',
+  ]);
+  // LOINC's own name stays shown with the code
+  expect(within(blood).getByText(`LOINC: ${BLOOD}`)).toBeInTheDocument();
+});
+
+it('says how common each test is and why it is suggested', () => {
+  renderCell({ ...value, aiPick: '2339-0' });
+  openList();
+  const row = (name: string) => screen.getByRole('button', { name }).closest('tr')!;
+  expect(within(row(`${SERUM} · 2345-7`)).getByText('Common')).toBeInTheDocument();
+  expect(within(row(`${SERUM} · 2345-7`)).getByText('Name matches')).toBeInTheDocument();
+  expect(within(row(`${BLOOD} · 2339-0`)).getByText("The AI's best guess")).toBeInTheDocument();
+});
+
+it("says when the value's unit doesn't fit a test, in words", () => {
+  renderCell({ ...value, unit: 'U/L' });
+  openList();
+  expect(screen.getAllByText("U/L doesn't fit")).toHaveLength(2);
+});
+
+it('chooses a test by a click anywhere on its row', () => {
+  const onChoose = renderCell();
+  openList();
+  fireEvent.click(screen.getByText('Whole Blood'));
+  expect(onChoose).toHaveBeenCalledWith('2339-0');
+});
+
+it('shows the tests as cards on a phone, filling the screen', () => {
+  const matchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({ ...matchMedia(query), matches: query.includes('max-width') })) as typeof window.matchMedia;
+  try {
+    const onChoose = renderCell();
+    openList();
+    const cards = screen.getByRole('group', { name: 'Tests' });
+    expect(screen.queryByRole('table')).toBeNull();
+    const blood = within(cards).getByRole('button', { name: `${BLOOD} · 2339-0` });
+    expect(blood).toHaveTextContent('Sample: Whole Blood');
+    expect(blood).toHaveTextContent('Method: —');
+    expect(blood).toHaveTextContent('Code: 2339-0');
+    fireEvent.click(blood);
+    expect(onChoose).toHaveBeenCalledWith('2339-0');
+  } finally {
+    window.matchMedia = matchMedia;
+  }
 });

@@ -143,6 +143,68 @@ test.describe('Identifying the test of each value', () => {
     await expectNoCheckLabel(row);
   });
 
+  test('sets the tests to choose from side by side, and chooses one by a click on its row', async ({ page }) => {
+    // Scenario: The tests to choose from are set side by side
+    await analyzeReport(page, [GLUCOSIO], 1, {
+      testChoice: { choices: { Glucosio: { code: '2339-0', confident: false } } },
+    });
+    const row = rowFor(page, '95');
+    await row.getByRole('button', { name: /^Change test for / }).click();
+    const list = testList(page);
+    const table = list.getByRole('table', { name: 'Tests' });
+    await expect(table.getByRole('columnheader')).toHaveText(['Test', 'Sample', 'Method', 'Units', 'Code']);
+
+    const serum = table.getByRole('row').filter({ has: testOption(page, SERUM_GLUCOSE) });
+    await expect(serum).toContainText('Glucose · Mass/volume');
+    await expect(serum).toContainText('Serum/Plasma');
+    await expect(serum).toContainText('fits mg/dL');
+    await expect(serum).toContainText('2345-7');
+    await expect(serum).toContainText(`LOINC: ${SERUM_GLUCOSE}`);
+    await expect(serum).toContainText('Common');
+    await expect(serum).toContainText('Blood sugar level');
+    const blood = table.getByRole('row').filter({ has: testOption(page, BLOOD_GLUCOSE) });
+    await expect(blood).toContainText("The AI's best guess");
+
+    await blood.getByRole('cell', { name: 'Whole Blood' }).click();
+    await expect(list).toBeHidden();
+    await expect(savedAsCell(row)).toHaveText(BLOOD_GLUCOSE);
+  });
+
+  test('fills a phone screen with the tests as cards', async ({ page }) => {
+    // Scenario: The test list on a phone
+    await page.setViewportSize({ width: 320, height: 640 });
+    await analyzeReport(page, [GLUCOSIO]);
+    await rowFor(page, '95').getByRole('button', { name: /^Change test for / }).click();
+    const list = testList(page);
+    const cards = list.getByRole('group', { name: 'Tests' });
+    await expect(list.getByRole('table')).toHaveCount(0);
+    const blood = testOption(cards, BLOOD_GLUCOSE);
+    await expect(blood).toContainText('Sample: Whole Blood');
+    await expect(blood).toContainText('Method: —');
+    await expect(blood).toContainText('Code: 2339-0');
+    // Full screen, and nothing sticks out sideways
+    const box = await list.boundingBox();
+    expect(box?.width).toBe(320);
+    expect(await list.evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+    await blood.click();
+    await expect(list).toBeHidden();
+    await expect(savedAsCell(rowFor(page, '95'))).toHaveText(BLOOD_GLUCOSE);
+  });
+
+  test('gives one choice to the same wording in every file of the import', async ({ page }) => {
+    // Scenario: One choice covers the same wording in every file of the import
+    await analyzeReport(page, [GLUCOSIO], 2);
+    await page.getByRole('button', { name: /lab-report-2\.pdf/ }).click();
+    const rows = rowFor(page, '95');
+    await expect(rows).toHaveCount(2);
+    await expect(savedAsCell(rows.nth(1))).toHaveText('No test chosen');
+
+    await changeTest(page, rows.first(), BLOOD_GLUCOSE, { search: false });
+
+    await expect(savedAsCell(rows.first())).toHaveText(BLOOD_GLUCOSE);
+    await expect(savedAsCell(rows.nth(1))).toHaveText(BLOOD_GLUCOSE);
+  });
+
   test('blocks Continue until a value has a test', async ({ page }) => {
     // Scenario: A value with no test chosen blocks Continue
     await analyzeReport(page, [GLUCOSIO]);

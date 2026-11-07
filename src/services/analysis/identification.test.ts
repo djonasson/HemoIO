@@ -139,6 +139,9 @@ describe('identifyValues', () => {
     expect(values[0].loincCode).toBeUndefined();
     expect(values[0].identificationFlags).toEqual(['ambiguous']);
     expect(values[0].candidates.map((c) => c.code)).toEqual(['15074-8', '14749-6']);
+    // Marked, so the test list can say it was the AI's guess
+    expect(values[0].aiPick).toBe('15074-8');
+    expect(values[0].analyzed?.identification.aiPick).toBe('15074-8');
   });
 
   it('leaves the candidates for the user with no AI to ask', async () => {

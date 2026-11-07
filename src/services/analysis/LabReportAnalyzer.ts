@@ -62,6 +62,8 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   loincCode?: string;
   /** The tests it may be, best first: the local match's, the AI's pick first */
   candidates: Candidate[];
+  /** The candidate the AI picked but was not sure of */
+  aiPick?: string;
   /** Flag indicating this biomarker has a duplicate conflict that needs user review */
   hasDuplicateConflict?: boolean;
   /**

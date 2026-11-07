@@ -86,6 +86,30 @@ Feature: Identifying the test of each value
     When I search its test list for "Hemoglobin" and choose "Hemoglobin [Mass/volume] in Blood"
     Then the value should be saved as "Hemoglobin [Mass/volume] in Blood"
 
+  Scenario: The tests to choose from are set side by side
+    Given a value the AI is not sure of
+    When I open its test list
+    Then the tests should be listed in a table with what each measures, its sample, method, units and LOINC code
+    And each test should show LOINC's own name for it
+    And the tests LOINC says are commonly ordered should be marked "Common"
+    And each suggested test should say why it is offered, such as "Name matches" or "The AI's best guess"
+    And each test should say in words whether the value's unit fits it
+    And HemoIO's description should be shown for the tests it describes
+    When I click anywhere on a test's row
+    Then the value should be saved as that test
+
+  Scenario: The test list on a phone
+    Given a value the AI is not sure of, on a phone-sized screen
+    When I open its test list
+    Then the list should fill the screen
+    And each test should be a card with its sample, method, units and code on lines of their own
+
+  Scenario: One choice covers the same wording in every file of the import
+    Given I import two reports that both print "Glucosio" in mg/dL, and the AI is not sure of it
+    When I choose "Glucose [Mass/volume] in Blood" for it in the first report
+    Then "Glucosio" in the second report should be saved as "Glucose [Mass/volume] in Blood" too
+    But a value whose test I chose myself, or of another unit or sample, keeps its own test
+
   Scenario: Choose the test from the keyboard
     Given a value the AI is not sure of
     When I open its test list from the keyboard, type "Hemoglobin" and press Enter

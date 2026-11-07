@@ -30,6 +30,7 @@ function identified(biomarker: MatchedBiomarker, identification: Identification)
     ...biomarker,
     loincCode: identification.loincCode,
     candidates: identification.candidates,
+    aiPick: identification.aiPick,
     identifiedBy: identification.identifiedBy,
     identificationFlags: identification.identificationFlags,
     savedAsUnknown: identification.savedAsUnknown,
@@ -100,4 +101,43 @@ export function chooseTest(biomarker: MatchedBiomarker, code: string | null): Ma
     // The user's own choice: saved under the name they gave it
     unknownKey: undefined,
   };
+}
+
+/** Where a value sits in review: its file and its row */
+export interface ValuePosition {
+  resultIndex: number;
+  biomarkerIndex: number;
+}
+
+/** Whether two values are the same printed wording: name and unit, of the same sample */
+function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
+  const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
+  return learnedKey(a) === learnedKey(b) && sample(a) === sample(b);
+}
+
+/**
+ * The user's test choice for one value, given too to the values of the same
+ * wording in every file of the import whose test the user has not chosen
+ * themselves: a report's "Ematocrito %" is the same test in each file, as it
+ * is once learned
+ */
+export function chooseTestForWording<T extends { editedBiomarkers: MatchedBiomarker[] }>(
+  results: readonly T[],
+  { resultIndex, biomarkerIndex }: ValuePosition,
+  code: string | null
+): T[] {
+  const chosen = results[resultIndex]?.editedBiomarkers[biomarkerIndex];
+  if (!chosen) return [...results];
+  const takesChoice = (value: MatchedBiomarker, r: number, i: number): boolean =>
+    (r === resultIndex && i === biomarkerIndex) || (value.identifiedBy !== 'user' && isSameWording(value, chosen));
+  return results.map((result, r) =>
+    result.editedBiomarkers.some((value, i) => takesChoice(value, r, i))
+      ? {
+          ...result,
+          editedBiomarkers: result.editedBiomarkers.map((value, i) =>
+            takesChoice(value, r, i) ? chooseTest(value, code) : value
+          ),
+        }
+      : result
+  );
 }

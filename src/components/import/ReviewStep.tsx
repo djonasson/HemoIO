@@ -44,7 +44,7 @@ import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewed
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
-  chooseTest,
+  chooseTestForWording,
   unitOptionsFor,
 } from '@services/analysis/reviewEdits';
 import { loincTestLabel, sampleLabel, testDescription } from '@data/loinc/display';
@@ -582,7 +582,10 @@ export function ReviewStep({
                               <SavedAsCell
                                 biomarker={biomarker}
                                 onChoose={(code) =>
-                                  updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, code))
+                                  // The same wording in the other files takes the choice too
+                                  onReviewChange(
+                                    chooseTestForWording(reviewedResults, { resultIndex, biomarkerIndex: bioIndex }, code)
+                                  )
                                 }
                               />
                               {setAside.get(biomarker)?.reason === 'twin' && (

@@ -1,18 +1,19 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { Button, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { Box, Button, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { useCatalog } from '@contexts/useCatalog';
 import { searchTests } from '@services/analysis/reviewEdits';
+import { describeTestOptions } from '@services/analysis/testOptions';
+import { formatReviewedValue } from '@/utils/formatReviewedValue';
 import { IdentificationLabels } from './IdentificationLabels';
-import { TestOption } from './TestOption';
+import { TestOptionCards } from './TestOptionCards';
+import { TestOptionTable } from './TestOptionTable';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 export const NOT_A_LOINC_TEST = 'Not a LOINC test';
 
-/** A test to choose: its code and LOINC long name */
-interface Option {
-  code: string;
-  name: string;
-}
+/** Where the tests no longer fit side by side, and the list takes the whole screen */
+const PHONE_QUERY = '(max-width: 48em)';
 
 /** What a value is saved as, in words */
 function savedAsText(biomarker: MatchedBiomarker, name: string | undefined): string {
@@ -43,14 +44,18 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
   const query = useDeferredValue(search);
   const current = biomarker.loincCode;
   const currentName = current ? catalog.test(current)?.name : undefined;
+  const isPhone = useMediaQuery(PHONE_QUERY) ?? false;
   // With no search, the tests the value may be (the current one first, if it is not one of them)
-  const options = useMemo<Option[]>(() => {
-    if (query.trim()) return searchTests(catalog, query).map(({ code, name }) => ({ code, name }));
-    const candidates = biomarker.candidates.map(({ code, name }) => ({ code, name }));
-    return current && currentName && !candidates.some((c) => c.code === current)
-      ? [{ code: current, name: currentName }, ...candidates]
-      : candidates;
-  }, [catalog, query, biomarker.candidates, current, currentName]);
+  const options = useMemo(() => {
+    const searching = query.trim() !== '';
+    const codes = searching
+      ? searchTests(catalog, query).map(({ code }) => code)
+      : [
+          ...(current && !biomarker.candidates.some((c) => c.code === current) ? [current] : []),
+          ...biomarker.candidates.map(({ code }) => code),
+        ];
+    return describeTestOptions(catalog, biomarker, codes, { suggested: !searching });
+  }, [catalog, query, biomarker, current]);
   // Escape closes the list wherever focus is, as Mantine's own does, but
   // not the Escape that cancels Safari's composition (Mantine's misses it)
   useEffect(() => {
@@ -72,6 +77,14 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
     if (!open) return;
     setOpen(false);
     onChoose(code);
+  };
+  const listProps = {
+    options,
+    current,
+    notLoinc: biomarker.savedAsUnknown === true && !current,
+    unit: biomarker.unit,
+    notLoincLabel: NOT_A_LOINC_TEST,
+    onChoose: choose,
   };
 
   return (
@@ -101,7 +114,13 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
         onClose={() => setOpen(false)}
         closeOnEscape={false}
         title={`Saved as: ${biomarker.name}`}
+        // Wide enough to set the tests side by side; a phone's whole screen for the cards
+        size="72rem"
+        fullScreen={isPhone}
       >
+        <Text size="sm" c="dimmed" mb="xs">
+          Printed: {biomarker.name} · {formatReviewedValue(biomarker)} {biomarker.unit}
+        </Text>
         <TextInput
           label="Search tests"
           description="Search LOINC by name or code; Enter chooses the first test found"
@@ -117,27 +136,14 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
           }}
           data-autofocus
         />
-        {/* Plain buttons: each is reached with Tab and chosen with Enter or Space */}
-        <Stack gap={2} mt="sm" mah={320} style={{ overflowY: 'auto' }} role="group" aria-label="Tests">
-          <TestOption current={biomarker.savedAsUnknown === true && !current} onClick={() => choose(null)}>
-            {NOT_A_LOINC_TEST}
-          </TestOption>
-          {options.map((option) => (
-            <TestOption
-              key={option.code}
-              code={option.code}
-              current={current === option.code}
-              onClick={() => choose(option.code)}
-            >
-              {option.name}
-            </TestOption>
-          ))}
+        <Box mt="sm" mah={isPhone ? undefined : '60vh'} style={{ overflowY: 'auto' }}>
+          {isPhone ? <TestOptionCards {...listProps} /> : <TestOptionTable {...listProps} />}
           {query.trim() && options.length === 0 && (
-            <Text size="sm" c="dimmed" role="status">
+            <Text size="sm" c="dimmed" role="status" mt="xs">
               No test found
             </Text>
           )}
-        </Stack>
+        </Box>
       </Modal>
     </Stack>
   );
