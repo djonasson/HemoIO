@@ -26,7 +26,7 @@ describe('describeTestOptions', () => {
     expect(blood).toMatchObject({
       code: '15074-8',
       name: 'Glucose [Moles/volume] in Blood',
-      component: 'Glucose',
+      title: 'Glucose',
       kind: 'Moles/volume',
       sample: 'Whole Blood',
       method: '',
@@ -82,5 +82,24 @@ describe('testOptionsFor', () => {
 
     expect(options[0].code).toBe('718-7');
     expect(options.every((option) => option.reason === undefined)).toBe(true);
+  });
+});
+
+describe('test titles and how common a test is', () => {
+  it("names a test by its long name's opening, not LOINC's parts, with no kind when the name gives none", () => {
+    const [serum, neutrophils] = describeTestOptions(catalog, glucosio, ['2345-7', '770-8'], { suggested: false });
+    expect(serum).toMatchObject({ title: 'Glucose', kind: 'Mass/volume' });
+    expect(neutrophils).toMatchObject({ title: 'Neutrophils/Leukocytes', kind: '' });
+  });
+
+  it('counts a test common when a test it trends with is, as the matcher does', () => {
+    // Molar serum glucose is rare on its own, but trends with the common mass test
+    const [molar] = describeTestOptions(catalog, glucosio, ['14749-6'], { suggested: false });
+    expect(molar.common).toBe(true);
+  });
+
+  it('reads a score a float sum leaves just under 0.9 as one that shares all the words', () => {
+    const value = { ...glucosio, aiPick: undefined, candidates: [{ code: '2345-7', name: '', score: 0.8999999999999999 }] };
+    expect(describeTestOptions(catalog, value, ['2345-7'], { suggested: true })[0].reason).toBe('name-words');
   });
 });

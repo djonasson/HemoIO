@@ -116,14 +116,16 @@ export interface ValuePosition {
  */
 function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
   const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
-  return learnedKey(a) === learnedKey(b) && sample(a) === sample(b);
+  // Rows added in review start with no name: blank rows are no wording
+  return a.name.trim() !== '' && learnedKey(a) === learnedKey(b) && sample(a) === sample(b);
 }
 
 /**
- * The user's test choice for one value, given too to the values of the same
+ * The user's test choice for one value, shared with the values of the same
  * wording in every file of the import whose test the user has not chosen
  * themselves: a report's "Ematocrito %" is the same test in each file, as it
- * is once learned
+ * is once learned. A shared value is marked so, not as the user's own, so a
+ * correction of the choice reaches it too and a rename reads it again.
  */
 export function chooseTestForWording<T extends { editedBiomarkers: MatchedBiomarker[] }>(
   results: readonly T[],
@@ -132,16 +134,13 @@ export function chooseTestForWording<T extends { editedBiomarkers: MatchedBiomar
 ): T[] {
   const chosen = results[resultIndex]?.editedBiomarkers[biomarkerIndex];
   if (!chosen) return [...results];
-  const takesChoice = (value: MatchedBiomarker, r: number, i: number): boolean =>
-    (r === resultIndex && i === biomarkerIndex) || (value.identifiedBy !== 'user' && isSameWording(value, chosen));
-  return results.map((result, r) =>
-    result.editedBiomarkers.some((value, i) => takesChoice(value, r, i))
-      ? {
-          ...result,
-          editedBiomarkers: result.editedBiomarkers.map((value, i) =>
-            takesChoice(value, r, i) ? chooseTest(value, code) : value
-          ),
-        }
-      : result
-  );
+  const choiceFor = (value: MatchedBiomarker, r: number, i: number): MatchedBiomarker | undefined => {
+    if (r === resultIndex && i === biomarkerIndex) return chooseTest(value, code);
+    if (value.identifiedBy === 'user' || !isSameWording(value, chosen)) return undefined;
+    return { ...chooseTest(value, code), identifiedBy: 'shared' };
+  };
+  return results.map((result, r) => {
+    const values = result.editedBiomarkers.map((value, i) => choiceFor(value, r, i) ?? value);
+    return values.some((value, i) => value !== result.editedBiomarkers[i]) ? { ...result, editedBiomarkers: values } : result;
+  });
 }

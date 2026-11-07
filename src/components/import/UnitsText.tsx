@@ -12,7 +12,7 @@ interface UnitsTextProps {
 }
 
 /** A test's units, and whether the value's unit fits, in words as well as by icon */
-export function UnitsText({ option, unit }: UnitsTextProps) {
+export function UnitsText({ option, unit }: UnitsTextProps): React.ReactElement {
   const units = option.units.slice(0, MAX_UNITS).join(', ') || '—';
   const fits = option.unitFit === 'fits';
   const Icon = fits ? IconCheck : IconX;

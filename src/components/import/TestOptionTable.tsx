@@ -3,7 +3,7 @@ import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { TestNotes } from './TestNotes';
 import { TestOptionName } from './TestOptionName';
 import { UnitsText } from './UnitsText';
-import type { TestOptionLayoutProps } from './testOptionLayout';
+import { accessibleName, type TestOptionLayoutProps } from './testOptionLayout';
 
 /**
  * The tests side by side, LOINC's name cut into its parts so a difference
@@ -11,7 +11,7 @@ import type { TestOptionLayoutProps } from './testOptionLayout';
  * it; the button in its first cell is what the keyboard reaches, and its
  * click reaches the row.
  */
-export function TestOptionTable({ options, current, notLoinc, unit, onChoose }: TestOptionLayoutProps) {
+export function TestOptionTable({ options, current, notLoinc, unit, onChoose }: TestOptionLayoutProps): React.ReactElement {
   return (
     <Table highlightOnHover stickyHeader verticalSpacing="xs" aria-label="Tests">
       <Table.Thead>
@@ -36,8 +36,7 @@ export function TestOptionTable({ options, current, notLoinc, unit, onChoose }: 
           return (
             <Table.Tr key={option.code} style={{ cursor: 'pointer' }} onClick={() => onChoose(option.code)}>
               <Table.Td>
-                {/* Named by LOINC's long name and code, as the test is known */}
-                <UnstyledButton aria-current={isCurrent ? 'true' : undefined} aria-label={`${option.name} · ${option.code}`}>
+                <UnstyledButton aria-current={isCurrent ? 'true' : undefined} aria-label={accessibleName(option)}>
                   <TestOptionName current={isCurrent} option={option} />
                 </UnstyledButton>
                 <Box pl={20}>

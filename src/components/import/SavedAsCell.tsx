@@ -6,7 +6,7 @@ import { searchTests } from '@services/analysis/reviewEdits';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
 import { IdentificationLabels } from './IdentificationLabels';
 import { NOT_A_LOINC_TEST } from './notLoincTest';
-import { PHONE_QUERY, TestOptionList } from './TestOptionList';
+import { TestOptionList } from './TestOptionList';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /** What a value is saved as, in words */
@@ -19,6 +19,9 @@ function savedAsText(biomarker: MatchedBiomarker, name: string | undefined): str
  * Whether a key ends or cancels an input method's composition: Safari sends
  * that key after the composition, with key code 229
  */
+/** Where the tests no longer fit side by side, and the list takes the whole screen */
+const PHONE_QUERY = '(max-width: 48em)';
+
 function isComposing(e: KeyboardEvent): boolean {
   return e.isComposing || e.keyCode === 229;
 }
@@ -30,7 +33,7 @@ interface SavedAsCellProps {
 }
 
 /** The LOINC test a value will be saved as, with a list to change it */
-export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
+export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps): React.ReactElement {
   const catalog = useCatalog();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -38,7 +41,8 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
   const query = useDeferredValue(search);
   const current = biomarker.loincCode;
   const currentName = current ? catalog.test(current)?.name : undefined;
-  const isPhone = useMediaQuery(PHONE_QUERY) ?? false;
+  const isPhone = useMediaQuery(PHONE_QUERY);
+  const printed = biomarker.analyzed ?? biomarker;
   // Escape closes the list wherever focus is, as Mantine's own does, but
   // not the Escape that cancels Safari's composition (Mantine's misses it)
   useEffect(() => {
@@ -94,7 +98,8 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
         fullScreen={isPhone}
       >
         <Text size="sm" c="dimmed" mb="xs">
-          Printed: {biomarker.name} · {formatReviewedValue(biomarker)} {biomarker.unit}
+          {/* As the report printed it, whatever the row was edited to since */}
+          Printed: {printed.name} · {formatReviewedValue(biomarker)} {printed.unit}
         </Text>
         <TextInput
           label="Search tests"
@@ -111,7 +116,7 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
           }}
           data-autofocus
         />
-        <TestOptionList biomarker={biomarker} query={query} onChoose={choose} />
+        <TestOptionList biomarker={biomarker} query={query} isPhone={isPhone} onChoose={choose} />
       </Modal>
     </Stack>
   );

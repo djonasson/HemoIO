@@ -9,6 +9,9 @@ import { unitFit, type UnitFit } from './reviewedSave';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
+/** Absorbs float error in candidate scores */
+const SCORE_EPSILON = 1e-9;
+
 /**
  * Why a test the value may be is offered: the AI's unsure pick, its name
  * equal to the printed one, sharing all its words, near it, or none of
@@ -21,9 +24,9 @@ export interface TestOptionDetails {
   code: string;
   /** LOINC long common name, shown with the code as the license asks */
   name: string;
-  /** What is measured: "Glomerular filtration rate" */
-  component: string;
-  /** The kind of quantity, as LOINC's long name writes it: "Mass/volume" */
+  /** What is measured, as LOINC's long name opens: "Hematocrit", "Specific gravity" */
+  title: string;
+  /** The kind of quantity, as LOINC's long name writes it in brackets ("Mass/volume"); empty when it gives none */
   kind: string;
   /** The sample: "Serum/Plasma" */
   sample: string;
@@ -41,9 +44,25 @@ export interface TestOptionDetails {
   reason?: OfferReason;
 }
 
-/** LOINC's long name gives the kind in brackets ("Glucose [Mass/volume] in Blood"); else its property code */
-function kindOf(test: CatalogTest): string {
-  return /\[([^\]]+)\]/.exec(test.name)?.[1] ?? test.property;
+/**
+ * What a test measures and its kind, in the words of its long name, which
+ * reads better than its LOINC parts ("Hematocrit [Volume Fraction] of
+ * Blood", component "Erythrocyte/Blood"): the name before its bracketed
+ * kind, else before the sample or method ("Specific gravity of Urine")
+ */
+function titleAndKind(test: CatalogTest): { title: string; kind: string } {
+  const bracketed = /^(.*?)\s*\[([^\]]+)\]/.exec(test.name);
+  if (bracketed) return { title: bracketed[1], kind: bracketed[2] };
+  return { title: test.name.split(/\s+(?:of|in|by)\s+/)[0], kind: '' };
+}
+
+/** Whether the most common test a code trends with is among LOINC's commonly ordered ones, as the matcher counts it */
+function isCommon(catalog: Catalog, code: string): boolean {
+  const ranks = catalog
+    .groupCodes(catalog.trendGroup(code))
+    .map((member) => catalog.test(member)?.rank ?? 0)
+    .filter((rank) => rank > 0);
+  return ranks.length > 0 && Math.min(...ranks) <= COMMON_RANK;
 }
 
 /** Why a test the value may be is offered; none for a test that is not one of them */
@@ -51,8 +70,9 @@ function reasonFor(code: string, biomarker: MatchedBiomarker): OfferReason | und
   if (biomarker.aiPick === code) return 'ai';
   const candidate = biomarker.candidates.find((c) => c.code === code);
   if (!candidate) return undefined;
-  if (candidate.score >= 1) return 'name';
-  if (candidate.score >= MATCH_SCORE) return 'name-words';
+  // Scores are sums of fractions: 0.8999999999999999 is 0.9
+  if (candidate.score >= 1 - SCORE_EPSILON) return 'name';
+  if (candidate.score >= MATCH_SCORE - SCORE_EPSILON) return 'name-words';
   return candidate.score > 0 ? 'similar' : 'usual-unit';
 }
 
@@ -73,13 +93,12 @@ export function describeTestOptions(
       {
         code,
         name: test.name,
-        component: test.component,
-        kind: kindOf(test),
+        ...titleAndKind(test),
         sample: sampleLabel(test),
         method: test.method,
         units: unitOptions(catalog, code),
         unitFit: unitFit({ ...biomarker, loincCode: code }, catalog),
-        common: test.rank > 0 && test.rank <= COMMON_RANK,
+        common: isCommon(catalog, code),
         description: testDescription(catalog, code),
         reason: suggested ? reasonFor(code, biomarker) : undefined,
       },

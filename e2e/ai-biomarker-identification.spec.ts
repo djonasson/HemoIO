@@ -203,7 +203,7 @@ test.describe('Identifying the test of each value', () => {
 
     await row.getByRole('button', { name: /^Change test for / }).click();
     const list = testList(page);
-    await expect(testOption(list, SERUM_GLUCOSE)).toHaveAccessibleName(`${SERUM_GLUCOSE} · 2345-7`);
+    await expect(testOption(list, SERUM_GLUCOSE)).toHaveAccessibleName(`Glucose · Mass/volume, ${SERUM_GLUCOSE} · 2345-7`);
     await testOption(list, BLOOD_GLUCOSE).click();
     await expect(list).toBeHidden();
 
@@ -230,6 +230,7 @@ test.describe('Identifying the test of each value', () => {
     await expect(serum).toContainText(`LOINC: ${SERUM_GLUCOSE}`);
     await expect(serum).toContainText('Common');
     await expect(serum).toContainText('Blood sugar level');
+    await expect(list.getByText('Printed: Glucosio · 95 mg/dL')).toBeVisible();
     const blood = table.getByRole('row').filter({ has: testOption(page, BLOOD_GLUCOSE) });
     await expect(blood).toContainText("The AI's best guess");
 
@@ -250,6 +251,7 @@ test.describe('Identifying the test of each value', () => {
     await expect(blood).toContainText('Sample: Whole Blood');
     await expect(blood).toContainText('Method: —');
     await expect(blood).toContainText('Code: 2339-0');
+    await expect(blood).toHaveAccessibleDescription(/Sample: Whole Blood.*fits mg\/dL/);
     // Full screen, and nothing sticks out sideways
     const box = await list.boundingBox();
     expect(box?.width).toBe(320);
@@ -271,6 +273,9 @@ test.describe('Identifying the test of each value', () => {
 
     await expect(savedAsCell(rows.first())).toHaveText(BLOOD_GLUCOSE);
     await expect(savedAsCell(rows.nth(1))).toHaveText(BLOOD_GLUCOSE);
+
+    await changeTest(page, rows.first(), SERUM_GLUCOSE, { search: false });
+    await expect(savedAsCell(rows.nth(1))).toHaveText(SERUM_GLUCOSE);
   });
 
   test('blocks Continue until a value has a test', async ({ page }) => {

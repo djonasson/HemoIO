@@ -7,7 +7,7 @@ import type { TestOptionDetails } from '@services/analysis/testOptions';
 const option: TestOptionDetails = {
   code: '2339-0',
   name: 'Glucose [Mass/volume] in Blood',
-  component: 'Glucose',
+  title: 'Glucose',
   kind: 'Mass/volume',
   sample: 'Whole Blood',
   method: '',

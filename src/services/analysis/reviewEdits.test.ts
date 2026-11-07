@@ -146,7 +146,9 @@ describe('chooseTestForWording', () => {
       ['4544-3'],
       ['4544-3', undefined],
     ]);
-    expect(chosen[1].editedBiomarkers[0].identifiedBy).toBe('user');
+    expect(chosen[0].editedBiomarkers[0].identifiedBy).toBe('user');
+    // Shared, not the user's own: a correction reaches it, and a rename reads it again
+    expect(chosen[1].editedBiomarkers[0].identifiedBy).toBe('shared');
     expect(chosen[1].editedBiomarkers[1]).toBe(results[1].editedBiomarkers[1]);
   });
 
@@ -168,6 +170,33 @@ describe('chooseTestForWording', () => {
     const chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '4544-3');
 
     expect(chosen[1].editedBiomarkers).toEqual(results[1].editedBiomarkers);
+    expect(chosen[1]).toBe(results[1]);
+  });
+
+  it('gives a corrected choice to the values the first choice reached', () => {
+    const results = files([undecided('Glucosio', 'mg/dL')], [undecided('Glucosio', 'mg/dL')]);
+    const misclicked = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '2350-7');
+
+    const corrected = chooseTestForWording(misclicked, { resultIndex: 0, biomarkerIndex: 0 }, '2339-0');
+
+    expect(corrected.map((file) => file.editedBiomarkers[0].loincCode)).toEqual(['2339-0', '2339-0']);
+  });
+
+  it('reads a shared value again when it is renamed, as one the user never chose', () => {
+    const results = files([undecided('Glucosio', 'mg/dL')], [undecided('Glucosio', 'mg/dL')]);
+    const [, other] = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '2339-0');
+
+    const renamed = applyBiomarkerName(other.editedBiomarkers[0], 'Emoglobina', catalog);
+
+    expect(renamed.loincCode).not.toBe('2339-0');
+  });
+
+  it('never gives a choice for a row added in review to other new rows', () => {
+    const results = files([{ ...ADDED }, { ...ADDED }], [{ ...ADDED }]);
+
+    const chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '2345-7');
+
+    expect(chosen[0].editedBiomarkers.map((value) => value.loincCode)).toEqual(['2345-7', undefined]);
     expect(chosen[1]).toBe(results[1]);
   });
 

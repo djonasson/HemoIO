@@ -142,10 +142,11 @@ Feature: Identifying the test of each value
     When I open its test list
     Then the tests should be listed in a table with what each measures, its sample, method, units and LOINC code
     And each test should show LOINC's own name for it
-    And the tests LOINC says are commonly ordered should be marked "Common"
+    And the tests LOINC says are commonly ordered, or that trend with one, should be marked "Common"
     And each suggested test should say why it is offered, such as "Name matches" or "The AI's best guess"
     And each test should say in words whether the value's unit fits it
     And HemoIO's description should be shown for the tests it describes
+    And the list should show the value as the report printed it
     When I click anywhere on a test's row
     Then the value should be saved as that test
 
@@ -154,12 +155,15 @@ Feature: Identifying the test of each value
     When I open its test list
     Then the list should fill the screen
     And each test should be a card with its sample, method, units and code on lines of their own
+    And a screen reader should announce those details, whether the unit fits among them, after the test's name
 
   Scenario: One choice covers the same wording in every file of the import
     Given I import two reports that both print "Glucosio" in mg/dL, and the AI is not sure of it
     When I choose "Glucose [Mass/volume] in Blood" for it in the first report
     Then "Glucosio" in the second report should be saved as "Glucose [Mass/volume] in Blood" too
     But a value whose test I chose myself, or of another unit or sample, keeps its own test
+    When I correct the choice in the first report
+    Then the second report's "Glucosio" should take the corrected test too
 
   Scenario: Choose the test from the keyboard
     Given a value the AI is not sure of

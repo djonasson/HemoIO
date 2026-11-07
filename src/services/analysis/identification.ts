@@ -191,6 +191,6 @@ export function toLearn(value: MatchedBiomarker): SavedValue {
   return {
     key: learnedKey(printed),
     code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
-    confirmed: by === 'ai' || by === 'user' || (edited && isFoundWithoutAsking(value)),
+    confirmed: by === 'ai' || by === 'user' || by === 'shared' || (edited && isFoundWithoutAsking(value)),
   };
 }

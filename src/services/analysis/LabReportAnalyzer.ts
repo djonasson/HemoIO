@@ -82,7 +82,12 @@ export interface MatchedBiomarker extends ExtractedBiomarker {
   unknownKey?: string;
 }
 
-export type IdentifiedBy = 'learned' | 'local' | 'ai' | 'user';
+/**
+ * How a value's test was found: learned, matched locally, chosen by the AI,
+ * by the user, or shared from the user's choice for the same wording in the
+ * import (which a later choice for that wording changes again)
+ */
+export type IdentifiedBy = 'learned' | 'local' | 'ai' | 'user' | 'shared';
 
 /** What the analyzer read a value as */
 export interface AnalyzedValue {

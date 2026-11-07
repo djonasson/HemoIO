@@ -200,6 +200,11 @@ describe('toLearn', () => {
     });
   });
 
+  it("confirms a choice shared from the user's choice for the same wording", async () => {
+    const value = await analyzed('Glucosio', 'mmol/L');
+    expect(toLearn({ ...value, loincCode: '14749-6', identifiedBy: 'shared' })).toMatchObject({ confirmed: true });
+  });
+
   it('confirms a local match only after the user edited the value, under its printed wording', async () => {
     const value = await analyzed('P-Glucosio', 'mg/dL');
     expect(toLearn(value).confirmed).toBe(false);

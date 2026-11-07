@@ -15,7 +15,7 @@ interface TestNotesProps {
 }
 
 /** How common the test is, why it is offered, HemoIO's description of it and LOINC's name */
-export function TestNotes({ option }: TestNotesProps) {
+export function TestNotes({ option }: TestNotesProps): React.ReactElement {
   return (
     <>
       {(option.common || option.reason) && (
