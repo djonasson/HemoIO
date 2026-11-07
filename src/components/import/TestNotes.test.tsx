@@ -32,7 +32,7 @@ describe('TestNotes', () => {
   });
 
   it('marks a common test, says why it is offered and gives the description', () => {
-    renderNotes({ common: true, reason: 'Name matches', description: 'Blood sugar level.' });
+    renderNotes({ common: true, reason: 'name', description: 'Blood sugar level.' });
     expect(screen.getByText('Common')).toBeInTheDocument();
     expect(screen.getByText('Name matches')).toBeInTheDocument();
     expect(screen.getByText('Blood sugar level.')).toBeInTheDocument();

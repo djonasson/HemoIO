@@ -1,8 +1,9 @@
-import { Box, Group, Stack, Text, UnstyledButton } from '@mantine/core';
-import { CurrentMark } from './CurrentMark';
+import { Box, Stack, Text, UnstyledButton } from '@mantine/core';
+import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { TestNotes } from './TestNotes';
+import { TestOptionName } from './TestOptionName';
 import { UnitsText } from './UnitsText';
-import type { TestOptionDetails } from '@services/analysis/testOptions';
+import type { TestOptionLayoutProps } from './testOptionLayout';
 
 /** A card's frame, as a bordered Paper's */
 const CARD = {
@@ -10,29 +11,12 @@ const CARD = {
   borderRadius: 'var(--mantine-radius-sm)',
 };
 
-interface TestOptionCardsProps {
-  options: TestOptionDetails[];
-  /** The code the value is saved as, if any */
-  current: string | undefined;
-  /** Whether the value is saved as "Not a LOINC test" */
-  notLoinc: boolean;
-  /** The value's own unit */
-  unit: string;
-  notLoincLabel: string;
-  onChoose: (code: string | null) => void;
-}
-
 /** The tests on a phone: one card each, its parts as labelled lines, the whole card a button */
-export function TestOptionCards({ options, current, notLoinc, unit, notLoincLabel, onChoose }: TestOptionCardsProps) {
+export function TestOptionCards({ options, current, notLoinc, unit, onChoose }: TestOptionLayoutProps) {
   return (
     <Stack gap="xs" role="group" aria-label="Tests">
       <UnstyledButton p="sm" style={CARD} aria-current={notLoinc ? 'true' : undefined} onClick={() => onChoose(null)}>
-        <Group component="span" gap={6} wrap="nowrap">
-          <CurrentMark current={notLoinc} />
-          <Text span size="sm" fw={notLoinc ? 600 : undefined}>
-            {notLoincLabel}
-          </Text>
-        </Group>
+        <TestOptionName current={notLoinc} label={NOT_A_LOINC_TEST} />
       </UnstyledButton>
       {options.map((option) => {
         const isCurrent = current === option.code;
@@ -45,33 +29,22 @@ export function TestOptionCards({ options, current, notLoinc, unit, notLoincLabe
             aria-label={`${option.name} · ${option.code}`}
             onClick={() => onChoose(option.code)}
           >
+            <TestOptionName current={isCurrent} option={option} />
             {/* Spans only: a button holds phrasing content */}
-            <Group component="span" gap={6} wrap="nowrap" align="flex-start">
-              <CurrentMark current={isCurrent} />
-              <Text span size="sm" fw={isCurrent ? 600 : 500}>
-                {option.component}
-                <Text span size="xs" c="dimmed" fw={400}>
-                  {' · '}
-                  {option.kind}
-                </Text>
+            <Box component="span" display="block" mt={4} pl={20}>
+              <Text span size="xs" display="block">
+                Sample: {option.sample}
               </Text>
-            </Group>
-            <Text span size="xs" display="block" mt={4} pl={20}>
-              Sample: {option.sample}
-            </Text>
-            <Text span size="xs" display="block" pl={20}>
-              Method: {option.method || '—'}
-            </Text>
-            <Box component="span" display="block" pl={20}>
+              <Text span size="xs" display="block">
+                Method: {option.method || '—'}
+              </Text>
               <Text span size="xs">
                 Units:
               </Text>
               <UnitsText option={option} unit={unit} />
-            </Box>
-            <Text span size="xs" display="block" pl={20}>
-              Code: {option.code}
-            </Text>
-            <Box component="span" display="block" pl={20}>
+              <Text span size="xs" display="block">
+                Code: {option.code}
+              </Text>
               <TestNotes option={option} />
             </Box>
           </UnstyledButton>

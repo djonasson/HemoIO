@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { describeTestOptions } from './testOptions';
+import { describeTestOptions, testOptionsFor } from './testOptions';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 const catalog = fixtureCatalog();
@@ -52,12 +52,7 @@ describe('describeTestOptions', () => {
       suggested: true,
     });
 
-    expect(options.map((option) => option.reason)).toEqual([
-      "The AI's best guess",
-      'Name matches',
-      'Name is similar',
-      'A usual test in this unit',
-    ]);
+    expect(options.map((option) => option.reason)).toEqual(['ai', 'name', 'similar', 'usual-unit']);
   });
 
   it('gives search results no reason, and leaves out codes the catalog lacks', () => {
@@ -71,5 +66,21 @@ describe('describeTestOptions', () => {
     const [serum] = describeTestOptions(catalog, glucosio, ['2345-7'], { suggested: false });
 
     expect(serum.description).toMatch(/Blood sugar level/);
+  });
+});
+
+describe('testOptionsFor', () => {
+  it('offers the tests the value may be, with why, and the current one first when it is not among them', () => {
+    const options = testOptionsFor(catalog, { ...glucosio, loincCode: '2350-7' }, '');
+
+    expect(options.map((option) => option.code)).toEqual(['2350-7', '15074-8', '14749-6', '2345-7', '2339-0']);
+    expect(options[1].reason).toBe('ai');
+  });
+
+  it('offers what a search finds instead, with no reason', () => {
+    const options = testOptionsFor(catalog, glucosio, ' 718-7 ');
+
+    expect(options[0].code).toBe('718-7');
+    expect(options.every((option) => option.reason === undefined)).toBe(true);
   });
 });

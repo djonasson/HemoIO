@@ -4,9 +4,17 @@
  */
 import { sampleLabel, testDescription, unitOptions } from '@data/loinc/display';
 import { COMMON_RANK, MATCH_SCORE } from './loincMatch';
+import { searchTests } from './reviewEdits';
 import { unitFit, type UnitFit } from './reviewedSave';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
+
+/**
+ * Why a test the value may be is offered: the AI's unsure pick, its name
+ * equal to the printed one, sharing all its words, near it, or none of
+ * these, one of the usual tests in the value's unit
+ */
+export type OfferReason = 'ai' | 'name' | 'name-words' | 'similar' | 'usual-unit';
 
 /** A test to choose, in the parts that tell it from the others */
 export interface TestOptionDetails {
@@ -30,7 +38,7 @@ export interface TestOptionDetails {
   /** HemoIO's description of the test, when it has one */
   description?: string;
   /** Why it is offered, for the tests the value may be (not search results) */
-  reason?: string;
+  reason?: OfferReason;
 }
 
 /** LOINC's long name gives the kind in brackets ("Glucose [Mass/volume] in Blood"); else its property code */
@@ -38,15 +46,14 @@ function kindOf(test: CatalogTest): string {
   return /\[([^\]]+)\]/.exec(test.name)?.[1] ?? test.property;
 }
 
-/** Why a test the value may be is offered: the AI's guess, or how well its name fits the printed one */
-function reasonFor(code: string, biomarker: MatchedBiomarker): string | undefined {
-  if (biomarker.aiPick === code) return "The AI's best guess";
+/** Why a test the value may be is offered; none for a test that is not one of them */
+function reasonFor(code: string, biomarker: MatchedBiomarker): OfferReason | undefined {
+  if (biomarker.aiPick === code) return 'ai';
   const candidate = biomarker.candidates.find((c) => c.code === code);
   if (!candidate) return undefined;
-  if (candidate.score >= 1) return 'Name matches';
-  if (candidate.score >= MATCH_SCORE) return 'Name matches in other words';
-  if (candidate.score > 0) return 'Name is similar';
-  return 'A usual test in this unit';
+  if (candidate.score >= 1) return 'name';
+  if (candidate.score >= MATCH_SCORE) return 'name-words';
+  return candidate.score > 0 ? 'similar' : 'usual-unit';
 }
 
 /**
@@ -62,8 +69,6 @@ export function describeTestOptions(
   return codes.flatMap((code) => {
     const test = catalog.test(code);
     if (!test) return [];
-    const description = testDescription(catalog, code);
-    const reason = suggested ? reasonFor(code, biomarker) : undefined;
     return [
       {
         code,
@@ -75,9 +80,26 @@ export function describeTestOptions(
         units: unitOptions(catalog, code),
         unitFit: unitFit({ ...biomarker, loincCode: code }, catalog),
         common: test.rank > 0 && test.rank <= COMMON_RANK,
-        ...(description && { description }),
-        ...(reason && { reason }),
+        description: testDescription(catalog, code),
+        reason: suggested ? reasonFor(code, biomarker) : undefined,
       },
     ];
+  });
+}
+
+/**
+ * The tests offered for a value: those a search finds, else the tests it
+ * may be, the one it is saved as first when it is not among them
+ */
+export function testOptionsFor(catalog: Catalog, biomarker: MatchedBiomarker, query: string): TestOptionDetails[] {
+  if (query.trim()) {
+    return describeTestOptions(catalog, biomarker, searchTests(catalog, query).map(({ code }) => code), {
+      suggested: false,
+    });
+  }
+  const current = biomarker.loincCode;
+  const codes = biomarker.candidates.map(({ code }) => code);
+  return describeTestOptions(catalog, biomarker, current && !codes.includes(current) ? [current, ...codes] : codes, {
+    suggested: true,
   });
 }

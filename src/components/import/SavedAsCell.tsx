@@ -1,19 +1,13 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { Box, Button, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { useDeferredValue, useEffect, useState } from 'react';
+import { Button, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useCatalog } from '@contexts/useCatalog';
 import { searchTests } from '@services/analysis/reviewEdits';
-import { describeTestOptions } from '@services/analysis/testOptions';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
 import { IdentificationLabels } from './IdentificationLabels';
-import { TestOptionCards } from './TestOptionCards';
-import { TestOptionTable } from './TestOptionTable';
+import { NOT_A_LOINC_TEST } from './notLoincTest';
+import { PHONE_QUERY, TestOptionList } from './TestOptionList';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
-
-export const NOT_A_LOINC_TEST = 'Not a LOINC test';
-
-/** Where the tests no longer fit side by side, and the list takes the whole screen */
-const PHONE_QUERY = '(max-width: 48em)';
 
 /** What a value is saved as, in words */
 function savedAsText(biomarker: MatchedBiomarker, name: string | undefined): string {
@@ -45,17 +39,6 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
   const current = biomarker.loincCode;
   const currentName = current ? catalog.test(current)?.name : undefined;
   const isPhone = useMediaQuery(PHONE_QUERY) ?? false;
-  // With no search, the tests the value may be (the current one first, if it is not one of them)
-  const options = useMemo(() => {
-    const searching = query.trim() !== '';
-    const codes = searching
-      ? searchTests(catalog, query).map(({ code }) => code)
-      : [
-          ...(current && !biomarker.candidates.some((c) => c.code === current) ? [current] : []),
-          ...biomarker.candidates.map(({ code }) => code),
-        ];
-    return describeTestOptions(catalog, biomarker, codes, { suggested: !searching });
-  }, [catalog, query, biomarker, current]);
   // Escape closes the list wherever focus is, as Mantine's own does, but
   // not the Escape that cancels Safari's composition (Mantine's misses it)
   useEffect(() => {
@@ -77,14 +60,6 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
     if (!open) return;
     setOpen(false);
     onChoose(code);
-  };
-  const listProps = {
-    options,
-    current,
-    notLoinc: biomarker.savedAsUnknown === true && !current,
-    unit: biomarker.unit,
-    notLoincLabel: NOT_A_LOINC_TEST,
-    onChoose: choose,
   };
 
   return (
@@ -136,14 +111,7 @@ export function SavedAsCell({ biomarker, onChoose }: SavedAsCellProps) {
           }}
           data-autofocus
         />
-        <Box mt="sm" mah={isPhone ? undefined : '60vh'} style={{ overflowY: 'auto' }}>
-          {isPhone ? <TestOptionCards {...listProps} /> : <TestOptionTable {...listProps} />}
-          {query.trim() && options.length === 0 && (
-            <Text size="sm" c="dimmed" role="status" mt="xs">
-              No test found
-            </Text>
-          )}
-        </Box>
+        <TestOptionList biomarker={biomarker} query={query} onChoose={choose} />
       </Modal>
     </Stack>
   );

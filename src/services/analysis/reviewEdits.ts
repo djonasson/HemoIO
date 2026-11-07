@@ -109,7 +109,11 @@ export interface ValuePosition {
   biomarkerIndex: number;
 }
 
-/** Whether two values are the same printed wording: name and unit, of the same sample */
+/**
+ * Whether two values are the same printed wording: name and unit, as they
+ * are learned, and of the same sample, which learning does not tell apart
+ * but a choice for "Glucosio" in urine must not reach the one in blood
+ */
 function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
   const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
   return learnedKey(a) === learnedKey(b) && sample(a) === sample(b);

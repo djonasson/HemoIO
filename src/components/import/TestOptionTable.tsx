@@ -1,27 +1,17 @@
-import { Box, Group, Table, Text, UnstyledButton } from '@mantine/core';
-import { CurrentMark } from './CurrentMark';
+import { Box, Table, Text, UnstyledButton } from '@mantine/core';
+import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { TestNotes } from './TestNotes';
+import { TestOptionName } from './TestOptionName';
 import { UnitsText } from './UnitsText';
-import type { TestOptionDetails } from '@services/analysis/testOptions';
-
-interface TestOptionTableProps {
-  options: TestOptionDetails[];
-  /** The code the value is saved as, if any */
-  current: string | undefined;
-  /** Whether the value is saved as "Not a LOINC test" */
-  notLoinc: boolean;
-  /** The value's own unit */
-  unit: string;
-  notLoincLabel: string;
-  onChoose: (code: string | null) => void;
-}
+import type { TestOptionLayoutProps } from './testOptionLayout';
 
 /**
  * The tests side by side, LOINC's name cut into its parts so a difference
  * shows as a different cell in a column. A click anywhere on a row chooses
- * it; the button in its first cell is what the keyboard reaches.
+ * it; the button in its first cell is what the keyboard reaches, and its
+ * click reaches the row.
  */
-export function TestOptionTable({ options, current, notLoinc, unit, notLoincLabel, onChoose }: TestOptionTableProps) {
+export function TestOptionTable({ options, current, notLoinc, unit, onChoose }: TestOptionLayoutProps) {
   return (
     <Table highlightOnHover stickyHeader verticalSpacing="xs" aria-label="Tests">
       <Table.Thead>
@@ -37,12 +27,7 @@ export function TestOptionTable({ options, current, notLoinc, unit, notLoincLabe
         <Table.Tr style={{ cursor: 'pointer' }} onClick={() => onChoose(null)}>
           <Table.Td colSpan={5}>
             <UnstyledButton aria-current={notLoinc ? 'true' : undefined}>
-              <Group component="span" gap={6} wrap="nowrap">
-                <CurrentMark current={notLoinc} />
-                <Text span size="sm" fw={notLoinc ? 600 : undefined}>
-                  {notLoincLabel}
-                </Text>
-              </Group>
+              <TestOptionName current={notLoinc} label={NOT_A_LOINC_TEST} />
             </UnstyledButton>
           </Table.Td>
         </Table.Tr>
@@ -53,16 +38,7 @@ export function TestOptionTable({ options, current, notLoinc, unit, notLoincLabe
               <Table.Td>
                 {/* Named by LOINC's long name and code, as the test is known */}
                 <UnstyledButton aria-current={isCurrent ? 'true' : undefined} aria-label={`${option.name} · ${option.code}`}>
-                  <Group component="span" gap={6} wrap="nowrap" align="flex-start">
-                    <CurrentMark current={isCurrent} />
-                    <Text span size="sm" fw={isCurrent ? 600 : 500}>
-                      {option.component}
-                      <Text span size="xs" c="dimmed" fw={400}>
-                        {' · '}
-                        {option.kind}
-                      </Text>
-                    </Text>
-                  </Group>
+                  <TestOptionName current={isCurrent} option={option} />
                 </UnstyledButton>
                 <Box pl={20}>
                   <TestNotes option={option} />

@@ -340,7 +340,9 @@ function createSearch(file: CatalogFile): Search {
   for (const word of testsByWord.keys()) {
     if (word.length < 3 || !tellsTest(word)) continue;
     const start = word.slice(0, 2);
-    wordsByStart.set(start, [...(wordsByStart.get(start) ?? []), word]);
+    const words = wordsByStart.get(start);
+    if (words) words.push(word);
+    else wordsByStart.set(start, [word]);
   }
 
   /** The name words a query word stands for, with how much each counts */

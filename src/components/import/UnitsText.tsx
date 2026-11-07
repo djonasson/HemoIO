@@ -14,24 +14,18 @@ interface UnitsTextProps {
 /** A test's units, and whether the value's unit fits, in words as well as by icon */
 export function UnitsText({ option, unit }: UnitsTextProps) {
   const units = option.units.slice(0, MAX_UNITS).join(', ') || '—';
+  const fits = option.unitFit === 'fits';
+  const Icon = fits ? IconCheck : IconX;
   return (
     <>
       <Text span size="sm" display="block">
         {units}
       </Text>
-      {option.unitFit === 'fits' && (
-        <Group component="span" gap={4} wrap="nowrap" c="teal">
-          <IconCheck size={14} aria-hidden="true" />
+      {option.unitFit !== 'unknown' && (
+        <Group component="span" gap={4} wrap="nowrap" c={fits ? 'teal' : 'red'}>
+          <Icon size={14} aria-hidden="true" />
           <Text span size="xs">
-            fits {unit}
-          </Text>
-        </Group>
-      )}
-      {option.unitFit === 'misfits' && (
-        <Group component="span" gap={4} wrap="nowrap" c="red">
-          <IconX size={14} aria-hidden="true" />
-          <Text span size="xs">
-            {unit} doesn't fit
+            {fits ? `fits ${unit}` : `${unit} doesn't fit`}
           </Text>
         </Group>
       )}

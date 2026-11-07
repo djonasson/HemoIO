@@ -1,5 +1,14 @@
 import { Badge, Group, Text } from '@mantine/core';
-import type { TestOptionDetails } from '@services/analysis/testOptions';
+import type { OfferReason, TestOptionDetails } from '@services/analysis/testOptions';
+
+/** Why a suggested test is offered, in words */
+const REASON_TEXT: Readonly<Record<OfferReason, string>> = {
+  ai: "The AI's best guess",
+  name: 'Name matches',
+  'name-words': 'Name matches in other words',
+  similar: 'Name is similar',
+  'usual-unit': 'A usual test in this unit',
+};
 
 interface TestNotesProps {
   option: TestOptionDetails;
@@ -18,7 +27,7 @@ export function TestNotes({ option }: TestNotesProps) {
           )}
           {option.reason && (
             <Text span size="xs" c="dimmed">
-              {option.reason}
+              {REASON_TEXT[option.reason]}
             </Text>
           )}
         </Group>
