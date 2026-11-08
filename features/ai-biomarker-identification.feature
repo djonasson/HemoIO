@@ -134,6 +134,17 @@ Feature: Identifying the test of each value
       | eGFR (Schwartz)     |
       | eGFR (formula BIS)  |
 
+  Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
+    Given a report prints "eGFR (CKD-EPI IDMS)", "eGFR (Roche)" or "eGFR MDRD (donne)" in mL/min/1.73m²
+    When the report is analyzed
+    Then the AI should be asked which test each is
+    And none should be saved under the eGFR of no formula without asking
+
+  Scenario: Two estimates by formulas LOINC has no test for are both kept
+    Given a report prints "eGFR (Schwartz)" 81 and "eGFR (EKFC)" 82 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, neither set aside as the other's duplicate
+
   Scenario Outline: An eGFR is filed under the formula its bracket names
     Given a report prints "<name>" in mL/min/1.73m²
     When the report is analyzed
@@ -428,6 +439,17 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the value should be saved as "Bacteria [Presence] in Urine sediment by Light microscopy"
     And the AI should not be asked which test it is
+
+  Scenario: A count or a strip's reading in a urine sediment section is the urine's
+    Given a report's urine sediment section prints "Leucociti" 25 /µL and "pH" 6.0
+    When the report is analyzed
+    Then "Leucociti" should be saved as "Leukocytes [#/volume] in Urine"
+    And "pH" should be saved as "pH of Urine"
+
+  Scenario: A result in words of a test that has none in words is offered its own tests
+    Given a report prints "NT-proBNP" as "Negativo", with no unit
+    When the report is analyzed
+    Then the tests to choose from should be the NT-proBNP tests
 
   Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
     Given a report prints "Conduttività" in mS/cm, for which LOINC has no test

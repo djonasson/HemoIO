@@ -26,6 +26,15 @@ describe('isSettled', () => {
     expect(settled([compared(value('Spot', 1, 'g/L', 'A'), 1), compared(value('Daily', 5, 'g/L', 'A'), 5)])).toBe(true);
   });
 
+  it('keeps two estimates qualified apart in brackets, however close: "eGFR (Schwartz)" and "eGFR (EKFC)"', () => {
+    const values = [
+      compared(value('eGFR (Schwartz)', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+      compared(value('eGFR (EKFC)', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
+    ];
+    expect(clusterMeasurements(values)).toHaveLength(2);
+    expect(settled(values)).toBe(true);
+  });
+
   it('calls two measurements of one printed name a conflict', () => {
     expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 45, 'ng/mL', 'A'), 45)])).toBe(false);
   });

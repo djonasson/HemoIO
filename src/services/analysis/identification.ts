@@ -59,19 +59,25 @@ export function identifyLocally(
       identificationFlags: [],
     };
   }
-  // A name that fits no test still has the common tests of its unit to choose from
+  // A name that fits no test still has the common tests of its unit to choose from, when its unit has any
   const flags: IdentificationFlag[] = [match.status === 'none' ? 'not-identified' : 'ambiguous'];
   if (value.unit.trim() === '') flags.push('no-unit');
-  // No test to choose from ("Conduttività", which LOINC lacks): "Not a LOINC test", still labelled, and changeable in review
-  if (match.candidates.length === 0) {
-    return { candidates: [], identifiedBy: 'local', identificationFlags: flags, savedAsUnknown: true };
-  }
+  // No test to choose from ("Conduttività", which LOINC lacks): "Not a LOINC test", still labelled, and changeable in
+  // review. Nobody decided it, so it is never learned, nor counted as a test found
+  if (match.candidates.length === 0) return { candidates: [], identificationFlags: flags, savedAsUnknown: true };
   return { candidates: match.candidates, identificationFlags: flags };
 }
 
 /** Whether a value has no test decided yet: no code, and not "Not a LOINC test" */
 export function needsTest(identification: Pick<Identification, 'loincCode' | 'savedAsUnknown'>): boolean {
   return !identification.loincCode && !identification.savedAsUnknown;
+}
+
+/** Whether a value is "Not a LOINC test" only because no test was found to choose from, nobody deciding it */
+export function isNoneFound(
+  identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'identifiedBy'>
+): boolean {
+  return !identification.loincCode && identification.savedAsUnknown === true && identification.identifiedBy === undefined;
 }
 
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */

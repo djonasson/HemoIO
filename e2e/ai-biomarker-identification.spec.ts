@@ -190,6 +190,31 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
+  test('asks about an eGFR whose bracket says more of a formula LOINC has', async ({ page }) => {
+    // Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
+    const names = ['eGFR (CKD-EPI IDMS)', 'eGFR (Roche)', 'eGFR MDRD (donne)'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: 61 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((asked) => asked.name).sort()).toEqual([...names].sort());
+    for (const i of names.keys()) {
+      await expect(rowFor(page, String(61 + i)).getByText('LOINC 69405-9')).toHaveCount(0);
+    }
+  });
+
+  test('keeps two estimates by formulas LOINC has no test for', async ({ page }) => {
+    // Scenario: Two estimates by formulas LOINC has no test for are both kept
+    await analyzeReport(page, [
+      { name: 'eGFR (Schwartz)', value: 81, unit: 'mL/min/1.73m²', confidence: 0.95 },
+      { name: 'eGFR (EKFC)', value: 82, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '81')).toBeVisible();
+    await expect(rowFor(page, '82')).toBeVisible();
+    await expect(page.getByText(/Conflicting values/)).toHaveCount(0);
+  });
+
   test('files an eGFR under the formula its bracket names', async ({ page }) => {
     // Scenario Outline: An eGFR is filed under the formula its bracket names
     const examples: [string, string][] = [
@@ -662,6 +687,25 @@ test.describe('Identifying the test of each value', () => {
     ]);
     await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).toHaveText('Bacteria [Presence] in Urine sediment by Light microscopy');
     expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test("files a count or a strip's reading in a urine sediment section as the urine's", async ({ page }) => {
+    // Scenario: A count or a strip's reading in a urine sediment section is the urine's
+    await analyzeReport(page, [
+      { name: 'Leucociti', value: 25, unit: '/µL', confidence: 0.95, specimenHint: 'urine sediment' },
+      { name: 'pH', value: 6.5, unit: '', confidence: 0.95, specimenHint: 'urine sediment' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '25'))).toHaveText('Leukocytes [#/volume] in Urine');
+    await expect(savedAsCell(rowFor(page, '6.5'))).toHaveText('pH of Urine');
+  });
+
+  test('offers a result in words of a test that has none in words its own tests', async ({ page }) => {
+    // Scenario: A result in words of a test that has none in words is offered its own tests
+    const ai = await analyzeReport(page, [
+      { name: 'NT-proBNP', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' },
+    ]);
+    const codes = ai.choiceRequests.flat()[0].candidates.map((c) => c.code);
+    expect(codes).toContain('33762-6');
   });
 
   test('saves a value with no test to choose from as "Not a LOINC test" without asking', async ({ page }) => {

@@ -269,9 +269,13 @@ export function splitSamplePrefix(name: string): { name: string; systems?: strin
 /** A specimen hint naming the urine sediment: "urine sediment", "sedimento urinario" */
 const SEDIMENT_HINT = /\bsediment[oi]?\b/i;
 
-/** The LOINC systems a specimen hint names, if any: a urine sediment one, the sediment alone */
+/**
+ * The LOINC systems a specimen hint names, if any: a urine sediment one,
+ * the sediment before the urine, whose machine counts per volume a sediment
+ * section prints too
+ */
 function hintSystems(hint: string): string[] | undefined {
-  if (SEDIMENT_HINT.test(hint)) return [URINE_SEDIMENT];
+  if (SEDIMENT_HINT.test(hint)) return [URINE_SEDIMENT, 'Urine'];
   return splitSamplePrefix(hint).systems ?? SAMPLE_HINTS.find(([words]) => words.test(hint))?.[1];
 }
 
@@ -368,22 +372,34 @@ function withSearchesKept(catalog: Catalog): Catalog {
   return { ...catalog, scoredSearch };
 }
 
-/** LOINC scales whose results are words: ordinal ("Absent", "2+"), semi-quantitative steps, and nominal ("Negative") */
-const WORD_SCALES: ReadonlySet<string> = new Set(['Ord', 'OrdQn', 'Nom']);
+/**
+ * LOINC scales whose results are words: ordinal ("Absent", "2+"),
+ * semi-quantitative steps (a strip's, a RAST class), and nominal ("Negative")
+ */
+const WORD_SCALES: ReadonlySet<string> = new Set(['Ord', 'OrdQn', 'SemiQn', 'Nom']);
 
-/** Whether a test's results are words a report prints as a presence, a step or a reading: not an organism a culture names */
-function hasWordResults(test: CatalogTest): boolean {
-  return WORD_SCALES.has(test.scale) && test.property !== 'Prid';
+/** A name saying its test looks for an organism: a culture, a search ("Urinocoltura", "Ricerca parassiti") */
+const ORGANISM_SEARCH = /\b(?:\p{L}*coltur\p{L}*|cultur\p{L}*|ricerca|search|identif\p{L}*)\b/iu;
+
+/**
+ * Whether a test's results are words a report prints as a presence, a step
+ * or a reading; an organism a culture names only when the name looks for one
+ */
+function hasWordResults(test: CatalogTest, organisms: boolean): boolean {
+  return WORD_SCALES.has(test.scale) && (organisms || test.property !== 'Prid');
 }
 
 /**
  * The catalog searched only for tests whose results are words: a result
- * printed as "Assenti" is a presence test's or an interpretation's, never
- * a culture's organism or a count
+ * printed as "Assenti" is a presence test's or an interpretation's, never a
+ * count, nor a culture's organism unless the name asks for one. In a urine
+ * sediment section it is what the microscope saw, not a strip's reading.
  */
-function withWordResultsOnly(catalog: Catalog): Catalog {
+function withWordResultsOnly(catalog: Catalog, organisms: boolean, sediment: boolean): Catalog {
   const scoredSearch: Catalog['scoredSearch'] = (query, filter) =>
-    catalog.scoredSearch(query, filter).filter(({ test }) => hasWordResults(test));
+    catalog
+      .scoredSearch(query, filter)
+      .filter(({ test }) => hasWordResults(test, organisms) && (!sediment || test.system !== 'Urine'));
   return { ...catalog, scoredSearch };
 }
 
@@ -582,9 +598,10 @@ function namePartsOf(name: string): string[] {
  * variantsBy). A year rules out a formula of another year ("CKD-EPI 2009"
  * is not the 2021 one). A word read neither way may name a method LOINC
  * has no test for, when the tests that fit all name a method and either
- * are estimates by different formulas ("eGFR (EKFC)", "(formula BIS)") or
- * none has the method the word names: then no test fits fully, and the
- * value is asked. A brand or a technique of a measured value says nothing
+ * are estimates by different formulas or none has the method the word
+ * names: then no test fits fully, and the value is asked; a formula LOINC
+ * has no test for (see UNLISTED_FORMULA: "eGFR (EKFC)", "(formula BIS)") is
+ * the estimate of no formula, when LOINC has one. A brand or a technique of a measured value says nothing
  * ("Fibrinogeno (Clauss)").
  */
 function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
@@ -640,7 +657,8 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
       // A formula LOINC lacks is the estimate of no formula, when LOINC has one ("eGFR (EKFC)" is 69405-9)
-      const unnamed = byFormulas ? estimateOfNoFormula(result, still) : undefined;
+      const unlisted = byFormulas && words.some(isUnlistedFormula) && words.every((word) => isUnlistedFormula(word) || word === 'formula');
+      const unnamed = unlisted ? estimateOfNoFormula(result, still) : undefined;
       const capped = result
         .filter((one) => one !== unnamed)
         .map((one) => (one.score > cap ? { ...one, score: cap } : one));
@@ -653,6 +671,19 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
 /** Whether two tests measure the same thing in the same sample, by whatever method */
 function sameQuantity(a: CatalogTest, b: CatalogTest): boolean {
   return a.component === b.component && a.property === b.property && a.system === b.system && a.scale === b.scale;
+}
+
+/**
+ * Estimating formulas LOINC has no test for, by name: the European Kidney
+ * Function Consortium's, the Berlin Initiative Study's, the bedside
+ * Schwartz, the full age spectrum, CAPA and Lund-Malmö. Only these: any
+ * other word beside a formula's estimate (a brand, "IDMS", a population)
+ * may say something of the formula LOINC has, so its value is asked.
+ */
+const UNLISTED_FORMULA = /^(?:ekfc|bis[12]?|schwartz|fas|capa|lmr|lund|malm[oö])$/;
+
+function isUnlistedFormula(word: string): boolean {
+  return UNLISTED_FORMULA.test(word);
 }
 
 /** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
@@ -668,7 +699,7 @@ function estimateOfNoFormula(found: Found[], formulaTests: Found[]): Found | und
   const unnamed = found.filter(
     ({ test }) =>
       test.method !== '' &&
-      test.method !== CALCULATED &&
+      !test.method.startsWith(CALCULATED) &&
       !namesFormula(test.method) &&
       formulaTests.some((one) => sameQuantity(one.test, test))
   );
@@ -856,7 +887,7 @@ function sampleOf(
   const hinted = hint ? hintSystems(hint) : undefined;
   let said = split.systems ?? worded?.systems;
   if (isUrine(said) && hinted?.includes(DAY_URINE)) said = [DAY_URINE];
-  // A urine sediment section narrows a spot urine the name says to what a microscope sees in its fields
+  // A urine sediment section puts what a microscope sees in its fields before the urine a name says
   if (hinted?.[0] === URINE_SEDIMENT && said?.every((system) => URINE.includes(system))) said = hinted;
   let systems = said ?? hinted;
   if (perDay && (systems === undefined || isUrine(systems))) systems = [DAY_URINE];
@@ -1026,7 +1057,7 @@ function countedAsPrinted(found: Found[], ucum: string | null): Found[] {
   if (ucum === null) return found;
   const perField = ucum.includes('[HPF]');
   if (!perField && !ucumProperties(ucum).includes('NCnc')) return found;
-  const isField = (test: CatalogTest): boolean => test.system === 'Urine sed' || FIELD_METHOD.test(test.method);
+  const isField = (test: CatalogTest): boolean => test.system === URINE_SEDIMENT || FIELD_METHOD.test(test.method);
   const counted = found.filter(({ test }) =>
     perField ? test.property === 'Naric' : test.property !== 'NCnc' || !isField(test)
   );
@@ -1086,12 +1117,19 @@ export function matchLocally(
   printed: PrintedValue,
   learned?: (key: string) => string | undefined
 ): LocalMatch {
-  const searched = withSearchesKept(fullCatalog);
-  const catalog = printed.qualitative ? withWordResultsOnly(searched) : searched;
+  const catalog = withSearchesKept(fullCatalog);
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
-  if (value.unit.trim() === '') return matchUnitless(catalog, value, unit, learned);
-  return matchIn(catalog, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learned);
+  const matchWith = (searched: Catalog): LocalMatch =>
+    value.unit.trim() === ''
+      ? matchUnitless(searched, value, unit, learned)
+      : matchIn(searched, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learned);
+  if (!value.qualitative) return matchWith(catalog);
+  // A result in words is a test whose results are words, when one fits the name; else the name's own tests, of any kind
+  const sediment = SEDIMENT_HINT.test(value.specimenHint ?? '');
+  const inWords = matchWith(withWordResultsOnly(catalog, ORGANISM_SEARCH.test(value.name), sediment));
+  const fits = inWords.status === 'match' || inWords.candidates.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON);
+  return fits ? inWords : matchWith(catalog);
 }
 
 /** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
@@ -1280,10 +1318,11 @@ function matchIn(
   const learnedCode = learned?.(learnedKey(value));
   const learnedTest = learnedCode ? catalog.test(learnedCode) : undefined;
   // The wording and unit learned of one sample say nothing of a value said to be of another
+  // and a test whose results are numbers nothing of a result printed in words
   const contradicted =
     learnedTest !== undefined &&
-    sample === 'named' &&
-    !systems.some((system) => systemKind(system) === systemKind(learnedTest.system));
+    ((sample === 'named' && !systems.some((system) => systemKind(system) === systemKind(learnedTest.system))) ||
+      (value.qualitative !== undefined && !hasWordResults(learnedTest, true)));
   if (learnedTest && !contradicted) {
     seen.learned = true;
     return { status: 'match', code: learnedTest.code, candidates: [toCandidate(learnedTest, 1)] };

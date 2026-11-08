@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { loadCatalog } from '@data/loinc/catalog';
 import { learnFromSaved } from '@data/loinc/learnedTests';
-import { identifyLocally, identifyValues, needsChoice, needsTest, toLearn, unknownKeyOf } from './identification';
+import { asAnalyzed, identifyLocally, identifyValues, isNoneFound, needsChoice, needsTest, toLearn, unknownKeyOf } from './identification';
 import { applyBiomarkerName, chooseTest } from './reviewEdits';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoiceRequest } from '../ai';
@@ -86,8 +86,10 @@ describe('identifyLocally', () => {
       candidates: [],
       identificationFlags: ['not-identified', 'no-unit'],
       savedAsUnknown: true,
-      identifiedBy: 'local',
     });
+    // Nobody decided it: never learned, nor counted as a test found
+    expect(identification.identifiedBy).toBeUndefined();
+    expect(isNoneFound(identification)).toBe(true);
     expect(needsTest(identification)).toBe(false);
     expect(needsChoice(identification)).toBe(false);
   });
@@ -138,7 +140,7 @@ describe('identifyValues', () => {
     expect(values.map((v) => [v.loincCode, v.identifiedBy])).toEqual([
       ['2345-7', 'local'],
       ['15074-8', 'ai'],
-      [undefined, 'local'],
+      [undefined, undefined],
     ]);
     expect(values[2].savedAsUnknown).toBe(true);
     expect(values[1].identificationFlags).toEqual([]);
@@ -205,6 +207,12 @@ describe('toLearn', () => {
       code: 'unknown:glucosio',
       confirmed: true,
     });
+  });
+
+  it('never learns a "Not a LOINC test" nobody chose, even after the value was renamed', () => {
+    const [noneFound] = [identifyLocally(catalog, { name: 'Zorblatina', unit: '' })];
+    const value = asAnalyzed(extracted('Zorblatina', 1, ''), noneFound);
+    expect(toLearn({ ...value, name: 'Zorb' })).toMatchObject({ confirmed: false });
   });
 
   it("confirms a choice shared from the user's choice for the same wording", async () => {

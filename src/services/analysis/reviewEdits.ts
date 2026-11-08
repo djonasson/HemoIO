@@ -3,6 +3,7 @@
  */
 import { unitOptions } from '@data/loinc/display';
 import { unitsMatch } from '@/utils/unitSpelling';
+import { heldQualitative } from '../ai';
 import { identifyLocally, type Identification, type LearnedTests } from './identification';
 import { learnedKey } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
@@ -59,7 +60,7 @@ function reidentify(
   const { analyzed } = original;
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
   if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
-  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint, qualitative: changed.qualitative };
+  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint, qualitative: heldQualitative(changed) };
   const identification =
     analyzed && learnedKey(reading) === learnedKey(analyzed)
       ? analyzed.identification

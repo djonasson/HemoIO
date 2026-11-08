@@ -1080,6 +1080,34 @@ describe('matchLocally on names of real Italian reports', () => {
   );
 
   it.each([
+    'eGFR (CKD-EPI IDMS)',
+    'eGFR (MDRD-IDMS)',
+    'eGFR (CKD-EPI adulti)',
+    'eGFR (CKD-EPI) (Roche)',
+    'eGFR MDRD (donne)',
+    'eGFR CKD-EPI (razza nera)',
+    'eGFR (Roche)',
+  ])('asks about %s: a word beside a formula LOINC has may say something of it, never the eGFR of no formula', (name) => {
+    const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates[0].code).not.toBe('69405-9');
+  });
+
+  it('asks about an anion gap whose bracket names an instrument, never the 4-ion formula', () => {
+    expect(matchLocally(generated, { name: 'Sg-Anion gap (Radiometer)', unit: 'mmol/L' }).status).toBe('ambiguous');
+  });
+
+  it.each([
+    ['Leucociti', '/µL', '30405-5'],
+    ['Eritrociti', '/µL', '30391-7'],
+    ['Batteri', '/µL', '51480-2'],
+    ['pH', '', '2756-5'],
+    ['Glucosio', 'mg/dL', '2350-7'],
+  ])("files %s in %s of a urine sediment section as the urine's, a machine's count or a strip's", (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit, specimenHint: 'urine sediment' })).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
     // HemoIO's name of the eGFR it describes never outweighs a bracket naming another formula
     ['eGFR (CKD-EPI)', '98979-8'],
     ['eGFR (cistatina C)', '50210-4'],
@@ -1303,6 +1331,26 @@ describe('matchLocally on names of real Italian reports', () => {
     it('is an interpretation read as a word: "Borrelia IgG/IgM" "Negativo"', () => {
       const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
       expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '', qualitative: negative }))).toContain('46248-1');
+    });
+
+    it.each([
+      // An analyte with no test whose results are words: its own tests, not another's that has some
+      ['NT-proBNP', undefined, '33762-6'],
+      ['Eritroblasti', undefined, '58413-6'],
+      // A strip's semi-quantitative step
+      ['Microalbumina (urine)', 'urine', '11218-5'],
+      // A search for an organism: the organism it finds
+      ['Ricerca parassiti malarici', 'blood', '24429-3'],
+      ['Urine culture', 'urine', '630-4'],
+    ])("offers %s of %s printed in words its own tests: %s", (name, specimenHint, code) => {
+      const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
+      expect(codesOf(matchLocally(generated, { name, unit: '', specimenHint, qualitative: negative }))).toContain(code);
+    });
+
+    it('never takes a test learned for a number of the wording for a result in words', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|' ? '51480-2' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned);
+      expect(codesOf(result)).not.toContain('51480-2');
     });
 
     it.each([
