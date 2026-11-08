@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { loadCatalog } from '@data/loinc/catalog';
 import { learnFromSaved } from '@data/loinc/learnedTests';
-import { identifyLocally, identifyValues, needsChoice, toLearn, unknownKeyOf } from './identification';
+import { identifyLocally, identifyValues, needsChoice, needsTest, toLearn, unknownKeyOf } from './identification';
 import { applyBiomarkerName, chooseTest } from './reviewEdits';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoiceRequest } from '../ai';
@@ -80,10 +80,16 @@ describe('identifyLocally', () => {
     expect(needsChoice(identification)).toBe(true);
   });
 
-  it('asks the user about a value with no unit no test fits', () => {
+  it('saves a value with no test to choose from as "Not a LOINC test", still labelled', () => {
     const identification = identifyLocally(catalog, { name: 'Zorblatina', unit: '' });
-    expect(identification).toMatchObject({ candidates: [], identificationFlags: ['not-identified', 'no-unit'] });
-    expect(identification.savedAsUnknown).toBeFalsy();
+    expect(identification).toMatchObject({
+      candidates: [],
+      identificationFlags: ['not-identified', 'no-unit'],
+      savedAsUnknown: true,
+      identifiedBy: 'local',
+    });
+    expect(needsTest(identification)).toBe(false);
+    expect(needsChoice(identification)).toBe(false);
   });
 
   it('uses a test learned for a wording with no unit', () => {
@@ -132,8 +138,9 @@ describe('identifyValues', () => {
     expect(values.map((v) => [v.loincCode, v.identifiedBy])).toEqual([
       ['2345-7', 'local'],
       ['15074-8', 'ai'],
-      [undefined, undefined],
+      [undefined, 'local'],
     ]);
+    expect(values[2].savedAsUnknown).toBe(true);
     expect(values[1].identificationFlags).toEqual([]);
     expect(values[1].analyzed).toMatchObject({ name: 'Glucosio', unit: 'mmol/L' });
   });

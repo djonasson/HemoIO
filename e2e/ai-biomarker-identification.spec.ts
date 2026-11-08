@@ -642,6 +642,17 @@ test.describe('Identifying the test of each value', () => {
     await expectNoCheckLabel(rowFor(page, '3'));
   });
 
+  test('saves a value with no test to choose from as "Not a LOINC test" without asking', async ({ page }) => {
+    // Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
+    const ai = await analyzeReport(page, [{ name: 'Conduttività', value: 12.5, unit: 'mS/cm', confidence: 0.95 }]);
+    const row = rowFor(page, '12.5');
+    await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
+    await expect(row.getByText('Not identified')).toBeVisible();
+    expect(ai.choiceRequests).toHaveLength(0);
+    await expect(page.getByText(/could not be identified/)).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Change test for Conduttività' })).toBeVisible();
+  });
+
   test('saves a renamed "Not a LOINC test" and later reports of its wording as one series', async ({ page }) => {
     // Two imports, each analyzed
     test.slow();

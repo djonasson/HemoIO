@@ -416,6 +416,14 @@ Feature: Identifying the test of each value
     Then the timeline should show the value as "Zorblatina"
     And a later report printing "Zorblatina" in mg/dL should be saved as "Not a LOINC test" without asking
 
+  Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
+    Given a report prints "Conduttività" in mS/cm, for which LOINC has no test
+    When the report is analyzed
+    Then the value should be saved as "Not a LOINC test", labelled "Not identified"
+    And the AI should not be asked which test it is
+    And the analysis notes should not count it among the values whose test I must choose
+    And I can still choose a test for it
+
   Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series
     Given a report prints "Zorblatina" in mg/dL, which no LOINC test fits
     When I rename it "Zorb", choose "Not a LOINC test" for it and save the import

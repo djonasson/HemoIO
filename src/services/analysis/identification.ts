@@ -32,7 +32,8 @@ export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[
 /**
  * A printed value's test as far as it is known without the AI: the one
  * learned for its wording and unit (a learned "Not a LOINC test" too), else
- * the one test that clearly fits. A value the report gives no unit is
+ * the one test that clearly fits; a value no test may be is "Not a LOINC
+ * test", labelled for review. A value the report gives no unit is
  * matched only to a common test that has none (pH, specific gravity, a
  * dipstick's presence), never to a quantity a unit would tell apart; else
  * its candidates, of any property, are left to the AI and the user, as
@@ -61,6 +62,10 @@ export function identifyLocally(
   // A name that fits no test still has the common tests of its unit to choose from
   const flags: IdentificationFlag[] = [match.status === 'none' ? 'not-identified' : 'ambiguous'];
   if (value.unit.trim() === '') flags.push('no-unit');
+  // No test to choose from ("Conduttività", which LOINC lacks): "Not a LOINC test", still labelled, and changeable in review
+  if (match.candidates.length === 0) {
+    return { candidates: [], identifiedBy: 'local', identificationFlags: flags, savedAsUnknown: true };
+  }
   return { candidates: match.candidates, identificationFlags: flags };
 }
 
