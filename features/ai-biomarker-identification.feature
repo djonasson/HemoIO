@@ -275,11 +275,22 @@ Feature: Identifying the test of each value
     Then the AI should be asked which test it is
     And the first test to choose from should be "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
 
-  Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+  Scenario: A ratio printed with no unit is asked about, the ratio its name says first
     Given a report prints "Rapporto colesterolo/HDL" with no unit
     When the report is analyzed
     Then the AI should be asked which test it is
-    And the first test to choose from should not be "Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma"
+    And the first test to choose from should be "Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma"
+
+  Scenario Outline: A ratio printed by its parts is filed under that ratio
+    Given a report prints "<name>" in ratio
+    When the report is analyzed
+    Then the value should be saved as "<test>"
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                     | test                                                                |
+      | Rapporto colesterolo/HDL | Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma |
+      | Rapporto A/G             | Albumin/Globulin [Mass Ratio] in Serum or Plasma                     |
 
   Scenario: A count per microscope field is filed under a test counted per field
     Given a report prints "Batteri" in "per campo" under a urine heading

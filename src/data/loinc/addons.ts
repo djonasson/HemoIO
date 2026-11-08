@@ -218,6 +218,20 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     highIndication: 'May indicate allergic reaction',
     lowIndication: 'Generally not clinically significant',
   },
+  '9830-1': {
+    // Italian reports print the cardiovascular risk ratio by its parts
+    names: ['rapporto colesterolo/hdl', 'rapporto colesterolo totale/hdl', 'colesterolo totale/hdl', 'colesterolo/hdl'],
+    shortName: 'Cholesterol/HDL Ratio',
+    description: 'Total cholesterol divided by HDL cholesterol; lower means lower heart risk.',
+    canonicalUnit: 'ratio',
+  },
+  '1759-0': {
+    // "A/G" is how Italian protein electrophoresis reports print it
+    names: ['rapporto a/g', 'a/g', 'rapporto albumina/globuline', 'albumina/globuline'],
+    shortName: 'Albumin/Globulin Ratio',
+    description: 'Albumin divided by the other blood proteins; changes with liver and kidney disease and inflammation.',
+    canonicalUnit: 'ratio',
+  },
   '2157-6': {
     // Italian reports often join "creatina chinasi" into one word
     names: ['creatinchinasi'],

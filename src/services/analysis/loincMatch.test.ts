@@ -1251,6 +1251,31 @@ describe('matchLocally on names of real Italian reports', () => {
     if (ratio !== -1) expect(candidates.slice(ratio).every(({ score }) => score <= candidates[ratio].score)).toBe(true);
   });
 
+  it.each([
+    ['Rapporto colesterolo/HDL', 'ratio', '9830-1'],
+    ['Rapporto colesterolo totale/HDL', 'ratio', '9830-1'],
+    ['Rapporto A/G', 'ratio', '1759-0'],
+    ['A/G', 'ratio', '1759-0'],
+    ['Albumina/globuline', 'ratio', '1759-0'],
+  ])('takes %s in %s as the ratio %s', (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
+    ['Rapporto colesterolo/HDL', '9830-1'],
+    ['Colesterolo totale/HDL', '9830-1'],
+    ['Rapporto A/G', '1759-0'],
+    ['A/G', '1759-0'],
+  ])('offers the ratio first for %s printed with no unit, a slash or "rapporto" saying it is one', (name, code) => {
+    expect(matchLocally(generated, { name, unit: '' }).candidates[0].code).toBe(code);
+  });
+
+  it('needs every word of a name, even one in too many names to tell a test: "G" alone is no "A/G"', () => {
+    // It may still be listed among the common tests of its unit, found by no name
+    const found = matchLocally(generated, { name: 'G', unit: 'ratio' }).candidates.find(({ code }) => code === '1759-0');
+    expect(found?.score ?? 0).toBe(0);
+  });
+
   it('never offers the factor VIII activity over a normal one first for "Rapporto A/G", which names no clotting time', () => {
     expect(codesOf(matchLocally(generated, { name: 'Rapporto A/G', unit: '' }))).not.toContain('3209-4');
   });

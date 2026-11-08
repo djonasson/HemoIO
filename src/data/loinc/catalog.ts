@@ -500,10 +500,12 @@ function createSearch(file: CatalogFile, curated: ReadonlyMap<string, ReadonlySe
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
 
     // The tests of HemoIO's names whose every telling word the query holds, by the query words they hold
+    // A word in too many names to tell a test ("a" of "A/G") still has to be in the query
     const stems = words.map(({ word }) => inflectionStem(word));
+    const queryStems = new Set(wordsOf(phrase).flatMap(partsOf).map(inflectionStem));
     for (const phrase of curatedPhrases) {
-      const held = phrase.words.map((word) => stems.indexOf(inflectionStem(word)));
-      if (held.includes(-1)) continue;
+      if (!phrase.words.every((word) => queryStems.has(inflectionStem(word)))) continue;
+      const held = phrase.words.map((word) => stems.indexOf(inflectionStem(word))).filter((i) => i !== -1);
       for (const i of held) for (const index of phrase.indexes) words[i].named.add(index);
     }
 

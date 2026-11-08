@@ -380,11 +380,26 @@ test.describe('Identifying the test of each value', () => {
     );
   });
 
-  test('lists a ratio a name with no unit barely fits after the tests it fits better', async ({ page }) => {
-    // Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+  test('asks about a ratio printed with no unit, the ratio its name says first', async ({ page }) => {
+    // Scenario: A ratio printed with no unit is asked about, the ratio its name says first
     const ai = await analyzeReport(page, [{ name: 'Rapporto colesterolo/HDL', value: 3.6, unit: '', confidence: 0.95 }]);
     expect(ai.choiceRequests).toHaveLength(1);
-    expect(ai.choiceRequests[0][0].candidates[0].name).not.toBe('Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma');
+    expect(ai.choiceRequests[0][0].candidates[0].name).toBe(
+      'Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma'
+    );
+  });
+
+  test('files a ratio printed by its parts under that ratio', async ({ page }) => {
+    // Scenario Outline: A ratio printed by its parts is filed under that ratio
+    const ai = await analyzeReport(page, [
+      { name: 'Rapporto colesterolo/HDL', value: 3.6, unit: 'ratio', confidence: 0.95 },
+      { name: 'Rapporto A/G', value: 1.4, unit: 'ratio', confidence: 0.95 },
+    ]);
+    await expect(savedAsCell(rowFor(page, '3.6'))).toHaveText(
+      'Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma'
+    );
+    await expect(savedAsCell(rowFor(page, '1.4'))).toHaveText('Albumin/Globulin [Mass Ratio] in Serum or Plasma');
+    expect(ai.choiceRequests).toHaveLength(0);
   });
 
   test('files a count per microscope field under a test counted per field', async ({ page }) => {

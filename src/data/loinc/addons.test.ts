@@ -9,8 +9,8 @@ const catalog = fixtureCatalog();
 const ADDONS = Object.entries(TEST_ADDONS);
 
 describe('TEST_ADDONS', () => {
-  it('keeps the ranges, descriptions and units of the 110 coded dictionary tests', () => {
-    expect(ADDONS).toHaveLength(110);
+  it('keeps the ranges, descriptions and units of the 112 coded dictionary tests', () => {
+    expect(ADDONS).toHaveLength(112);
     expect(TEST_ADDONS['2345-7']).toMatchObject({
       referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
       canonicalUnit: 'mg/dL',
@@ -153,6 +153,7 @@ const UNIT_KINDS: { units: string[]; name: RegExp }[] = [
   // A share: a fraction, a distribution width, or one count over another
   { units: ['%'], name: /\[(Mass|Volume) Fraction\]|\[DistWidth\]|^[^[]+\/[^[]+ in / },
   { units: ['/100 WBC'], name: /\[Ratio\]/ },
+  { units: ['ratio'], name: /\[(?:Mass |Substance |Time )?Ratio\]/ },
   { units: ['mg/g'], name: /\[Mass Ratio\]/ },
   { units: ['mg/24h', 'g/24h'], name: /\[Mass\/time\] in 24 hour Urine/ },
   { units: ['mL'], name: /^Volume of / },
@@ -188,6 +189,8 @@ const TERMS: [string, string][] = [
   ['706-2', 'Basophils/Leukocytes in Blood by Automated count'],
   ['30392-5', 'Nucleated erythrocytes [#/volume] in Blood'],
   ['2157-6', 'Creatine kinase [Enzymatic activity/volume] in Serum or Plasma'],
+  ['9830-1', 'Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma'],
+  ['1759-0', 'Albumin/Globulin [Mass Ratio] in Serum or Plasma'],
   ['32623-1', 'Platelet [Entitic mean volume] in Blood by Automated count'],
   ['58413-6', 'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count'],
   ['60474-4', 'Reticulocytes [#/volume] in Blood by Automated count'],
