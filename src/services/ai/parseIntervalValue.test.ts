@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { parseIntervalValue, formatIntervalValue, extractedInterval } from './parseIntervalValue';
+import { parseIntervalValue, extractedInterval } from './parseIntervalValue';
 
 describe('parseIntervalValue', () => {
   describe('single numeric values', () => {
@@ -213,20 +213,6 @@ describe('parseIntervalValue', () => {
       expect(result.intervalHigh).toBe(5);
       expect(result.value).toBe(2.5);
     });
-  });
-});
-
-describe('formatIntervalValue', () => {
-  test('should format interval without unit', () => {
-    expect(formatIntervalValue(5, 10)).toBe('5-10');
-  });
-
-  test('should format interval with unit', () => {
-    expect(formatIntervalValue(5, 10, 'eritrociti per campo')).toBe('5-10 eritrociti per campo');
-  });
-
-  test('should format decimal interval', () => {
-    expect(formatIntervalValue(1.5, 3.5, 'cells')).toBe('1.5-3.5 cells');
   });
 });
 

@@ -5,7 +5,6 @@
  * and morphological lab results (e.g., "5 - 10 eritrociti per campo").
  */
 
-import { formatReading } from '@/utils/formatTestValue';
 import type { CensoredComparator, ValueReading } from '@/types';
 
 /**
@@ -162,23 +161,6 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     isInterval: false,
     rawValue: valueStr,
   };
-}
-
-/**
- * Format an interval value for display
- *
- * @param intervalLow - Lower bound
- * @param intervalHigh - Upper bound
- * @param unit - Unit of measurement
- * @returns Formatted string like "5-10 eritrociti per campo"
- */
-export function formatIntervalValue(
-  intervalLow: number,
-  intervalHigh: number,
-  unit?: string
-): string {
-  const range = formatReading({ value: (intervalLow + intervalHigh) / 2, interval: { low: intervalLow, high: intervalHigh } });
-  return unit ? `${range} ${unit}` : range;
 }
 
 /** An extracted interval value's ends; undefined for any other value, or an interval missing an end */
