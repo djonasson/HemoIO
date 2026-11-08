@@ -58,10 +58,15 @@ export interface Measurement {
   /** YYYY-MM-DD; each distinct day becomes one lab result */
   day: string;
   biomarker: DictionaryBiomarker;
-  value: number;
+  /** A number, or a qualitative result as printed ("Assenti") */
+  value: number | string;
   unit: string;
   low?: number;
   high?: number;
+  /** A censored value's comparator */
+  censored?: '<' | '<=' | '>' | '>=';
+  /** The lab's own mark */
+  labFlag?: 'high' | 'low' | 'abnormal';
   /** Name as printed on the report; defaults to the name HemoIO shows */
   rawText?: string;
 }
@@ -93,6 +98,8 @@ export async function seedMeasurements(
       unit: m.unit,
       referenceRangeLow: m.low,
       referenceRangeHigh: m.high,
+      ...(m.censored && { censored: m.censored }),
+      ...(m.labFlag && { labFlag: m.labFlag }),
       confidence: 0.95,
       createdAt: timestamp,
       updatedAt: timestamp,

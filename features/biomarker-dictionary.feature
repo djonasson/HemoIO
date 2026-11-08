@@ -159,6 +159,13 @@ Feature: Biomarker Dictionary
     And I should see how many results I have
     And I should have a link to view the trend chart
 
+  Scenario: My results read like the timeline
+    Given my latest "Glucose" value is "< 80" mg/dL, with a reference range of 70-100 mg/dL
+    When I view the detail for "Glucose"
+    Then its status should read "Cannot be compared with the reference range", as on the timeline
+    And a value the lab marked should show the mark and read "Flagged high by the lab" when the mark gives its status
+    And a test whose results are all words, which are not charted, should offer no link to a trend
+
   Scenario: Biomarker with no personal data
     Given I have no lab results containing "Ferritin" values
     When I view the detail for "Ferritin"

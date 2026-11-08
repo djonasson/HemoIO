@@ -36,6 +36,7 @@ describe('summarizeBiomarkerResults', () => {
     );
     expect(summary).toEqual({
       count: 3,
+      trendable: true,
       latest: {
         value: 120,
         unit: 'mg/dL',
@@ -103,5 +104,19 @@ describe('summarizeBiomarkerResults', () => {
     );
     expect(summary?.count).toBe(2);
     expect(summary?.latest).toEqual(expect.objectContaining({ value: 126, unit: 'mg/dL' }));
+  });
+
+  it("carries what gave the latest status and the lab's mark", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [result('2024-02-20', [{ ...glucose(120, 'high'), statusBasis: 'lab', labFlag: 'high' }])],
+      GLUCOSE
+    );
+    expect(summary?.latest).toMatchObject({ statusBasis: 'lab', labFlag: 'high' });
+  });
+
+  it('is trendable only when a value is a number', () => {
+    const words = summarizeBiomarkerResults(catalog, [result('2024-02-20', [{ ...glucose(0), value: 'Assenti' }])], GLUCOSE);
+    expect(words?.trendable).toBe(false);
   });
 });

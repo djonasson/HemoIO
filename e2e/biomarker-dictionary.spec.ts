@@ -467,6 +467,25 @@ test.describe('Biomarker Dictionary', () => {
       await expect(biomarkerSelect(page)).toHaveValue(/^Glucose \(/);
     });
 
+    test("says the latest status as the timeline does, and offers no trend for words", async ({ page }) => {
+      // Scenario: My results read like the timeline
+      await seedMeasurements(page, [
+        { day: '2024-01-15', biomarker: GLUCOSE, value: 80, unit: 'mg/dL', low: 70, high: 100, censored: '<' },
+      ]);
+      await goToDictionary(page);
+      const yours = (await viewDetail(page, 'Glucose')).getByRole('region', { name: 'Your results' });
+      await expect(yours.getByText('Cannot be compared with the reference range', { exact: true })).toBeVisible();
+    });
+
+    test('offers no trend for a test whose results are all words', async ({ page }) => {
+      // Scenario: My results read like the timeline
+      await seedMeasurements(page, [{ day: '2024-01-15', biomarker: GLUCOSE, value: 'Assenti', unit: '' }]);
+      await goToDictionary(page);
+      const yours = (await viewDetail(page, 'Glucose')).getByRole('region', { name: 'Your results' });
+      await expect(yours.getByText('Assenti', { exact: true })).toBeVisible();
+      await expect(yours.getByRole('button', { name: 'View trend' })).toHaveCount(0);
+    });
+
     test('should say when I have no recorded values', async ({ page }) => {
       const detail = await viewDetail(page, 'Ferritin');
       const yours = detail.getByRole('region', { name: 'Your results' });

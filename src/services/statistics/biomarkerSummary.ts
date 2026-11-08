@@ -6,7 +6,9 @@
 import { trendCode } from '@data/loinc/display';
 import { convertForDisplay } from '@services/units';
 import type { Catalog } from '@data/loinc/catalog';
-import type { CensoredComparator, NumericValueType } from '@/types';
+import { isTrendable } from '@/utils/isTrendable';
+import type { StatusBasis } from './valueStatus';
+import type { CensoredComparator, LabFlag, NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -18,6 +20,8 @@ export interface SummarizableResult {
     value: number | string | boolean;
     unit: string;
     status: Status;
+    statusBasis?: StatusBasis;
+    labFlag?: LabFlag;
     numericValueType?: NumericValueType;
     intervalLow?: number;
     intervalHigh?: number;
@@ -28,6 +32,8 @@ export interface SummarizableResult {
 export interface BiomarkerResultSummary {
   /** Number of recorded values of the test */
   count: number;
+  /** Whether Trends can chart any of them: a number, not a word (see isTrendable) */
+  trendable: boolean;
   latest: {
     value: number | string | boolean;
     unit: string;
@@ -39,6 +45,10 @@ export interface BiomarkerResultSummary {
     censored?: CensoredComparator;
     date: Date;
     status: Status;
+    /** What gave the status, as the timeline says it */
+    statusBasis?: StatusBasis;
+    /** The lab's own mark */
+    labFlag?: LabFlag;
     labName: string;
   };
 }
@@ -51,12 +61,14 @@ export function summarizeBiomarkerResults(
   displayUnit?: string
 ): BiomarkerResultSummary | null {
   let count = 0;
+  let trendable = false;
   let latest: BiomarkerResultSummary['latest'] | null = null;
 
   for (const result of results) {
     for (const testValue of result.testValues) {
       if (trendCode(catalog, testValue.biomarkerKey) !== code) continue;
       count += 1;
+      trendable ||= isTrendable(testValue);
       if (latest && latest.date.getTime() >= result.date.getTime()) continue;
       const shown = convertForDisplay(catalog.test(testValue.biomarkerKey) ?? '', testValue, displayUnit);
       latest = {
@@ -68,10 +80,12 @@ export function summarizeBiomarkerResults(
         censored: shown.censored,
         date: result.date,
         status: testValue.status,
+        statusBasis: testValue.statusBasis,
+        labFlag: testValue.labFlag,
         labName: result.labName,
       };
     }
   }
 
-  return latest ? { count, latest } : null;
+  return latest ? { count, trendable, latest } : null;
 }
