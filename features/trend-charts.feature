@@ -20,6 +20,12 @@ Feature: Trend Charts
     And the band should span from the lower reference value to the upper reference value
     And the band should be visually distinct from the data line
 
+  Scenario: A censored value is drawn open at its bound
+    Given I have Glucose results of 95 mg/dL and "< 60" mg/dL
+    When I view the Glucose trend
+    Then the "< 60" point should be drawn open, at its bound, not as a measurement
+    And its label should read "< 60 mg/dL"
+
   Scenario: Identify values outside reference range
     Given I am viewing the trend chart for a biomarker with abnormal values
     Then data points outside the reference range should be highlighted

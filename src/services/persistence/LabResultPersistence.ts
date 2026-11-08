@@ -6,10 +6,12 @@
 
 import { heldQualitative } from '@services/ai/parseQualitativeValue';
 import { unknownKeyOf } from '@services/analysis/identification';
+import { convertRange } from '@services/statistics/valueStatus';
 import { normalizeLabDate } from '@/utils/labDate';
 import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 import type { EncryptedDb, LabResultWithValues } from '@data/db/encryptedDb';
+import type { Catalog } from '@data/loinc/catalog';
 import type { LabResult, TestValue } from '@/types';
 
 /**
@@ -45,11 +47,15 @@ function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
 
 /**
  * The stored value: a qualitative result as printed ("Assenti"), with the
- * number it reads as; an interval's midpoint, with its ends; else the number
+ * number it reads as; an interval's midpoint, with its ends; a censored
+ * value's bound, with its comparator; else the number
  */
 function storedValue(
   biomarker: MatchedBiomarker
-): Pick<TestValue, 'value' | 'qualitativeType' | 'ordinalValue' | 'numericValueType' | 'intervalLow' | 'intervalHigh'> {
+): Pick<
+  TestValue,
+  'value' | 'qualitativeType' | 'ordinalValue' | 'numericValueType' | 'intervalLow' | 'intervalHigh' | 'censored'
+> {
   const qualitative = heldQualitative(biomarker);
   if (qualitative) {
     return { value: qualitative.text, qualitativeType: qualitative.kind, ordinalValue: qualitative.value };
@@ -58,14 +64,36 @@ function storedValue(
   if (isInterval && intervalLow !== undefined && intervalHigh !== undefined) {
     return { value: biomarker.value, numericValueType: 'interval', intervalLow, intervalHigh };
   }
-  return { value: biomarker.value };
+  // A censored value keeps its comparator: "< 10" is never a plain 10
+  return biomarker.censored ? { value: biomarker.value, censored: biomarker.censored } : { value: biomarker.value };
+}
+
+/**
+ * The stored range: in the value's unit when it was printed in another
+ * that converts, else as printed with its unit (never compared then)
+ */
+function storedRange(
+  biomarker: MatchedBiomarker,
+  catalog: Catalog
+): Pick<TestValue, 'referenceRangeLow' | 'referenceRangeHigh' | 'referenceRangeUnit'> {
+  const range = biomarker.referenceRange;
+  if (!range) return {};
+  const printed = { low: range.low, high: range.high };
+  const converted = range.unit ? convertRange(catalog, biomarker.loincCode, printed, range.unit, biomarker.unit) : printed;
+  const { low, high } = converted ?? printed;
+  return {
+    referenceRangeLow: low,
+    referenceRangeHigh: high,
+    referenceRangeUnit: converted ? biomarker.unit || undefined : range.unit,
+  };
 }
 
 /**
  * Transform a MatchedBiomarker to a TestValue for database storage
  */
 function transformBiomarkerToTestValue(
-  biomarker: MatchedBiomarker
+  biomarker: MatchedBiomarker,
+  catalog: Catalog
 ): Omit<TestValue, 'id' | 'labResultId'> {
   const now = new Date();
 
@@ -73,8 +101,8 @@ function transformBiomarkerToTestValue(
     biomarkerKey: resolveBiomarkerKey(biomarker),
     ...storedValue(biomarker),
     unit: biomarker.unit,
-    referenceRangeLow: biomarker.referenceRange?.low,
-    referenceRangeHigh: biomarker.referenceRange?.high,
+    ...storedRange(biomarker, catalog),
+    labFlag: biomarker.labFlag,
     method: biomarker.method,
     rawText: biomarker.name, // Store original name as raw text
     confidence: biomarker.confidence,
@@ -107,16 +135,18 @@ function transformReviewedToLabResult(
  *
  * @param results - The reviewed results from the import wizard, one per file
  * @param db - The encrypted database instance
+ * @param catalog - Converts a range printed in another unit than its value's
  * @returns What was saved
  * @throws SaveError when the browser's storage did not keep the import
  */
 export async function saveImportResults(
   results: ReviewedResult[],
-  db: EncryptedDb
+  db: EncryptedDb,
+  catalog: Catalog
 ): Promise<SaveImportResultsOutput> {
   const entries: LabResultWithValues[] = results.map((reviewed) => ({
     labResult: transformReviewedToLabResult(reviewed),
-    testValues: reviewed.editedBiomarkers.map(transformBiomarkerToTestValue),
+    testValues: reviewed.editedBiomarkers.map((biomarker) => transformBiomarkerToTestValue(biomarker, catalog)),
   }));
   if (entries.length > 0) await db.addLabResultsWithValues(entries);
   return {

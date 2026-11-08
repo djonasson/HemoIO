@@ -17,6 +17,7 @@ const encryptedDb = { db: {} as unknown, isReady: true };
 vi.mock('./useEncryptedDb', () => ({ useEncryptedDb: () => encryptedDb }));
 vi.mock('./useLabResults', () => ({ useLabResults: () => ({ refresh }) }));
 vi.mock('./usePreferences', () => ({ usePreferences: () => ({ learnTests }) }));
+vi.mock('@contexts/useCatalog', () => ({ useCatalog: () => ({}) }));
 
 const REVIEWED = [
   {
@@ -96,7 +97,7 @@ describe('useSaveImport', () => {
       });
     });
 
-    expect(saveImportResults).toHaveBeenCalledWith(REVIEWED, encryptedDb.db);
+    expect(saveImportResults).toHaveBeenCalledWith(REVIEWED, encryptedDb.db, {});
     expect(learnTests).toHaveBeenCalledWith(
       expect.arrayContaining([{ key: 'creatinine|umol/L', code: '14682-9', confirmed: true }])
     );

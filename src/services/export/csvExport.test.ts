@@ -138,6 +138,18 @@ describe('csvExport', () => {
       expect(csv).not.toContain('7.5');
     });
 
+    it('exports a censored value with its comparator', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [{ ...createMockTestValue(1, 1, '2345-7', 10, 'mg/dL'), censored: '<' }],
+          biomarkerNames: new Map([['2345-7', 'Glucose']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',< 10,mg/dL');
+    });
+
     it('exports a qualitative result as printed', () => {
       const csv = exportToCsv([
         {

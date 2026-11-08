@@ -9,7 +9,7 @@ import { useSaveState } from '@hooks/useSaveState';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
 import { formatPointValue } from '@/utils/formatTestValue';
-import type { UserNote } from '@/types';
+import type { CensoredComparator, UserNote } from '@/types';
 
 export interface Measurement {
   testValueId: number;
@@ -17,6 +17,8 @@ export interface Measurement {
   value: number;
   /** The ends of an interval, which reads as them rather than as its midpoint */
   interval?: { low: number; high: number };
+  /** A censored value's comparator, which reads before its bound */
+  censored?: CensoredComparator;
   unit: string;
   date: Date;
   status?: string;

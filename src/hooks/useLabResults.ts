@@ -8,19 +8,29 @@
 
 import { createContext, useContext, useMemo, useState } from 'react';
 import { isWithinDays } from '@/utils/localDate';
+import {
+  readValueStatus,
+  withRangeInValueUnit,
+  type UnconvertedRange,
+  type ValueStatus,
+} from '@services/statistics/valueStatus';
 import type { LabResult, TestValue } from '@/types';
 
 /**
  * Status of a test value relative to reference range
  */
-export type TestValueStatus = 'normal' | 'low' | 'high' | 'unknown';
+export type TestValueStatus = ValueStatus;
 
 /**
  * Test value enriched with status information
  */
 export interface EnrichedTestValue extends TestValue {
-  /** Status relative to reference range */
+  /** Status relative to reference range, or the lab's mark when the range cannot tell */
   status: TestValueStatus;
+  /** Whether the status is the lab's mark, the range telling nothing */
+  statusByLab?: boolean;
+  /** A range printed in a unit the value's cannot be converted to: shown, never compared */
+  unconvertedRange?: UnconvertedRange;
 }
 
 /**
@@ -88,41 +98,13 @@ export interface LabResultsStore {
 export const LabResultsContext = createContext<LabResultsStore | null>(null);
 
 /**
- * Determine the status of a test value based on reference range
- */
-function getTestValueStatus(testValue: TestValue): TestValueStatus {
-  // If value is not numeric, we can't determine status
-  if (typeof testValue.value !== 'number') {
-    return 'unknown';
-  }
-
-  const value = testValue.value;
-  const { referenceRangeLow, referenceRangeHigh } = testValue;
-
-  // If no reference range, status is unknown
-  if (referenceRangeLow === undefined && referenceRangeHigh === undefined) {
-    return 'unknown';
-  }
-
-  if (referenceRangeLow !== undefined && value < referenceRangeLow) {
-    return 'low';
-  }
-
-  if (referenceRangeHigh !== undefined && value > referenceRangeHigh) {
-    return 'high';
-  }
-
-  return 'normal';
-}
-
-/**
- * Enrich a test value with status information
+ * Enrich a test value with its status; a range in another unit than the
+ * value's is not compared (see withRangeInValueUnit)
  */
 export function enrichTestValue(testValue: TestValue): EnrichedTestValue {
-  return {
-    ...testValue,
-    status: getTestValueStatus(testValue),
-  };
+  const inValueUnit = withRangeInValueUnit(testValue);
+  const { status, byLab } = readValueStatus(inValueUnit);
+  return byLab ? { ...inValueUnit, status, statusByLab: true } : { ...inValueUnit, status };
 }
 
 /**

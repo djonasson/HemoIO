@@ -64,6 +64,19 @@ Feature: Timeline View
     And the method should be shown with its value, and said to screen readers
     And the printed result should read "Assenti"
 
+  Scenario: A value its range cannot place is not called high or low
+    Given I have a lab result with a value printed as "< 30" and a reference range from 20
+    And a value whose reference range is in a unit its own cannot be converted to
+    When I expand the lab result card
+    Then neither value should be marked high, low or normal
+    And each should say it cannot be compared with the reference range
+    And the range should be shown in its own unit
+
+  Scenario: The lab's mark gives the status when the range cannot
+    Given I have a lab result with a value the lab marked high, printed with no reference range
+    When I expand the lab result card
+    Then the value should be marked "Flagged high by the lab"
+
   Scenario: Open a test's trend from a lab result
     Given I have a lab result from "Quest Diagnostics" on "2024-01-15" with a glucose value of 125 mg/dL
     And another lab result with a glucose value on a later date

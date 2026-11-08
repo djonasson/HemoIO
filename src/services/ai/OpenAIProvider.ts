@@ -22,6 +22,7 @@ import {
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
 import { parseExtractedValue } from './parseQualitativeValue';
+import { withLabFlag } from './labFlag';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { withoutKey } from './withoutKey';
@@ -371,7 +372,8 @@ export class OpenAIProvider implements AIProvider {
             method: b.method ? String(b.method) : undefined,
             confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
             notes: b.notes ? String(b.notes) : undefined,
-            flaggedAbnormal: Boolean(b.flaggedAbnormal),
+            ...withLabFlag(b),
+            censored: parsedValue.censored,
             isInterval: parsedValue.isInterval,
             intervalLow: parsedValue.intervalLow,
             intervalHigh: parsedValue.intervalHigh,

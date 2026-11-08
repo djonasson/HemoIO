@@ -5,6 +5,8 @@
  * and morphological lab results (e.g., "5 - 10 eritrociti per campo").
  */
 
+import type { CensoredComparator } from '@/types';
+
 /**
  * Result of parsing a value that might be an interval
  */
@@ -19,7 +21,21 @@ export interface ParsedValue {
   intervalHigh?: number;
   /** Raw value string before parsing */
   rawValue?: string;
+  /** For a censored value ("< 5"), how `value` bounds it */
+  censored?: CensoredComparator;
 }
+
+/** A comparator and a number: "< 5", "<=0.2", "≥ 200" */
+const CENSORED = /^(<=|>=|<|>|≤|≥)\s*(\d+(?:[.,]\d+)?)$/;
+
+const COMPARATORS: Record<string, CensoredComparator> = {
+  '<': '<',
+  '<=': '<=',
+  '≤': '<=',
+  '>': '>',
+  '>=': '>=',
+  '≥': '>=',
+};
 
 /**
  * Regular expression patterns for interval detection
@@ -29,8 +45,7 @@ export interface ParsedValue {
  * - "5 – 10" (en-dash)
  * - "5 — 10" (em-dash)
  * - "5 to 10"
- * - "<5" (less than, treated as 0-5)
- * - ">10" (greater than, treated as 10-infinity, stored as single value)
+ * Censored values ("<5", ">10", "≤ 0.2") are read apart: see CENSORED.
  */
 const INTERVAL_PATTERNS = [
   // Standard range with hyphen/dash variants: "5-10", "5 - 10", "5 – 10"
@@ -83,32 +98,18 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     }
   }
 
-  // Handle "less than" notation: "<5" → single value at the threshold
-  // This is typically from dipstick tests where "< X" means undetectable/below X
-  // NOT treated as an interval - use the threshold value and preserve rawValue
-  const lessThanMatch = valueStr.match(/^<\s*(\d+(?:[.,]\d+)?)$/);
-  if (lessThanMatch) {
-    const threshold = parseFloat(lessThanMatch[1].replace(',', '.'));
-    if (!isNaN(threshold)) {
-      // Return the threshold value (preserves more info than returning 0)
-      // The rawValue preserves the original "< X" notation for display purposes
+  // A censored value ("< 5", "≥ 200"): beyond what the method can tell,
+  // so the number is a bound, not a measurement. Kept as the bound with its
+  // comparator, never as a plain number.
+  const censoredMatch = valueStr.match(CENSORED);
+  if (censoredMatch) {
+    const bound = parseFloat(censoredMatch[2].replace(',', '.'));
+    if (!isNaN(bound)) {
       return {
-        value: threshold,
+        value: bound,
         isInterval: false,
         rawValue: valueStr,
-      };
-    }
-  }
-
-  // Handle "greater than" notation: ">10" → single value (can't determine upper bound)
-  const greaterThanMatch = valueStr.match(/^>\s*(\d+(?:[.,]\d+)?)$/);
-  if (greaterThanMatch) {
-    const value = parseFloat(greaterThanMatch[1].replace(',', '.'));
-    if (!isNaN(value)) {
-      return {
-        value,
-        isInterval: false,
-        rawValue: valueStr,
+        censored: COMPARATORS[censoredMatch[1]],
       };
     }
   }

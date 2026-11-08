@@ -351,9 +351,11 @@ export function TrendChart({
                       cx={cx}
                       cy={cy}
                       r={r}
-                      fill={fill}
-                      stroke={highlighted ? '#1c7ed6' : 'var(--mantine-color-body)'}
-                      strokeWidth={highlighted ? 3 : 2}
+                      // A censored value ("< 10") is drawn open at its bound: not a measurement
+                      fill={payload.censored ? 'var(--mantine-color-body)' : fill}
+                      stroke={highlighted ? '#1c7ed6' : payload.censored ? fill : 'var(--mantine-color-body)'}
+                      strokeWidth={highlighted || payload.censored ? 3 : 2}
+                      data-censored={payload.censored ? 'true' : undefined}
                       aria-current={highlighted ? 'true' : undefined}
                       aria-label={`${payload.formattedDate}: ${formatPointValue(payload)} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
                       role={select ? 'button' : undefined}

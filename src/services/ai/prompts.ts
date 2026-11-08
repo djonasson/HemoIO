@@ -16,7 +16,7 @@ IMPORTANT GUIDELINES:
 2. Do not infer or calculate values that are not explicitly stated
 3. Preserve exact units as they appear in the report
 4. Include reference ranges when available
-5. Note any abnormal flags (H, L, High, Low, etc.)
+5. Note the lab's abnormal marks (H, L, High, Low, *, ↑, ↓) in flag
 6. Assign confidence scores based on clarity of the text
 7. If a value is ambiguous, lower the confidence score
 
@@ -31,32 +31,33 @@ Respond with a JSON object containing:
 Each biomarker object should have:
 - name: Biomarker name as found in report
 - specimenHint: the sample the report names for this value, from its section heading or name: "blood", "serum", "plasma", "urine" or "24h urine"; null when it names none
-- value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10"). For qualitative results, the number given under QUALITATIVE VALUES
+- value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10"). For censored values, the STRING with its comparator (e.g., "< 10"). For qualitative results, the number given under QUALITATIVE VALUES
 - qualitativeValue: for a qualitative result only, the result exactly as printed (e.g., "Assenti", "Positivo", "++"); omit it otherwise
 - unit: Unit of measurement
 - referenceRange: { low, high, unit } if available - IMPORTANT: extract numeric values only
 - method: Analytical method if specified (e.g., "Enzymatic", "HPLC", "Immunoassay", "Colorimetric", "Turbidimetric")
 - confidence: 0-1 score based on extraction certainty
-- notes: Any flags or additional notes
-- flaggedAbnormal: boolean if marked as abnormal
+- notes: Any additional notes
+- flag: the lab's own abnormal mark beside the value: "H" when marked high, "L" when marked low, "*" when marked abnormal with no direction; null when unmarked
 
 VALUE PARSING:
 - Most values are single numbers: 100, 5.5, 0.75
 - Some values (especially in microscopy/morphology exams) are ranges: "5-10", "0-2", "1-3"
 - For range values, extract the RANGE as a string (e.g., "5-10"), not just the first number
 
-IMPORTANT - DIPSTICK vs MICROSCOPY VALUES:
-- DIPSTICK tests (urinalysis): Values like "< 5", "< 10", "< 0.2" mean "below detection threshold"
-  Use the detection limit as the value and add a note indicating it's below detection
-  - "Glucosio < 10 mg/dL" → value: 10, notes: "< 10 (below detection)"
-  - "Proteine < 5 mg/dL" → value: 5, notes: "< 5 (below detection)"
-  - "Bilirubina < 0,2 mg/dL" → value: 0.2, notes: "< 0.2 (below detection)"
+IMPORTANT - CENSORED vs MICROSCOPY VALUES:
+- CENSORED values: "< 5", "< 10", "< 0.2", "> 200", "≤ 0.5" mean below or above what the method can measure
+  Give the value as the STRING with its comparator, exactly as printed; never drop the comparator
+  - "Glucosio < 10 mg/dL" → value: "< 10"
+  - "Proteine < 5 mg/dL" → value: "< 5"
+  - "Bilirubina < 0,2 mg/dL" → value: "< 0,2"
+  - "PCR > 200 mg/L" → value: "> 200"
 - MICROSCOPY (morphological exam): Values like "5-10 per campo" are actual counted RANGES
   Extract as string to preserve the interval
   - "Eritrociti 5-10 per campo" → value: "5-10"
   - "Leucociti 0-2 per campo" → value: "0-2"
 
-The key distinction: dipstick "< X" = below detection (use X as value + note), microscopy "X-Y" = actual range (use string)
+The key distinction: "< X" = a censored value (string with its comparator), microscopy "X-Y" = actual range (use string)
 
 BIOMARKER NAMING:
 - Extract the SPECIFIC biomarker name, NOT the section header
@@ -85,7 +86,8 @@ Examples:
   - "Batteri Assenti" (sediment) → name: "Batteri (urine)", value: 0, unit: "", qualitativeValue: "Assenti"
   - "Emoglobina ++" (urine) → name: "Emoglobina (urine)", value: 2, unit: "", qualitativeValue: "++"
   - "Glucosio 100 mg/dL" → value: 100
-  - "Glucosio < 10 mg/dL" (in U-Esame standard) → name: "Glucosio (urine)", value: 10, notes: "< 10 (below detection)"
+  - "Glucosio < 10 mg/dL" (in U-Esame standard) → name: "Glucosio (urine)", value: "< 10"
+  - "Glucosio 130 mg/dL H" → value: 130, flag: "H"
   - "Eritrociti 5-10 per campo" → name: "Eritrociti (urine, per campo)", value: "5-10" (microscopy range)
   - "Leucociti 0-2 per campo" → value: "0-2" (microscopy range)
 
@@ -179,7 +181,7 @@ export const RESPONSE_SCHEMA = {
           method: { type: 'string' },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           notes: { type: 'string' },
-          flaggedAbnormal: { type: 'boolean' },
+          flag: { type: ['string', 'null'] },
         },
         required: ['name', 'value', 'unit', 'confidence'],
       },

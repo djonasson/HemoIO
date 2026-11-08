@@ -175,6 +175,39 @@ Feature: Import Wizard
     Then the review should show the value as 3, without the word
     And the value should be saved as 3
 
+  Scenario: A value printed beyond what the lab can measure keeps its comparator
+    Given the AI read Glucose as "< 10" mg/dL with a reference range of 70-100 mg/dL
+    Then the review should show the value as "< 10", never as a plain 10
+    When I save the import
+    Then the timeline should show the value as "< 10"
+    And it should be marked below the reference range, as every value below 10 is
+
+  Scenario: The comparator of a value can be changed on review
+    Given I am editing a value on the review step
+    When I choose the comparator "<" for it
+    Then the review should show the value with "<" before its number
+
+  Scenario: The lab's own high or low mark is kept
+    Given the AI read a value the lab marked "H"
+    Then the review should show "H" beside the value, read out as "flagged high by the lab"
+    When I save the import
+    Then the timeline should show "H" beside the value, read out as "flagged high by the lab"
+
+  Scenario: A reference range printed in another unit is compared in the value's unit
+    Given the AI read Glucose as 150 mg/dL with a reference range of 3.9-5.6 mmol/L
+    When I save the import
+    Then the timeline should show the value above its reference range, the range converted to mg/dL
+
+  Scenario: Numbers keep every decimal the report printed
+    Given I am editing a value on the review step
+    When I type 1.015, or 0.005
+    Then the field should keep every decimal
+    And the value should be saved and shown with every decimal
+
+  Scenario: A value set aside as the same measurement names the saved value as it reads
+    Given two values of one test are the same measurement, the saved one printed as "< 100" mg/dL
+    Then the review should say the other is "the same measurement as < 100 mg/dL, which is saved"
+
   Scenario: User enters a name that is not a LOINC test
     Given I am editing a value on the review step
     When I type a name that no LOINC test fits

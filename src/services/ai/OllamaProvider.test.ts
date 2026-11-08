@@ -806,6 +806,20 @@ describe('OllamaProvider rate limiting', () => {
     expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
 
+  it("keeps a censored value's comparator and the lab's flag", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glucosio', value: '< 10', unit: 'mg/dL', confidence: 0.9 }, { name: 'PCR', value: 12, unit: 'mg/L', confidence: 0.9, flag: 'H' } ], warnings: [] }) }, done_reason: 'stop' }),
+    } as Response);
+
+    const result = await new OllamaProvider().analyzeLabReport('Glucosio < 10 mg/dL');
+
+    expect(result.biomarkers[0]).toMatchObject({ value: 10, censored: '<' });
+    expect(result.biomarkers[0].labFlag).toBeUndefined();
+    expect(result.biomarkers[1]).toMatchObject({ value: 12, labFlag: 'high' });
+    expect(result.biomarkers[1].censored).toBeUndefined();
+  });
+
   it('keeps a qualitative result as printed, with no unit', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,

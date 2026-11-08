@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useLabResults } from './useLabResults';
+import { enrichTestValue, useLabResults } from './useLabResults';
 import { LabResultsProvider } from '@contexts/LabResultsContext';
 import { SaveError } from '@data/db/saveError';
 import type { LabResult, TestValue } from '@/types';
@@ -553,5 +553,35 @@ describe('useLabResults', () => {
 
     const testValue = result.current.results[0]?.testValues[0];
     expect(testValue?.status).toBe('unknown');
+  });
+});
+
+describe('enrichTestValue', () => {
+  const now = new Date();
+  const value = (options: Partial<TestValue>): TestValue => ({
+    labResultId: 1,
+    biomarkerKey: '2345-7',
+    value: 10,
+    unit: 'mg/dL',
+    createdAt: now,
+    updatedAt: now,
+    ...options,
+  });
+
+  it('does not call a censored value low when its bound does not prove it', () => {
+    expect(enrichTestValue(value({ censored: '<', referenceRangeLow: 0, referenceRangeHigh: 50 })).status).toBe('normal');
+    expect(enrichTestValue(value({ value: 30, censored: '<', referenceRangeLow: 20 })).status).toBe('unknown');
+  });
+
+  it("takes the lab's mark when the range cannot tell, and says so", () => {
+    const enriched = enrichTestValue(value({ labFlag: 'high' }));
+    expect(enriched).toMatchObject({ status: 'high', statusByLab: true });
+    expect(enrichTestValue(value({ referenceRangeHigh: 50 })).statusByLab).toBeUndefined();
+  });
+
+  it('compares no range saved in another unit than its value', () => {
+    const enriched = enrichTestValue(value({ value: 500, referenceRangeHigh: 5.6, referenceRangeUnit: 'mmol/L' }));
+    expect(enriched.status).toBe('unknown');
+    expect(enriched.unconvertedRange).toEqual({ low: undefined, high: 5.6, unit: 'mmol/L' });
   });
 });

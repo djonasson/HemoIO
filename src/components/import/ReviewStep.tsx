@@ -22,6 +22,7 @@ import {
   Alert,
   Accordion,
   ThemeIcon,
+  NativeSelect,
 } from '@mantine/core';
 import {
   IconArrowLeft,
@@ -56,9 +57,11 @@ import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import { heldQualitative } from '@services/ai';
+import { LAB_FLAG_TEXT } from '@/utils/formatTestValue';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
+import type { CensoredComparator } from '@/types';
 
 /**
  * The LOINC code with LOINC's name for it, as the license asks, and
@@ -97,6 +100,15 @@ export interface ReviewedResult extends AnalysisResult {
   /** Duplicate biomarker conflicts (inherited from AnalysisResult, explicitly declared for clarity) */
   duplicateConflicts?: DuplicateConflict[];
 }
+
+/** The comparator choices of a value: measured ("="), or censored */
+const COMPARATOR_OPTIONS = [
+  { value: '', label: '=' },
+  { value: '<', label: '<' },
+  { value: '<=', label: '≤' },
+  { value: '>', label: '>' },
+  { value: '>=', label: '≥' },
+];
 
 /**
  * An interval's ends and the value saved for it, their midpoint: none
@@ -607,7 +619,7 @@ export function ReviewStep({
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
                                   </Text>{' '}
-                                  the same measurement as {setAside.get(biomarker)?.savedAs?.value}{' '}
+                                  the same measurement as {formatReviewedValue(setAside.get(biomarker)!.savedAs!)}{' '}
                                   {setAside.get(biomarker)?.savedAs?.unit}, which is saved.
                                 </Text>
                               )}
@@ -630,7 +642,6 @@ export function ReviewStep({
                                       onValueChange={(low) =>
                                         updateBiomarker(resultIndex, bioIndex, intervalEnds(low, biomarker.intervalHigh))
                                       }
-                                      decimalScale={2}
                                       placeholder="Low"
                                       w={60}
                                     />
@@ -641,13 +652,27 @@ export function ReviewStep({
                                       onValueChange={(high) =>
                                         updateBiomarker(resultIndex, bioIndex, intervalEnds(biomarker.intervalLow, high))
                                       }
-                                      decimalScale={2}
                                       placeholder="High"
                                       w={60}
                                     />
                                   </Group>
                                 ) : (
                                   <Group gap="xs" wrap="nowrap">
+                                    {!printedResult && (
+                                      // A censored value's comparator ("< 10"); "=" for a measured one
+                                      <NativeSelect
+                                        size="xs"
+                                        aria-label="Comparator"
+                                        data={COMPARATOR_OPTIONS}
+                                        value={biomarker.censored ?? ''}
+                                        onChange={(e) =>
+                                          updateBiomarker(resultIndex, bioIndex, {
+                                            censored: (e.currentTarget.value || undefined) as CensoredComparator | undefined,
+                                          })
+                                        }
+                                        w={56}
+                                      />
+                                    )}
                                     <NumberField
                                       size="xs"
                                       value={biomarker.value}
@@ -655,7 +680,6 @@ export function ReviewStep({
                                         // A cleared number is missing, not 0
                                         updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
                                       }
-                                      decimalScale={2}
                                       placeholder="Value"
                                     />
                                     {printedResult && (
@@ -666,7 +690,22 @@ export function ReviewStep({
                                   </Group>
                                 )
                               ) : (
-                                <Text size="sm">{formatReviewedValue(biomarker)}</Text>
+                                <Group gap={4} wrap="nowrap">
+                                  <Text size="sm">{formatReviewedValue(biomarker)}</Text>
+                                  {biomarker.labFlag && (
+                                    // The lab's mark as printed; in words on hover and to screen readers
+                                    <Text
+                                      size="xs"
+                                      fw={700}
+                                      component="abbr"
+                                      title={LAB_FLAG_TEXT[biomarker.labFlag].label}
+                                      aria-label={LAB_FLAG_TEXT[biomarker.labFlag].label}
+                                      style={{ textDecoration: 'none' }}
+                                    >
+                                      {LAB_FLAG_TEXT[biomarker.labFlag].mark}
+                                    </Text>
+                                  )}
+                                </Group>
                               )}
                             </Table.Td>
                             <Table.Td>
@@ -704,7 +743,6 @@ export function ReviewStep({
                                         },
                                       })
                                     }
-                                    decimalScale={2}
                                     placeholder="Low"
                                     w={70}
                                     allowNegative={false}
@@ -722,7 +760,6 @@ export function ReviewStep({
                                         },
                                       })
                                     }
-                                    decimalScale={2}
                                     placeholder="High"
                                     w={70}
                                     allowNegative={false}

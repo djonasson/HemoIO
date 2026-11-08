@@ -72,6 +72,15 @@ describe('summarizeBiomarkerResults', () => {
     );
   });
 
+  it("reports a censored value's comparator", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [result('2024-02-20', [{ ...glucose(10), censored: '<' }])],
+      GLUCOSE
+    );
+    expect(summary?.latest).toEqual(expect.objectContaining({ value: 10, censored: '<' }));
+  });
+
   it('reports a latest value that is not a number as recorded', () => {
     const summary = summarizeBiomarkerResults(
       catalog,

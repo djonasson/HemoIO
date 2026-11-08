@@ -36,6 +36,7 @@ import type {
 import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
+import { formatReviewedValue } from '@/utils/formatReviewedValue';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -530,7 +531,7 @@ function deduplicateBiomarkers(
             values
               .map(
                 (v) =>
-                  `${v.biomarker.value} ${v.biomarker.unit}` +
+                  `${formatReviewedValue(v.biomarker)} ${v.biomarker.unit}` +
                   (canonicalUnit && v.converted !== undefined
                     ? ` (=${v.converted} ${canonicalUnit})`
                     : '')

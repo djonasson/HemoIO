@@ -18,6 +18,11 @@ describe('formatReviewedValue', () => {
     expect(formatReviewedValue({ value: 2, qualitative })).toBe('2');
   });
 
+  it('reads a censored value with its comparator', () => {
+    expect(formatReviewedValue({ value: 10, censored: '<' })).toBe('< 10');
+    expect(formatReviewedValue({ value: 200, censored: '>=' })).toBe('≥ 200');
+  });
+
   it('reads a value with no number as nothing', () => {
     expect(formatReviewedValue({ value: NaN })).toBe('');
   });

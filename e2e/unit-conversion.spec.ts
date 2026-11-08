@@ -709,6 +709,19 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test('names the saved value with its comparator when a censored value is set aside', async ({ page }) => {
+    // Scenario: A value set aside as the same measurement names the saved value as it reads (import-wizard.feature)
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: '< 67', unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinine', value: '< 0.76', unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+    ], 1, { testChoice: aiChooses({ 'Creatinine|mg/dL': '2160-0' }) });
+
+    const rows = reviewRows(page);
+    await changeTest(page, rows.filter({ hasText: 'µmol/L' }), MOLAR_CREATININE);
+    await expect(main(page).getByText('the same measurement as < 0.76 mg/dL, which is saved.')).toBeVisible();
+  });
+
   test('should merge a value once I choose the test of the other value of its name', async ({ page }) => {
     // Two imports, each analyzed
     test.slow();

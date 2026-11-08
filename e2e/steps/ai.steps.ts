@@ -9,7 +9,8 @@ export const MOCK_OLLAMA_MODELS = ['llama3.2:8b', 'llava:13b'];
 
 export interface ExtractedBiomarkerFixture {
   name: string;
-  value: number;
+  /** A number, or as the AI gives an interval or a censored value: "5-10", "< 10" */
+  value: number | string;
   unit: string;
   confidence: number;
   referenceRange?: { low?: number; high?: number; unit: string };

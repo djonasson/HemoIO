@@ -11,6 +11,7 @@ import { notifications } from '@mantine/notifications';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { saveImportResults } from '@services/persistence';
 import { toLearn } from '@services/analysis/identification';
+import { useCatalog } from '@contexts/useCatalog';
 import { useEncryptedDb } from './useEncryptedDb';
 import { useLabResults } from './useLabResults';
 import { usePreferences } from './usePreferences';
@@ -27,6 +28,7 @@ export function useSaveImport(
   const { db, isReady } = useEncryptedDb();
   const { refresh } = useLabResults();
   const { learnTests } = usePreferences();
+  const catalog = useCatalog();
 
   return useCallback(
     async ({ toSave: results, notSaved }: SavePlan<ReviewedResult>) => {
@@ -41,7 +43,7 @@ export function useSaveImport(
 
       let output;
       try {
-        output = await saveImportResults(results, db);
+        output = await saveImportResults(results, db, catalog);
       } catch (err) {
         notifySaveFailed('Import not saved', err, 'Nothing was saved.');
         return false;
@@ -70,6 +72,6 @@ export function useSaveImport(
         .catch(() => undefined);
       return true;
     },
-    [db, isReady, refresh, learnTests, syncNow]
+    [db, isReady, refresh, learnTests, syncNow, catalog]
   );
 }

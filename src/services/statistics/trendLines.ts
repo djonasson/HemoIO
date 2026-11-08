@@ -15,7 +15,7 @@ import {
 import { isTrendable } from '@/utils/isTrendable';
 import type { Catalog } from '@data/loinc/catalog';
 import type { TrendDataPoint } from './trendAnalysis';
-import type { NumericValueType } from '@/types';
+import type { CensoredComparator, NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -35,6 +35,7 @@ export interface TrendableResult {
     numericValueType?: NumericValueType;
     intervalLow?: number;
     intervalHigh?: number;
+    censored?: CensoredComparator;
   }>;
 }
 
@@ -140,6 +141,7 @@ export function buildTrendLines(
         testValueId: value.id,
         labResultId: value.labResultId,
         ...intervalOf(value, converted.unit),
+        ...(value.censored ? { censored: value.censored } : {}),
       };
       if (unitsMatch(converted.unit, lineUnit)) {
         main.push({ ...point, unit: lineUnit });

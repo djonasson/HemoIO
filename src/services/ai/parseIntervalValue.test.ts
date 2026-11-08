@@ -105,6 +105,7 @@ describe('parseIntervalValue', () => {
       expect(result.isInterval).toBe(false);
       expect(result.value).toBe(5);
       expect(result.rawValue).toBe('<5');
+      expect(result.censored).toBe('<');
     });
 
     test('should parse "< 10" with space as threshold value 10', () => {
@@ -128,6 +129,22 @@ describe('parseIntervalValue', () => {
       expect(result.isInterval).toBe(false);
       expect(result.value).toBe(10);
       expect(result.rawValue).toBe('>10');
+      expect(result.censored).toBe('>');
+    });
+
+    test.each([
+      ['<= 0,2', '<=', 0.2],
+      ['≤0.2', '<=', 0.2],
+      ['>= 200', '>=', 200],
+      ['≥ 200', '>=', 200],
+    ])('should read "%s" as %s %s', (raw, comparator, bound) => {
+      expect(parseIntervalValue(raw)).toMatchObject({ value: bound, censored: comparator, isInterval: false });
+    });
+
+    test('should not call a plain number or an interval censored', () => {
+      expect(parseIntervalValue('10').censored).toBeUndefined();
+      expect(parseIntervalValue(10).censored).toBeUndefined();
+      expect(parseIntervalValue('5-10').censored).toBeUndefined();
     });
 
     test('should parse "> 20" with space', () => {

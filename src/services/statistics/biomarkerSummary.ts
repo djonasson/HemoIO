@@ -6,7 +6,7 @@
 import { trendCode } from '@data/loinc/display';
 import { convertForDisplay } from '@services/units';
 import type { Catalog } from '@data/loinc/catalog';
-import type { NumericValueType } from '@/types';
+import type { CensoredComparator, NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -21,6 +21,7 @@ export interface SummarizableResult {
     numericValueType?: NumericValueType;
     intervalLow?: number;
     intervalHigh?: number;
+    censored?: CensoredComparator;
   }>;
 }
 
@@ -34,6 +35,8 @@ export interface BiomarkerResultSummary {
     numericValueType?: NumericValueType;
     intervalLow?: number;
     intervalHigh?: number;
+    /** A censored value's comparator, so "< 10" never reads as 10 */
+    censored?: CensoredComparator;
     date: Date;
     status: Status;
     labName: string;
@@ -62,6 +65,7 @@ export function summarizeBiomarkerResults(
         numericValueType: shown.numericValueType,
         intervalLow: shown.intervalLow,
         intervalHigh: shown.intervalHigh,
+        censored: shown.censored,
         date: result.date,
         status: testValue.status,
         labName: result.labName,

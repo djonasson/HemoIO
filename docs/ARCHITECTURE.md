@@ -179,6 +179,16 @@ everything the user stores per test is keyed by a code.
   "++") with its kind (`qualitativeType`) and the number it reads as
   (`ordinalValue`: absent 0, present 1, traces 0.5, one to four crosses 1-4);
   it is shown as printed and never charted.
+  A censored value ("< 10", beyond what the method measures) is saved as
+  its bound with its comparator (`censored`), shown with it everywhere and
+  drawn open at its bound on trend charts; it is high, low or normal only
+  when every value it may be is ("< 10" in 0-50 is normal, "< 30" above a
+  low of 20 cannot be told), and trend alerts do not read a direction from
+  it. The lab's own mark (`labFlag`: H, L or *) is shown beside the value;
+  the range decides the status, and the mark only when the range cannot. A
+  range printed in another unit is saved converted to the value's
+  (`referenceRangeUnit`); one that does not convert is saved as printed
+  with its unit, shown, and never compared.
 - **CatalogTest**: A LOINC test of the shipped catalog. Never stored in the
   database: a value refers to it by code.
 - **TestAddon**: What HemoIO adds to LOINC for the tests it describes: a

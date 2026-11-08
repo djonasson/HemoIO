@@ -255,10 +255,10 @@ test.describe('Timeline with Data', () => {
 
     const cells = (name: string) => table.getByRole('row', { name: new RegExp(`^${name}:`) }).getByRole('cell');
 
-    await expect(cells('Hemoglobin')).toHaveText([/.*/, 'Hemoglobin', /.*/, '14.50', 'g/dL', '12 - 17.5 g/dL']);
+    await expect(cells('Hemoglobin')).toHaveText([/.*/, 'Hemoglobin', /.*/, '14.5', 'g/dL', '12 - 17.5 g/dL']);
     await expect(cells('Glucose')).toHaveText([/.*/, 'Glucose', /.*/, '125', 'mg/dL', '70 - 100 mg/dL']);
     // No reference range was reported for creatinine
-    await expect(cells('Creatinine')).toHaveText([/.*/, 'Creatinine', /.*/, '0.90', 'mg/dL', '—']);
+    await expect(cells('Creatinine')).toHaveText([/.*/, 'Creatinine', /.*/, '0.9', 'mg/dL', '—']);
   });
 
   test('should show abnormal value indicators', async ({ page }) => {
@@ -494,10 +494,57 @@ test.describe('Timeline with Data', () => {
     const table = card.getByRole('table', { name: 'Test values' });
 
     await expect(table.getByRole('row', { name: /^Eritrociti: 5-10 \/HPF,/ })).toBeVisible();
-    await expect(table.getByText('7.50', { exact: true })).toHaveCount(0);
+    await expect(table.getByText('7.5', { exact: true })).toHaveCount(0);
     const glucoseRow = table.getByRole('row', { name: /^Glucose: 95 mg\/dL by Enzymatic,/ });
     await expect(glucoseRow.getByText('Enzymatic', { exact: true })).toBeVisible();
     await expect(table.getByRole('row', { name: /^Batteri: Assenti\s*,/ })).toBeVisible();
+  });
+
+  // Scenario: A value its range cannot place is not called high or low
+  // Scenario: The lab's mark gives the status when the range cannot
+  test("calls a value high or low only when its range, or else the lab's mark, says so", async ({ page }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    const stamps = { labResultId: 1, confidence: 0.9, createdAt: result.createdAt, updatedAt: result.updatedAt };
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: [
+        {
+          ...stamps,
+          id: 1,
+          biomarkerKey: 'unknown:zorblatin',
+          rawText: 'Zorblatin',
+          value: 30,
+          censored: '<',
+          unit: 'U/L',
+          referenceRangeLow: 20,
+        },
+        {
+          ...stamps,
+          id: 2,
+          biomarkerKey: BIOMARKERS.GLUCOSE.key,
+          rawText: 'Glucose',
+          value: 300,
+          unit: 'mg/dL',
+          referenceRangeLow: 1,
+          referenceRangeHigh: 2,
+          referenceRangeUnit: 'g/24h',
+        },
+        { ...stamps, id: 3, biomarkerKey: 'unknown:pcr', rawText: 'PCR', value: 12, unit: 'mg/L', labFlag: 'high' },
+      ],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    const table = card.getByRole('table', { name: 'Test values' });
+
+    await expect(
+      table.getByRole('row', { name: /^Zorblatin: < 30 U\/L, Cannot be compared with the reference range$/ })
+    ).toBeVisible();
+    const glucose = table.getByRole('row', { name: /^Glucose: 300 mg\/dL, Cannot be compared with the reference range$/ });
+    await expect(glucose).toContainText('1 - 2 g/24h');
+    await expect(
+      table.getByRole('row', { name: /^PCR: 12 mg\/L, flagged high by the lab, Flagged high by the lab$/ })
+    ).toBeVisible();
   });
 
   test('should filter by date range', async ({ page }) => {

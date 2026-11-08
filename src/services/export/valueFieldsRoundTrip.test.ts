@@ -9,7 +9,7 @@ import { parseBackupJson } from '../import/jsonImport';
 import { exportToJson } from './jsonExport';
 
 describe('value fields round trip', () => {
-  it('keeps the method, the interval and the printed qualitative result', async () => {
+  it("keeps the method, the interval, the printed qualitative result, a censored value's comparator, the lab's flag and the range's unit", async () => {
     const { db } = await openTestDb();
     const now = new Date('2024-01-15T10:00:00.000Z');
     const labResultId = await db.addLabResult({ date: now, labName: 'Lab', createdAt: now, updatedAt: now });
@@ -24,6 +24,15 @@ describe('value fields round trip', () => {
         intervalHigh: 10,
       },
       { biomarkerKey: '25145-4', value: 'Assenti', unit: '', qualitativeType: 'boolean' as const, ordinalValue: 0 },
+      {
+        biomarkerKey: '14749-6',
+        value: 10,
+        unit: 'mg/dL',
+        censored: '<' as const,
+        labFlag: 'low' as const,
+        referenceRangeLow: 3.9,
+        referenceRangeUnit: 'mmol/L',
+      },
     ];
     await db.addTestValues(kept.map((value) => ({ ...value, labResultId, createdAt: now, updatedAt: now })));
 

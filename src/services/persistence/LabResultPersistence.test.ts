@@ -5,7 +5,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { openTestDb } from '@data/db/testDb';
 import { SaveError } from '@data/db/saveError';
+import { fixtureCatalog } from '@/test/loincFixture';
 import { saveImportResults } from './LabResultPersistence';
+
+const catalog = fixtureCatalog();
 import type { EncryptedDb } from '@data/db';
 import type { ReviewedResult } from '@components/import';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
@@ -57,7 +60,7 @@ function createMockReviewedResult(
 /** Save one reviewed result and return it as stored */
 async function saveOne(reviewed: ReviewedResult): Promise<LabResult & { values: TestValue[] }> {
   const { db } = await openTestDb();
-  await saveImportResults([reviewed], db);
+  await saveImportResults([reviewed], db, catalog);
   const [result] = await saved(db);
   return result;
 }
@@ -182,7 +185,8 @@ describe('saveImportResults', () => {
           createMockBiomarker('Hemoglobin', 13.0, 'g/dL'),
         ]),
       ],
-      db
+      db,
+      catalog
     );
 
     expect(output).toEqual({ totalLabResults: 2, totalTestValues: 3 });
@@ -198,7 +202,8 @@ describe('saveImportResults', () => {
         createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')]),
         createMockReviewedResult('test2.pdf', [createMockBiomarker('Glucose', 95, 'mg/dL')]),
       ],
-      db
+      db,
+      catalog
     );
 
     expect(write).toHaveBeenCalledTimes(1);
@@ -212,7 +217,8 @@ describe('saveImportResults', () => {
     await expect(
       saveImportResults(
         [createMockReviewedResult('test1.pdf', [createMockBiomarker('Hemoglobin', 14.5, 'g/dL')])],
-        db
+        db,
+        catalog
       )
     ).rejects.toEqual(new SaveError('quota'));
   });
@@ -239,6 +245,45 @@ describe('saveImportResults', () => {
       numericValueType: 'interval',
       intervalLow: 5,
       intervalHigh: 10,
+    });
+  });
+
+  it("saves a censored value's comparator and the lab's flag", async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Glucosio', 10, 'mg/dL', { loincCode: '2345-7', censored: '<', labFlag: 'low' }),
+      ])
+    );
+
+    expect(result.values[0]).toMatchObject({ value: 10, censored: '<', labFlag: 'low' });
+  });
+
+  it("saves a range printed in another unit in the value's, with that unit", async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Glucosio', 150, 'mg/dL', {
+          loincCode: '2345-7',
+          referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
+        }),
+      ])
+    );
+
+    expect(result.values[0].referenceRangeLow).toBeCloseTo(70, 0);
+    expect(result.values[0].referenceRangeHigh).toBeCloseTo(101, 0);
+    expect(result.values[0].referenceRangeUnit).toBe('mg/dL');
+  });
+
+  it('saves a range it cannot convert as printed, with its own unit', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Proteine', 12, 'mg/dL', { referenceRange: { low: 0.1, high: 0.15, unit: 'g/24h' } }),
+      ])
+    );
+
+    expect(result.values[0]).toMatchObject({
+      referenceRangeLow: 0.1,
+      referenceRangeHigh: 0.15,
+      referenceRangeUnit: 'g/24h',
     });
   });
 
@@ -272,7 +317,7 @@ describe('saveImportResults', () => {
   it('saves nothing for an empty import', async () => {
     const { db } = await openTestDb();
 
-    expect(await saveImportResults([], db)).toEqual({ totalLabResults: 0, totalTestValues: 0 });
+    expect(await saveImportResults([], db, catalog)).toEqual({ totalLabResults: 0, totalTestValues: 0 });
     expect(await saved(db)).toEqual([]);
   });
 });

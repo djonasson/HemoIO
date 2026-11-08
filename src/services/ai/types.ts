@@ -5,6 +5,7 @@
  */
 
 import type { RateLimitOptions } from './rateLimitedFetch';
+import type { CensoredComparator, LabFlag } from '@/types';
 
 /**
  * Supported AI providers
@@ -81,8 +82,10 @@ export interface ExtractedBiomarker {
   confidence: number;
   /** Additional notes or flags from the lab */
   notes?: string;
-  /** Whether this value was flagged as abnormal in the report */
-  flaggedAbnormal?: boolean;
+  /** The lab's own high/low mark on the value ("H", "L", "*") */
+  labFlag?: LabFlag;
+  /** For a censored value ("< 10"), how `value` bounds it */
+  censored?: CensoredComparator;
   /** Whether this is an interval value (e.g., "5-10 eritrociti per campo") */
   isInterval?: boolean;
   /** Lower bound for interval values */

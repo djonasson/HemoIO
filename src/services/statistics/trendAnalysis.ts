@@ -8,6 +8,7 @@
  */
 
 import type { EnrichedTestValue } from '@hooks/useLabResults';
+import type { CensoredComparator } from '@/types';
 
 /**
  * Direction of a trend
@@ -44,6 +45,8 @@ export interface TrendDataPoint {
   labResultId?: number;
   /** The ends of an interval ("5-10"), whose midpoint is the value; only in the value's own unit */
   interval?: { low: number; high: number };
+  /** A censored value's comparator: the value is its bound, not a measurement */
+  censored?: CensoredComparator;
 }
 
 /**

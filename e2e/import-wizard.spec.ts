@@ -503,6 +503,95 @@ test.describe('Import Wizard', () => {
         return card.getByRole('row', { name: new RegExp(`^${name}: ${value.source}`) });
       }
 
+      test('keeps the comparator of a value printed beyond what the lab can measure', async ({ page }) => {
+        // Scenario: A value printed beyond what the lab can measure keeps its comparator
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '< 10',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('< 10');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /< 10 mg\/dL, Below reference range$/)).toBeVisible();
+      });
+
+      test('lets the comparator be chosen on review', async ({ page }) => {
+        // Scenario: The comparator of a value can be changed on review
+        await loginWithOllama(page);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Hemoglobin');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await editing.getByRole('combobox', { name: 'Comparator' }).selectOption('<');
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('< 14.5');
+      });
+
+      test("keeps the lab's own high or low mark", async ({ page }) => {
+        // Scenario: The lab's own high or low mark is kept
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 130, unit: 'mg/dL', confidence: 0.95, flag: 'H' }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewRow(page, 'Glucose').getByLabel('flagged high by the lab')).toHaveText('H');
+
+        const card = await saveAndExpand(page);
+        const row = savedRow(card, 'Glucose', /130 mg\/dL, flagged high by the lab, Flagged high by the lab$/);
+        await expect(row.getByTitle('flagged high by the lab')).toHaveText('H');
+      });
+
+      test("compares a range printed in another unit in the value's unit", async ({ page }) => {
+        // Scenario: A reference range printed in another unit is compared in the value's unit
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: 150,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+
+        const card = await saveAndExpand(page);
+        const row = savedRow(card, 'Glucose', /150 mg\/dL, Above reference range$/);
+        await expect(row).toContainText(/mg\/dL$/);
+      });
+
+      for (const typed of ['1.015', '0.005']) {
+        test(`keeps every decimal of ${typed}`, async ({ page }) => {
+          // Scenario: Numbers keep every decimal the report printed
+          await loginWithOllama(page);
+          await analyzeToReview(page, track(createTextLabReportPdf()));
+          const row = reviewRow(page, 'Hemoglobin');
+
+          await row.getByRole('button', { name: 'Edit biomarker' }).click();
+          const number = editingRow(page).getByPlaceholder('Value', { exact: true });
+          await number.fill(typed);
+          await expect(number).toHaveValue(typed);
+          await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+          await expect(reviewCell(row, 'Value')).toHaveText(typed);
+
+          const card = await saveAndExpand(page);
+          await expect(savedRow(card, 'Hemoglobin', new RegExp(`${typed.replace('.', '\\.')} g/dL,`))).toBeVisible();
+        });
+      }
+
       test('saves an interval as its two ends', async ({ page }) => {
         // Scenario: An interval is saved as its two ends
         await loginWithOllama(page, [

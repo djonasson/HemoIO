@@ -447,6 +447,23 @@ test.describe('Trend direction indicator', () => {
     await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toBeVisible();
   });
 
+  test('draws a censored value open at its bound, labelled with its comparator', async ({ page }) => {
+    // Scenario: A censored value is drawn open at its bound
+    await seedAndOpenTrends(page, [
+      { date: '2024-03-01', values: [{ biomarker: GLUCOSE, value: 95 }] },
+      { date: '2024-04-01', values: [{ biomarker: GLUCOSE, value: 60, censored: '<' }] },
+    ]);
+    await selectBiomarker(page, 'Glucose');
+
+    await expect(dataPoints(page)).toHaveCount(2);
+    const censored = dataPoints(page).and(page.locator('[data-censored="true"]'));
+    await expect(censored).toHaveCount(1);
+    await expect(censored).toHaveAttribute('aria-label', /: < 60 mg\/dL \(low\)$/);
+    await expect(dataPoints(page).and(page.locator('[aria-label*=": 95 mg/dL"]'))).not.toHaveAttribute(
+      'data-censored'
+    );
+  });
+
   test('gives a value whose unit cannot be converted to the chart unit a line of its own', async ({ page }) => {
     // Scenario: Values in a unit the chart cannot convert get a line of their own
     await seedAndOpenTrends(page, [

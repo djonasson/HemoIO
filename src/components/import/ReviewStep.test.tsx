@@ -858,6 +858,75 @@ describe('ReviewStep', () => {
     });
   });
 
+  describe('A censored value given the test of another value of its file', () => {
+    it('says which value is saved, with its comparator', () => {
+      const [first] = mockReviewedResult.editedBiomarkers;
+      const molar: MatchedBiomarker = {
+        name: 'Glucose',
+        value: 5.55,
+        unit: 'mmol/L',
+        censored: '<',
+        confidence: 0.95,
+        candidates: [],
+        loincCode: '14749-6',
+        identifiedBy: 'user',
+        identificationFlags: [],
+      };
+      renderReviewStep({
+        reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [{ ...first, censored: '<' }, molar] }],
+      });
+
+      expect(screen.getByText(/the same measurement as < 100 mg\/dL, which is saved\./)).toBeInTheDocument();
+    });
+  });
+
+  describe('Censored values, the lab\'s mark and decimals', () => {
+    const withFirst = (options: Partial<MatchedBiomarker>) => [
+      { ...mockReviewedResult, editedBiomarkers: [{ ...mockReviewedResult.editedBiomarkers[0], ...options }] },
+    ];
+
+    it('shows a censored value with its comparator, and the lab\'s mark in words', () => {
+      renderReviewStep({ reviewedResults: withFirst({ value: 10, censored: '<', labFlag: 'low' }) });
+
+      expect(screen.getByText('< 10')).toBeInTheDocument();
+      expect(screen.getByLabelText('flagged low by the lab')).toHaveTextContent('L');
+    });
+
+    it('lets the comparator be chosen while editing', async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ reviewedResults: withFirst({ value: 10, censored: '<' }), onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      const comparator = screen.getByRole('combobox', { name: 'Comparator' });
+      expect(comparator).toHaveValue('<');
+      await userEvent.selectOptions(comparator, '=');
+
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].censored).toBeUndefined();
+    });
+
+    it.each(['1.015', '0.005', '0.875'])('keeps %s as typed, every decimal', async (typed) => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      const input = screen.getByPlaceholderText('Value');
+      await userEvent.clear(input);
+      await userEvent.type(input, typed);
+
+      expect(input).toHaveValue(typed);
+      const [[edited]] = onReviewChange.mock.calls.slice(-1);
+      expect(edited[0].editedBiomarkers[0].value).toBe(Number(typed));
+    });
+
+    it('opens a value of three decimals uncut', () => {
+      renderReviewStep({ reviewedResults: withFirst({ value: 1.015 }) });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      expect(screen.getByPlaceholderText('Value')).toHaveValue('1.015');
+    });
+  });
+
   describe('Multiple files', () => {
     it('displays multiple files in accordion', () => {
       const secondResult: ReviewedResult = {

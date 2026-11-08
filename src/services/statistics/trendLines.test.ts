@@ -74,6 +74,11 @@ describe('buildTrendLines', () => {
     expect(converted.dataPoints[0].interval).toBeUndefined();
   });
 
+  it("keeps a censored value's comparator on its point", () => {
+    const results = [result('2024-01-15', [{ ...value('2345-7', 10, 'mg/dL', 'Glucose'), censored: '<' as const }])];
+    expect(buildTrendLines(catalog, results, {}).get('2345-7')!.dataPoints[0]).toMatchObject({ value: 10, censored: '<' });
+  });
+
   it('names a line of values with no unit as such', () => {
     const lines = buildTrendLines(
       catalog,

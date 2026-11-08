@@ -126,6 +126,25 @@ test.describe('Alerts with Data', () => {
     await expect(card).toHaveCSS('border-left-color', RED_INDICATOR);
   });
 
+  // Scenario: A censored value is alerted only when its bound proves it out of range
+  test('alerts a censored value only when its bound proves it out of range', async ({ page }) => {
+    await seedAlertData(page, [
+      {
+        date: '2024-03-10',
+        values: [
+          { biomarker: GLUCOSE, value: 200, censored: '>' },
+          { biomarker: HEMOGLOBIN, value: 15, censored: '<' },
+        ],
+      },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    await expect(card).toContainText('> 200 mg/dL');
+    await expect(card.getByText(/^high$/i)).toBeVisible();
+    await expect(alertCard(page, 'Hemoglobin')).toHaveCount(0);
+  });
+
   // Scenario: Low value alert display
   test('should show low value alert with orange indicator', async ({ page }) => {
     await seedAlertData(page, [

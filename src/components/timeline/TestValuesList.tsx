@@ -13,7 +13,7 @@ import {
   IconMinus,
   IconTestPipe,
 } from '@tabler/icons-react';
-import type { EnrichedTestValue, TestValueStatus } from '@hooks/useLabResults';
+import type { EnrichedTestValue } from '@hooks/useLabResults';
 import {
   loincTestLabel,
   sampleLabel,
@@ -29,7 +29,7 @@ import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
-import { formatTestValue } from '@/utils/formatTestValue';
+import { formatTestValue, LAB_FLAG_TEXT } from '@/utils/formatTestValue';
 import { ScrollBox } from '@components/common/ScrollBox';
 import { formatReferenceRange } from '@services/alerts/alertRules';
 import { BiomarkerName } from './BiomarkerName';
@@ -42,13 +42,27 @@ export interface TestValuesListProps {
 }
 
 /**
- * Get icon and color for a test value status
+ * Get icon, color and words for a test value's status: by its range, else
+ * by the lab's mark (see valueStatus)
  */
-function getStatusIndicator(status: TestValueStatus): {
+function getStatusIndicator(testValue: EnrichedTestValue): {
   icon: React.ReactNode;
   color: string;
   label: string;
 } {
+  const { status } = testValue;
+  const hasRange =
+    testValue.referenceRangeLow !== undefined ||
+    testValue.referenceRangeHigh !== undefined ||
+    testValue.unconvertedRange !== undefined;
+  if (testValue.statusByLab && status !== 'unknown') {
+    // The range cannot tell, so the lab's own mark gives the status
+    return {
+      icon: status === 'high' ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />,
+      color: statusColor(status),
+      label: status === 'high' ? 'Flagged high by the lab' : 'Flagged low by the lab',
+    };
+  }
   switch (status) {
     case 'high':
       return {
@@ -72,16 +86,19 @@ function getStatusIndicator(status: TestValueStatus): {
       return {
         icon: <IconMinus size={14} />,
         color: statusColor(status),
-        label: 'No reference range available',
+        // A censored value the range cannot place, or a range in a unit the value's does not convert to
+        label: hasRange ? 'Cannot be compared with the reference range' : 'No reference range available',
       };
   }
 }
 
 /**
- * Format a numeric value for display
+ * Format a numeric value for display: with every decimal the report printed
+ * (a specific gravity of 1.015, a TSH of 0.005), only floating-point noise
+ * left out. A converted value is already rounded to its unit's precision.
  */
 function formatNumericValue(value: number): string {
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+  return String(Number(value.toPrecision(12)));
 }
 
 /**
@@ -139,7 +156,8 @@ export function TestValuesList({
                 unitPreferences[testKey(catalog, recorded.biomarkerKey)]
               )
             );
-            const indicator = getStatusIndicator(testValue.status);
+            const indicator = getStatusIndicator(testValue);
+            const flag = testValue.labFlag ? LAB_FLAG_TEXT[testValue.labFlag] : undefined;
             const printed = test ? undefined : splitPrintedSample(testDisplayName(catalog, recorded));
             const biomarkerName = printed?.name || testDisplayName(catalog, recorded);
             const sample = test ? sampleLabel(test) : printed?.sample;
@@ -156,7 +174,7 @@ export function TestValuesList({
               <Table.Tr
                 key={testValue.id}
                 data-status={testValue.status}
-                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}${testValue.method ? ` by ${testValue.method}` : ''}, ${indicator.label}`}
+                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}${testValue.method ? ` by ${testValue.method}` : ''}${flag ? `, ${flag.label}` : ''}, ${indicator.label}`}
               >
                 <Table.Td>
                   <Tooltip label={indicator.label}>
@@ -200,6 +218,12 @@ export function TestValuesList({
                     >
                       {formatValue(testValue)}
                     </Text>
+                    {flag && (
+                      // The lab's mark as printed; in words on hover and in the row's label
+                      <Text size="xs" fw={700} component="abbr" title={flag.label} style={{ textDecoration: 'none' }}>
+                        {flag.mark}
+                      </Text>
+                    )}
                   </Group>
                   {testValue.method && (
                     <Text size="xs" c="dimmed">
@@ -214,10 +238,12 @@ export function TestValuesList({
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c="dimmed">
-                    {formatReferenceRange(
-                      { low: testValue.referenceRangeLow, high: testValue.referenceRangeHigh },
-                      testValue.unit
-                    ) ?? '—'}
+                    {(testValue.unconvertedRange
+                      ? formatReferenceRange(testValue.unconvertedRange, testValue.unconvertedRange.unit)
+                      : formatReferenceRange(
+                          { low: testValue.referenceRangeLow, high: testValue.referenceRangeHigh },
+                          testValue.unit
+                        )) ?? '—'}
                   </Text>
                 </Table.Td>
               </Table.Tr>

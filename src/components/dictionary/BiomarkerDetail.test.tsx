@@ -185,6 +185,11 @@ describe('BiomarkerDetail', () => {
       expect(screen.getByText(`5-10 ${summary.latest.unit}`)).toBeInTheDocument();
     });
 
+    it('shows a censored value with its comparator', () => {
+      renderDetail({ summary: { ...summary, latest: { ...summary.latest, value: 10, censored: '<' } } });
+      expect(screen.getByText(`< 10 ${summary.latest.unit}`)).toBeInTheDocument();
+    });
+
     it('says when there are no recorded values', () => {
       renderDetail({ summary: null });
       const yours = screen.getByRole('region', { name: 'Your results' });

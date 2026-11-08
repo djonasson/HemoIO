@@ -533,6 +533,7 @@ export function TrendsView({
                 labResultId: selectedPoint.labResultId,
                 value: selectedPoint.value,
                 interval: selectedPoint.interval,
+                censored: selectedPoint.censored,
                 unit: selectedPoint.unit,
                 date: selectedPoint.date,
                 status: selectedPoint.status,

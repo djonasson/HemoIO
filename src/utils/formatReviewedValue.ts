@@ -4,22 +4,24 @@
 
 import { formatIntervalValue, heldQualitative } from '@services/ai';
 import { formatReferenceRange } from '@services/alerts/alertRules';
+import { withComparator } from './formatTestValue';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /**
  * A value's number, or its interval ("0-1"), or a qualitative result as
- * printed with the number it reads as ("Assenti (0)"), or nothing when it
+ * printed with the number it reads as ("Assenti (0)"), or a censored value
+ * with its comparator ("< 10"), or nothing when it
  * has no number yet (a cleared field or a row not filled in)
  */
 export function formatReviewedValue(
-  biomarker: Pick<MatchedBiomarker, 'value' | 'isInterval' | 'intervalLow' | 'intervalHigh' | 'qualitative'>
+  biomarker: Pick<MatchedBiomarker, 'value' | 'isInterval' | 'intervalLow' | 'intervalHigh' | 'qualitative' | 'censored'>
 ): string {
   const qualitative = heldQualitative(biomarker);
   if (qualitative) return `${qualitative.text} (${qualitative.value})`;
   if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
     return formatIntervalValue(biomarker.intervalLow, biomarker.intervalHigh);
   }
-  return Number.isFinite(biomarker.value) ? String(biomarker.value) : '';
+  return Number.isFinite(biomarker.value) ? withComparator(String(biomarker.value), biomarker.censored) : '';
 }
 
 /**

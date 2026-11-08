@@ -33,7 +33,7 @@ export interface LabVisit {
   date: string;
   labName?: string;
   /** A value is in its biomarker's unit unless it names another */
-  values: Array<{ biomarker: BiomarkerFixture; value: number; unit?: string }>;
+  values: Array<{ biomarker: BiomarkerFixture; value: number; unit?: string; censored?: '<' | '<=' | '>' | '>=' }>;
 }
 
 /**
@@ -54,7 +54,7 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
       updatedAt: timestamp,
     });
 
-    for (const { biomarker, value, unit } of visit.values) {
+    for (const { biomarker, value, unit, censored } of visit.values) {
       testValues.push({
         id: testValues.length + 1,
         labResultId,
@@ -64,6 +64,7 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
         unit: unit ?? biomarker.unit,
         referenceRangeLow: biomarker.low,
         referenceRangeHigh: biomarker.high,
+        ...(censored && { censored }),
         confidence: 0.95,
         createdAt: timestamp,
         updatedAt: timestamp,

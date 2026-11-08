@@ -36,3 +36,19 @@ describe('formatPointValue', () => {
     expect(formatPointValue({ value: 95 })).toBe('95');
   });
 });
+
+describe('censored values', () => {
+  it.each([
+    ['<', '< 10'],
+    ['<=', '≤ 10'],
+    ['>', '> 10'],
+    ['>=', '≥ 10'],
+  ] as const)('reads %s 10 with its comparator, as %s', (censored, shown) => {
+    expect(formatTestValue({ value: 10, censored })).toBe(shown);
+    expect(formatPointValue({ value: 10, censored })).toBe(shown);
+  });
+
+  it('writes the bound as asked', () => {
+    expect(formatTestValue({ value: 0.2, censored: '<' }, (n) => n.toFixed(2))).toBe('< 0.20');
+  });
+});

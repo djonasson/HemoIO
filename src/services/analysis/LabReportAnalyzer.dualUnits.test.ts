@@ -125,3 +125,17 @@ describe('analyzeLabReport: values reported in two units', () => {
     expect(result.matchedBiomarkers.every((b) => b.hasDuplicateConflict)).toBe(true);
   });
 });
+
+describe('analyzeLabReport: conflicting values', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('states a censored value with its comparator in the conflict', async () => {
+    const result = await analyze([
+      { ...extracted('Glucosio', 10, 'mg/dL', 'serum'), censored: '<' },
+      extracted('Glucosio', 5, 'mmol/L', 'serum'),
+    ]);
+
+    expect(result.duplicateConflicts).toHaveLength(1);
+    expect(result.duplicateConflicts[0].message).toContain('< 10 mg/dL');
+  });
+});

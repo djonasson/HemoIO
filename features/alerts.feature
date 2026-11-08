@@ -21,6 +21,13 @@ Feature: Alerts
     And it should show the value and reference range
     And the alert should have a red indicator
 
+  Scenario: A censored value is alerted only when its bound proves it out of range
+    Given I have a Glucose result printed as "> 200" mg/dL, above the reference high of 100
+    And a Hemoglobin result printed as "< 15" g/dL, whose reference range starts at 12
+    When I view the alerts
+    Then Glucose should be alerted as high at "> 200 mg/dL"
+    And Hemoglobin should not be alerted
+
   Scenario: Low value alert display
     Given I have a hemoglobin value of 10 g/dL (reference: 12-17.5)
     When I view the alerts
