@@ -92,6 +92,14 @@ Feature: Document Analysis
     Then each should be read as its bound with its comparator
     And "> 1.000" and "> 100.000" should read as 1000 and 100000, the dot separating thousands
     And "< 0,2" should read as 0.2, the comma a decimal mark
+    And "< 0.005", "> 0.500" and "≥ 0.100" should read as 0.005, 0.5 and 0.1, a small decimal never read as thousands
+
+  Scenario: A bound that could read two ways, or is more than a number, is left for review
+    Given the AI gave a value such as "< 1.005", which is a specific gravity of 1.005 or a count of 1005
+    Or a value such as "> 10^5 UFC/mL", ">1x10^5", "< 1:80", "<1/40" or "≥ 1.5e3", a power of ten or a titre
+    Then the value should be left empty, never read as a plain bound
+    And the review should show what the report printed and ask for the value
+    But a plain "1.015" should read as 1.015, as a specific gravity is printed
 
   Scenario: A value that cannot be read is left for review
     Given the AI gave a value that cannot be read as a number, such as "vedi nota"

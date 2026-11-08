@@ -167,6 +167,14 @@ describe('parseIntervalValue', () => {
       ['< 1.000,5', '<', 1000.5],
       ['< 0.2', '<', 0.2],
       ['< 1.50', '<', 1.5],
+      ['< 0.005', '<', 0.005],
+      ['<0.010', '<', 0.01],
+      ['> 0.500', '>', 0.5],
+      ['≥ 0.100', '>=', 0.1],
+      ['> 25.000', '>', 25000],
+      ['< 5 mg/24h', '<', 5],
+      ['> 50 µg/L', '>', 50],
+      ['< 5 %', '<', 5],
     ] as const)('reads %o as its bound with its comparator', (raw, censored, value) => {
       const result = parseIntervalValue(raw);
       expect(result).toMatchObject({ censored, value, isInterval: false, rawValue: raw });
@@ -176,6 +184,29 @@ describe('parseIntervalValue', () => {
       const result = parseIntervalValue('< 1,2,3');
       expect(result.value).toBeNaN();
       expect(result.censored).toBeUndefined();
+    });
+
+    test.each([
+      // One digit and three decimals: a specific gravity (1.005) or a count (1005)
+      '< 1.005',
+      '> 1.030',
+      // A power of ten, an exponent or a titre: more than a bound and its unit
+      '> 10^5 UFC/mL',
+      '>1x10^5',
+      '> 1 x 10^5',
+      '> 1 ×10 5',
+      '< 1:80',
+      '<1/40',
+      '≥ 1.5e3',
+    ])('leaves %o missing, keeping what was printed for the review', (raw) => {
+      const result = parseIntervalValue(raw);
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+      expect(result.rawValue).toBe(raw);
+    });
+
+    test('reads a plain number with three decimals as a decimal, as a specific gravity is', () => {
+      expect(parseIntervalValue('1.015')).toMatchObject({ value: 1.015, isInterval: false });
     });
 
     test('should parse "> 20" with space', () => {

@@ -589,6 +589,25 @@ test.describe('Import Wizard', () => {
         await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('> 1000');
       });
 
+      test('reads a small decimal bound as printed, and leaves a power of ten for review', async ({ page }) => {
+        // Scenario: Values printed beyond what the lab can measure are read in every common form
+        // Scenario: A bound that could read two ways, or is more than a number, is left for review
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: '< 0.005', unit: 'mg/dL', confidence: 0.95 },
+              { name: 'Hemoglobin', value: '> 10^5 UFC/mL', unit: 'g/dL', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('< 0.005');
+        const row = reviewRow(page, 'Hemoglobin');
+        await expect(row.getByText('Printed: “> 10^5 UFC/mL”')).toBeVisible();
+        // No bound read from it: the cell holds only what was printed
+        await expect(reviewCell(row, 'Value')).toHaveText('Printed: “> 10^5 UFC/mL”');
+      });
+
       test('keeps a measured number beside a word', async ({ page }) => {
         // Scenario: A measured number is never replaced by a word
         await loginWithOllama(page, [
