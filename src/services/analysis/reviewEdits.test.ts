@@ -54,6 +54,13 @@ describe('applyBiomarkerName', () => {
     expect(renamed).toMatchObject({ name: 'P-Glucosio', loincCode: '2345-7', identifiedBy: 'local' });
   });
 
+  it('reads a renamed value printed in words only as a test whose results are words', async () => {
+    const value = await analyzed('Zorb', 'mg/dL');
+    const inWords = { ...value, qualitative: { text: 'Assente', kind: 'boolean', value: 0 } } as const;
+    // The fixture's glucose tests are all measured in a unit: none has results in words
+    expect(applyBiomarkerName(inWords, 'P-Glucosio', catalog).loincCode).toBeUndefined();
+  });
+
   it("has the AI's test again when the printed name is typed back", async () => {
     // "Blood" leaves the sample open: the AI chooses
     const value = await analyzed('Glucosio', 'mmol/L', '15074-8', 'blood');

@@ -30,7 +30,7 @@ Respond with a JSON object containing:
 
 Each biomarker object should have:
 - name: Biomarker name as found in report
-- specimenHint: the sample the report names for this value, from its section heading or name: "blood", "serum", "plasma", "urine" or "24h urine"; null when it names none
+- specimenHint: the sample the report names for this value, from its section heading or name: "blood", "serum", "plasma", "urine", "urine sediment" (a value of a urine sediment section) or "24h urine"; null when it names none
 - value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10"). For censored values, the STRING with its comparator (e.g., "< 10"). For qualitative results, the number given under QUALITATIVE VALUES
 - qualitativeValue: for a qualitative result only, the result exactly as printed (e.g., "Assenti", "Positivo", "++"); omit it otherwise
 - unit: Unit of measurement
@@ -83,7 +83,7 @@ When a value is printed in two units (e.g., "Glucosio 95 mg/dL 5.3 mmol/L"), ext
 Examples:
   - "Nitriti assenti [assenti]" → name: "Nitriti (urine)", value: 0, unit: "", qualitativeValue: "assenti"
   - "Esterasi leucocitaria assente [assente]" → name: "Esterasi leucocitaria (urine)", value: 0, unit: "", qualitativeValue: "assente"
-  - "Batteri Assenti" (sediment) → name: "Batteri (urine)", value: 0, unit: "", qualitativeValue: "Assenti"
+  - "Batteri Assenti" (sediment) → name: "Batteri (urine)", specimenHint: "urine sediment", value: 0, unit: "", qualitativeValue: "Assenti"
   - "Emoglobina ++" (urine) → name: "Emoglobina (urine)", value: 2, unit: "", qualitativeValue: "++"
   - "Glucosio 100 mg/dL" → value: 100
   - "Glucosio < 10 mg/dL" (in U-Esame standard) → name: "Glucosio (urine)", value: "< 10"

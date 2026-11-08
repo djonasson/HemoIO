@@ -1276,6 +1276,49 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '' }))).toContain('46248-1');
   });
 
+  describe('a result printed in words', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    // Ordinal, semi-quantitative or nominal, but never an organism a culture names
+    const inWords = (code: string): boolean => {
+      const test = generated.test(code);
+      return test !== undefined && ['Ord', 'OrdQn', 'Nom'].includes(test.scale) && test.property !== 'Prid';
+    };
+
+    it('is only a test whose results are words: no culture, no count', () => {
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent });
+      expect(result.status).toBe('ambiguous');
+      const codes = codesOf(result);
+      expect(codes).toEqual(expect.arrayContaining(['50221-1', '25145-4']));
+      expect(codes).not.toContain('630-4');
+      expect(codes).not.toContain('51480-2');
+      expect(codes.every(inWords)).toBe(true);
+    });
+
+    it("is the microscope's in a urine sediment section", () => {
+      expect(
+        matchLocally(generated, { name: 'Batteri', unit: '', specimenHint: 'urine sediment', qualitative: absent })
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+      expect(
+        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine sediment', qualitative: absent })
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('is an interpretation read as a word: "Borrelia IgG/IgM" "Negativo"', () => {
+      const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
+      expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '', qualitative: negative }))).toContain('46248-1');
+    });
+
+    it.each([
+      ['Nitriti (urine)', 'urine', { text: 'assenti', kind: 'boolean', value: 0 }],
+      ['Emoglobina (urine)', 'urine', { text: '++', kind: 'ordinal', value: 2 }],
+      ['Proteine/Albumina', 'urine', { text: 'Assenti', kind: 'boolean', value: 0 }],
+    ] as const)('keeps %s of %s to tests whose results are words', (name, specimenHint, qualitative) => {
+      const words = matchLocally(generated, { name, unit: '', specimenHint, qualitative });
+      expect(words.candidates.length).toBeGreaterThan(0);
+      expect(words.candidates.every(({ code }) => inWords(code))).toBe(true);
+    });
+  });
+
   it('lists only ratios as ratios: a slash name no ratio fits keeps its own order', () => {
     const { candidates } = matchLocally(generated, { name: 'Glucosio/Glukose', unit: '', specimenHint: 'urine' });
     expect(candidates.map(({ code }) => code).slice(0, 2)).toEqual(['25428-4', '2349-9']);

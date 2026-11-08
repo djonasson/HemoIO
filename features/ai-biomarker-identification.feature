@@ -293,7 +293,8 @@ Feature: Identifying the test of each value
   Scenario: A slash joining two names of one test does not put ratios first
     Given a urine report prints "Proteine/Albumina" as "Assenti", or "Glucosio/Glukose" with no unit
     When the report is analyzed
-    Then the first test to choose from should be the test of presence, as for the name alone
+    Then "Proteine/Albumina" should be saved as "Albumin [Presence] in Urine", its result in words being a presence
+    And the first test to choose from for "Glucosio/Glukose" should be the test of presence, as for the name alone
     And "Borrelia IgG/IgM" should still offer the interpretation of both antibodies
 
   Scenario: A ratio's name by its parts needs the slash
@@ -415,6 +416,18 @@ Feature: Identifying the test of each value
     When I choose "Not a LOINC test" for it and save the import
     Then the timeline should show the value as "Zorblatina"
     And a later report printing "Zorblatina" in mg/dL should be saved as "Not a LOINC test" without asking
+
+  Scenario: A result printed in words is only a test whose results are words
+    Given a report prints "Batteri (urine)" as "Assenti", with no unit
+    When the report is analyzed
+    Then the tests to choose from should be the presence tests of bacteria in urine, by machine or by microscope
+    And never the urine culture or a count of bacteria
+
+  Scenario: A result in words in the urine sediment is the microscope's
+    Given a report prints "Batteri" as "Assenti" in its urine sediment section
+    When the report is analyzed
+    Then the value should be saved as "Bacteria [Presence] in Urine sediment by Light microscopy"
+    And the AI should not be asked which test it is
 
   Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
     Given a report prints "Conduttività" in mS/cm, for which LOINC has no test

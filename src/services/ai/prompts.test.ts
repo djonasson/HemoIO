@@ -10,6 +10,8 @@ import {
 describe('the extraction prompt', () => {
   it('asks for the sample each value is from, and no longer lists tests to choose from', () => {
     expect(LAB_REPORT_SYSTEM_PROMPT).toContain('specimenHint');
+    // A value of a urine sediment section, which the microscope's tests are of
+    expect(LAB_REPORT_SYSTEM_PROMPT).toContain('"urine sediment"');
     expect(LAB_REPORT_SYSTEM_PROMPT).not.toContain('KNOWN TESTS');
     expect(LAB_REPORT_SYSTEM_PROMPT).not.toContain('biomarkerKey');
   });

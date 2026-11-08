@@ -59,7 +59,7 @@ function reidentify(
   const { analyzed } = original;
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
   if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
-  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint };
+  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint, qualitative: changed.qualitative };
   const identification =
     analyzed && learnedKey(reading) === learnedKey(analyzed)
       ? analyzed.identification

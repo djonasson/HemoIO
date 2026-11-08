@@ -28,8 +28,10 @@ import {
 export interface PrintedValue {
   name: string;
   unit: string;
-  /** The sample the report section or the AI names: "urine", "24h urine" */
+  /** The sample the report section or the AI names: "urine", "24h urine", "urine sediment" */
   specimenHint?: string;
+  /** A result printed in words ("Assenti", "++"), which only a test whose results are words can have */
+  qualitative?: { kind: 'boolean' | 'ordinal' };
 }
 
 /** A test that may be the printed one */
@@ -357,6 +359,25 @@ function withSearchesKept(catalog: Catalog): Catalog {
     }
     return result;
   };
+  return { ...catalog, scoredSearch };
+}
+
+/** LOINC scales whose results are words: ordinal ("Absent", "2+"), semi-quantitative steps, and nominal ("Negative") */
+const WORD_SCALES: ReadonlySet<string> = new Set(['Ord', 'OrdQn', 'Nom']);
+
+/** Whether a test's results are words a report prints as a presence, a step or a reading: not an organism a culture names */
+function hasWordResults(test: CatalogTest): boolean {
+  return WORD_SCALES.has(test.scale) && test.property !== 'Prid';
+}
+
+/**
+ * The catalog searched only for tests whose results are words: a result
+ * printed as "Assenti" is a presence test's or an interpretation's, never
+ * a culture's organism or a count
+ */
+function withWordResultsOnly(catalog: Catalog): Catalog {
+  const scoredSearch: Catalog['scoredSearch'] = (query, filter) =>
+    catalog.scoredSearch(query, filter).filter(({ test }) => hasWordResults(test));
   return { ...catalog, scoredSearch };
 }
 
@@ -798,10 +819,14 @@ function systemKind(system: string): string {
   return system === DAY_URINE ? 'Urine' : sampleKind(system);
 }
 
+/** A specimen hint naming the urine sediment: "urine sediment", "sedimento urinario" */
+const SEDIMENT_HINT = /\bsediment[oi]?\b/i;
+const URINE_SEDIMENT = 'Urine sed';
+
 /**
  * Where a value's test is looked for: the samples its name says (a
- * prefix, urine words or serum words), else its specimen hint, else
- * serum, plasma or blood; and whether that sample is said, or only
+ * prefix, urine words or serum words), else its specimen hint (a urine
+ * sediment one narrowing urine to its sediment), else serum, plasma or blood; and whether that sample is said, or only
  * loosely by "blood". A day's unit ("mg/24h") says its urine was
  * collected over 24 hours, as does the AI's "24h urine".
  */
@@ -811,10 +836,13 @@ function sampleOf(
   hint: string | undefined,
   perDay: boolean
 ): { systems: string[]; sample: SampleSaid } {
-  const hinted = hint ? hintSystems(hint) : undefined;
+  const sediment = hint !== undefined && SEDIMENT_HINT.test(hint);
+  const hinted = hint ? (hintSystems(hint) ?? (sediment ? URINE : undefined)) : undefined;
   let said = split.systems ?? worded?.systems;
   if (isUrine(said) && hinted?.includes(DAY_URINE)) said = [DAY_URINE];
   let systems = said ?? hinted;
+  // A urine sediment section: what a microscope sees in its fields
+  if (sediment && systems !== undefined && systems.every((system) => URINE.includes(system))) systems = [URINE_SEDIMENT];
   if (perDay && (systems === undefined || isUrine(systems))) systems = [DAY_URINE];
   if (systems === undefined) return { systems: DEFAULT_SYSTEMS, sample: 'none' };
   const loosely = said === undefined ? BLOOD_HINT.test(hint ?? '') : !split.systems && worded?.loosely === true;
@@ -1042,7 +1070,8 @@ export function matchLocally(
   printed: PrintedValue,
   learned?: (key: string) => string | undefined
 ): LocalMatch {
-  const catalog = withSearchesKept(fullCatalog);
+  const searched = withSearchesKept(fullCatalog);
+  const catalog = printed.qualitative ? withWordResultsOnly(searched) : searched;
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
   if (value.unit.trim() === '') return matchUnitless(catalog, value, unit, learned);

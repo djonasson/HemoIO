@@ -387,7 +387,8 @@ test.describe('Identifying the test of each value', () => {
       { name: 'Borrelia IgG/IgM', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' },
     ]);
     const asked = Object.fromEntries(ai.choiceRequests.flat().map((value) => [value.name, value.candidates.map((c) => c.code)]));
-    expect(asked['Proteine/Albumina'][0]).toBe('1753-3');
+    expect(asked['Proteine/Albumina']).toBeUndefined();
+    await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).toHaveText('Albumin [Presence] in Urine');
     expect(asked['Borrelia IgG/IgM']).toContain('46248-1');
   });
 
@@ -640,6 +641,27 @@ test.describe('Identifying the test of each value', () => {
     await analyzeReport(page, [zorblatina]);
     await expect(savedAsCell(rowFor(page, '3'))).toHaveText(NOT_A_LOINC_TEST);
     await expectNoCheckLabel(rowFor(page, '3'));
+  });
+
+  test('offers only tests whose results are words for a result printed in words', async ({ page }) => {
+    // Scenario: A result printed in words is only a test whose results are words
+    const ai = await analyzeReport(page, [
+      { name: 'Batteri (urine)', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine', qualitativeValue: 'Assenti' },
+    ]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    const codes = ai.choiceRequests[0][0].candidates.map((c) => c.code);
+    expect(codes).toEqual(expect.arrayContaining(['50221-1', '25145-4']));
+    expect(codes).not.toContain('630-4');
+    expect(codes).not.toContain('51480-2');
+  });
+
+  test("files a result in words in the urine sediment as the microscope's", async ({ page }) => {
+    // Scenario: A result in words in the urine sediment is the microscope's
+    const ai = await analyzeReport(page, [
+      { name: 'Batteri', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine sediment', qualitativeValue: 'Assenti' },
+    ]);
+    await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).toHaveText('Bacteria [Presence] in Urine sediment by Light microscopy');
+    expect(ai.choiceRequests).toHaveLength(0);
   });
 
   test('saves a value with no test to choose from as "Not a LOINC test" without asking', async ({ page }) => {
