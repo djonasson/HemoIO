@@ -34,6 +34,11 @@ Feature: Alerts
     Then Glucose should be alerted as low at "< 60 mg/dL"
     But no alert should say it is consistently increasing
 
+  Scenario: A censored value between measured ones that went the other way raises no trend alert
+    Given I have Glucose results of 110 and 120 mg/dL, then "> 200" mg/dL, then 130 and 140 mg/dL
+    When I view the alerts
+    Then no alert should say it is consistently increasing, as the values rose above 200 and fell back
+
   Scenario: A censored value is critical only when its bound proves it far enough out
     Given the lab marked a value of "< 30" low, with a reference low of 20
     When I view the alerts

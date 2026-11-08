@@ -351,42 +351,54 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
 }
 
 /**
- * Which way a censored value surely moved from the measured value before
- * it: down for "< 60" after 140, up for "> 200" after 120; 0 when its bound
- * cannot tell ("< 60" after 50)
+ * Which way the values surely moved between a measured value and a censored
+ * one beside it: from 140 to "< 60" is down, from "< 60" to 130 is up; 0
+ * when the bound cannot tell ("< 60" beside 50)
  */
-function provenStep(previous: number, { value: bound, censored }: { value: number } & ValueReading): number {
-  if (censored === '<') return bound <= previous ? -1 : 0;
-  if (censored === '<=') return bound < previous ? -1 : 0;
-  if (censored === '>') return bound >= previous ? 1 : 0;
-  if (censored === '>=') return bound > previous ? 1 : 0;
-  return 0;
+function provenStep(measured: number, { value: bound, censored }: { value: number } & ValueReading, after: boolean): number {
+  let step = 0;
+  if (censored === '<') step = bound <= measured ? -1 : 0;
+  if (censored === '<=') step = bound < measured ? -1 : 0;
+  if (censored === '>') step = bound >= measured ? 1 : 0;
+  if (censored === '>=') step = bound > measured ? 1 : 0;
+  // Leaving the bound for the measured value is the opposite move
+  return after ? -step : step;
+}
+
+/** The points a direction is read from, and whether the values keep to one */
+export interface DirectionPoints<T> {
+  /** The measured points, in date order: a censored value is a bound, not a reading */
+  points: T[];
+  /**
+   * False when a censored value proves the values went against the way the
+   * measured ones go: 110, 120, "> 200", 130, 140 rose to above 200 and fell
+   * back, so they do not rise four times
+   */
+  consistent: boolean;
 }
 
 /**
- * The measured points a direction and a slope are read from, in date
- * order. A censored value ("< 10") is a bound, not a reading, so it is
- * left out; but one whose bound proves the values turned (110, 120, 130,
- * 140, then "< 60") breaks the run: only the points after it count. One
+ * The measured points a direction and a slope are read from, in date order,
+ * and whether every censored value agrees with them. Each censored value is
+ * checked against the measured values just before and just after it; one
  * that goes the way the values went ("< 60" after a fall) breaks nothing.
  */
 export function directionPoints<T extends { date: Date; value: number } & Pick<ValueReading, 'censored'>>(
   points: readonly T[]
-): T[] {
+): DirectionPoints<T> {
   const sorted = [...points].sort((a, b) => a.date.getTime() - b.date.getTime());
-  let run: T[] = [];
-  for (const point of sorted) {
-    if (!point.censored) {
-      run.push(point);
-      continue;
-    }
-    if (run.length < 2) continue;
-    const [before, last] = run.slice(-2);
-    const step = provenStep(last.value, point);
-    const going = Math.sign(last.value - before.value);
-    if (step !== 0 && going !== 0 && step !== going) run = [];
-  }
-  return run;
+  const measured = sorted.filter((point) => !point.censored);
+  const going = measured.length < 2 ? 0 : Math.sign(measured[measured.length - 1].value - measured[0].value);
+  const consistent =
+    going === 0 ||
+    sorted.every((point, index) => {
+      if (!point.censored) return true;
+      const before = sorted.slice(0, index).reverse().find((other) => !other.censored);
+      const after = sorted.slice(index + 1).find((other) => !other.censored);
+      const steps = [before && provenStep(before.value, point, false), after && provenStep(after.value, point, true)];
+      return steps.every((step) => !step || step === going);
+    });
+  return { points: measured, consistent };
 }
 
 /**
@@ -402,9 +414,16 @@ export function analyzeTrend(points: TrendDataPoint[]): TrendAnalysisResult {
     throw new Error('Cannot analyze trend for empty data set');
   }
 
-  const measured = directionPoints(points);
-  const direction = calculateTrendDirection(measured);
-  const rateOfChange = calculateRateOfChange(measured);
+  const { points: measured, consistent } = directionPoints(points);
+  // Values a censored one proves went both ways have no direction or rate, though there are enough of them
+  const direction: TrendDirectionResult = consistent
+    ? calculateTrendDirection(measured)
+    : {
+        direction: 'stable',
+        confidence: 0,
+        description: 'No clear direction: a value beyond what the lab can measure went the other way',
+      };
+  const rateOfChange = consistent ? calculateRateOfChange(measured) : null;
   const statistics = calculateStatistics(points);
 
   // Count values by status

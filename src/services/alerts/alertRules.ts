@@ -48,9 +48,11 @@ export function detectConsistentDirection(
   points: ReadonlyArray<{ date: Date; value: number } & Pick<ValueReading, 'censored'>>
 ): { direction: TrendDirection; count: number; start: Date; end: Date } | null {
   // One point per day (their mean): two labs on one day are not two steps.
-  // A censored value is a bound, not a step, and one proving a turn breaks the run (see directionPoints).
+  // A censored value is a bound, not a step, and one proving a turn leaves no direction (see directionPoints).
+  const { points: measured, consistent } = directionPoints(points);
+  if (!consistent) return null;
   const byDay = new Map<string, { date: Date; total: number; count: number }>();
-  for (const point of directionPoints(points)) {
+  for (const point of measured) {
     const day = `${point.date.getFullYear()}-${point.date.getMonth()}-${point.date.getDate()}`;
     const entry = byDay.get(day);
     if (entry) {

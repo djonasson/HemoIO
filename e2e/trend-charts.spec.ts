@@ -480,6 +480,26 @@ test.describe('Trend direction indicator', () => {
     await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toHaveCount(0);
   });
 
+  test('reads no clear direction when a censored value between measured ones went the other way', async ({ page }) => {
+    // Scenario: A censored value between measured ones that went the other way leaves no clear direction
+    const values = [110, 120, 200, 130, 140, 150, 160];
+    await seedAndOpenTrends(
+      page,
+      values.map((value, i) => ({
+        date: `2024-0${i + 1}-01`,
+        values: [{ biomarker: GLUCOSE, value, ...(value === 200 && { censored: '>' as const }) }],
+      }))
+    );
+    await selectBiomarker(page, 'Glucose');
+
+    await expect(dataPoints(page)).toHaveCount(7);
+    const main = page.getByRole('main');
+    await expect(main.getByText('Stable', { exact: true })).toBeVisible();
+    await expect(main.getByText(/% confidence/)).toHaveCount(0);
+    await expect(main.getByText('Increasing', { exact: true })).toHaveCount(0);
+    await expect(main.getByText('Need more data', { exact: true })).toHaveCount(0);
+  });
+
   test('shows the latest, lowest and highest values as they read', async ({ page }) => {
     // Scenario: The statistics read values as printed
     await seedAndOpenTrends(page, [

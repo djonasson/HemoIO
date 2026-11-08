@@ -281,6 +281,21 @@ test.describe('Alerts with Data', () => {
     await expect(page.getByRole('main').getByText(/Consistently increasing/)).toHaveCount(0);
   });
 
+  // Scenario: A censored value between measured ones that went the other way raises no trend alert
+  test('raises no trend alert when a censored value between measured ones went the other way', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-10', values: [{ biomarker: GLUCOSE, value: 110 }] },
+      { date: '2024-02-10', values: [{ biomarker: GLUCOSE, value: 120 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 200, censored: '>' }] },
+      { date: '2024-04-10', values: [{ biomarker: GLUCOSE, value: 130 }] },
+      { date: '2024-05-10', values: [{ biomarker: GLUCOSE, value: 140 }] },
+    ]);
+    await viewAlerts(page);
+
+    await expect(alertCard(page, 'Glucose').first()).toContainText('140 mg/dL');
+    await expect(page.getByRole('main').getByText(/Consistently increasing/)).toHaveCount(0);
+  });
+
   // Scenario: A censored value is critical only when its bound proves it far enough out
   test('alerts a censored value the lab marked low as a warning, not critical', async ({ page }) => {
     await seedAlertData(page, [

@@ -109,6 +109,16 @@ describe('detectConsistentDirection', () => {
     expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 200, censored: '>' }])).toBeNull();
   });
 
+  it('finds no direction when a censored value between measured ones proves they went both ways', () => {
+    const at = (values: Array<number | [number, '<' | '>']>) =>
+      values.map((value, i) => ({
+        date: d(`2024-${String(i + 1).padStart(2, '0')}-10`),
+        ...(typeof value === 'number' ? { value } : { value: value[0], censored: value[1] }),
+      }));
+    expect(detectConsistentDirection(at([110, 120, [200, '>'], 130, 140]))).toBeNull();
+    expect(detectConsistentDirection(at([140, [60, '<'], 130, 120, 110, 100]))).toBeNull();
+  });
+
   it('keeps a direction a censored value goes along with', () => {
     const falling = [140, 120, 100, 80].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
     expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 60, censored: '<' }])).toMatchObject({

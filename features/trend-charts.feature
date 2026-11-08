@@ -32,6 +32,13 @@ Feature: Trend Charts
     When I view the Glucose trend
     Then the trend should not read "Increasing", as the values surely fell
 
+  Scenario: A censored value between measured ones that went the other way leaves no clear direction
+    Given I have Glucose results of 110 and 120 mg/dL, then "> 200" mg/dL, then 130, 140, 150 and 160 mg/dL
+    When I view the Glucose trend
+    Then the trend should read "Stable", with no confidence given, as the values went both ways
+    And it should not ask for more data, as there are enough values
+    And no rate of change should be shown
+
   Scenario: The statistics read values as printed
     Given my latest Glucose result is "> 100" mg/dL, with a reference range of 70-100 mg/dL
     When I view the Glucose trend

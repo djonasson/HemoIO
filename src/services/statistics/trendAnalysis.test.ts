@@ -313,21 +313,38 @@ describe('trendAnalysis', () => {
       censored: comparator,
     });
 
+    const series = (values: Array<number | [number, '<' | '>']>) =>
+      values.map((value, i) => {
+        const date = `2024-${String(i + 1).padStart(2, '0')}-01`;
+        return typeof value === 'number' ? createDataPoint(date, value) : censored(date, ...value);
+      });
+
     it('leaves out censored points', () => {
       const measured = createDataPoint('2024-02-01', 100);
-      expect(directionPoints([censored('2024-01-01', 10, '>'), measured])).toEqual([measured]);
+      expect(directionPoints([censored('2024-01-01', 10, '>'), measured])).toEqual({ points: [measured], consistent: true });
     });
 
-    it('starts over after a censored value whose bound proves the values turned', () => {
-      const rising = ['01', '02', '03', '04'].map((month, i) => createDataPoint(`2024-${month}-01`, 110 + i * 10));
-      expect(directionPoints([...rising, censored('2024-05-01', 60, '<')])).toEqual([]);
-      const after = createDataPoint('2024-06-01', 70);
-      expect(directionPoints([...rising, censored('2024-05-01', 60, '<'), after])).toEqual([after]);
+    it('finds no consistent direction once a censored value proves the values turned, after it or before it', () => {
+      expect(directionPoints(series([110, 120, 130, 140, [60, '<']])).consistent).toBe(false);
+      // Rose above 200 and fell back to 130
+      expect(directionPoints(series([110, 120, [200, '>'], 130, 140])).consistent).toBe(false);
+      // Fell below 60 and rose back to 130
+      expect(directionPoints(series([140, [60, '<'], 130, 120, 110, 100])).consistent).toBe(false);
     });
 
-    it('keeps the run through a censored value going the same way', () => {
-      const falling = ['01', '02', '03', '04'].map((month, i) => createDataPoint(`2024-${month}-01`, 140 - i * 10));
-      expect(directionPoints([...falling, censored('2024-05-01', 60, '<')])).toEqual(falling);
+    it('keeps a censored value going the way the values go', () => {
+      const falling = series([140, 130, 120, 110, [60, '<']]);
+      expect(directionPoints(falling)).toEqual({ points: falling.slice(0, 4), consistent: true });
+      expect(directionPoints(series([110, 120, [130, '>'], 140, 150])).consistent).toBe(true);
+      // A bound that cannot tell: "< 200" beside 120 and 130
+      expect(directionPoints(series([110, 120, [200, '<'], 130, 140])).consistent).toBe(true);
+    });
+
+    it('reads values a censored one proves went both ways as having no clear direction, not too few', () => {
+      const result = analyzeTrend(series([110, 120, [200, '>'], 130, 140, 150, 160]));
+      expect(result.direction).toMatchObject({ direction: 'stable', confidence: 0 });
+      expect(result.direction.description).toMatch(/No clear direction/);
+      expect(result.rateOfChange).toBeNull();
     });
   });
 
