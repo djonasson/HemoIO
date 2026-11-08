@@ -341,6 +341,8 @@ function createSearch(file: CatalogFile, curated: ReadonlyMap<string, ReadonlySe
   const curatedWords = new Set([...curatedNames.keys()].flatMap((name) => wordsOf(name)));
   const curatedPhrases = [...curatedNames].map(([name, indexes]) => ({
     words: wordsOf(name).filter((word) => !STOP_WORDS.has(word)),
+    // A name of a ratio by its parts ("colesterolo/hdl") is no name of the parts alone
+    slash: name.includes('/'),
     indexes,
   }));
 
@@ -504,6 +506,7 @@ function createSearch(file: CatalogFile, curated: ReadonlyMap<string, ReadonlySe
     const stems = words.map(({ word }) => inflectionStem(word));
     const queryStems = new Set(wordsOf(phrase).flatMap(partsOf).map(inflectionStem));
     for (const phrase of curatedPhrases) {
+      if (phrase.slash && !query.includes('/')) continue;
       if (!phrase.words.every((word) => queryStems.has(inflectionStem(word)))) continue;
       const held = phrase.words.map((word) => stems.indexOf(inflectionStem(word))).filter((i) => i !== -1);
       for (const i of held) for (const index of phrase.indexes) words[i].named.add(index);

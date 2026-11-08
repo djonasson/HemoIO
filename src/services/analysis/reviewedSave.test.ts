@@ -112,6 +112,19 @@ describe('unitMisfits', () => {
   });
 });
 
+describe('ratios of like quantities', () => {
+  it.each(['9830-1', '1759-0', '44429-9'])('asks no unit of %s, a ratio the report printed with none', async (loincCode) => {
+    const real = await loadCatalog();
+    const ratio = analyzed({ name: 'Rapporto colesterolo/HDL', value: 3.6, unit: '', loincCode });
+    expect(missingFields(ratio, real)).toEqual([]);
+  });
+
+  it.each(['13590-5', '54218-3'])('judges a plain ratio as fitting %s, a ratio of like quantities', async (loincCode) => {
+    const real = await loadCatalog();
+    expect(unitFit(analyzed({ name: 'Rapporto', value: 2.4, unit: 'ratio', loincCode }), real)).toBe('fits');
+  });
+});
+
 describe('missingFields', () => {
   it('asks for nothing of a complete value', () => {
     expect(missingFields(CODED)).toEqual([]);

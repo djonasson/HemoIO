@@ -13,9 +13,13 @@ export interface ExtractedBiomarkerFixture {
   value: number | string;
   unit: string;
   confidence: number;
-  referenceRange?: { low?: number; high?: number; unit: string };
+  referenceRange?: { low?: number; high?: number; unit?: string };
   /** The sample the AI reads from the report: "urine", "24h urine", "serum" */
   specimenHint?: string;
+  /** A qualitative result as printed: "Assenti", "++" */
+  qualitativeValue?: string;
+  /** The lab's mark beside the value: "H", "L", "*" */
+  flag?: string;
 }
 
 /** The AI's answer when asked which of the candidate tests a value is */

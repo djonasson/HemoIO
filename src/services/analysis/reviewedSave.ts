@@ -9,7 +9,7 @@ import { nameKey } from '@data/loinc/keys';
 import { unitsMatch } from '@services/units';
 import { readUnitMarker, toUcum, ucumProperties } from '@services/units/ucum';
 import { needsTest } from './identification';
-import { testDimerUnits } from './loincMatch';
+import { PLAIN_RATIO, RATIO_KINDS, testDimerUnits } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
@@ -60,7 +60,8 @@ function hasNoUnit(catalog: Catalog, code: string): boolean {
   if (!test) return false;
   const canonical = getAddon(catalog, code)?.canonicalUnit;
   if (test.scale !== 'Qn' || test.property === 'SpGrav') return true;
-  if (canonical !== undefined) return NO_UNIT.has(canonical);
+  // Read through UCUM: HemoIO's "ratio" is unity, as LOINC's "{ratio}"
+  if (canonical !== undefined) return isUnitless(toUcum(canonical) ?? canonical);
   return test.units.length > 0 && test.units.every(isUnitless);
 }
 
@@ -107,6 +108,8 @@ export function unitFit(biomarker: MatchedBiomarker, catalog: Catalog): UnitFit 
   const offered = [...(addon?.canonicalUnit ? [addon.canonicalUnit] : []), ...(addon?.alternativeUnits ?? [])];
   const fitsOffered = offered.some((unit) => unitsMatch(unit, plain) || toUcum(unit) === ucum);
   if (fitsOffered || test.units.includes(ucum)) return 'fits';
+  // A plain ratio is any ratio of like quantities, as the matcher files it
+  if (PLAIN_RATIO.test(ucum) && RATIO_KINDS.includes(test.property)) return 'fits';
   const kinds = ucumProperties(ucum).map(quantityKind);
   if (kinds.length === 0) return 'unknown';
   return kinds.includes(quantityKind(test.property)) ? 'fits' : 'misfits';
