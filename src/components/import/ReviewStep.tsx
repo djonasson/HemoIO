@@ -102,13 +102,13 @@ export interface ReviewedResult extends AnalysisResult {
   duplicateConflicts?: DuplicateConflict[];
 }
 
-/** The comparator choices of a value: measured ("="), or censored */
 /** The lab's marks as printed, with what each says; or none */
 const LAB_FLAG_OPTIONS = [
   { value: '', label: 'No mark' },
   ...(Object.keys(LAB_FLAG_TEXT) as LabFlag[]).map((flag) => ({ value: flag, label: `${LAB_FLAG_TEXT[flag].mark} (${flag})` })),
 ];
 
+/** The comparator choices of a value: measured ("="), or censored */
 const COMPARATOR_OPTIONS = [
   { value: '', label: '=' },
   ...Object.entries(COMPARATOR_SIGNS).map(([value, label]) => ({ value, label })),
