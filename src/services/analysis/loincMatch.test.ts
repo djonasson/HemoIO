@@ -1072,7 +1072,7 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(codesOf(result)).toEqual(expect.arrayContaining(['14804-9', '14805-6']));
   });
 
-  it.each(['eGFR (formula EKFC)', 'eGFR (EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'])(
+  it.each(['eGFR (formula EKFC)', 'eGFR (EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)', 'eGFR - EKFC', 'eGFR EKFC', 'eGFR formula BIS'])(
     'takes %s, by a formula LOINC has no test for, as the eGFR of no formula, never another formula',
     (name) => {
       expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });

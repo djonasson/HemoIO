@@ -686,6 +686,14 @@ function isUnlistedFormula(word: string): boolean {
   return UNLISTED_FORMULA.test(word);
 }
 
+/** A formula LOINC lacks set off by a dash or a space at a name's end: "eGFR - EKFC", "eGFR formula BIS" */
+const TRAILING_UNLISTED_FORMULA = /^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:ekfc|bis[12]?|schwartz|fas|capa|lmr|lund-malm[oö]))$/i;
+
+/** A name with a formula LOINC lacks at its end read as if in brackets, as reports also print it: "eGFR (EKFC)" */
+function withFormulaBracketed(name: string): string {
+  return name.replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)');
+}
+
 /** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
 function namesFormula(method: string): boolean {
   return /\bformula\b/i.test(method);
@@ -1301,7 +1309,7 @@ function matchIn(
   seen: Seen = {},
   limit = MAX_CANDIDATES
 ): LocalMatch {
-  const whole = spellGreekLetters(value.name.trim());
+  const whole = withFormulaBracketed(spellGreekLetters(value.name.trim()));
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
   // Looked up only when needed: the first lookup builds the search index

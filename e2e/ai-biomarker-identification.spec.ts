@@ -179,7 +179,7 @@ test.describe('Identifying the test of each value', () => {
 
   test('files an eGFR by a formula LOINC has no test for under the eGFR of no formula', async ({ page }) => {
     // Scenario Outline: An eGFR by a formula LOINC has no test for is filed under the eGFR of no formula
-    const names = ['eGFR (formula EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'];
+    const names = ['eGFR (formula EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)', 'eGFR - EKFC'];
     const ai = await analyzeReport(
       page,
       names.map((name, i) => ({ name, value: 81 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))

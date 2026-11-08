@@ -133,6 +133,7 @@ Feature: Identifying the test of each value
       | eGFR (formula EKFC) |
       | eGFR (Schwartz)     |
       | eGFR (formula BIS)  |
+      | eGFR - EKFC         |
 
   Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
     Given a report prints "eGFR (CKD-EPI IDMS)", "eGFR (Roche)" or "eGFR MDRD (donne)" in mL/min/1.73m²
