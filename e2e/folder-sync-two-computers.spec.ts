@@ -457,10 +457,12 @@ test.describe('Two computers on one folder', () => {
 
   test("a backup that can't be read is explained, and nothing changes", async ({ page }) => {
     // Scenario: A backup that can't be read is explained, and nothing changes
-    await askedWhichToKeep(page);
+    const { otherRevision } = await askedWhichToKeep(page);
     await conflictDialog(page).getByRole('button', { name: "Keep this computer's data" }).click();
     await expect.poll(() => folderBackupNames(page)).toHaveLength(1);
     const [name] = await folderBackupNames(page);
+    // The backup is kept first; this computer's copy is written after it
+    await expect.poll(() => folderFileRevision(page, FOLDER_COPY, TEST_PASSWORD)).not.toBe(otherRevision);
     await corruptFolderBackup(page, name);
     const folderCopy = await folderCopyHash(page, TEST_FOLDER_NAME);
 
