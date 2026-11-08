@@ -124,6 +124,7 @@ describe('BiomarkerDetail', () => {
       renderDetailOf(GLUCOSE, overrides);
     const summary = {
       count: 2,
+      trendable: true,
       latest: {
         value: 120,
         unit: 'mg/dL',
@@ -166,6 +167,48 @@ describe('BiomarkerDetail', () => {
         summary: { ...summary, latest: { ...summary.latest, value: true, unit: '' } },
       });
       expect(screen.getByText('Positive')).toBeInTheDocument();
+    });
+
+    it('shows a qualitative result as printed', () => {
+      renderDetail({
+        summary: { ...summary, latest: { ...summary.latest, value: 'Assenti', unit: '' } },
+      });
+      expect(screen.getByText('Assenti')).toBeInTheDocument();
+    });
+
+    it('shows an interval as its ends', () => {
+      renderDetail({
+        summary: {
+          ...summary,
+          latest: { ...summary.latest, value: 7.5, numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 },
+        },
+      });
+      expect(screen.getByText(`5-10 ${summary.latest.unit}`)).toBeInTheDocument();
+    });
+
+    it('shows a censored value with its comparator', () => {
+      renderDetail({ summary: { ...summary, latest: { ...summary.latest, value: 10, censored: '<' } } });
+      expect(screen.getByText(`< 10 ${summary.latest.unit}`)).toBeInTheDocument();
+    });
+
+    it("says the status as the timeline does: by the lab's mark, or a range it cannot be compared with", () => {
+      renderDetail({
+        summary: { ...summary, latest: { ...summary.latest, statusBasis: 'lab', labFlag: 'high' } },
+      });
+      expect(screen.getByText('Flagged high by the lab')).toBeInTheDocument();
+      expect(screen.getByTitle('flagged high by the lab')).toHaveTextContent('H');
+    });
+
+    it('says when the latest value cannot be compared with its range', () => {
+      renderDetail({
+        summary: { ...summary, latest: { ...summary.latest, status: 'unknown', statusBasis: 'uncomparable', censored: '<' } },
+      });
+      expect(screen.getByText('Cannot be compared with the reference range')).toBeInTheDocument();
+    });
+
+    it('offers no trend for a test whose values are all words, which are not charted', () => {
+      renderDetail({ summary: { ...summary, trendable: false, latest: { ...summary.latest, value: 'Assenti', unit: '' } } });
+      expect(screen.queryByRole('button', { name: 'View trend' })).not.toBeInTheDocument();
     });
 
     it('says when there are no recorded values', () => {

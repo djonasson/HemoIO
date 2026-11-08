@@ -25,6 +25,8 @@ export const LDL: BiomarkerFixture = { key: '13457-7', name: 'LDL Cholesterol', 
 export const HDL: BiomarkerFixture = { key: '2085-9', name: 'HDL Cholesterol', unit: 'mg/dL', low: 40, high: 60 };
 /** One unit only, so its chart offers no unit choice */
 export const RDW: BiomarkerFixture = { key: '788-0', name: 'Red Cell Distribution Width', unit: '%', low: 11.5, high: 14.5 };
+/** Counted per microscope field; its line is in RBC/HPF, which "per campo" is relabelled to */
+export const URINE_RBC: BiomarkerFixture = { key: '13945-1', name: 'Urine Red Blood Cells', unit: 'per campo', low: 0, high: 2 };
 export const VITAMIN_D: BiomarkerFixture = { key: '62292-8', name: 'Vitamin D', unit: 'ng/mL', low: 30, high: 100 };
 
 /** One lab visit: its date, lab and the values measured on it */
@@ -33,7 +35,16 @@ export interface LabVisit {
   date: string;
   labName?: string;
   /** A value is in its biomarker's unit unless it names another */
-  values: Array<{ biomarker: BiomarkerFixture; value: number; unit?: string }>;
+  values: Array<{
+    biomarker: BiomarkerFixture;
+    value: number;
+    unit?: string;
+    censored?: '<' | '<=' | '>' | '>=';
+    /** An interval's ends, whose midpoint is the value */
+    interval?: { low: number; high: number };
+    /** The lab's own mark */
+    labFlag?: 'high' | 'low' | 'abnormal';
+  }>;
 }
 
 /**
@@ -54,7 +65,7 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
       updatedAt: timestamp,
     });
 
-    for (const { biomarker, value, unit } of visit.values) {
+    for (const { biomarker, value, unit, censored, interval, labFlag } of visit.values) {
       testValues.push({
         id: testValues.length + 1,
         labResultId,
@@ -64,6 +75,9 @@ export function buildLabData(visits: LabVisit[]): { labResults: object[]; testVa
         unit: unit ?? biomarker.unit,
         referenceRangeLow: biomarker.low,
         referenceRangeHigh: biomarker.high,
+        ...(censored && { censored }),
+        ...(labFlag && { labFlag }),
+        ...(interval && { numericValueType: 'interval', intervalLow: interval.low, intervalHigh: interval.high }),
         confidence: 0.95,
         createdAt: timestamp,
         updatedAt: timestamp,

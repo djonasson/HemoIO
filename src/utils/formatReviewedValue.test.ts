@@ -11,6 +11,18 @@ describe('formatReviewedValue', () => {
     expect(formatReviewedValue({ value: 0.5, isInterval: true, intervalLow: 0, intervalHigh: 1 })).toBe('0-1');
   });
 
+  it('reads a qualitative result as printed, with the number it reads as', () => {
+    const qualitative = { text: 'Assenti', kind: 'boolean' as const, value: 0 };
+    expect(formatReviewedValue({ value: 0, qualitative })).toBe('Assenti (0)');
+    // Edited to another number, it is that number
+    expect(formatReviewedValue({ value: 2, qualitative })).toBe('2');
+  });
+
+  it('reads a censored value with its comparator', () => {
+    expect(formatReviewedValue({ value: 10, censored: '<' })).toBe('< 10');
+    expect(formatReviewedValue({ value: 200, censored: '>=' })).toBe('≥ 200');
+  });
+
   it('reads a value with no number as nothing', () => {
     expect(formatReviewedValue({ value: NaN })).toBe('');
   });

@@ -21,6 +21,29 @@ Feature: Alerts
     And it should show the value and reference range
     And the alert should have a red indicator
 
+  Scenario: A censored value is alerted only when its bound proves it out of range
+    Given I have a Glucose result printed as "> 200" mg/dL, above the reference high of 100
+    And a Hemoglobin result printed as "< 20" g/dL, whose reference range ends at 17.5
+    When I view the alerts
+    Then Glucose should be alerted as high at "> 200 mg/dL"
+    And Hemoglobin should not be alerted, as it may be anywhere below 20
+
+  Scenario: A censored value proving the values turned raises no trend alert
+    Given I have Glucose results of 110, 120, 130 and 140 mg/dL, and then "< 60" mg/dL
+    When I view the alerts
+    Then Glucose should be alerted as low at "< 60 mg/dL"
+    But no alert should say it is consistently increasing
+
+  Scenario: A censored value between measured ones that went the other way raises no trend alert
+    Given I have Glucose results of 110 and 120 mg/dL, then "> 200" mg/dL, then 130 and 140 mg/dL
+    When I view the alerts
+    Then no alert should say it is consistently increasing, as the values rose above 200 and fell back
+
+  Scenario: A censored value is critical only when its bound proves it far enough out
+    Given the lab marked a value of "< 30" low, with a reference low of 20
+    When I view the alerts
+    Then it should be alerted as a warning, not as critical, as it may be 25
+
   Scenario: Low value alert display
     Given I have a hemoglobin value of 10 g/dL (reference: 12-17.5)
     When I view the alerts

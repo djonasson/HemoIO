@@ -63,6 +63,9 @@ function getPrecisionForUnit(unit: string): number {
   return DEFAULT_PRECISION[normalizedUnit] ?? 2;
 }
 
+/** Decimal places a conversion keeps when its result is compared, not shown */
+export const COMPARISON_PRECISION = 10;
+
 /** Fewest significant figures a displayed value may have */
 const MIN_SIGNIFICANT_FIGURES = 2;
 

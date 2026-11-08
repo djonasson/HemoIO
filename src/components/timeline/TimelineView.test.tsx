@@ -141,6 +141,7 @@ describe('TimelineView', () => {
           value: 125,
           unit: 'mg/dL',
           status: 'high' as const,
+          statusBasis: 'range' as const,
           createdAt: new Date(),
           updatedAt: new Date(),
         },

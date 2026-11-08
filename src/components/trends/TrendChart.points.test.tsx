@@ -47,6 +47,26 @@ describe('TrendChart points', () => {
     expect(point('98 mg/dL').getAttribute('aria-label')).not.toMatch(/notes/);
   });
 
+  it("labels an interval's point with its ends, though it is drawn at its midpoint", () => {
+    renderChart({
+      dataPoints: [...POINTS, { ...POINTS[1], date: new Date('2024-03-20T12:00:00Z'), value: 7.5, interval: { low: 5, high: 10 } }],
+    });
+    expect(point('5-10 mg/dL')).toBeInTheDocument();
+  });
+
+  it('draws a censored value open at its bound, with its comparator in its label', () => {
+    renderChart({
+      dataPoints: [...POINTS, { ...POINTS[1], date: new Date('2024-03-20T12:00:00Z'), value: 10, censored: '<' }],
+    });
+    expect(point('< 10 mg/dL')).toHaveAttribute('data-censored', 'true');
+    expect(point('125 mg/dL')).not.toHaveAttribute('data-censored');
+  });
+
+  it('shows a single interval as its ends', () => {
+    const { getByText } = renderChart({ dataPoints: [{ ...POINTS[0], value: 7.5, interval: { low: 5, high: 10 } }] });
+    expect(getByText('5-10')).toBeInTheDocument();
+  });
+
   it('highlights the linked value itself, not every point of its day', () => {
     const sameDay = [
       ...POINTS,

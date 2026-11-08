@@ -172,6 +172,28 @@ everything the user stores per test is keyed by a code.
 - **TestValue**: One measurement. `biomarkerKey` holds the test's LOINC code
   ("2345-7"), or `unknown:<name key>` for a value the user saved as "not a
   LOINC test", which is then trended by its printed name and unit only.
+  It keeps the method printed with it. An interval ("5-10 per campo") is
+  saved as its midpoint, which charts and status use, with its two ends
+  (`numericValueType: 'interval'`), and reads as its ends everywhere it is
+  shown or exported. A qualitative result is saved as printed ("Assenti",
+  "++") with its kind (`qualitativeType`) and the number it reads as
+  (`ordinalValue`: absent 0, present 1, traces 0.5, one to four crosses 1-4);
+  it is shown as printed and never charted. A microscopy count in words
+  reads on the crosses' steps, above traces: rare, occasional or scarce
+  ("rari", "occasionali", "scarsi") 1, a few ("alcuni") 2, frequent
+  ("frequenti") 3, many or numerous ("molti", "numerosi") 4. Such a word
+  is kept over a 0 the model gave, and has no unit: a count of "few" is
+  never "0 per campo".
+  A censored value ("< 10", beyond what the method measures) is saved as
+  its bound with its comparator (`censored`), shown with it everywhere and
+  drawn open at its bound on trend charts; it is high, low or normal only
+  when every value it may be is ("< 10" in 0-50 is normal, "< 30" above a
+  low of 20 cannot be told), and trend alerts do not read a direction from
+  it. The lab's own mark (`labFlag`: H, L or *) is shown beside the value;
+  the range decides the status, and the mark only when the range cannot. A
+  range printed in another unit is saved converted to the value's
+  (`referenceRangeUnit`); one that does not convert is saved as printed
+  with its unit, shown, and never compared.
 - **CatalogTest**: A LOINC test of the shipped catalog. Never stored in the
   database: a value refers to it by code.
 - **TestAddon**: What HemoIO adds to LOINC for the tests it describes: a

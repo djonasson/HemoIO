@@ -73,6 +73,52 @@ Feature: Document Analysis
     And units should be identified
     And reference ranges should be extracted when present
 
+  Scenario: AI extracts results printed as words or crosses for any test
+    Given a report prints results such as "Assenti", "Positivo", "Tracce" or "++"
+    When the AI analyzes the text
+    Then it should be asked to extract them for any test, with no unit and the result as printed
+    And absent should read as 0, present as 1, traces as 0.5 and one to four crosses as 1 to 4
+    And free text with no presence meaning, such as a colour, should still be skipped
+
+  Scenario: A count printed in words is never read as none
+    Given a report prints a sediment count in words, such as "Rari", "Alcuni", "Numerosi" or "few"
+    And the AI gives it with a value of 0 "per campo", or with no value
+    Then it should be kept as printed, with no unit, never as "0 per campo"
+    And rare, occasional or scarce should read as 1, a few as 2, frequent as 3, and many or numerous as 4
+    But a count the AI gave as a number beside the word, such as 5, should keep its number
+
+  Scenario: A measured number is never replaced by a word
+    Given the AI read a value of 0.05 S/CO with the word "Negativo" beside it
+    Then the value should stay 0.05 S/CO, a measured number with its unit
+    And a word the scale does not know, such as "N/A", "Normale" or "95 mg/dL", should never make a value a word
+    But a word given with no number, or with the number it stands for, should be kept as printed
+
+  Scenario: Values printed beyond what the lab can measure are read in every common form
+    Given a report prints values such as "> 200 H", "<10 mg/dL", "=< 5", "≥ 3" or "inferiore a 5"
+    When the AI gives them as printed
+    Then each should be read as its bound with its comparator
+    And "> 1.000" and "> 100.000" should read as 1000 and 100000, the dot separating thousands
+    And "< 0,2" should read as 0.2, the comma a decimal mark
+    And "< 0.005", "> 0.500" and "≥ 0.100" should read as 0.005, 0.5 and 0.1, a small decimal never read as thousands
+
+  Scenario: A bound that could read two ways, or is more than a number, is left for review
+    Given the AI gave a value such as "< 1.005", which is a specific gravity of 1.005 or a count of 1005
+    Or a value such as "> 10^5 UFC/mL", ">1x10^5", "< 1:80", "<1/40" or "≥ 1.5e3", a power of ten or a titre
+    Then the value should be left empty, never read as a plain bound
+    And the review should show what the report printed and ask for the value
+    But a plain "1.015" should read as 1.015, as a specific gravity is printed
+
+  Scenario: A value that cannot be read is left for review
+    Given the AI gave a value that cannot be read as a number, such as "vedi nota"
+    Then the value should be left empty, never saved as 0
+    And the review should show what the report printed and ask for the value
+
+  Scenario: A value printed in two units needs no warning
+    Given a report prints a value in two units, such as "Glucosio 95 mg/dL 5.27 mmol/L"
+    When the AI analyzes the text
+    Then it should be asked to extract both, which are merged later, without a warning about it
+    And the review should show the value once
+
   Scenario: AI provides confidence scores
     Given the AI has extracted values
     Then each value should have a confidence score

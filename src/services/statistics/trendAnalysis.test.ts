@@ -9,6 +9,7 @@ import {
   calculateStatistics,
   analyzeTrend,
   determineTrendAlertSeverity,
+  directionPoints,
   type TrendDataPoint,
 } from './trendAnalysis';
 
@@ -199,6 +200,34 @@ describe('trendAnalysis', () => {
       expect(result.lowCount).toBe(0);
     });
 
+    it('reads the direction and rate of change from measured points only, not censored ones', () => {
+      const points = [
+        { ...createDataPoint('2024-01-01', 10, 'normal'), censored: '<' as const },
+        createDataPoint('2024-02-01', 100),
+        createDataPoint('2024-03-01', 100),
+        createDataPoint('2024-04-01', 100),
+      ];
+      const result = analyzeTrend(points);
+
+      // Read as a plain 10, the first point would make an increase
+      expect(result.direction.direction).toBe('stable');
+      expect(result.rateOfChange?.percentageChange).toBe(0);
+      // Every point still counts in the summary
+      expect(result.statistics.count).toBe(4);
+      expect(result.normalCount).toBe(4);
+    });
+
+    it('has too little data for a direction when only one point is measured', () => {
+      const points = [
+        { ...createDataPoint('2024-01-01', 10), censored: '<' as const },
+        createDataPoint('2024-02-01', 100),
+      ];
+      const result = analyzeTrend(points);
+
+      expect(result.direction.direction).toBe('insufficient_data');
+      expect(result.rateOfChange).toBeNull();
+    });
+
     it('should count abnormal values correctly', () => {
       const points = [
         createDataPoint('2024-01-01', 100, 'normal'),
@@ -276,5 +305,52 @@ describe('trendAnalysis', () => {
 
       expect(severity).toBeNull();
     });
+  });
+
+  describe('directionPoints', () => {
+    const censored = (date: string, value: number, comparator: '<' | '>') => ({
+      ...createDataPoint(date, value),
+      censored: comparator,
+    });
+
+    const series = (values: Array<number | [number, '<' | '>']>) =>
+      values.map((value, i) => {
+        const date = `2024-${String(i + 1).padStart(2, '0')}-01`;
+        return typeof value === 'number' ? createDataPoint(date, value) : censored(date, ...value);
+      });
+
+    it('leaves out censored points', () => {
+      const measured = createDataPoint('2024-02-01', 100);
+      expect(directionPoints([censored('2024-01-01', 10, '>'), measured])).toEqual({ points: [measured], consistent: true });
+    });
+
+    it('finds no consistent direction once a censored value proves the values turned, after it or before it', () => {
+      expect(directionPoints(series([110, 120, 130, 140, [60, '<']])).consistent).toBe(false);
+      // Rose above 200 and fell back to 130
+      expect(directionPoints(series([110, 120, [200, '>'], 130, 140])).consistent).toBe(false);
+      // Fell below 60 and rose back to 130
+      expect(directionPoints(series([140, [60, '<'], 130, 120, 110, 100])).consistent).toBe(false);
+    });
+
+    it('keeps a censored value going the way the values go', () => {
+      const falling = series([140, 130, 120, 110, [60, '<']]);
+      expect(directionPoints(falling)).toEqual({ points: falling.slice(0, 4), consistent: true });
+      expect(directionPoints(series([110, 120, [130, '>'], 140, 150])).consistent).toBe(true);
+      // A bound that cannot tell: "< 200" beside 120 and 130
+      expect(directionPoints(series([110, 120, [200, '<'], 130, 140])).consistent).toBe(true);
+    });
+
+    it('reads values a censored one proves went both ways as having no clear direction, not too few', () => {
+      const result = analyzeTrend(series([110, 120, [200, '>'], 130, 140, 150, 160]));
+      expect(result.direction).toMatchObject({ direction: 'stable', confidence: 0 });
+      expect(result.direction.description).toMatch(/No clear direction/);
+      expect(result.rateOfChange).toBeNull();
+    });
+  });
+
+  it('reads no increase into values that turned below a censored bound: TSH 1, 2, 3, 4.5, then "< 0.01"', () => {
+    const points = [1, 2, 3, 4.5].map((value, i) => createDataPoint(`2024-0${i + 1}-01`, value));
+    const result = analyzeTrend([...points, { ...createDataPoint('2024-05-01', 0.01), censored: '<' as const }]);
+    expect(result.direction.direction).not.toBe('increasing');
   });
 });

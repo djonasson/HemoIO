@@ -268,18 +268,48 @@ Feature: Identifying the test of each value
       | Fattore VIII |
       | Proteina S   |
 
-  Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+  Scenario: A ratio of times printed in ratio is filed under that time ratio
     Given a report prints "Proteina C attivata resistenza" in ratio
     And LOINC gives the activated protein C resistance as a time ratio
     When the report is analyzed
-    Then the AI should be asked which test it is
-    And the first test to choose from should be "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
+    Then the value should be saved as "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
+    And the AI should not be asked which test it is
 
-  Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+  Scenario: A ratio printed with no unit is asked about, the ratio its name says first
     Given a report prints "Rapporto colesterolo/HDL" with no unit
     When the report is analyzed
     Then the AI should be asked which test it is
-    And the first test to choose from should not be "Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma"
+    And the first test to choose from should be "Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma"
+
+  Scenario: A ratio printed with no unit is saved with none
+    Given a report prints "Rapporto colesterolo/HDL" 3.6 with no unit
+    And the AI files it under "Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma"
+    Then I should be able to continue past the review without typing a unit, as a ratio has none
+
+  Scenario: A plain ratio fits every ratio of like quantities
+    Given a value printed in "ratio" is filed under a ratio of times or of counts, such as the CD4/CD8 ratio
+    Then the review should not say its unit does not fit the test
+
+  Scenario: A slash joining two names of one test does not put ratios first
+    Given a urine report prints "Proteine/Albumina" as "Assenti", or "Glucosio/Glukose" with no unit
+    When the report is analyzed
+    Then the first test to choose from should be the test of presence, as for the name alone
+    And "Borrelia IgG/IgM" should still offer the interpretation of both antibodies
+
+  Scenario: A ratio's name by its parts needs the slash
+    Given a report prints "Colesterolo HDL" with no unit
+    Then HDL cholesterol should come before the cholesterol/HDL ratio among the tests to choose from
+
+  Scenario Outline: A ratio printed by its parts is filed under that ratio
+    Given a report prints "<name>" in ratio
+    When the report is analyzed
+    Then the value should be saved as "<test>"
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                     | test                                                                |
+      | Rapporto colesterolo/HDL | Cholesterol.total/Cholesterol in HDL [Mass Ratio] in Serum or Plasma |
+      | Rapporto A/G             | Albumin/Globulin [Mass Ratio] in Serum or Plasma                     |
 
   Scenario: A count per microscope field is filed under a test counted per field
     Given a report prints "Batteri" in "per campo" under a urine heading

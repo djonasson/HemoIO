@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { loadCatalog } from '@data/loinc/catalog';
 import { testKey } from '@data/loinc/display';
 import { unknownBiomarkerKey } from '@data/loinc/keys';
 import { buildTrendLines, type TrendableResult } from './trendLines';
@@ -60,6 +61,32 @@ describe('buildTrendLines', () => {
     expect(own).toHaveLength(1);
     expect(pointsOf(own[0])).toEqual(['3 mg/g', '4 MG/G']);
     expect(lines.get('2345-7')!.elsewhere).toEqual({ count: 2, units: ['mg/g'] });
+  });
+
+  it("converts an interval's ends as its midpoint", () => {
+    const interval = { numericValueType: 'interval' as const, intervalLow: 90, intervalHigh: 110 };
+    const results = [result('2024-01-15', [{ ...value('2345-7', 100, 'mg/dL', 'Glucose'), ...interval }])];
+
+    const own = buildTrendLines(catalog, results, {}).get('2345-7')!;
+    expect(own.dataPoints[0]).toMatchObject({ value: 100, interval: { low: 90, high: 110 } });
+
+    const converted = buildTrendLines(catalog, results, { [testKey(catalog, '2345-7')]: 'mmol/L' }).get('2345-7')!;
+    expect(converted.dataPoints[0].unit).toBe('mmol/L');
+    expect(converted.dataPoints[0].interval?.low).toBeCloseTo(5, 1);
+    expect(converted.dataPoints[0].interval?.high).toBeCloseTo(6.1, 1);
+  });
+
+  it('keeps the ends of a count per field relabelled to the line\'s spelling: "5-10 per campo" reads "5-10 RBC/HPF"', async () => {
+    const real = await loadCatalog();
+    const interval = { numericValueType: 'interval' as const, intervalLow: 5, intervalHigh: 10 };
+    const results = [result('2024-01-15', [{ ...value('13945-1', 7.5, 'per campo', 'Eritrociti'), ...interval }])];
+    const [line] = buildTrendLines(real, results, {}).values();
+    expect(line.dataPoints[0]).toMatchObject({ value: 7.5, interval: { low: 5, high: 10 } });
+  });
+
+  it("keeps a censored value's comparator on its point", () => {
+    const results = [result('2024-01-15', [{ ...value('2345-7', 10, 'mg/dL', 'Glucose'), censored: '<' as const }])];
+    expect(buildTrendLines(catalog, results, {}).get('2345-7')!.dataPoints[0]).toMatchObject({ value: 10, censored: '<' });
   });
 
   it('names a line of values with no unit as such', () => {

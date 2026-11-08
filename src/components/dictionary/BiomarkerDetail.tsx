@@ -44,7 +44,9 @@ import {
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
 import { formatShortDate } from '@/utils/formatShortDate';
+import { formatTestValue } from '@/utils/formatTestValue';
 import { hasTargetRange } from '@components/settings/personalTarget';
+import { LabFlagMark } from '@components/common/LabFlagMark';
 import type { BiomarkerResultSummary } from '@services/statistics';
 import type { PersonalTargetRange } from '@hooks/usePreferences';
 
@@ -56,9 +58,11 @@ const STATUS_LABELS: Record<BiomarkerResultSummary['latest']['status'], string> 
   unknown: 'No reference range',
 };
 
-function formatSummaryValue(value: number | string | boolean): string {
-  if (typeof value === 'boolean') return value ? 'Positive' : 'Negative';
-  return String(value);
+/** A latest value's status in the timeline's words: by the lab's mark, or a range it cannot be compared with */
+function statusLabel({ status, statusBasis }: BiomarkerResultSummary['latest']): string {
+  if (statusBasis === 'lab' && (status === 'high' || status === 'low')) return `Flagged ${status} by the lab`;
+  if (statusBasis === 'uncomparable') return 'Cannot be compared with the reference range';
+  return STATUS_LABELS[status];
 }
 
 /**
@@ -200,28 +204,32 @@ export function BiomarkerDetail({
             <Stack gap="xs">
               <Group gap="xs">
                 <Text size="sm" fw={500}>
-                  {`${formatSummaryValue(summary.latest.value)} ${summary.latest.unit}`.trim()}
+                  {`${formatTestValue(summary.latest)} ${summary.latest.unit}`.trim()}
                 </Text>
+                {summary.latest.labFlag && <LabFlagMark flag={summary.latest.labFlag} />}
                 <Text size="sm" c="dimmed">
                   {formatShortDate(summary.latest.date)}
                 </Text>
                 <Badge variant="light" color={statusColor(summary.latest.status)}>
-                  {STATUS_LABELS[summary.latest.status]}
+                  {statusLabel(summary.latest)}
                 </Badge>
               </Group>
               <Text size="sm" c="dimmed">
                 {summary.count} {summary.count === 1 ? 'result' : 'results'}
               </Text>
-              <Group>
-                <Button
-                  variant="light"
-                  size="xs"
-                  leftSection={<IconChartLine size={14} />}
-                  onClick={() => onViewTrend(code)}
-                >
-                  View trend
-                </Button>
-              </Group>
+              {/* Only numbers are charted: a test of words alone has no trend */}
+              {summary.trendable && (
+                <Group>
+                  <Button
+                    variant="light"
+                    size="xs"
+                    leftSection={<IconChartLine size={14} />}
+                    onClick={() => onViewTrend(code)}
+                  >
+                    View trend
+                  </Button>
+                </Group>
+              )}
             </Stack>
           ) : (
             <Text size="sm" c="dimmed">

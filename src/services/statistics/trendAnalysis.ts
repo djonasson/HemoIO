@@ -8,6 +8,7 @@
  */
 
 import type { EnrichedTestValue } from '@hooks/useLabResults';
+import type { ValueReading } from '@/types';
 
 /**
  * Direction of a trend
@@ -20,9 +21,10 @@ export type TrendDirection = 'increasing' | 'decreasing' | 'stable' | 'insuffici
 export type TrendSeverity = 'critical' | 'warning' | 'info' | 'positive';
 
 /**
- * Data point for trend analysis
+ * Data point for trend analysis; an interval's ends only in the value's own
+ * unit, since the midpoint converts and its ends are not
  */
-export interface TrendDataPoint {
+export interface TrendDataPoint extends ValueReading {
   /** Date of the measurement */
   date: Date;
   /** Numeric value */
@@ -88,6 +90,10 @@ export interface TrendStatistics {
   standardDeviation: number;
   /** Most recent value */
   latest: number;
+  /** The points of the latest, lowest and highest values, which read as printed ("< 10", "5-10") */
+  latestPoint: TrendDataPoint;
+  minPoint: TrendDataPoint;
+  maxPoint: TrendDataPoint;
   /** Date of latest value */
   latestDate: Date;
   /** Oldest value */
@@ -333,6 +339,9 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
     median,
     standardDeviation,
     latest: sorted[sorted.length - 1].value,
+    latestPoint: sorted[sorted.length - 1],
+    minPoint: sorted.reduce((low, point) => (point.value < low.value ? point : low)),
+    maxPoint: sorted.reduce((high, point) => (point.value > high.value ? point : high)),
     latestDate: sorted[sorted.length - 1].date,
     oldest: sorted[0].value,
     oldestDate: sorted[0].date,
@@ -342,7 +351,60 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
 }
 
 /**
- * Perform complete trend analysis on a set of data points
+ * Which way the values surely moved between a measured value and a censored
+ * one beside it: from 140 to "< 60" is down, from "< 60" to 130 is up; 0
+ * when the bound cannot tell ("< 60" beside 50)
+ */
+function provenStep(measured: number, { value: bound, censored }: { value: number } & ValueReading, after: boolean): number {
+  let step = 0;
+  if (censored === '<') step = bound <= measured ? -1 : 0;
+  if (censored === '<=') step = bound < measured ? -1 : 0;
+  if (censored === '>') step = bound >= measured ? 1 : 0;
+  if (censored === '>=') step = bound > measured ? 1 : 0;
+  // Leaving the bound for the measured value is the opposite move
+  return after ? -step : step;
+}
+
+/** The points a direction is read from, and whether the values keep to one */
+export interface DirectionPoints<T> {
+  /** The measured points, in date order: a censored value is a bound, not a reading */
+  points: T[];
+  /**
+   * False when a censored value proves the values went against the way the
+   * measured ones go: 110, 120, "> 200", 130, 140 rose to above 200 and fell
+   * back, so they do not rise four times
+   */
+  consistent: boolean;
+}
+
+/**
+ * The measured points a direction and a slope are read from, in date order,
+ * and whether every censored value agrees with them. Each censored value is
+ * checked against the measured values just before and just after it; one
+ * that goes the way the values went ("< 60" after a fall) breaks nothing.
+ */
+export function directionPoints<T extends { date: Date; value: number } & Pick<ValueReading, 'censored'>>(
+  points: readonly T[]
+): DirectionPoints<T> {
+  const sorted = [...points].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const measured = sorted.filter((point) => !point.censored);
+  const going = measured.length < 2 ? 0 : Math.sign(measured[measured.length - 1].value - measured[0].value);
+  const consistent =
+    going === 0 ||
+    sorted.every((point, index) => {
+      if (!point.censored) return true;
+      const before = sorted.slice(0, index).reverse().find((other) => !other.censored);
+      const after = sorted.slice(index + 1).find((other) => !other.censored);
+      const steps = [before && provenStep(before.value, point, false), after && provenStep(after.value, point, true)];
+      return steps.every((step) => !step || step === going);
+    });
+  return { points: measured, consistent };
+}
+
+/**
+ * Perform complete trend analysis on a set of data points. The direction
+ * and rate of change are read from the measured points only (see
+ * directionPoints); the statistics and status counts cover every point.
  *
  * @param points - Data points to analyze
  * @returns Complete TrendAnalysisResult
@@ -352,8 +414,16 @@ export function analyzeTrend(points: TrendDataPoint[]): TrendAnalysisResult {
     throw new Error('Cannot analyze trend for empty data set');
   }
 
-  const direction = calculateTrendDirection(points);
-  const rateOfChange = calculateRateOfChange(points);
+  const { points: measured, consistent } = directionPoints(points);
+  // Values a censored one proves went both ways have no direction or rate, though there are enough of them
+  const direction: TrendDirectionResult = consistent
+    ? calculateTrendDirection(measured)
+    : {
+        direction: 'stable',
+        confidence: 0,
+        description: 'No clear direction: a value beyond what the lab can measure went the other way',
+      };
+  const rateOfChange = consistent ? calculateRateOfChange(measured) : null;
   const statistics = calculateStatistics(points);
 
   // Count values by status

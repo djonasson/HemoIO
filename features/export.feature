@@ -14,7 +14,7 @@ Feature: Export Lab Results
     And I click "Export"
     Then a CSV file should be downloaded
     And the file should contain all my lab results
-    And each row should include date, lab name, biomarker, value, unit, and reference range
+    And each row should include date, lab name, biomarker, value, unit, and reference range with its unit
 
   Scenario: Export filtered results to CSV
     When I click the "Export" button
@@ -32,7 +32,6 @@ Feature: Export Lab Results
     Then a CSV file should be downloaded
     And the file should only contain Glucose and Hemoglobin values
 
-  # JSON Export
   Scenario: CSV export gives each value's LOINC code
     Given I have values identified by LOINC codes and a value saved as "Not a LOINC test"
     When I export my results to CSV
@@ -40,6 +39,14 @@ Feature: Export Lab Results
     And a LOINC column should give the code of each identified value
     And the code should be written so a spreadsheet keeps it as text, not as a date
     And it should be empty for the value that is not a LOINC test
+
+  Scenario: CSV export writes each value as it reads
+    Given I have a value read as an interval "5-10", a censored value "< 0.5", a qualitative result "Assenti", and a protein value whose reference range is printed in g/24h
+    When I export my results to CSV
+    Then the interval should read "5-10", written so a spreadsheet keeps it as text, not as a date
+    And the censored value should keep its comparator, "< 0.5"
+    And the qualitative result should read "Assenti"
+    And a Reference Unit column should give the range's unit: g/24h for the protein, the value's own unit for the others
 
   Scenario: A choice of biomarkers that no longer have values exports nothing
     Given I have lab results from "2024-01-15" and "2024-02-20"
@@ -66,6 +73,7 @@ Feature: Export Lab Results
     When I export to CSV for a date range
     Then the CSV should not hold the "Glucose" value
 
+  # JSON Export
   Scenario: Export all data to JSON
     When I click the "Export" button
     And I select "JSON" format

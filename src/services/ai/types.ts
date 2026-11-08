@@ -5,6 +5,7 @@
  */
 
 import type { RateLimitOptions } from './rateLimitedFetch';
+import type { CensoredComparator, LabFlag } from '@/types';
 
 /**
  * Supported AI providers
@@ -73,7 +74,8 @@ export interface ExtractedBiomarker {
   referenceRange?: {
     low?: number;
     high?: number;
-    unit: string;
+    /** The unit it was printed in, only when that is not the value's; else the value's, which it follows */
+    unit?: string;
   };
   /** Analytical method used for measurement (e.g., "Enzymatic", "HPLC", "Immunoassay") */
   method?: string;
@@ -81,8 +83,10 @@ export interface ExtractedBiomarker {
   confidence: number;
   /** Additional notes or flags from the lab */
   notes?: string;
-  /** Whether this value was flagged as abnormal in the report */
-  flaggedAbnormal?: boolean;
+  /** The lab's own high/low mark on the value ("H", "L", "*") */
+  labFlag?: LabFlag;
+  /** For a censored value ("< 10"), how `value` bounds it */
+  censored?: CensoredComparator;
   /** Whether this is an interval value (e.g., "5-10 eritrociti per campo") */
   isInterval?: boolean;
   /** Lower bound for interval values */
@@ -91,6 +95,26 @@ export interface ExtractedBiomarker {
   intervalHigh?: number;
   /** Raw value string before parsing (e.g., "5 - 10") */
   rawValue?: string;
+  /**
+   * A qualitative result ("Assenti", "Positivo", "++") as printed, with its
+   * kind and the number it reads as (see parseQualitativeValue). It holds
+   * while `value` is still that number: a value edited to another number is
+   * no longer the printed word.
+   */
+  qualitative?: QualitativeReading;
+}
+
+/**
+ * A qualitative result as printed, and the number it reads as: absent 0
+ * and present 1 (boolean); traces 0.5, one to four crosses 1-4, and a count
+ * in words on the crosses' steps, rare 1 to many 4 (ordinal)
+ */
+export interface QualitativeReading {
+  /** The result as printed ("Assenti", "Tracce", "++") */
+  text: string;
+  kind: 'boolean' | 'ordinal';
+  /** The number it reads as */
+  value: number;
 }
 
 /**

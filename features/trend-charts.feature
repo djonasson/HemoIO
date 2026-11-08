@@ -20,6 +20,41 @@ Feature: Trend Charts
     And the band should span from the lower reference value to the upper reference value
     And the band should be visually distinct from the data line
 
+  Scenario: A censored value is drawn open at its bound
+    Given I have Glucose results of "< 60" mg/dL and then twice 95 mg/dL
+    When I view the Glucose trend
+    Then the "< 60" point should be drawn open, at its bound, not as a measurement
+    And its label should read "< 60 mg/dL"
+    And the trend should read "Stable", from the measured values only, not rising from 60
+
+  Scenario: A censored value proving the values turned breaks the trend
+    Given I have Glucose results of 110, 120, 130 and 140 mg/dL, and then "< 60" mg/dL
+    When I view the Glucose trend
+    Then the trend should not read "Increasing", as the values surely fell
+
+  Scenario: A censored value between measured ones that went the other way leaves no clear direction
+    Given I have Glucose results of 110 and 120 mg/dL, then "> 200" mg/dL, then 130, 140, 150 and 160 mg/dL
+    When I view the Glucose trend
+    Then the trend should read "Stable", with no confidence given, as the values went both ways
+    And it should not ask for more data, as there are enough values
+    And no rate of change should be shown
+
+  Scenario: The statistics read values as printed
+    Given my latest Glucose result is "> 100" mg/dL, with a reference range of 70-100 mg/dL
+    When I view the Glucose trend
+    Then the latest and highest values should read "> 100"
+    And the latest value should not be coloured as normal, as its status cannot be told
+
+  Scenario: An interval reads as its ends on the chart, in the line's unit
+    Given I have a urine red blood cell count of "5-10" per microscope field
+    When I view its trend, drawn in RBC/HPF
+    Then the point should read "5-10 RBC/HPF", not its midpoint 7.5
+
+  Scenario: The comparison reads values as printed
+    Given I compare Glucose, with a result of "< 10" mg/dL, with another biomarker
+    Then the comparison's tooltip should read "< 10 mg/dL"
+    And the "< 10" point should be drawn open
+
   Scenario: Identify values outside reference range
     Given I am viewing the trend chart for a biomarker with abnormal values
     Then data points outside the reference range should be highlighted

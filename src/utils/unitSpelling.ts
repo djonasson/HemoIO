@@ -93,9 +93,10 @@ export function normalizeUnitForLookup(unit: string): string {
   return match ? lower.replace(match[0], match[1]) : spelled;
 }
 
-/** Whether two units are one unit, however each is spelled */
+/** Whether two units are one unit, however each is spelled; "u" is the micro sign's plain spelling ("uL" is µL) */
 export function unitsMatch(a: string, b: string): boolean {
-  return normalizeUnitForLookup(a).toLowerCase() === normalizeUnitForLookup(b).toLowerCase();
+  const key = (unit: string): string => normalizeUnitForLookup(unit).toLowerCase().replace(/µ/g, 'u');
+  return key(a) === key(b);
 }
 
 /**

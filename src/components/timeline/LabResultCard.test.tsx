@@ -47,6 +47,7 @@ function createMockTestValue(
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',
+    statusBasis: options.status === 'unknown' ? 'none' : 'range',
     rawText: 'Hemoglobin',
     createdAt: new Date(),
     updatedAt: new Date(),

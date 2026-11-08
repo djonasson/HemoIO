@@ -11,10 +11,13 @@ import {
   preferredUnitOptions,
   resolveDisplayUnit,
   unitsMatch,
+  type SubstanceRef,
 } from '@services/units';
 import { isTrendable } from '@/utils/isTrendable';
+import { savedInterval } from '@/utils/formatTestValue';
 import type { Catalog } from '@data/loinc/catalog';
 import type { TrendDataPoint } from './trendAnalysis';
+import type { CensoredComparator, NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -31,6 +34,10 @@ export interface TrendableResult {
     referenceRangeLow?: number;
     referenceRangeHigh?: number;
     status: Status;
+    numericValueType?: NumericValueType;
+    intervalLow?: number;
+    intervalHigh?: number;
+    censored?: CensoredComparator;
   }>;
 }
 
@@ -70,6 +77,28 @@ function ownLineName(name: string, unit: string): string {
   return unit ? `${name} in ${unit}` : `${name} with no unit`;
 }
 
+/**
+ * An interval's ends in the unit its midpoint is shown in: converted as
+ * the midpoint is (a relabelling, as "per campo" to RBC/HPF, keeps them)
+ */
+function intervalOf(
+  substance: SubstanceRef,
+  value: TrendableResult['testValues'][number],
+  shownUnit: string
+): Pick<TrendDataPoint, 'interval'> {
+  const interval = savedInterval(value);
+  if (!interval) return {};
+  if (shownUnit === value.unit) return { interval };
+  const { unit, referenceRange: ends } = convertMeasurement(
+    substance,
+    { value: interval.low, unit: value.unit, referenceRangeLow: interval.low, referenceRangeHigh: interval.high },
+    shownUnit
+  );
+  return unit === shownUnit && ends.low !== undefined && ends.high !== undefined
+    ? { interval: { low: ends.low, high: ends.high } }
+    : {};
+}
+
 /** Every line, in no order; keyed by TrendLine.key */
 export function buildTrendLines(
   catalog: Catalog,
@@ -103,8 +132,9 @@ export function buildTrendLines(
     const byUnit = new Map<string, TrendDataPoint[]>();
     let main: TrendDataPoint[] = [];
     for (const { result, value } of entries) {
+      const substance = catalog.test(value.biomarkerKey) ?? '';
       const converted = convertMeasurement(
-        catalog.test(value.biomarkerKey) ?? '',
+        substance,
         {
           value: value.value,
           unit: value.unit,
@@ -122,6 +152,8 @@ export function buildTrendLines(
         labName: result.labName,
         testValueId: value.id,
         labResultId: value.labResultId,
+        ...intervalOf(substance, value, converted.unit),
+        ...(value.censored ? { censored: value.censored } : {}),
       };
       if (unitsMatch(converted.unit, lineUnit)) {
         main.push({ ...point, unit: lineUnit });

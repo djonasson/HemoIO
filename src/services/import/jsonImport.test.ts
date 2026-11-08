@@ -146,6 +146,23 @@ describe('jsonImport', () => {
       expect(parsed.userNotes).toHaveLength(1);
     });
 
+    it("keeps a value's known mark, comparator and kind, and drops ones the app does not know", () => {
+      const sources = createMockDataSources();
+      sources.testValues[0] = { ...sources.testValues[0], labFlag: 'high', censored: '<', numericValueType: 'single' };
+      sources.testValues[1] = {
+        ...sources.testValues[1],
+        ...({ labFlag: 'toString', censored: '≈', numericValueType: 'range' } as unknown as Partial<TestValue>),
+      };
+
+      const [kept, dropped] = parseBackupJson(exportToJson(sources)).testValues;
+
+      expect(kept).toMatchObject({ labFlag: 'high', censored: '<', numericValueType: 'single' });
+      expect(dropped).not.toHaveProperty('labFlag');
+      expect(dropped).not.toHaveProperty('censored');
+      expect(dropped).not.toHaveProperty('numericValueType');
+      expect(dropped.value).toBe(95);
+    });
+
     it('accepts values keyed by a LOINC code or an unknown key', () => {
       const sources = createMockDataSources();
       sources.testValues[1] = { ...sources.testValues[1], biomarkerKey: 'unknown:zorblatina' };

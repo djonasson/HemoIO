@@ -77,6 +77,35 @@ describe('settleGroup', () => {
     const mgdl = value('Glucose', 90, 'mg/dL', '2345-7');
     const mmol = value('Glucose', 5.0, 'mmol/L', '2345-7');
     const result = settleGroup([mmol, mgdl], catalog);
-    expect(result).toEqual({ settled: true, kept: [mgdl], setAside: new Map([[mmol, mgdl]]) });
+    expect(result).toEqual({ settled: true, kept: [mgdl], setAside: new Map([[mmol, mgdl]]), merged: new Map() });
+  });
+
+  it("keeps a twin's comparator when the kept value has none", () => {
+    const mgdl = value('Creatinina', 0.5, 'mg/dL', '2160-0');
+    const umol: MatchedBiomarker = { ...value('Creatinina', 44, 'µmol/L', '14682-9'), censored: '<' };
+    const result = settleGroup([umol, mgdl], catalog);
+    expect(result).toMatchObject({ settled: true, kept: [{ value: 0.5, unit: 'mg/dL', censored: '<' }] });
+    if (!result.settled) return;
+    expect(result.setAside.get(umol)).toBe(result.kept[0]);
+    expect(result.merged.get(mgdl)).toBe(result.kept[0]);
+  });
+
+  it("keeps a twin's lab mark when the kept value has none", () => {
+    const mgdl = value('Glucose', 130, 'mg/dL', '2345-7');
+    const mmol: MatchedBiomarker = { ...value('Glucose', 7.2, 'mmol/L', '14749-6'), labFlag: 'high' };
+    const result = settleGroup([mmol, mgdl], catalog);
+    expect(result).toMatchObject({ settled: true, kept: [{ value: 130, unit: 'mg/dL', labFlag: 'high' }] });
+  });
+
+  it('never calls a censored value and a measured one in the same unit one measurement', () => {
+    const bound: MatchedBiomarker = { ...value('PCR', 10, 'mg/L', '1988-5'), censored: '<' };
+    const measured = value('PCR', 10, 'mg/L', '1988-5');
+    expect(settleGroup([bound, measured], catalog).settled).toBe(false);
+  });
+
+  it('never calls bounds on opposite sides one measurement: "> 0.50 mg/dL" is not "< 44 µmol/L"', () => {
+    const above: MatchedBiomarker = { ...value('Creatinina', 0.5, 'mg/dL', '2160-0'), censored: '>' };
+    const below: MatchedBiomarker = { ...value('Creatinina', 44, 'µmol/L', '14682-9'), censored: '<' };
+    expect(settleGroup([above, below], catalog).settled).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ export type {
   AnalysisOptions,
   LabReportAnalysisResult,
   ExtractedBiomarker,
+  QualitativeReading,
   TestCandidate,
   TestChoice,
   TestChoiceRequest,
@@ -75,7 +76,10 @@ export type { AnthropicModelInfo } from './anthropicUtils';
 export { LAB_REPORT_SYSTEM_PROMPT, createAnalysisPrompt, RESPONSE_SCHEMA } from './prompts';
 
 // Interval value parsing
-export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
+export { parseIntervalValue, extractedInterval } from './parseIntervalValue';
 export type { ParsedValue } from './parseIntervalValue';
+
+// Qualitative value parsing
+export { heldQualitative, parseExtractedValue } from './parseQualitativeValue';
 
 export { RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';

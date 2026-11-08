@@ -26,6 +26,8 @@ export type ChatReply =
 export interface OllamaChatScript {
   /** Lab report prompts sent to the AI, in request order */
   prompts: string[];
+  /** The instructions (system prompt) of each lab report request, in request order */
+  systemPrompts: string[];
   /** Each request's answer limit (num_predict), in request order */
   answerLimits: number[];
   /** Each request's context size (num_ctx), in request order */
@@ -67,6 +69,7 @@ export async function scriptOllamaChat(
   let inFlight = 0;
   const script: OllamaChatScript = {
     prompts: [],
+    systemPrompts: [],
     answerLimits: [],
     contexts: [],
     maxInFlight: 0,
@@ -85,6 +88,7 @@ export async function scriptOllamaChat(
       return;
     }
     script.prompts.push(body.messages.find((m) => m.role === 'user')?.content ?? '');
+    script.systemPrompts.push(body.messages.find((m) => m.role === 'system')?.content ?? '');
     script.answerLimits.push(body.options?.num_predict ?? 0);
     script.contexts.push(body.options?.num_ctx ?? 0);
 

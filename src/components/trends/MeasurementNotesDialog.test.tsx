@@ -46,6 +46,16 @@ describe('MeasurementNotesDialog', () => {
     expect(screen.getByRole('button', { name: 'Add Note' })).toBeInTheDocument();
   });
 
+  it('shows an interval as its ends', () => {
+    renderDialog({ measurement: { ...measurement, value: 7.5, interval: { low: 5, high: 10 } } });
+    expect(screen.getByRole('dialog')).toHaveTextContent('5-10 mg/dL');
+  });
+
+  it('shows a censored value with its comparator', () => {
+    renderDialog({ measurement: { ...measurement, value: 10, censored: '<' } });
+    expect(screen.getByRole('dialog')).toHaveTextContent('< 10 mg/dL');
+  });
+
   it('heads the editor with the measurement and saves the note', async () => {
     const { onCreateNote } = renderDialog();
     await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));

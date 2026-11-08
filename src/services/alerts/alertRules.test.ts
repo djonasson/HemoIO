@@ -13,6 +13,14 @@ import {
 const d = (iso: string) => new Date(`${iso}T10:00:00Z`);
 
 describe('outOfRangeSeverity', () => {
+  it('calls a censored value critical only when its bound proves it far enough out', () => {
+    // "< 30" the lab marked low, with a low of 20: it may be 25
+    expect(outOfRangeSeverity(30, 'low', { low: 20, high: 50 }, '<')).toBe('warning');
+    expect(outOfRangeSeverity(5, 'low', { low: 20, high: 50 }, '<')).toBe('critical');
+    expect(outOfRangeSeverity(300, 'high', { low: 0, high: 100 }, '>')).toBe('critical');
+    expect(outOfRangeSeverity(60, 'high', { low: 0, high: 100 }, '>')).toBe('warning');
+  });
+
   it('is critical at 50% or more beyond the nearest bound', () => {
     expect(outOfRangeSeverity(150, 'high', { low: 70, high: 100 })).toBe('critical');
     expect(outOfRangeSeverity(180, 'high', { low: 70, high: 100 })).toBe('critical');
@@ -83,6 +91,42 @@ describe('detectConsistentDirection', () => {
     ).toBeNull();
   });
 
+  it('reads no step from a censored value', () => {
+    expect(
+      detectConsistentDirection([
+        { date: d('2024-01-10'), value: 1, censored: '<' },
+        { date: d('2024-02-10'), value: 2 },
+        { date: d('2024-03-10'), value: 3 },
+        { date: d('2024-04-10'), value: 4 },
+      ])
+    ).toBeNull();
+  });
+
+  it('finds no direction once a censored value proves the values turned', () => {
+    const rising = [110, 120, 130, 140].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...rising, { date: d('2024-05-10'), value: 60, censored: '<' }])).toBeNull();
+    const falling = [180, 160, 140, 120].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 200, censored: '>' }])).toBeNull();
+  });
+
+  it('finds no direction when a censored value between measured ones proves they went both ways', () => {
+    const at = (values: Array<number | [number, '<' | '>']>) =>
+      values.map((value, i) => ({
+        date: d(`2024-${String(i + 1).padStart(2, '0')}-10`),
+        ...(typeof value === 'number' ? { value } : { value: value[0], censored: value[1] }),
+      }));
+    expect(detectConsistentDirection(at([110, 120, [200, '>'], 130, 140]))).toBeNull();
+    expect(detectConsistentDirection(at([140, [60, '<'], 130, 120, 110, 100]))).toBeNull();
+  });
+
+  it('keeps a direction a censored value goes along with', () => {
+    const falling = [140, 120, 100, 80].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 60, censored: '<' }])).toMatchObject({
+      direction: 'decreasing',
+      count: 4,
+    });
+  });
+
   it('only counts the run that ends with the latest value', () => {
     const result = detectConsistentDirection([
       { date: d('2024-01-10'), value: 9 },
@@ -113,6 +157,9 @@ describe('messages', () => {
   it('builds the out-of-range, trend and improvement messages', () => {
     expect(outOfRangeMessage('Glucose', 'high', 150, 'mg/dL', { low: 70, high: 100 })).toBe(
       'Glucose is high at 150 mg/dL (reference 70 - 100 mg/dL)'
+    );
+    expect(outOfRangeMessage('Eritrociti', 'high', '5-10', '/[HPF]', { high: 2 })).toBe(
+      'Eritrociti is high at 5-10 /[HPF] (reference ≤ 2 /[HPF])'
     );
     expect(outOfRangeMessage('Hemoglobin', 'low', 10, 'g/dL', undefined)).toBe('Hemoglobin is low at 10 g/dL');
     expect(trendMessage('decreasing', d('2024-01-10'), d('2024-04-10'))).toBe(

@@ -490,6 +490,377 @@ test.describe('Import Wizard', () => {
       });
     }
 
+    test.describe('Values as printed', () => {
+      /** Save the reviewed import and open its result on the timeline */
+      async function saveAndExpand(page: Page): Promise<Locator> {
+        await continueToConfirm(page);
+        await saveResults(page);
+        return expandLabResult(page, '2024-01-15');
+      }
+
+      /** A timeline row by what it says to screen readers: "name: value unit, ..." */
+      function savedRow(card: Locator, name: string, value: RegExp): Locator {
+        return card.getByRole('row', { name: new RegExp(`^${name}: ${value.source}`) });
+      }
+
+      test('keeps the comparator of a value printed beyond what the lab can measure', async ({ page }) => {
+        // Scenario: A value printed beyond what the lab can measure keeps its comparator
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '< 10',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('< 10');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /< 10 mg\/dL, Below reference range$/)).toBeVisible();
+      });
+
+      test('keeps the comparator when a mark or a unit follows the number', async ({ page }) => {
+        // Scenario: A value beyond what the lab can measure keeps its comparator when a mark or a unit follows it
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '> 200 (H)',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('> 200');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /> 200 mg\/dL, Above reference range$/)).toBeVisible();
+      });
+
+      test('lets the comparator be chosen on review', async ({ page }) => {
+        // Scenario: The comparator of a value can be changed on review
+        await loginWithOllama(page);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Hemoglobin');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await editing.getByRole('combobox', { name: 'Comparator' }).selectOption('<');
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('< 14.5');
+      });
+
+      test("keeps the lab's own high or low mark", async ({ page }) => {
+        // Scenario: The lab's own high or low mark is kept
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 130, unit: 'mg/dL', confidence: 0.95, flag: 'H' }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewRow(page, 'Glucose').getByTitle('flagged high by the lab')).toHaveText('H');
+
+        const card = await saveAndExpand(page);
+        // Said once: the mark is what gives the status here
+        const row = savedRow(card, 'Glucose', /130 mg\/dL, Flagged high by the lab$/);
+        await expect(row.getByTitle('flagged high by the lab')).toHaveText('H');
+      });
+
+      test("lets the lab's mark be cleared on review", async ({ page }) => {
+        // Scenario: The lab's mark can be changed or cleared on review
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 90, unit: 'mg/dL', confidence: 0.95, flag: 'L' }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await expect(row.getByTitle('flagged low by the lab')).toHaveText('L');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await editingRow(page).getByRole('combobox', { name: "Lab's mark" }).selectOption('No mark');
+        await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+        await expect(row.getByTitle('flagged low by the lab')).toHaveCount(0);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /90 mg\/dL, No reference range available$/)).toBeVisible();
+      });
+
+      test('reads a censored value printed with thousands and its mark', async ({ page }) => {
+        // Scenario: Values printed beyond what the lab can measure are read in every common form
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '> 1.000 H',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100 },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('> 1000');
+      });
+
+      test('reads a small decimal bound as printed, and leaves a power of ten for review', async ({ page }) => {
+        // Scenario: Values printed beyond what the lab can measure are read in every common form
+        // Scenario: A bound that could read two ways, or is more than a number, is left for review
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: '< 0.005', unit: 'mg/dL', confidence: 0.95 },
+              { name: 'Hemoglobin', value: '> 10^5 UFC/mL', unit: 'g/dL', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('< 0.005');
+        const row = reviewRow(page, 'Hemoglobin');
+        await expect(row.getByText('Printed: “> 10^5 UFC/mL”')).toBeVisible();
+        // No bound read from it: the cell holds only what was printed
+        await expect(reviewCell(row, 'Value')).toHaveText('Printed: “> 10^5 UFC/mL”');
+      });
+
+      test('keeps a measured number beside a word', async ({ page }) => {
+        // Scenario: A measured number is never replaced by a word
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95, qualitativeValue: 'Normale' },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('95');
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Unit')).toHaveText('mg/dL');
+      });
+
+      test('leaves a value it cannot read for review, showing what was printed', async ({ page }) => {
+        // Scenario: A value that cannot be read is left for review
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 'vedi nota', unit: 'mg/dL', confidence: 0.95 }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await expect(row.getByText('Printed: “vedi nota”')).toBeVisible();
+        await expect(reviewCell(row, 'Value')).not.toContainText('0');
+      });
+
+      test("compares a range printed in another unit in the value's unit", async ({ page }) => {
+        // Scenario: A reference range printed in another unit is compared in the value's unit
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: 90,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+
+        const card = await saveAndExpand(page);
+        // 90 mg/dL is within 3.9-5.6 mmol/L (about 70-101 mg/dL); compared unconverted, it would read high
+        const row = savedRow(card, 'Glucose', /90 mg\/dL, Within reference range$/);
+        await expect(row).toContainText(/mg\/dL$/);
+      });
+
+      test("lets a range in the value's unit follow a unit corrected on review", async ({ page }) => {
+        // Scenario: A range in the value's unit follows a unit corrected on review
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: 150,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                // As models give it: the range unit copied from the misread value unit
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await editingRow(page).getByPlaceholder('Unit', { exact: true }).fill('mmol/L');
+        await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Reference Range')).toHaveText('70 - 100 mmol/L');
+      });
+
+      test('compares a converted range at full precision', async ({ page }) => {
+        // Scenario: A converted range is compared at full precision
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Calcium',
+                value: 10.3,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 2.1, high: 2.6, unit: 'mmol/L' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+
+        const card = await saveAndExpand(page);
+        // Rounded to 8.4-10 mg/dL, 10.3 would read high
+        await expect(savedRow(card, 'Calcium', /10\.3 mg\/dL, Within reference range$/)).toContainText('8.417 - 10.42 mg/dL');
+      });
+
+      for (const typed of ['1.015', '0.005']) {
+        test(`keeps every decimal of ${typed}`, async ({ page }) => {
+          // Scenario: Numbers keep every decimal the report printed
+          await loginWithOllama(page);
+          await analyzeToReview(page, track(createTextLabReportPdf()));
+          const row = reviewRow(page, 'Hemoglobin');
+
+          await row.getByRole('button', { name: 'Edit biomarker' }).click();
+          const number = editingRow(page).getByPlaceholder('Value', { exact: true });
+          await number.fill(typed);
+          await expect(number).toHaveValue(typed);
+          await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+          await expect(reviewCell(row, 'Value')).toHaveText(typed);
+
+          const card = await saveAndExpand(page);
+          await expect(savedRow(card, 'Hemoglobin', new RegExp(`${typed.replace('.', '\\.')} g/dL,`))).toBeVisible();
+        });
+      }
+
+      test('saves an interval as its two ends', async ({ page }) => {
+        // Scenario: An interval is saved as its two ends
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Erythrocytes', value: '5-10', unit: '/HPF', confidence: 0.95 }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Erythrocytes');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Erythrocytes', /5-10 \/HPF,/)).toBeVisible();
+        await expect(card.getByText('7.5', { exact: true })).toHaveCount(0);
+      });
+
+      test("saves a value's method", async ({ page }) => {
+        // Scenario: A value's method is saved
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95, method: 'Enzymatic' },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Method')).toHaveText('Enzymatic');
+
+        const card = await saveAndExpand(page);
+        const row = savedRow(card, 'Glucose', /95 mg\/dL by Enzymatic,/);
+        await expect(row).toBeVisible();
+        await expect(row.getByText('Enzymatic', { exact: true })).toBeVisible();
+      });
+
+      test('keeps a result printed as a word as printed', async ({ page }) => {
+        // Scenario: A result printed as a word is kept as printed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Batteri',
+                value: 0,
+                qualitativeValue: 'Assenti',
+                unit: 'per campo',
+                specimenHint: 'urine',
+                confidence: 0.95,
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await expect(reviewCell(row, 'Value')).toHaveText('Assenti (0)');
+        // A presence has no unit, whatever column the report printed beside it
+        await expect(reviewCell(row, 'Unit')).toHaveText('');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Batteri', /Assenti\s*,/)).toBeVisible();
+      });
+
+      test('keeps a count printed in words, never as 0 per field', async ({ page }) => {
+        // Scenario: A count printed in words is never read as none (document-analysis.feature)
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Batteri', value: 0, qualitativeValue: 'Rari', unit: 'per campo', specimenHint: 'urine', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await expect(reviewCell(row, 'Value')).toHaveText('Rari (1)');
+        await expect(reviewCell(row, 'Unit')).toHaveText('');
+      });
+
+      test('keeps a result printed as crosses as printed', async ({ page }) => {
+        // Scenario: A result printed as crosses is kept as printed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Emoglobina', value: 2, qualitativeValue: '++', unit: '', specimenHint: 'urine', confidence: 0.9 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Emoglobina');
+        await expect(reviewCell(row, 'Value')).toHaveText('++ (2)');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Emoglobina', /\+\+\s*,/)).toBeVisible();
+      });
+
+      test("saves the number typed over a word's", async ({ page }) => {
+        // Scenario: A word's number changed on review is saved as the number typed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Batteri', value: 0, qualitativeValue: 'Assenti', unit: '', specimenHint: 'urine', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await expect(editing.getByText('Assenti', { exact: true })).toBeVisible();
+        await editing.getByPlaceholder('Value', { exact: true }).fill('3');
+        await expect(editing.getByText('Assenti', { exact: true })).toHaveCount(0);
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('3');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Batteri', /3\s*,/)).toBeVisible();
+      });
+    });
+
     test('should show date picker for lab date', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));

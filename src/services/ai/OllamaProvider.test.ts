@@ -105,6 +105,29 @@ describe('OllamaProvider', () => {
       expect(result.modelUsed).toBe('llama3.2:8b');
     });
 
+    it("cleans a range's unit as the value's, and leaves it out when it is the value's", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: {
+              content: JSON.stringify({
+                biomarkers: [
+                  { name: 'ALT', value: 80, unit: 'UL', confidence: 0.9, referenceRange: { low: 5, high: 34, unit: 'UL' } },
+                  { name: 'Calcio', value: 9, unit: 'mg/dL', confidence: 0.9, referenceRange: { low: 2.1, high: 2.6, unit: 'mmol/L' } },
+                ],
+              }),
+            },
+            done_reason: 'stop',
+          }),
+      } as Response);
+
+      const { biomarkers } = await new OllamaProvider().analyzeLabReport('ALT 80 UL (5-34)');
+
+      expect(biomarkers[0]).toMatchObject({ unit: 'U/L', referenceRange: { low: 5, high: 34, unit: undefined } });
+      expect(biomarkers[1].referenceRange).toEqual({ low: 2.1, high: 2.6, unit: 'mmol/L' });
+    });
+
     const cutOff = () =>
       ({
         ok: true,
@@ -804,6 +827,36 @@ describe('OllamaProvider rate limiting', () => {
     const result = await new OllamaProvider().analyzeLabReport('Glicemia 95 mg/dL');
 
     expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
+  });
+
+  it("keeps a censored value's comparator and the lab's flag", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Glucosio', value: '< 10', unit: 'mg/dL', confidence: 0.9 }, { name: 'PCR', value: 12, unit: 'mg/L', confidence: 0.9, flag: 'H' } ], warnings: [] }) }, done_reason: 'stop' }),
+    } as Response);
+
+    const result = await new OllamaProvider().analyzeLabReport('Glucosio < 10 mg/dL');
+
+    expect(result.biomarkers[0]).toMatchObject({ value: 10, censored: '<' });
+    expect(result.biomarkers[0].labFlag).toBeUndefined();
+    expect(result.biomarkers[1]).toMatchObject({ value: 12, labFlag: 'high' });
+    expect(result.biomarkers[1].censored).toBeUndefined();
+  });
+
+  it('keeps a qualitative result as printed, with no unit', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ message: { content: JSON.stringify({ biomarkers: [ { name: 'Batteri', value: 0, unit: 'per campo', confidence: 0.9, qualitativeValue: 'Assenti' }, { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9 } ], warnings: [] }) }, done_reason: 'stop' }),
+    } as Response);
+
+    const result = await new OllamaProvider().analyzeLabReport('Batteri Assenti');
+
+    expect(result.biomarkers[0]).toMatchObject({
+      value: 0,
+      unit: '',
+      qualitative: { text: 'Assenti', kind: 'boolean', value: 0 },
+    });
+    expect(result.biomarkers[1].qualitative).toBeUndefined();
   });
 });
 

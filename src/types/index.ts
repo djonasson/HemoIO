@@ -28,6 +28,24 @@ export type QualitativeType = 'boolean' | 'ordinal' | 'descriptive';
 // Value types for numeric results
 export type NumericValueType = 'single' | 'interval';
 
+/**
+ * How a censored value's number bounds it: "< 10" is some value below 10,
+ * printed when a measurement is beyond what the method can tell
+ */
+export type CensoredComparator = '<' | '<=' | '>' | '>=';
+
+/** The lab's own mark on a value: high, low, or abnormal with no direction */
+export type LabFlag = 'high' | 'low' | 'abnormal';
+
+/**
+ * How a number reads beyond itself: an interval it is the midpoint of
+ * ("5-10"), or the comparator of a censored value it is the bound of ("< 10")
+ */
+export interface ValueReading {
+  interval?: { low: number; high: number };
+  censored?: CensoredComparator;
+}
+
 // A single lab report/visit
 export interface LabResult {
   id?: number;
@@ -48,6 +66,12 @@ export interface TestValue {
   unit: string;
   referenceRangeLow?: number;
   referenceRangeHigh?: number;
+  /** The reference range's unit, when it was printed in one (it may differ from the value's) */
+  referenceRangeUnit?: string;
+  /** For a censored value ("< 10"), how `value` bounds it */
+  censored?: CensoredComparator;
+  /** The lab's own high/low mark on the value */
+  labFlag?: LabFlag;
   /** Analytical method used for measurement (e.g., "Enzymatic", "HPLC", "Immunoassay") */
   method?: string;
   qualitativeType?: QualitativeType;

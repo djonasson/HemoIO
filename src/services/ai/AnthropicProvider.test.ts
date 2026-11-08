@@ -52,14 +52,14 @@ describe('AnthropicProvider', () => {
                 unit: 'mg/dL',
                 referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
                 confidence: 0.95,
-                flaggedAbnormal: false,
+                flag: null,
               },
               {
                 name: 'Hemoglobin',
                 value: 14.5,
                 unit: 'g/dL',
                 confidence: 0.92,
-                flaggedAbnormal: false,
+                flag: null,
               },
             ],
             labDate: '2024-01-15',
@@ -431,6 +431,36 @@ describe('AnthropicProvider rate limiting', () => {
     const result = await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport('Glicemia 95 mg/dL');
 
     expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
+  });
+
+  it("keeps a censored value's comparator and the lab's flag", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ biomarkers: [ { name: 'Glucosio', value: '< 10', unit: 'mg/dL', confidence: 0.9 }, { name: 'PCR', value: 12, unit: 'mg/L', confidence: 0.9, flag: 'H' } ], warnings: [] }) }], stop_reason: 'end_turn' }),
+    } as Response);
+
+    const result = await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport('Glucosio < 10 mg/dL');
+
+    expect(result.biomarkers[0]).toMatchObject({ value: 10, censored: '<' });
+    expect(result.biomarkers[0].labFlag).toBeUndefined();
+    expect(result.biomarkers[1]).toMatchObject({ value: 12, labFlag: 'high' });
+    expect(result.biomarkers[1].censored).toBeUndefined();
+  });
+
+  it('keeps a qualitative result as printed, with no unit', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ biomarkers: [ { name: 'Batteri', value: 0, unit: 'per campo', confidence: 0.9, qualitativeValue: 'Assenti' }, { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9 } ], warnings: [] }) }], stop_reason: 'end_turn' }),
+    } as Response);
+
+    const result = await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport('Batteri Assenti');
+
+    expect(result.biomarkers[0]).toMatchObject({
+      value: 0,
+      unit: '',
+      qualitative: { text: 'Assenti', kind: 'boolean', value: 0 },
+    });
+    expect(result.biomarkers[1].qualitative).toBeUndefined();
   });
 });
 

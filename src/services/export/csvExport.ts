@@ -7,6 +7,7 @@
 import { isUnknownKey } from '@data/loinc/keys';
 import type { LabResult, TestValue } from '@/types';
 import { isWithinDays } from '@/utils/localDate';
+import { formatTestValue, savedInterval } from '@/utils/formatTestValue';
 
 /**
  * Options for CSV export
@@ -103,13 +104,39 @@ function loincField(key: string): string {
 }
 
 /**
+ * The Value column: an interval as its ends, as text a spreadsheet keeps
+ * (it reads a bare 5-10 as a date); a qualitative result as printed
+ */
+function valueField(testValue: TestValue): string {
+  // Only two numbers are written inside ="…": a restored backup's text could close the quotes and add a formula
+  const interval = savedInterval(testValue);
+  if (interval && Number.isFinite(interval.low) && Number.isFinite(interval.high) && typeof testValue.value === 'number') {
+    const shown = formatTestValue(testValue);
+    if (/^[<>≤≥\s\d.eE+-]+$/.test(shown)) return asText(shown);
+  }
+  return textField(formatTestValue(testValue));
+}
+
+/**
+ * A reference range end to six significant figures: a range converted from
+ * another unit is kept at full precision (3.8854351687), which no report
+ * prints; a printed end has no more than six
+ */
+function rangeEnd(bound: number): string {
+  if (!Number.isFinite(bound)) return String(bound);
+  // Six significant figures, but never fewer than the whole digits
+  const wholeDigits = Math.trunc(Math.abs(bound)).toString().length;
+  return String(Number(bound.toPrecision(Math.min(100, Math.max(6, wholeDigits)))));
+}
+
+/**
  * Build CSV header row based on options
  */
 function buildHeader(options: CsvExportOptions): string[] {
   const headers = ['Date', 'Lab Name', 'Biomarker', 'LOINC', 'Value', 'Unit'];
 
   if (options.includeReferenceRanges !== false) {
-    headers.push('Reference Low', 'Reference High');
+    headers.push('Reference Low', 'Reference High', 'Reference Unit');
   }
 
   if (options.includeConfidence) {
@@ -134,14 +161,17 @@ function buildRow(
     textField(biomarkerName),
     // The value's LOINC code; none for a value saved as not a LOINC test
     isUnknownKey(testValue.biomarkerKey) ? '' : loincField(testValue.biomarkerKey),
-    textField(String(testValue.value)),
+    valueField(testValue),
     textField(testValue.unit),
   ];
 
   if (options.includeReferenceRanges !== false) {
+    const hasRange = testValue.referenceRangeLow !== undefined || testValue.referenceRangeHigh !== undefined;
     row.push(
-      testValue.referenceRangeLow !== undefined ? String(testValue.referenceRangeLow) : '',
-      testValue.referenceRangeHigh !== undefined ? String(testValue.referenceRangeHigh) : ''
+      testValue.referenceRangeLow !== undefined ? rangeEnd(testValue.referenceRangeLow) : '',
+      testValue.referenceRangeHigh !== undefined ? rangeEnd(testValue.referenceRangeHigh) : '',
+      // A range printed in its own unit (a 24-hour amount beside a concentration) says so; any other is in the value's
+      hasRange ? textField(testValue.referenceRangeUnit || testValue.unit) : ''
     );
   }
 

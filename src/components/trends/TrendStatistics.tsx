@@ -13,6 +13,7 @@ import {
   IconCalendar,
 } from '@tabler/icons-react';
 import { formatReferenceRange } from '@services/alerts/alertRules';
+import { formatReading } from '@/utils/formatTestValue';
 import type { TrendStatistics as TrendStats, RateOfChange } from '@services/statistics/trendAnalysis';
 
 /**
@@ -99,11 +100,10 @@ export function TrendStatistics({
   rateOfChange,
   referenceRange,
 }: TrendStatisticsProps): React.JSX.Element {
-  // Determine if latest value is in range
-  const latestInRange =
-    referenceRange?.low !== undefined && referenceRange?.high !== undefined
-      ? statistics.latest >= referenceRange.low && statistics.latest <= referenceRange.high
-      : null;
+  // The latest value's colour is its status: a censored value its bound cannot place has none
+  const latestStatus = statistics.latestPoint.status;
+  const latestColor =
+    latestStatus === 'high' || latestStatus === 'low' ? 'red' : latestStatus === 'normal' ? 'green' : undefined;
 
   // Determine rate of change direction
   const changeDirection =
@@ -123,10 +123,10 @@ export function TrendStatistics({
       <SimpleGrid cols={{ base: 2, sm: 3, md: 5 }} spacing="md">
         <StatCard
           label="Latest Value"
-          value={formatValue(statistics.latest)}
+          value={formatReading(statistics.latestPoint, formatValue)}
           unit={statistics.unit}
           subtitle={statistics.latestDate.toLocaleDateString()}
-          color={latestInRange === false ? 'red' : latestInRange === true ? 'green' : undefined}
+          color={latestColor}
           icon={<IconCalendar size={14} />}
         />
 
@@ -138,13 +138,13 @@ export function TrendStatistics({
 
         <StatCard
           label="Minimum"
-          value={formatValue(statistics.min)}
+          value={formatReading(statistics.minPoint, formatValue)}
           unit={statistics.unit}
         />
 
         <StatCard
           label="Maximum"
-          value={formatValue(statistics.max)}
+          value={formatReading(statistics.maxPoint, formatValue)}
           unit={statistics.unit}
         />
 

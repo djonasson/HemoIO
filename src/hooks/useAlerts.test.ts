@@ -59,9 +59,11 @@ function createMockTestValue(
     value: options.value ?? 100,
     unit: options.unit || 'mg/dL',
     status: options.status || 'normal',
+    statusBasis: options.status === 'unknown' ? 'none' : 'range',
     rawText: options.rawText || 'Glucose',
     referenceRangeLow: options.referenceRangeLow,
     referenceRangeHigh: options.referenceRangeHigh,
+    censored: options.censored,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -769,6 +771,51 @@ describe('useAlerts', () => {
     const trend = alertsOf(result.current).find((a) => a.type === 'trend');
     expect(trend).toMatchObject({ direction: 'decreasing', severity: 'warning' });
     expect(trend?.message).toBe('Consistently decreasing over 3 months (Jan–Apr 2024)');
+  });
+
+  it('reads no trend from censored values, and states them with their comparator', async () => {
+    mockResults(
+      [110, 120, 130, 140].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            value,
+            status: 'high',
+            referenceRangeHigh: 100,
+            censored: i < 3 ? '>' : undefined,
+          }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(false);
+    const censored = alertsOf(result.current).find((a) => a.type === 'out_of_range' && a.value === 110);
+    expect(censored?.message).toContain('Glucose is high at > 110 mg/dL');
+  });
+
+  it('attaches no trend to a censored latest value that proves the values turned', async () => {
+    // 110, 120, 130, 140, then "< 60" with a range of 70-100: low, and no rise
+    mockResults(
+      [110, 120, 130, 140, 60].map((value, i) =>
+        createMockResult(i + 1, `2024-0${i + 1}-10`, [
+          createMockTestValue(i + 1, i + 1, {
+            value,
+            status: i < 4 ? 'high' : 'low',
+            referenceRangeLow: 70,
+            referenceRangeHigh: 100,
+            censored: i === 4 ? '<' : undefined,
+          }),
+        ])
+      )
+    );
+
+    const { result } = renderHook(() => useAlerts());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(alertsOf(result.current).find((a) => a.type === 'out_of_range')?.message).toContain('low at < 60');
+    expect(alertsOf(result.current).some((a) => a.type === 'trend')).toBe(false);
   });
 
   it('raises a trend for values that share a unit the display unit cannot convert', async () => {

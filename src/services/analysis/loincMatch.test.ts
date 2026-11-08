@@ -1251,6 +1251,54 @@ describe('matchLocally on names of real Italian reports', () => {
     if (ratio !== -1) expect(candidates.slice(ratio).every(({ score }) => score <= candidates[ratio].score)).toBe(true);
   });
 
+  it.each([
+    ['Rapporto colesterolo/HDL', 'ratio', '9830-1'],
+    ['Rapporto colesterolo totale/HDL', 'ratio', '9830-1'],
+    ['Rapporto A/G', 'ratio', '1759-0'],
+    ['A/G', 'ratio', '1759-0'],
+    ['Albumina/globuline', 'ratio', '1759-0'],
+  ])('takes %s in %s as the ratio %s', (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
+    ['Rapporto colesterolo/HDL', '9830-1'],
+    ['Colesterolo totale/HDL', '9830-1'],
+    ['Rapporto A/G', '1759-0'],
+    ['A/G', '1759-0'],
+  ])('offers the ratio first for %s printed with no unit, a slash or "rapporto" saying it is one', (name, code) => {
+    expect(matchLocally(generated, { name, unit: '' }).candidates[0].code).toBe(code);
+  });
+
+  it.each([
+    ['Proteine/Albumina', 'urine', '1753-3'],
+    ['Glucosio/Glukose', 'urine', '25428-4'],
+  ])('keeps the presence test first for %s of %s with no unit, a slash joining two names of one test', (name, specimenHint, code) => {
+    expect(matchLocally(generated, { name, unit: '', specimenHint }).candidates[0].code).toBe(code);
+  });
+
+  it('keeps every test of two results joined by a slash, the ratio of them not pushing one out: "Borrelia IgG/IgM"', () => {
+    expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '' }))).toContain('46248-1');
+  });
+
+  it('lists only ratios as ratios: a slash name no ratio fits keeps its own order', () => {
+    const { candidates } = matchLocally(generated, { name: 'Glucosio/Glukose', unit: '', specimenHint: 'urine' });
+    expect(candidates.map(({ code }) => code).slice(0, 2)).toEqual(['25428-4', '2349-9']);
+  });
+
+  it('reads a name of a ratio by its parts only with the slash: "Colesterolo HDL" is HDL, "A G" no A/G', () => {
+    const hdl = codesOf(matchLocally(generated, { name: 'Colesterolo HDL', unit: '' }));
+    expect(hdl.indexOf('2085-9')).toBeLessThan(hdl.indexOf('9830-1') === -1 ? Infinity : hdl.indexOf('9830-1'));
+    expect(generated.scoredSearch('A G').slice(0, 5).map(({ test }) => test.code)).not.toContain('1759-0');
+    expect(generated.scoredSearch('A/G')[0].test.code).toBe('1759-0');
+  });
+
+  it('needs every word of a name, even one in too many names to tell a test: "G" alone is no "A/G"', () => {
+    // It may still be listed among the common tests of its unit, found by no name
+    const found = matchLocally(generated, { name: 'G', unit: 'ratio' }).candidates.find(({ code }) => code === '1759-0');
+    expect(found?.score ?? 0).toBe(0);
+  });
+
   it('never offers the factor VIII activity over a normal one first for "Rapporto A/G", which names no clotting time', () => {
     expect(codesOf(matchLocally(generated, { name: 'Rapporto A/G', unit: '' }))).not.toContain('3209-4');
   });

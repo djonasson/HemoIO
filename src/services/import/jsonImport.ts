@@ -9,7 +9,16 @@ import {
   BACKUP_SCHEMA_VERSION,
   isValidBackupData,
 } from '../export/jsonExport';
-import type { LabResult, TestValue, UserNote, Settings, UserPreferences } from '@/types';
+import type {
+  CensoredComparator,
+  LabFlag,
+  LabResult,
+  NumericValueType,
+  TestValue,
+  UserNote,
+  Settings,
+  UserPreferences,
+} from '@/types';
 
 /**
  * Import mode options
@@ -124,13 +133,27 @@ function deserializeLabResult(data: SerializedLabResult, exportedAt: Date): LabR
   };
 }
 
+const LAB_FLAGS: readonly LabFlag[] = ['high', 'low', 'abnormal'];
+const CENSORED_COMPARATORS: readonly CensoredComparator[] = ['<', '<=', '>', '>='];
+const NUMERIC_VALUE_TYPES: readonly NumericValueType[] = ['single', 'interval'];
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value);
+}
+
 /**
  * Deserialize test value from backup
  * Note: We preserve original ids for mapping purposes during restore.
  */
 function deserializeTestValue(data: SerializedTestValue, exportedAt: Date): TestValue {
+  const { labFlag, censored, numericValueType, ...rest } = data;
   return {
-    ...data,
+    ...rest,
+    // A mark, comparator or kind the app does not know is dropped: shown, it
+    // could break the page, and compared, it would mislead
+    ...(isOneOf(labFlag, LAB_FLAGS) ? { labFlag } : {}),
+    ...(isOneOf(censored, CENSORED_COMPARATORS) ? { censored } : {}),
+    ...(isOneOf(numericValueType, NUMERIC_VALUE_TYPES) ? { numericValueType } : {}),
     // Keep original id for reference (will be stripped on insert)
     id: data.id,
     // Keep labResultId for mapping (will be updated during restore)

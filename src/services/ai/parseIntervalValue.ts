@@ -5,6 +5,8 @@
  * and morphological lab results (e.g., "5 - 10 eritrociti per campo").
  */
 
+import type { CensoredComparator, ValueReading } from '@/types';
+
 /**
  * Result of parsing a value that might be an interval
  */
@@ -19,6 +21,66 @@ export interface ParsedValue {
   intervalHigh?: number;
   /** Raw value string before parsing */
   rawValue?: string;
+  /** For a censored value ("< 5"), how `value` bounds it */
+  censored?: CensoredComparator;
+}
+
+/**
+ * A comparator, as a sign or in Italian words, and a number, maybe with
+ * the unit or the lab's mark after it: "< 5", "=<0,2", "≥ 200",
+ * "> 200 H", "<10 mg/dL", "inferiore a 5"
+ */
+const CENSORED =
+  /^(<=|=<|>=|=>|<|>|≤|≥|inferiore\s+a|minore\s+di|superiore\s+a|maggiore\s+di)\s*(\d+(?:[.,]\d+)*)(?![\d.,])(?:\s*(\S.*))?$/i;
+
+/**
+ * Text after a censored value's number that is its unit or the lab's mark
+ * ("H", "mg/dL", "/campo", "(H)", "↑"), not more of the number: a power of ten
+ * ("10^5", "x10^5", "1.5e3") or a titre ("1:80", "1/40") makes the bound
+ * something else, so it is left for the review to read
+ */
+function isUnitOrMark(text: string | undefined): boolean {
+  if (text === undefined) return true;
+  if (text.includes('^') || /^[x×*]\s*\d/i.test(text) || /^e[+-]?\d/i.test(text)) return false;
+  // A unit per something ("/campo", but "/40" is a titre), or the lab's mark
+  // as a sign, an arrow or in brackets ("*", "↑", "(H)", "[H]")
+  return /^(?:[\p{L}µ%*↑↓]|\/\s*[^\s\d]|[([]\s*[\p{L}µ*])/u.test(text);
+}
+
+const COMPARATORS: Record<string, CensoredComparator> = {
+  '<': '<',
+  '<=': '<=',
+  '=<': '<=',
+  '≤': '<=',
+  '>': '>',
+  '>=': '>=',
+  '=>': '>=',
+  '≥': '>=',
+  'inferiore a': '<',
+  'minore di': '<',
+  'superiore a': '>',
+  'maggiore di': '>',
+};
+
+/**
+ * A censored value's bound as an Italian report prints it: a comma is the
+ * decimal mark and a dot then separates thousands ("1.000,5"). With no
+ * comma, a dot before groups of exactly three digits after a first group
+ * starting 1-9 separates thousands ("> 1.000", "> 100.000", "> 25.000");
+ * any other dot is a decimal point ("< 0.005", "> 0.500", "< 0.2").
+ *
+ * One digit, a dot and three digits other than "000" ("< 1.005") is either:
+ * a urine specific gravity reads 1.005, a count 1005. NaN leaves it for the
+ * review to read from what was printed. NaN for anything else ("1,2,3").
+ * Only bounds are read so: a plain "1.015" is a decimal (a specific gravity).
+ */
+function readBound(text: string): number {
+  if (text.includes(',')) {
+    return /^[1-9]\d{0,2}(?:\.\d{3})*,\d+$|^\d+,\d+$/.test(text) ? Number(text.replace(/\./g, '').replace(',', '.')) : NaN;
+  }
+  if (/^[1-9]\.(?!000$)\d{3}$/.test(text)) return NaN;
+  if (/^[1-9]\d{0,2}(?:\.\d{3})+$/.test(text)) return Number(text.replace(/\./g, ''));
+  return /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
 }
 
 /**
@@ -29,8 +91,7 @@ export interface ParsedValue {
  * - "5 – 10" (en-dash)
  * - "5 — 10" (em-dash)
  * - "5 to 10"
- * - "<5" (less than, treated as 0-5)
- * - ">10" (greater than, treated as 10-infinity, stored as single value)
+ * Censored values ("<5", ">10", "≤ 0.2") are read apart: see CENSORED.
  */
 const INTERVAL_PATTERNS = [
   // Standard range with hyphen/dash variants: "5-10", "5 - 10", "5 – 10"
@@ -54,6 +115,11 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
       value: rawValue,
       isInterval: false,
     };
+  }
+
+  // No value at all: missing, with nothing printed to show
+  if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') {
+    return { value: NaN, isInterval: false };
   }
 
   // Convert to string for parsing
@@ -83,34 +149,23 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     }
   }
 
-  // Handle "less than" notation: "<5" → single value at the threshold
-  // This is typically from dipstick tests where "< X" means undetectable/below X
-  // NOT treated as an interval - use the threshold value and preserve rawValue
-  const lessThanMatch = valueStr.match(/^<\s*(\d+(?:[.,]\d+)?)$/);
-  if (lessThanMatch) {
-    const threshold = parseFloat(lessThanMatch[1].replace(',', '.'));
-    if (!isNaN(threshold)) {
-      // Return the threshold value (preserves more info than returning 0)
-      // The rawValue preserves the original "< X" notation for display purposes
+  // A censored value ("< 5", "≥ 200"): beyond what the method can tell,
+  // so the number is a bound, not a measurement. Kept as the bound with its
+  // comparator, never as a plain number.
+  const censoredMatch = valueStr.match(CENSORED);
+  if (censoredMatch) {
+    // A bound that is not read is left missing, never read as a plain number
+    if (!isUnitOrMark(censoredMatch[3])) return { value: NaN, isInterval: false, rawValue: valueStr };
+    const bound = readBound(censoredMatch[2]);
+    if (!isNaN(bound)) {
       return {
-        value: threshold,
+        value: bound,
         isInterval: false,
         rawValue: valueStr,
+        censored: COMPARATORS[censoredMatch[1].toLowerCase().replace(/\s+/g, ' ')],
       };
     }
-  }
-
-  // Handle "greater than" notation: ">10" → single value (can't determine upper bound)
-  const greaterThanMatch = valueStr.match(/^>\s*(\d+(?:[.,]\d+)?)$/);
-  if (greaterThanMatch) {
-    const value = parseFloat(greaterThanMatch[1].replace(',', '.'));
-    if (!isNaN(value)) {
-      return {
-        value,
-        isInterval: false,
-        rawValue: valueStr,
-      };
-    }
+    return { value: NaN, isInterval: false, rawValue: valueStr };
   }
 
   // Try to parse as a simple number
@@ -122,27 +177,19 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     };
   }
 
-  // Default: return 0 if unparseable (will likely be filtered out)
+  // Not read: left missing (never a measured 0), so the review asks for
+  // it and shows what was printed
   return {
-    value: 0,
+    value: NaN,
     isInterval: false,
     rawValue: valueStr,
   };
 }
 
-/**
- * Format an interval value for display
- *
- * @param intervalLow - Lower bound
- * @param intervalHigh - Upper bound
- * @param unit - Unit of measurement
- * @returns Formatted string like "5-10 eritrociti per campo"
- */
-export function formatIntervalValue(
-  intervalLow: number,
-  intervalHigh: number,
-  unit?: string
-): string {
-  const range = `${intervalLow}-${intervalHigh}`;
-  return unit ? `${range} ${unit}` : range;
+/** An extracted interval value's ends; undefined for any other value, or an interval missing an end */
+export function extractedInterval(
+  value: { isInterval?: boolean; intervalLow?: number; intervalHigh?: number }
+): ValueReading['interval'] {
+  const { isInterval, intervalLow: low, intervalHigh: high } = value;
+  return isInterval && low !== undefined && high !== undefined ? { low, high } : undefined;
 }

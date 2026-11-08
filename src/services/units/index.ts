@@ -3,6 +3,7 @@ export {
   canConvert,
   normalizeUnit,
   ConversionError,
+  COMPARISON_PRECISION,
   type ConversionResult,
 } from './conversion';
 

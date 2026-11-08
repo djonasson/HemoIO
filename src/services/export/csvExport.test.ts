@@ -82,7 +82,7 @@ describe('csvExport', () => {
       const csv = exportToCsv(data);
 
       const lines = csv.split('\n');
-      expect(lines[0]).toBe('Date,Lab Name,Biomarker,LOINC,Value,Unit,Reference Low,Reference High');
+      expect(lines[0]).toBe('Date,Lab Name,Biomarker,LOINC,Value,Unit,Reference Low,Reference High,Reference Unit');
     });
 
     it('should export all test values', () => {
@@ -118,6 +118,73 @@ describe('csvExport', () => {
       expect(csv).toContain('20/3/2024');
     });
 
+    it('exports an interval as its ends, as text a spreadsheet keeps', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [
+            {
+              ...createMockTestValue(1, 1, 'unknown:eritrociti', 7.5, '/[HPF]'),
+              numericValueType: 'interval',
+              intervalLow: 5,
+              intervalHigh: 10,
+            },
+          ],
+          biomarkerNames: new Map([['unknown:eritrociti', 'Eritrociti']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',"=""5-10""",');
+      expect(csv).not.toContain('7.5');
+    });
+
+    it.each([
+      ['a text value', { value: '1-1"&HYPERLINK("https://example.test")&"' }],
+      ['a text end', { intervalLow: '1"&HYPERLINK("https://example.test")&"' as unknown as number }],
+    ])('never writes %s of a restored interval inside a formula', (_case, fields) => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [
+            {
+              ...createMockTestValue(1, 1, 'unknown:eritrociti', 7.5, '/[HPF]'),
+              numericValueType: 'interval',
+              intervalLow: 5,
+              intervalHigh: 10,
+              ...fields,
+            },
+          ],
+          biomarkerNames: new Map([['unknown:eritrociti', 'Eritrociti']]),
+        },
+      ]);
+
+      expect(csv).not.toContain('="');
+    });
+
+    it('exports a censored value with its comparator', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [{ ...createMockTestValue(1, 1, '2345-7', 10, 'mg/dL'), censored: '<' }],
+          biomarkerNames: new Map([['2345-7', 'Glucose']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',< 10,mg/dL');
+    });
+
+    it('exports a qualitative result as printed', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [{ ...createMockTestValue(1, 1, '25145-4', 0, ''), value: 'Assenti', qualitativeType: 'boolean' }],
+          biomarkerNames: new Map([['25145-4', 'Bacteria']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',Assenti,');
+    });
+
     it('should include lab name and biomarker name', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data);
@@ -136,6 +203,49 @@ describe('csvExport', () => {
       expect(csv).toContain('Reference High');
       expect(csv).toContain('70');
       expect(csv).toContain('100');
+    });
+
+    it("gives the reference range's unit: its own when printed in one, else the value's", () => {
+      const lab = createMockLabResult(1, '2024-01-15', 'Lab');
+      const csv = exportToCsv([
+        {
+          labResult: lab,
+          testValues: [
+            createMockTestValue(1, 1, '2345-7', 95, 'mg/dL', 70, 100),
+            { ...createMockTestValue(2, 1, '2889-4', 300, 'mg/L', 0, 0.15), referenceRangeUnit: 'g/24h' },
+            createMockTestValue(3, 1, '718-7', 14.5, 'g/dL'),
+          ],
+          biomarkerNames: new Map(),
+        },
+      ]);
+
+      const [, glucose, protein, hemoglobin] = csv.split('\n');
+      expect(glucose).toMatch(/,70,100,mg\/dL$/);
+      expect(protein).toMatch(/,0,0\.15,g\/24h$/);
+      // No range, no unit for it
+      expect(hemoglobin).toMatch(/,g\/dL,,,$/);
+    });
+
+    it('writes range ends to six significant figures, as a range converted at full precision would not be printed', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [createMockTestValue(1, 1, '2345-7', 5.5, 'mmol/L', 3.8854351687, 5.5499)],
+          biomarkerNames: new Map(),
+        },
+      ]);
+      expect(csv.split('\n')[1]).toMatch(/,3\.88544,5\.5499,mmol\/L$/);
+    });
+
+    it('keeps every whole digit of a large range end', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [createMockTestValue(1, 1, '777-3', 300000, '/µL', 1234567.4, 4500000)],
+          biomarkerNames: new Map(),
+        },
+      ]);
+      expect(csv.split('\n')[1]).toMatch(/,1234567,4500000,\/µL$/);
     });
 
     it('should exclude reference ranges when option is false', () => {
@@ -251,8 +361,8 @@ describe('csvExport', () => {
 
     it("gives each identified value's LOINC code, and none for a value that is not a LOINC test", () => {
       const lines = exportToCsv(createMockExportData()).split('\n');
-      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,"=""2345-7""",95,mg/dL,70,100');
-      expect(lines[4]).toBe('2024-03-20,LabCorp,Cholesterol,,185,mg/dL,0,200');
+      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,"=""2345-7""",95,mg/dL,70,100,mg/dL');
+      expect(lines[4]).toBe('2024-03-20,LabCorp,Cholesterol,,185,mg/dL,0,200,mg/dL');
     });
 
     it('writes a LOINC code as text, so a spreadsheet does not read "2345-7" as a date', () => {

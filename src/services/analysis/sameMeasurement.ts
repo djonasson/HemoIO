@@ -5,7 +5,7 @@
  */
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
-import { canConvert, convertValue, normalizeUnit, unitsMatch } from '../units';
+import { canConvert, COMPARISON_PRECISION, convertValue, normalizeUnit, unitsMatch } from '../units';
 import { quantityKind, type Catalog, type CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -20,9 +20,6 @@ import type { MatchedBiomarker } from './LabReportAnalyzer';
  * vs the lab's direct measurement of 79 mg/dL - a 1.26% difference
  */
 const RELATIVE_TOLERANCE = 0.02;
-
-/** Decimal places used when converting values only to compare them */
-const COMPARISON_PRECISION = 10;
 
 /**
  * Half the last reported digit: how far rounding can have moved a value. A
@@ -140,6 +137,10 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
  */
 export function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
   if (a.comparison === undefined || b.comparison === undefined) return false;
+  // In one unit, "< 10" is a bound and 10 a measurement: never the same
+  if (!a.biomarker.censored !== !b.biomarker.censored && unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
+  // "> 0.50" and "< 44" bound the value from opposite sides: they say different things
+  if (a.biomarker.censored && b.biomarker.censored && a.biomarker.censored[0] !== b.biomarker.censored[0]) return false;
   if (a.comparison === b.comparison) return true;
   const diff = Math.abs(a.comparison - b.comparison);
   const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;
@@ -210,10 +211,31 @@ export function preferredValue(cluster: readonly ComparableValue[], unit: GroupU
   );
 }
 
+/**
+ * The value kept for a measurement, with the comparator and the lab's mark
+ * a twin set aside carries when the kept one has none: "< 44 µmol/L" beside
+ * "0,50 mg/dL" is kept as "< 0.5 mg/dL", "7.2 mmol/L H" beside "130 mg/dL"
+ * keeps its H
+ */
+function withTwinMarks(preferred: MatchedBiomarker, cluster: readonly ComparableValue[]): MatchedBiomarker {
+  const censored = preferred.censored ?? cluster.find(({ biomarker }) => biomarker.censored)?.biomarker.censored;
+  const labFlag = preferred.labFlag ?? cluster.find(({ biomarker }) => biomarker.labFlag)?.biomarker.labFlag;
+  if (censored === preferred.censored && labFlag === preferred.labFlag) return preferred;
+  return { ...preferred, censored, labFlag };
+}
+
 /** One test's values, settled or in conflict */
 export type SettledGroup =
-  /** Each value kept, or set aside for the value kept in its place */
-  | { settled: true; kept: MatchedBiomarker[]; setAside: Map<MatchedBiomarker, MatchedBiomarker> }
+  /**
+   * Each value kept, or set aside for the value kept in its place; `merged`
+   * gives a kept value that took a twin's comparator or mark (see withTwinMarks)
+   */
+  | {
+      settled: true;
+      kept: MatchedBiomarker[];
+      setAside: Map<MatchedBiomarker, MatchedBiomarker>;
+      merged: Map<MatchedBiomarker, MatchedBiomarker>;
+    }
   /** The values conflict: the user keeps the right one */
   | { settled: false; values: ComparableValue[]; unit: GroupUnit };
 
@@ -229,10 +251,13 @@ export function settleGroup(group: readonly MatchedBiomarker[], catalog: Catalog
   if (!isSettled(values, clusters)) return { settled: false, values, unit };
   const kept: MatchedBiomarker[] = [];
   const setAside = new Map<MatchedBiomarker, MatchedBiomarker>();
+  const merged = new Map<MatchedBiomarker, MatchedBiomarker>();
   for (const cluster of clusters) {
     const preferred = preferredValue(cluster, unit).biomarker;
-    kept.push(preferred);
-    for (const { biomarker } of cluster) if (biomarker !== preferred) setAside.set(biomarker, preferred);
+    const keptValue = withTwinMarks(preferred, cluster);
+    if (keptValue !== preferred) merged.set(preferred, keptValue);
+    kept.push(keptValue);
+    for (const { biomarker } of cluster) if (biomarker !== preferred) setAside.set(biomarker, keptValue);
   }
-  return { settled: true, kept, setAside };
+  return { settled: true, kept, setAside, merged };
 }

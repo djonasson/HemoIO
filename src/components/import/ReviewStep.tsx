@@ -22,6 +22,7 @@ import {
   Alert,
   Accordion,
   ThemeIcon,
+  NativeSelect,
 } from '@mantine/core';
 import {
   IconArrowLeft,
@@ -55,9 +56,13 @@ import { missingFields, needsTest, planSave } from '@services/analysis/reviewedS
 import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
+import { heldQualitative } from '@services/ai';
+import { COMPARATOR_SIGNS, LAB_FLAG_TEXT } from '@/utils/formatTestValue';
+import { LabFlagMark } from '@components/common/LabFlagMark';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
+import type { CensoredComparator, LabFlag } from '@/types';
 
 /**
  * The LOINC code with LOINC's name for it, as the license asks, and
@@ -96,6 +101,18 @@ export interface ReviewedResult extends AnalysisResult {
   /** Duplicate biomarker conflicts (inherited from AnalysisResult, explicitly declared for clarity) */
   duplicateConflicts?: DuplicateConflict[];
 }
+
+/** The lab's marks as printed, with what each says; or none */
+const LAB_FLAG_OPTIONS = [
+  { value: '', label: 'No mark' },
+  ...(Object.keys(LAB_FLAG_TEXT) as LabFlag[]).map((flag) => ({ value: flag, label: `${LAB_FLAG_TEXT[flag].mark} (${flag})` })),
+];
+
+/** The comparator choices of a value: measured ("="), or censored */
+const COMPARATOR_OPTIONS = [
+  { value: '', label: '=' },
+  ...Object.entries(COMPARATOR_SIGNS).map(([value, label]) => ({ value, label })),
+];
 
 /**
  * An interval's ends and the value saved for it, their midpoint: none
@@ -502,6 +519,8 @@ export function ReviewStep({
                         const isEditing =
                           editingBiomarker?.resultIndex === resultIndex &&
                           editingBiomarker?.biomarkerIndex === bioIndex;
+                        // The printed result, while the number is still the one it reads as
+                        const printedResult = heldQualitative(biomarker);
 
                         // Determine row background color based on issues
                         let rowBg: string | undefined;
@@ -604,7 +623,7 @@ export function ReviewStep({
                                   <Text span fw={700} size="xs" inherit>
                                     Not saved:
                                   </Text>{' '}
-                                  the same measurement as {setAside.get(biomarker)?.savedAs?.value}{' '}
+                                  the same measurement as {formatReviewedValue(setAside.get(biomarker)!.savedAs!)}{' '}
                                   {setAside.get(biomarker)?.savedAs?.unit}, which is saved.
                                 </Text>
                               )}
@@ -627,7 +646,6 @@ export function ReviewStep({
                                       onValueChange={(low) =>
                                         updateBiomarker(resultIndex, bioIndex, intervalEnds(low, biomarker.intervalHigh))
                                       }
-                                      decimalScale={2}
                                       placeholder="Low"
                                       w={60}
                                     />
@@ -638,25 +656,67 @@ export function ReviewStep({
                                       onValueChange={(high) =>
                                         updateBiomarker(resultIndex, bioIndex, intervalEnds(biomarker.intervalLow, high))
                                       }
-                                      decimalScale={2}
                                       placeholder="High"
                                       w={60}
                                     />
                                   </Group>
                                 ) : (
-                                  <NumberField
-                                    size="xs"
-                                    value={biomarker.value}
-                                    onValueChange={(value) =>
-                                      // A cleared number is missing, not 0
-                                      updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
-                                    }
-                                    decimalScale={2}
-                                    placeholder="Value"
-                                  />
+                                  <Group gap="xs" wrap="nowrap">
+                                    {!printedResult && (
+                                      // A censored value's comparator ("< 10"); "=" for a measured one
+                                      <NativeSelect
+                                        size="xs"
+                                        aria-label="Comparator"
+                                        data={COMPARATOR_OPTIONS}
+                                        value={biomarker.censored ?? ''}
+                                        onChange={(e) =>
+                                          updateBiomarker(resultIndex, bioIndex, {
+                                            censored: (e.currentTarget.value || undefined) as CensoredComparator | undefined,
+                                          })
+                                        }
+                                        w={56}
+                                      />
+                                    )}
+                                    <NumberField
+                                      size="xs"
+                                      value={biomarker.value}
+                                      onValueChange={(value) =>
+                                        // A cleared number is missing, not 0
+                                        updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
+                                      }
+                                      placeholder="Value"
+                                    />
+                                    {printedResult && (
+                                      <Text size="xs" c="dimmed">
+                                        {printedResult.text}
+                                      </Text>
+                                    )}
+                                    {/* The lab's mark, which the user may change or clear */}
+                                    <NativeSelect
+                                      size="xs"
+                                      aria-label="Lab's mark"
+                                      data={LAB_FLAG_OPTIONS}
+                                      value={biomarker.labFlag ?? ''}
+                                      onChange={(e) =>
+                                        updateBiomarker(resultIndex, bioIndex, {
+                                          labFlag: (e.currentTarget.value || undefined) as LabFlag | undefined,
+                                        })
+                                      }
+                                      w={110}
+                                    />
+                                  </Group>
                                 )
                               ) : (
-                                <Text size="sm">{formatReviewedValue(biomarker)}</Text>
+                                <Group gap={4} wrap="nowrap">
+                                  <Text size="sm">{formatReviewedValue(biomarker)}</Text>
+                                  {biomarker.labFlag && <LabFlagMark flag={biomarker.labFlag} />}
+                                </Group>
+                              )}
+                              {!Number.isFinite(biomarker.value) && !biomarker.isInterval && biomarker.rawValue && (
+                                // A value that could not be read: what the report printed, to type it from
+                                <Text size="xs" c="dimmed">
+                                  Printed: “{biomarker.rawValue}”
+                                </Text>
                               )}
                             </Table.Td>
                             <Table.Td>
@@ -690,11 +750,9 @@ export function ReviewStep({
                                         referenceRange: {
                                           ...biomarker.referenceRange,
                                           low,
-                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
                                     }
-                                    decimalScale={2}
                                     placeholder="Low"
                                     w={70}
                                     allowNegative={false}
@@ -708,11 +766,9 @@ export function ReviewStep({
                                         referenceRange: {
                                           ...biomarker.referenceRange,
                                           high,
-                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
                                     }
-                                    decimalScale={2}
                                     placeholder="High"
                                     w={70}
                                     allowNegative={false}

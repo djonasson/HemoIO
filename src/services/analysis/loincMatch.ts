@@ -1035,7 +1035,7 @@ export function matchLocally(
 }
 
 /** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
-const PLAIN_RATIO = /^(?:1|\{ratio\})$/i;
+export const PLAIN_RATIO = /^(?:1|\{ratio\})$/i;
 
 /**
  * Words of a printed name naming a clotting time: "PT", "aPTT", "TT",
@@ -1045,10 +1045,14 @@ const PLAIN_RATIO = /^(?:1|\{ratio\})$/i;
 const CLOTTING_TIME_WORDS =
   /\b(?:a?ptt?|tt|inr|quick|tempo|time|drvvt|protrombin\w*|prothrombin\w*|trombin\w*|thrombin\w*|tromboplastin\w*|thromboplastin\w*|cefalin\w*|coagul\w*|clotting)\b/i;
 
-/** The properties of a ratio said of a printed name: a clotting time over a normal one (RelTime) only when it names one */
-function ratioProperties(properties: string[], name: string): string[] {
-  return CLOTTING_TIME_WORDS.test(name) ? [...properties, 'RelTime'] : properties;
+/** The properties of a ratio said of a printed name: a clotting time over a normal one (RelTime) only when it names one, instead of a time ratio */
+function ratioProperties(properties: readonly string[], name: string): string[] {
+  // A clotting time's plain ratio is it over a normal one, not a time ratio after an addition ("aPTT -- after protein C activator")
+  return CLOTTING_TIME_WORDS.test(name) ? [...properties.filter((property) => property !== 'TRto'), 'RelTime'] : [...properties];
 }
+
+/** LOINC's ratios of like quantities, which a plain ratio may be: of masses (cholesterol/HDL), amounts, numbers, volumes or times */
+export const RATIO_KINDS: readonly string[] = ['Ratio', 'MRto', 'SRto', 'NRto', 'VRto', 'TRto'];
 
 /**
  * The LOINC properties a printed unit reads as (see ucumProperties). A
@@ -1058,7 +1062,7 @@ function ratioProperties(properties: string[], name: string): string[] {
  */
 function unitProperties(ucum: string, name: string): string[] {
   const properties = ucumProperties(ucum);
-  return PLAIN_RATIO.test(ucum) ? ratioProperties(properties, name) : properties;
+  return PLAIN_RATIO.test(ucum) ? ratioProperties([...new Set([...properties, ...RATIO_KINDS])], name) : properties;
 }
 
 /** A clotting time over a normal one, or the INR, as LOINC names its component; a factor's or a protein's activity over a normal one is another */
@@ -1128,8 +1132,12 @@ function matchUnitless(
   if (unitless.status === 'match' && seen.learned) return unitless;
   const any = matchIn(catalog, value, unit, [], learned, {}, Number.POSITIVE_INFINITY);
   // A name saying it is a ratio: a ratio, or a clotting time over a normal one ("aPTT ratio")
+  const ratioKinds = ratioProperties(RATIO_KINDS, value.name);
+  // Only ratios: with none fitting, matchIn falls back to tests of any kind, which must not lead
   const ratios = RATIO_WORD.test(value.name)
-    ? matchIn(catalog, value, unit, ratioProperties(['Ratio'], value.name), learned).candidates
+    ? matchIn(catalog, value, unit, ratioKinds, learned).candidates.filter(({ code }) =>
+        ratioKinds.includes(catalog.test(code)?.property ?? '')
+      )
     : [];
   if (unitless.status === 'match' && seen.sample === 'named' && unitless.candidates[0].score === 1) {
     // A test measured in a unit that fits as well, unless far rarer than the one with none ("Nitrite [Mass/volume] in Urine")
@@ -1147,10 +1155,21 @@ function matchUnitless(
     if (!measured) return unitless;
   }
   const others = [...unitless.candidates, ...any.candidates];
-  // A ratio leads the others it fits at least as well as: "Rapporto colesterolo/HDL" is not first the VLDL/triglyceride ratio it barely fits
+  // A ratio leads the others it fits better; as well, only when the name
+  // says ratio in words or is the ratio's own name ("Colesterolo/HDL"): a
+  // slash may join two names of one test ("Glucosio/Glukose") or two
+  // results ("Borrelia IgG/IgM"), whose tests are not pushed out of the list
+  const inWords = RATIO_IN_WORDS.test(value.name);
+  const ownName = nameKey(value.name);
+  const leadsTie = (code: string): boolean => inWords || !!getAddon(catalog, code)?.names?.includes(ownName);
   const merged: Candidate[] = [];
   for (const candidate of others) {
-    while (ratios.length && ratios[0].score >= candidate.score) merged.push(ratios.shift()!);
+    while (
+      ratios.length &&
+      (ratios[0].score > candidate.score || (ratios[0].score === candidate.score && leadsTie(ratios[0].code)))
+    ) {
+      merged.push(ratios.shift()!);
+    }
     merged.push(candidate);
   }
   const candidates = [...merged, ...ratios]
@@ -1159,8 +1178,11 @@ function matchUnitless(
   return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 
-/** A printed name saying its value is a ratio */
-const RATIO_WORD = /\b(?:ratio|rapporto)\b/i;
+/** A printed name saying its value is a ratio, in words or by a slash between its parts ("Colesterolo totale/HDL") */
+const RATIO_WORD = /\b(?:ratio|rapporto)\b|[a-z]\s*\/\s*[a-z]/i;
+
+/** A printed name saying in words that its value is a ratio ("Rapporto A/G", "aPTT ratio") */
+const RATIO_IN_WORDS = /\b(?:ratio|rapporto)\b/i;
 
 /** What a match read on the way: the value's sample, and whether its code was learned */
 interface Seen {

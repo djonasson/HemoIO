@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
+import { parseIntervalValue, extractedInterval } from './parseIntervalValue';
 
 describe('parseIntervalValue', () => {
   describe('single numeric values', () => {
@@ -105,6 +105,7 @@ describe('parseIntervalValue', () => {
       expect(result.isInterval).toBe(false);
       expect(result.value).toBe(5);
       expect(result.rawValue).toBe('<5');
+      expect(result.censored).toBe('<');
     });
 
     test('should parse "< 10" with space as threshold value 10', () => {
@@ -128,6 +129,95 @@ describe('parseIntervalValue', () => {
       expect(result.isInterval).toBe(false);
       expect(result.value).toBe(10);
       expect(result.rawValue).toBe('>10');
+      expect(result.censored).toBe('>');
+    });
+
+    test.each([
+      ['<= 0,2', '<=', 0.2],
+      ['≤0.2', '<=', 0.2],
+      ['>= 200', '>=', 200],
+      ['≥ 200', '>=', 200],
+    ])('should read "%s" as %s %s', (raw, comparator, bound) => {
+      expect(parseIntervalValue(raw)).toMatchObject({ value: bound, censored: comparator, isInterval: false });
+    });
+
+    test('should not call a plain number or an interval censored', () => {
+      expect(parseIntervalValue('10').censored).toBeUndefined();
+      expect(parseIntervalValue(10).censored).toBeUndefined();
+      expect(parseIntervalValue('5-10').censored).toBeUndefined();
+    });
+
+    test.each([
+      ['> 200 H', '>', 200],
+      ['<10 mg/dL', '<', 10],
+      ['< 1.000 UI/mL', '<', 1000],
+      ['=< 5', '<=', 5],
+      ['=> 5', '>=', 5],
+      ['>= 5', '>=', 5],
+      ['≤ 0,2', '<=', 0.2],
+      ['≥3', '>=', 3],
+      ['inferiore a 5', '<', 5],
+      ['Inferiore a 0,5', '<', 0.5],
+      ['minore di 3', '<', 3],
+      ['superiore a 200', '>', 200],
+      ['maggiore di 90 mL/min', '>', 90],
+      ['> 1.000', '>', 1000],
+      ['> 100.000 UFC/mL', '>', 100000],
+      ['> 35.000', '>', 35000],
+      ['< 1.000,5', '<', 1000.5],
+      ['< 0.2', '<', 0.2],
+      ['< 1.50', '<', 1.5],
+      ['< 0.005', '<', 0.005],
+      ['<0.010', '<', 0.01],
+      ['> 0.500', '>', 0.5],
+      ['≥ 0.100', '>=', 0.1],
+      ['> 25.000', '>', 25000],
+      ['< 5 mg/24h', '<', 5],
+      ['> 50 µg/L', '>', 50],
+      ['< 5 %', '<', 5],
+      // A unit per something, or the lab's mark in brackets, as a sign or an arrow
+      ['< 2 /campo', '<', 2],
+      ['<5/µL', '<', 5],
+      ['> 200 (H)', '>', 200],
+      ['> 200 [H]', '>', 200],
+      ['> 200 *', '>', 200],
+      ['> 200 ↑', '>', 200],
+      ['< 3 ↓', '<', 3],
+    ] as const)('reads %o as its bound with its comparator', (raw, censored, value) => {
+      const result = parseIntervalValue(raw);
+      expect(result).toMatchObject({ censored, value, isInterval: false, rawValue: raw });
+    });
+
+    test('leaves a censored value whose number cannot be read missing', () => {
+      const result = parseIntervalValue('< 1,2,3');
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+    });
+
+    test.each([
+      // One digit and three decimals: a specific gravity (1.005) or a count (1005)
+      '< 1.005',
+      '> 1.030',
+      // A power of ten, an exponent or a titre: more than a bound and its unit
+      '> 10^5 UFC/mL',
+      '>1x10^5',
+      '> 1 x 10^5',
+      '> 1 ×10 5',
+      '< 1:80',
+      '<1/40',
+      '< 1 / 40',
+      '≥ 1.5e3',
+      '> 5 * 10',
+      '> 5 (10^3)',
+    ])('leaves %o missing, keeping what was printed for the review', (raw) => {
+      const result = parseIntervalValue(raw);
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+      expect(result.rawValue).toBe(raw);
+    });
+
+    test('reads a plain number with three decimals as a decimal, as a specific gravity is', () => {
+      expect(parseIntervalValue('1.015')).toMatchObject({ value: 1.015, isInterval: false });
     });
 
     test('should parse "> 20" with space', () => {
@@ -138,29 +228,18 @@ describe('parseIntervalValue', () => {
   });
 
   describe('edge cases', () => {
-    test('should handle empty string', () => {
-      const result = parseIntervalValue('');
-      expect(result.value).toBe(0);
+    test.each(['', null, undefined])('leaves %o missing, with nothing printed', (raw) => {
+      const result = parseIntervalValue(raw);
+      expect(result.value).toBeNaN();
       expect(result.isInterval).toBe(false);
+      expect(result.rawValue).toBeUndefined();
     });
 
-    test('should handle non-numeric string', () => {
-      const result = parseIntervalValue('negative');
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
-      expect(result.rawValue).toBe('negative');
-    });
-
-    test('should handle null', () => {
-      const result = parseIntervalValue(null);
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
-    });
-
-    test('should handle undefined', () => {
-      const result = parseIntervalValue(undefined);
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
+    test('leaves a value it cannot read missing, never a measured 0, and keeps what was printed', () => {
+      const result = parseIntervalValue('vedi nota');
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+      expect(result.rawValue).toBe('vedi nota');
     });
 
     test('should handle zero', () => {
@@ -179,16 +258,10 @@ describe('parseIntervalValue', () => {
   });
 });
 
-describe('formatIntervalValue', () => {
-  test('should format interval without unit', () => {
-    expect(formatIntervalValue(5, 10)).toBe('5-10');
-  });
-
-  test('should format interval with unit', () => {
-    expect(formatIntervalValue(5, 10, 'eritrociti per campo')).toBe('5-10 eritrociti per campo');
-  });
-
-  test('should format decimal interval', () => {
-    expect(formatIntervalValue(1.5, 3.5, 'cells')).toBe('1.5-3.5 cells');
+describe('extractedInterval', () => {
+  test('gives the ends of an interval value, and nothing for any other or an interval missing an end', () => {
+    expect(extractedInterval({ isInterval: true, intervalLow: 5, intervalHigh: 10 })).toEqual({ low: 5, high: 10 });
+    expect(extractedInterval({ isInterval: true, intervalLow: 5 })).toBeUndefined();
+    expect(extractedInterval({ isInterval: false, intervalLow: 5, intervalHigh: 10 })).toBeUndefined();
   });
 });

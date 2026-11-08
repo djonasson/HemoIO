@@ -53,6 +53,7 @@ function createTestValue(
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',
+    statusBasis: options.status === 'unknown' ? 'none' : 'range',
     createdAt: new Date(),
     updatedAt: new Date(),
     ...options,
@@ -158,7 +159,7 @@ describe('TestValuesList', () => {
     ];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
-    expect(screen.getByText('14.50')).toBeInTheDocument();
+    expect(screen.getByText('14.5')).toBeInTheDocument();
     expect(screen.getByText('g/dL')).toBeInTheDocument();
   });
 
@@ -272,18 +273,22 @@ describe('TestValuesList', () => {
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
     const row = screen.getByRole('row', {
-      name: /hemoglobin.*14\.50.*g\/dL.*within reference range/i,
+      name: /hemoglobin.*14\.5.*g\/dL.*within reference range/i,
     });
     expect(row).toBeInTheDocument();
   });
 
-  it('should round decimal values to 2 places', () => {
+  it('shows every decimal the report printed, without floating-point noise', () => {
     const testValues = [
-      createTestValue(1, { rawText: 'Test', value: 14.567 }),
+      createTestValue(1, { rawText: 'Gravity', value: 1.015 }),
+      createTestValue(2, { rawText: 'TSH', value: 0.005 }),
+      createTestValue(3, { rawText: 'Sum', value: 0.1 + 0.2 }),
     ];
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
-    expect(screen.getByText('14.57')).toBeInTheDocument();
+    expect(screen.getByText('1.015')).toBeInTheDocument();
+    expect(screen.getByText('0.005')).toBeInTheDocument();
+    expect(screen.getByText('0.3')).toBeInTheDocument();
   });
 
   it('should not add decimals to integer values', () => {
@@ -293,6 +298,110 @@ describe('TestValuesList', () => {
     renderWithProviders(<TestValuesList testValues={testValues} />);
 
     expect(screen.getByText('95')).toBeInTheDocument();
+  });
+
+  it('shows an interval as its ends, not its midpoint', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, {
+            rawText: 'Eritrociti',
+            value: 7.5,
+            unit: '/[HPF]',
+            numericValueType: 'interval',
+            intervalLow: 5,
+            intervalHigh: 10,
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('row', { name: /^Eritrociti: 5-10 \/\[HPF\],/ })).toBeInTheDocument();
+    expect(screen.queryByText('7.50')).toBeNull();
+  });
+
+  it("shows a value's method beneath it, and says it", () => {
+    renderWithProviders(
+      <TestValuesList testValues={[createTestValue(1, { rawText: 'Test', value: 95, unit: 'mg/dL', method: 'Enzymatic' })]} />
+    );
+
+    const row = screen.getByRole('row', { name: /^Test: 95 mg\/dL by Enzymatic,/ });
+    expect(within(row).getByText('Enzymatic')).toBeInTheDocument();
+  });
+
+  it('shows a censored value with its comparator, never as its bound alone', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[createTestValue(1, { rawText: 'Glucosio', value: 10, unit: 'mg/dL', censored: '<' })]}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /^Glucosio: < 10 mg\/dL,/ });
+    expect(within(row).getByText('< 10')).toBeInTheDocument();
+  });
+
+  it("shows the lab's mark beside the value, in words for screen readers", () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[createTestValue(1, { rawText: 'PCR', value: 12, unit: 'mg/L', labFlag: 'high', status: 'unknown' })]}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /^PCR: 12 mg\/L, flagged high by the lab, No reference range available$/ });
+    expect(within(row).getByTitle('flagged high by the lab')).toHaveTextContent('H');
+  });
+
+  it("says when the status is the lab's mark, the range telling nothing", () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, { rawText: 'PCR', value: 12, unit: 'mg/L', labFlag: 'high', status: 'high', statusBasis: 'lab' }),
+        ]}
+      />
+    );
+
+    // Said once: the mark is what gives the status
+    expect(screen.getByRole('row', { name: /^PCR: 12 mg\/L, Flagged high by the lab$/ })).toBeInTheDocument();
+  });
+
+  it('shows a range it cannot compare in its own unit, and says it cannot be compared', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, {
+            rawText: 'Proteine',
+            value: 12,
+            unit: 'mg/dL',
+            status: 'unknown',
+            statusBasis: 'uncomparable',
+            unconvertedRange: { low: 0.1, high: 0.15, unit: 'g/24h' },
+          }),
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /Cannot be compared with the reference range$/ });
+    expect(within(row).getByText(/g\/24h$/)).toBeInTheDocument();
+  });
+
+  it('shows a qualitative result as printed', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, {
+            rawText: 'Batteri',
+            value: 'Assenti',
+            unit: '',
+            qualitativeType: 'boolean',
+            ordinalValue: 0,
+            status: 'unknown',
+          }),
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /^Batteri: Assenti/ });
+    expect(within(row).getByText('Assenti')).toBeInTheDocument();
   });
 
   describe('Specimen type display', () => {

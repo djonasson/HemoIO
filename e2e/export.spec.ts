@@ -263,6 +263,45 @@ test.describe('Export on LOINC codes', () => {
   });
 });
 
+test.describe('Export of values as they read', () => {
+  test('writes intervals, censored values, qualitative words and the range unit', async ({ page }) => {
+    // Scenario: CSV export writes each value as it reads
+    const at = '2024-01-15T10:00:00.000Z';
+    const saved = { labResultId: 1, createdAt: at, updatedAt: at };
+    await page.goto('/');
+    await setupOrUnlock(page);
+    await seedLabData(page, {
+      labResults: [{ id: 1, date: at, labName: 'Quest Diagnostics', createdAt: at, updatedAt: at }],
+      testValues: [
+        {
+          ...saved, id: 1, biomarkerKey: 'unknown:eritrociti', value: 7.5, unit: '/[HPF]', rawText: 'Eritrociti',
+          numericValueType: 'interval', intervalLow: 5, intervalHigh: 10, referenceRangeLow: 0, referenceRangeHigh: 3,
+        },
+        { ...saved, id: 2, biomarkerKey: '2160-0', value: 0.5, unit: 'mg/dL', censored: '<', rawText: 'Creatinina' },
+        { ...saved, id: 3, biomarkerKey: 'unknown:nitriti', value: 'Assenti', unit: '', rawText: 'Nitriti' },
+        {
+          ...saved, id: 4, biomarkerKey: '2889-4', value: 300, unit: 'mg/L', rawText: 'Proteine',
+          referenceRangeLow: 0, referenceRangeHigh: 0.15, referenceRangeUnit: 'g/24h',
+        },
+      ],
+    });
+    await openExportDialog(page);
+
+    const downloadPromise = page.waitForEvent('download');
+    await exportDialog(page).getByRole('button', { name: 'Export', exact: true }).click();
+    const download = await downloadPromise;
+    const rows = fs.readFileSync(await download.path(), 'utf-8').trim().split(/\r?\n/);
+    const row = (name: string) => rows.find((line) => line.includes(name));
+
+    expect(rows[0]).toMatch(/,Reference Low,Reference High,Reference Unit$/);
+    // ="5-10": a spreadsheet keeps the interval as text instead of reading it as a date
+    expect(row('Eritrociti')).toMatch(/,"=""5-10""",\/\[HPF\],0,3,\/\[HPF\]$/);
+    expect(row('Creatinine')).toMatch(/,< 0\.5,mg\/dL,,,$/);
+    expect(row('Nitriti')).toMatch(/,Assenti,,,,$/);
+    expect(row('2889-4')).toMatch(/,300,mg\/L,0,0\.15,g\/24h$/);
+  });
+});
+
 test.describe('Export after changes in this session', () => {
   test('exports nothing for a choice of biomarkers that no longer have values', async ({ page }) => {
     // Scenario: A choice of biomarkers that no longer have values exports nothing

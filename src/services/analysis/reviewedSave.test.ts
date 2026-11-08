@@ -112,6 +112,19 @@ describe('unitMisfits', () => {
   });
 });
 
+describe('ratios of like quantities', () => {
+  it.each(['9830-1', '1759-0', '44429-9'])('asks no unit of %s, a ratio the report printed with none', async (loincCode) => {
+    const real = await loadCatalog();
+    const ratio = analyzed({ name: 'Rapporto colesterolo/HDL', value: 3.6, unit: '', loincCode });
+    expect(missingFields(ratio, real)).toEqual([]);
+  });
+
+  it.each(['13590-5', '54218-3'])('judges a plain ratio as fitting %s, a ratio of like quantities', async (loincCode) => {
+    const real = await loadCatalog();
+    expect(unitFit(analyzed({ name: 'Rapporto', value: 2.4, unit: 'ratio', loincCode }), real)).toBe('fits');
+  });
+});
+
 describe('missingFields', () => {
   it('asks for nothing of a complete value', () => {
     expect(missingFields(CODED)).toEqual([]);
@@ -191,6 +204,20 @@ describe('planSave', () => {
       const plan = planSave([file([molar, SERUM])], catalog);
       expect(plan.toSave[0].editedBiomarkers).toEqual([SERUM]);
       expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: molar, reason: 'duplicate', savedAs: SERUM }]);
+    });
+
+    it("saves the value kept with the comparator of the twin left out", () => {
+      const bound = { ...chooseTest(undecided(5), '14749-6'), censored: '<' as const };
+      const plan = planSave([file([bound, SERUM])], catalog);
+      expect(plan.toSave[0].editedBiomarkers).toEqual([{ ...SERUM, censored: '<' }]);
+      expect(plan.notSaved).toEqual([
+        { fileName: 'a.pdf', biomarker: bound, reason: 'duplicate', savedAs: { ...SERUM, censored: '<' } },
+      ]);
+    });
+
+    it('never leaves out a bound for a measured value in its unit', () => {
+      const bound = analyzed({ name: 'Glucosio', value: 90, unit: 'mg/dL', loincCode: '2345-7', censored: '<' });
+      expect(leftOut([bound, SERUM])).toEqual([]);
     });
 
     it('is kept when it is another measurement, or still has no test', () => {

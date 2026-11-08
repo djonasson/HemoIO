@@ -8,9 +8,10 @@ import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
 import { useSaveState } from '@hooks/useSaveState';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
-import type { UserNote } from '@/types';
+import { formatPointValue } from '@/utils/formatTestValue';
+import type { UserNote, ValueReading } from '@/types';
 
-export interface Measurement {
+export interface Measurement extends ValueReading {
   testValueId: number;
   labResultId?: number;
   value: number;
@@ -45,7 +46,7 @@ export function MeasurementNotesDialog({
   // The modal stays mounted and opens and closes through `opened`, so it can
   // return focus to the point that opened it
   const what = measurement
-    ? `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`
+    ? `${formatPointValue(measurement)} ${measurement.unit} on ${formatShortDate(measurement.date)}`
     : '';
   const stopAdding = () => {
     setAdding(false);

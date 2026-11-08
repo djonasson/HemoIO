@@ -6,6 +6,7 @@
 import { Badge, Group, Text, UnstyledButton } from '@mantine/core';
 import { indicatorColor, type GroupedResult } from '@services/alerts';
 import { formatShortDate } from '@/utils/formatShortDate';
+import { formatPointValue } from '@/utils/formatTestValue';
 import type { BiomarkerAlert } from '@hooks/useAlerts';
 
 export interface EarlierResultProps {
@@ -17,7 +18,7 @@ export interface EarlierResultProps {
 /** An earlier result's details, as shown and as announced */
 function resultSummary({ alert, isNew }: GroupedResult<BiomarkerAlert>): string {
   const critical = alert.severity === 'critical' ? ', critical' : '';
-  return `${formatShortDate(alert.date)}: ${alert.value} ${alert.unit}, ${alert.status}${critical}, ${alert.labName}${isNew ? ', new' : ''}`;
+  return `${formatShortDate(alert.date)}: ${formatPointValue(alert)} ${alert.unit}, ${alert.status}${critical}, ${alert.labName}${isNew ? ', new' : ''}`;
 }
 
 const ROW_PADDING = { padding: '4px var(--mantine-spacing-xs)' };
@@ -33,7 +34,7 @@ export function EarlierResult({
         {formatShortDate(alert.date)}
       </Text>
       <Text size="xs">
-        {alert.value} {alert.unit}
+        {formatPointValue(alert)} {alert.unit}
       </Text>
       <Badge size="xs" color={indicatorColor(alert)} variant="light">
         {alert.status}

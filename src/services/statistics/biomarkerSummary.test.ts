@@ -36,6 +36,7 @@ describe('summarizeBiomarkerResults', () => {
     );
     expect(summary).toEqual({
       count: 3,
+      trendable: true,
       latest: {
         value: 120,
         unit: 'mg/dL',
@@ -54,6 +55,31 @@ describe('summarizeBiomarkerResults', () => {
       'mmol/L'
     );
     expect(summary?.latest).toEqual(expect.objectContaining({ value: 5.55, unit: 'mmol/L' }));
+  });
+
+  it("reports an interval's ends with its midpoint, unconverted", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [
+        result('2024-02-20', [
+          { ...glucose(7.5), numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 },
+        ]),
+      ],
+      GLUCOSE,
+      'mmol/L'
+    );
+    expect(summary?.latest).toEqual(
+      expect.objectContaining({ value: 7.5, unit: 'mg/dL', numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 })
+    );
+  });
+
+  it("reports a censored value's comparator", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [result('2024-02-20', [{ ...glucose(10), censored: '<' }])],
+      GLUCOSE
+    );
+    expect(summary?.latest).toEqual(expect.objectContaining({ value: 10, censored: '<' }));
   });
 
   it('reports a latest value that is not a number as recorded', () => {
@@ -78,5 +104,19 @@ describe('summarizeBiomarkerResults', () => {
     );
     expect(summary?.count).toBe(2);
     expect(summary?.latest).toEqual(expect.objectContaining({ value: 126, unit: 'mg/dL' }));
+  });
+
+  it("carries what gave the latest status and the lab's mark", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [result('2024-02-20', [{ ...glucose(120, 'high'), statusBasis: 'lab', labFlag: 'high' }])],
+      GLUCOSE
+    );
+    expect(summary?.latest).toMatchObject({ statusBasis: 'lab', labFlag: 'high' });
+  });
+
+  it('is trendable only when a value is a number', () => {
+    const words = summarizeBiomarkerResults(catalog, [result('2024-02-20', [{ ...glucose(0), value: 'Assenti' }])], GLUCOSE);
+    expect(words?.trendable).toBe(false);
   });
 });
