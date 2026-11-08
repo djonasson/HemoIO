@@ -82,7 +82,7 @@ describe('csvExport', () => {
       const csv = exportToCsv(data);
 
       const lines = csv.split('\n');
-      expect(lines[0]).toBe('Date,Lab Name,Biomarker,LOINC,Value,Unit,Reference Low,Reference High');
+      expect(lines[0]).toBe('Date,Lab Name,Biomarker,LOINC,Value,Unit,Reference Low,Reference High,Reference Unit');
     });
 
     it('should export all test values', () => {
@@ -205,6 +205,27 @@ describe('csvExport', () => {
       expect(csv).toContain('100');
     });
 
+    it("gives the reference range's unit: its own when printed in one, else the value's", () => {
+      const lab = createMockLabResult(1, '2024-01-15', 'Lab');
+      const csv = exportToCsv([
+        {
+          labResult: lab,
+          testValues: [
+            createMockTestValue(1, 1, '2345-7', 95, 'mg/dL', 70, 100),
+            { ...createMockTestValue(2, 1, '2889-4', 300, 'mg/L', 0, 0.15), referenceRangeUnit: 'g/24h' },
+            createMockTestValue(3, 1, '718-7', 14.5, 'g/dL'),
+          ],
+          biomarkerNames: new Map(),
+        },
+      ]);
+
+      const [, glucose, protein, hemoglobin] = csv.split('\n');
+      expect(glucose).toMatch(/,70,100,mg\/dL$/);
+      expect(protein).toMatch(/,0,0\.15,g\/24h$/);
+      // No range, no unit for it
+      expect(hemoglobin).toMatch(/,g\/dL,,,$/);
+    });
+
     it('should exclude reference ranges when option is false', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data, { includeReferenceRanges: false });
@@ -318,8 +339,8 @@ describe('csvExport', () => {
 
     it("gives each identified value's LOINC code, and none for a value that is not a LOINC test", () => {
       const lines = exportToCsv(createMockExportData()).split('\n');
-      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,"=""2345-7""",95,mg/dL,70,100');
-      expect(lines[4]).toBe('2024-03-20,LabCorp,Cholesterol,,185,mg/dL,0,200');
+      expect(lines[1]).toBe('2024-01-15,Quest Diagnostics,Glucose,"=""2345-7""",95,mg/dL,70,100,mg/dL');
+      expect(lines[4]).toBe('2024-03-20,LabCorp,Cholesterol,,185,mg/dL,0,200,mg/dL');
     });
 
     it('writes a LOINC code as text, so a spreadsheet does not read "2345-7" as a date', () => {

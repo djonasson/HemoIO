@@ -124,7 +124,7 @@ function buildHeader(options: CsvExportOptions): string[] {
   const headers = ['Date', 'Lab Name', 'Biomarker', 'LOINC', 'Value', 'Unit'];
 
   if (options.includeReferenceRanges !== false) {
-    headers.push('Reference Low', 'Reference High');
+    headers.push('Reference Low', 'Reference High', 'Reference Unit');
   }
 
   if (options.includeConfidence) {
@@ -154,9 +154,12 @@ function buildRow(
   ];
 
   if (options.includeReferenceRanges !== false) {
+    const hasRange = testValue.referenceRangeLow !== undefined || testValue.referenceRangeHigh !== undefined;
     row.push(
       testValue.referenceRangeLow !== undefined ? String(testValue.referenceRangeLow) : '',
-      testValue.referenceRangeHigh !== undefined ? String(testValue.referenceRangeHigh) : ''
+      testValue.referenceRangeHigh !== undefined ? String(testValue.referenceRangeHigh) : '',
+      // A range printed in its own unit (a 24-hour amount beside a concentration) says so; any other is in the value's
+      hasRange ? textField(testValue.referenceRangeUnit || testValue.unit) : ''
     );
   }
 
