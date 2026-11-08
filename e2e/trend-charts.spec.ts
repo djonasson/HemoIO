@@ -18,6 +18,7 @@ import {
   HEMOGLOBIN,
   LDL,
   RDW,
+  URINE_RBC,
   VITAMIN_D,
   biomarkerSelect,
   dataPoints,
@@ -462,6 +463,64 @@ test.describe('Trend direction indicator', () => {
     const censored = dataPoints(page).and(page.locator('[data-censored="true"]'));
     await expect(censored).toHaveCount(1);
     await expect(censored).toHaveAttribute('aria-label', /: < 60 mg\/dL \(low\)$/);
+  });
+
+  test('reads no rise into values that turned below a censored bound', async ({ page }) => {
+    // Scenario: A censored value proving the values turned breaks the trend
+    await seedAndOpenTrends(page, [
+      { date: '2024-01-01', values: [{ biomarker: GLUCOSE, value: 110 }] },
+      { date: '2024-02-01', values: [{ biomarker: GLUCOSE, value: 120 }] },
+      { date: '2024-03-01', values: [{ biomarker: GLUCOSE, value: 130 }] },
+      { date: '2024-04-01', values: [{ biomarker: GLUCOSE, value: 140 }] },
+      { date: '2024-05-01', values: [{ biomarker: GLUCOSE, value: 60, censored: '<' }] },
+    ]);
+    await selectBiomarker(page, 'Glucose');
+
+    await expect(dataPoints(page)).toHaveCount(5);
+    await expect(page.getByRole('main').getByText('Increasing', { exact: true })).toHaveCount(0);
+  });
+
+  test('shows the latest, lowest and highest values as they read', async ({ page }) => {
+    // Scenario: The statistics read values as printed
+    await seedAndOpenTrends(page, [
+      { date: '2024-01-01', values: [{ biomarker: GLUCOSE, value: 90 }] },
+      { date: '2024-02-01', values: [{ biomarker: GLUCOSE, value: 100, censored: '>' }] },
+    ]);
+    await selectBiomarker(page, 'Glucose');
+
+    const latest = page.getByRole('main').getByText('> 100.0', { exact: true });
+    await expect(latest).toHaveCount(2);
+    // Its status cannot be told (above 100, the range's high), so it is not coloured as normal
+    await expect(latest.first()).not.toHaveAttribute('style', /green/);
+  });
+
+  test('compares values as they read', async ({ page }) => {
+    // Scenario: The comparison reads values as printed
+    await seedAndOpenTrends(page, [
+      { date: '2024-01-01', values: [{ biomarker: GLUCOSE, value: 10, censored: '<' }, { biomarker: HEMOGLOBIN, value: 14 }] },
+      { date: '2024-02-01', values: [{ biomarker: GLUCOSE, value: 90 }, { biomarker: HEMOGLOBIN, value: 14.5 }] },
+    ]);
+    await selectBiomarker(page, 'Glucose');
+    await page.getByRole('main').getByRole('button', { name: 'Compare Markers' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Compare Biomarkers' });
+    await dialog.getByRole('textbox', { name: 'Select biomarkers to compare' }).click();
+    await page.getByRole('option', { name: /^Hemoglobin \(/ }).click();
+
+    const open = dialog.locator('circle[data-censored="true"]');
+    await expect(open).toHaveCount(1);
+    await open.hover({ force: true });
+    await expect(dialog.getByText('Glucose: < 10 mg/dL')).toBeVisible();
+  });
+
+  test("reads an interval's ends in the line's unit", async ({ page }) => {
+    // Scenario: An interval reads as its ends on the chart, in the line's unit
+    await seedAndOpenTrends(page, [
+      { date: '2024-01-01', values: [{ biomarker: URINE_RBC, value: 1 }] },
+      { date: '2024-02-01', values: [{ biomarker: URINE_RBC, value: 7.5, interval: { low: 5, high: 10 } }] },
+    ]);
+    await selectBiomarker(page, 'Urine Red Blood Cells');
+
+    await expect(dataPoints(page).last()).toHaveAttribute('aria-label', /: 5-10 RBC\/HPF \(high\)$/);
   });
 
   test('gives a value whose unit cannot be converted to the chart unit a line of its own', async ({ page }) => {

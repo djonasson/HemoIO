@@ -3,7 +3,7 @@
  */
 
 import { formatRange } from '@/utils/formatRange';
-import { measuredPoints } from '@services/statistics/trendAnalysis';
+import { directionPoints } from '@services/statistics/trendAnalysis';
 import type { ValueReading } from '@/types';
 
 export type AlertSeverity = 'critical' | 'warning' | 'positive';
@@ -22,13 +22,24 @@ const CRITICAL_DEVIATION = 0.5;
 /** Consecutive same-direction values needed for a trend alert */
 const MIN_TREND_VALUES = 4;
 
+/**
+ * How far out of range a value is. A censored value ("< 30") is only
+ * known on one side of its bound, so it is critical only when that side
+ * is surely far enough out: "< 5" below a low of 20, not "< 30" the lab
+ * marked low, which may be 25.
+ */
 export function outOfRangeSeverity(
   value: number,
   status: 'high' | 'low',
-  range?: ReferenceRange
+  range?: ReferenceRange,
+  censored?: ValueReading['censored']
 ): 'critical' | 'warning' {
   const bound = status === 'high' ? range?.high : range?.low;
   if (bound === undefined || bound === 0) return 'warning';
+  if (censored) {
+    const beyond = status === 'low' ? censored.startsWith('<') && value <= bound : censored.startsWith('>') && value >= bound;
+    if (!beyond) return 'warning';
+  }
   const deviation = Math.abs(value - bound) / Math.abs(bound);
   return deviation >= CRITICAL_DEVIATION ? 'critical' : 'warning';
 }
@@ -37,9 +48,9 @@ export function detectConsistentDirection(
   points: ReadonlyArray<{ date: Date; value: number } & Pick<ValueReading, 'censored'>>
 ): { direction: TrendDirection; count: number; start: Date; end: Date } | null {
   // One point per day (their mean): two labs on one day are not two steps.
-  // A censored value is a bound, not a step (see measuredPoints).
+  // A censored value is a bound, not a step, and one proving a turn breaks the run (see directionPoints).
   const byDay = new Map<string, { date: Date; total: number; count: number }>();
-  for (const point of measuredPoints(points)) {
+  for (const point of directionPoints(points)) {
     const day = `${point.date.getFullYear()}-${point.date.getMonth()}-${point.date.getDate()}`;
     const entry = byDay.get(day);
     if (entry) {

@@ -90,6 +90,10 @@ export interface TrendStatistics {
   standardDeviation: number;
   /** Most recent value */
   latest: number;
+  /** The points of the latest, lowest and highest values, which read as printed ("< 10", "5-10") */
+  latestPoint: TrendDataPoint;
+  minPoint: TrendDataPoint;
+  maxPoint: TrendDataPoint;
   /** Date of latest value */
   latestDate: Date;
   /** Oldest value */
@@ -335,6 +339,9 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
     median,
     standardDeviation,
     latest: sorted[sorted.length - 1].value,
+    latestPoint: sorted[sorted.length - 1],
+    minPoint: sorted.reduce((low, point) => (point.value < low.value ? point : low)),
+    maxPoint: sorted.reduce((high, point) => (point.value > high.value ? point : high)),
     latestDate: sorted[sorted.length - 1].date,
     oldest: sorted[0].value,
     oldestDate: sorted[0].date,
@@ -344,17 +351,48 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
 }
 
 /**
- * The points that are measurements: a censored value ("< 10") is a bound,
- * not a reading to draw a direction or a slope from
+ * Which way a censored value surely moved from the measured value before
+ * it: down for "< 60" after 140, up for "> 200" after 120; 0 when its bound
+ * cannot tell ("< 60" after 50)
  */
-export function measuredPoints<T extends Pick<ValueReading, 'censored'>>(points: readonly T[]): T[] {
-  return points.filter((point) => !point.censored);
+function provenStep(previous: number, { value: bound, censored }: { value: number } & ValueReading): number {
+  if (censored === '<') return bound <= previous ? -1 : 0;
+  if (censored === '<=') return bound < previous ? -1 : 0;
+  if (censored === '>') return bound >= previous ? 1 : 0;
+  if (censored === '>=') return bound > previous ? 1 : 0;
+  return 0;
+}
+
+/**
+ * The measured points a direction and a slope are read from, in date
+ * order. A censored value ("< 10") is a bound, not a reading, so it is
+ * left out; but one whose bound proves the values turned (110, 120, 130,
+ * 140, then "< 60") breaks the run: only the points after it count. One
+ * that goes the way the values went ("< 60" after a fall) breaks nothing.
+ */
+export function directionPoints<T extends { date: Date; value: number } & Pick<ValueReading, 'censored'>>(
+  points: readonly T[]
+): T[] {
+  const sorted = [...points].sort((a, b) => a.date.getTime() - b.date.getTime());
+  let run: T[] = [];
+  for (const point of sorted) {
+    if (!point.censored) {
+      run.push(point);
+      continue;
+    }
+    if (run.length < 2) continue;
+    const [before, last] = run.slice(-2);
+    const step = provenStep(last.value, point);
+    const going = Math.sign(last.value - before.value);
+    if (step !== 0 && going !== 0 && step !== going) run = [];
+  }
+  return run;
 }
 
 /**
  * Perform complete trend analysis on a set of data points. The direction
  * and rate of change are read from the measured points only (see
- * measuredPoints); the statistics and status counts cover every point.
+ * directionPoints); the statistics and status counts cover every point.
  *
  * @param points - Data points to analyze
  * @returns Complete TrendAnalysisResult
@@ -364,7 +402,7 @@ export function analyzeTrend(points: TrendDataPoint[]): TrendAnalysisResult {
     throw new Error('Cannot analyze trend for empty data set');
   }
 
-  const measured = measuredPoints(points);
+  const measured = directionPoints(points);
   const direction = calculateTrendDirection(measured);
   const rateOfChange = calculateRateOfChange(measured);
   const statistics = calculateStatistics(points);

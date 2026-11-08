@@ -13,6 +13,14 @@ import {
 const d = (iso: string) => new Date(`${iso}T10:00:00Z`);
 
 describe('outOfRangeSeverity', () => {
+  it('calls a censored value critical only when its bound proves it far enough out', () => {
+    // "< 30" the lab marked low, with a low of 20: it may be 25
+    expect(outOfRangeSeverity(30, 'low', { low: 20, high: 50 }, '<')).toBe('warning');
+    expect(outOfRangeSeverity(5, 'low', { low: 20, high: 50 }, '<')).toBe('critical');
+    expect(outOfRangeSeverity(300, 'high', { low: 0, high: 100 }, '>')).toBe('critical');
+    expect(outOfRangeSeverity(60, 'high', { low: 0, high: 100 }, '>')).toBe('warning');
+  });
+
   it('is critical at 50% or more beyond the nearest bound', () => {
     expect(outOfRangeSeverity(150, 'high', { low: 70, high: 100 })).toBe('critical');
     expect(outOfRangeSeverity(180, 'high', { low: 70, high: 100 })).toBe('critical');
@@ -92,6 +100,21 @@ describe('detectConsistentDirection', () => {
         { date: d('2024-04-10'), value: 4 },
       ])
     ).toBeNull();
+  });
+
+  it('finds no direction once a censored value proves the values turned', () => {
+    const rising = [110, 120, 130, 140].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...rising, { date: d('2024-05-10'), value: 60, censored: '<' }])).toBeNull();
+    const falling = [180, 160, 140, 120].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 200, censored: '>' }])).toBeNull();
+  });
+
+  it('keeps a direction a censored value goes along with', () => {
+    const falling = [140, 120, 100, 80].map((value, i) => ({ date: d(`2024-0${i + 1}-10`), value }));
+    expect(detectConsistentDirection([...falling, { date: d('2024-05-10'), value: 60, censored: '<' }])).toMatchObject({
+      direction: 'decreasing',
+      count: 4,
+    });
   });
 
   it('only counts the run that ends with the latest value', () => {

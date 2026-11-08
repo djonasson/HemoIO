@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
+import { loadCatalog } from '@data/loinc/catalog';
 import { testKey } from '@data/loinc/display';
 import { unknownBiomarkerKey } from '@data/loinc/keys';
 import { buildTrendLines, type TrendableResult } from './trendLines';
@@ -62,7 +63,7 @@ describe('buildTrendLines', () => {
     expect(lines.get('2345-7')!.elsewhere).toEqual({ count: 2, units: ['mg/g'] });
   });
 
-  it("keeps an interval's ends on its point in its own unit, never once converted", () => {
+  it("converts an interval's ends as its midpoint", () => {
     const interval = { numericValueType: 'interval' as const, intervalLow: 90, intervalHigh: 110 };
     const results = [result('2024-01-15', [{ ...value('2345-7', 100, 'mg/dL', 'Glucose'), ...interval }])];
 
@@ -71,7 +72,16 @@ describe('buildTrendLines', () => {
 
     const converted = buildTrendLines(catalog, results, { [testKey(catalog, '2345-7')]: 'mmol/L' }).get('2345-7')!;
     expect(converted.dataPoints[0].unit).toBe('mmol/L');
-    expect(converted.dataPoints[0].interval).toBeUndefined();
+    expect(converted.dataPoints[0].interval?.low).toBeCloseTo(5, 1);
+    expect(converted.dataPoints[0].interval?.high).toBeCloseTo(6.1, 1);
+  });
+
+  it('keeps the ends of a count per field relabelled to the line\'s spelling: "5-10 per campo" reads "5-10 RBC/HPF"', async () => {
+    const real = await loadCatalog();
+    const interval = { numericValueType: 'interval' as const, intervalLow: 5, intervalHigh: 10 };
+    const results = [result('2024-01-15', [{ ...value('13945-1', 7.5, 'per campo', 'Eritrociti'), ...interval }])];
+    const [line] = buildTrendLines(real, results, {}).values();
+    expect(line.dataPoints[0]).toMatchObject({ value: 7.5, interval: { low: 5, high: 10 } });
   });
 
   it("keeps a censored value's comparator on its point", () => {

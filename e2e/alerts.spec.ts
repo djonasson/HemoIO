@@ -133,7 +133,8 @@ test.describe('Alerts with Data', () => {
         date: '2024-03-10',
         values: [
           { biomarker: GLUCOSE, value: 200, censored: '>' },
-          { biomarker: HEMOGLOBIN, value: 15, censored: '<' },
+          // Read as a plain 20, it would be high
+          { biomarker: HEMOGLOBIN, value: 20, censored: '<' },
         ],
       },
     ]);
@@ -262,6 +263,35 @@ test.describe('Alerts with Data', () => {
     await expect(trendAlert).toContainText('Consistently decreasing');
     // Timeframe of the trend: four monthly readings span three months
     await expect(trendAlert).toContainText(/3 months/);
+  });
+
+  // Scenario: A censored value proving the values turned raises no trend alert
+  test('raises no trend alert once a censored value proves the values turned', async ({ page }) => {
+    await seedAlertData(page, [
+      { date: '2024-01-10', values: [{ biomarker: GLUCOSE, value: 110 }] },
+      { date: '2024-02-10', values: [{ biomarker: GLUCOSE, value: 120 }] },
+      { date: '2024-03-10', values: [{ biomarker: GLUCOSE, value: 130 }] },
+      { date: '2024-04-10', values: [{ biomarker: GLUCOSE, value: 140 }] },
+      { date: '2024-05-10', values: [{ biomarker: GLUCOSE, value: 60, censored: '<' }] },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Glucose');
+    await expect(card.first()).toContainText('< 60 mg/dL');
+    await expect(page.getByRole('main').getByText(/Consistently increasing/)).toHaveCount(0);
+  });
+
+  // Scenario: A censored value is critical only when its bound proves it far enough out
+  test('alerts a censored value the lab marked low as a warning, not critical', async ({ page }) => {
+    await seedAlertData(page, [
+      // "< 18" with a low of 12: may be 13; read from the bound, it would be 50% out
+      { date: '2024-03-10', values: [{ biomarker: HEMOGLOBIN, value: 18, censored: '<', labFlag: 'low' }] },
+    ]);
+    await viewAlerts(page);
+
+    const card = alertCard(page, 'Hemoglobin');
+    await expect(card).toContainText('< 18 g/dL');
+    await expect(card).toHaveCSS('border-left-color', ORANGE_INDICATOR);
   });
 
   // Scenario: No alerts when all values are normal

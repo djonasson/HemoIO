@@ -225,7 +225,7 @@ export function useAlerts(): UseAlertsResult {
         alertList.push({
           ...alert,
           // A ratio to the range: the same in any unit the value converts to
-          severity: outOfRangeSeverity(point.value, point.status, alert.referenceRange),
+          severity: outOfRangeSeverity(point.value, point.status, alert.referenceRange, point.censored),
           message: outOfRangeMessage(
             biomarkerName,
             point.status,

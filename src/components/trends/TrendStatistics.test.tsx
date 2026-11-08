@@ -2,10 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { TrendStatistics } from './TrendStatistics';
-import type { TrendStatistics as TrendStats, RateOfChange } from '@services/statistics/trendAnalysis';
+import type { TrendStatistics as TrendStats, RateOfChange, TrendDataPoint } from '@services/statistics/trendAnalysis';
+
+function point(value: number, extra: Partial<TrendDataPoint> = {}): TrendDataPoint {
+  return { date: new Date('2024-01-15'), value, unit: 'mg/dL', status: 'normal', ...extra };
+}
 
 const mockStatistics: TrendStats = {
   latest: 100,
+  latestPoint: point(100),
+  minPoint: point(80),
+  maxPoint: point(120),
   latestDate: new Date('2024-01-15'),
   oldest: 85,
   oldestDate: new Date('2023-01-15'),
@@ -211,32 +218,40 @@ describe('TrendStatistics', () => {
   });
 
   describe('Color coding', () => {
-    it('shows green color when latest value is in range', () => {
-      const inRangeStats: TrendStats = {
-        ...mockStatistics,
-        latest: 90, // Within 70-100
-      };
-      renderTrendStatistics({
-        statistics: inRangeStats,
-        referenceRange: { low: 70, high: 100 }
-      });
+    const colorOf = (text: string): string => screen.getByText(text).getAttribute('style') ?? '';
 
-      // The value card should be present
-      expect(screen.getByText('90.0')).toBeInTheDocument();
+    it('shows green when the latest value is normal', () => {
+      renderTrendStatistics({ statistics: { ...mockStatistics, latest: 90, latestPoint: point(90) } });
+      expect(colorOf('90.0')).toContain('green');
     });
 
-    it('shows red color when latest value is out of range', () => {
-      const outOfRangeStats: TrendStats = {
-        ...mockStatistics,
-        latest: 150, // Above 100
-      };
-      renderTrendStatistics({
-        statistics: outOfRangeStats,
-        referenceRange: { low: 70, high: 100 }
-      });
+    it('shows red when the latest value is high or low', () => {
+      renderTrendStatistics({ statistics: { ...mockStatistics, latest: 150, latestPoint: point(150, { status: 'high' }) } });
+      expect(colorOf('150.0')).toContain('red');
+    });
 
-      // The value card should be present
-      expect(screen.getByText('150.0')).toBeInTheDocument();
+    it('colours a latest value by its status, not its bound: "> 100" with a range of 50-150 cannot be told', () => {
+      renderTrendStatistics({
+        statistics: { ...mockStatistics, latest: 100, latestPoint: point(100, { censored: '>', status: 'unknown' }) },
+        referenceRange: { low: 50, high: 150 },
+      });
+      expect(colorOf('> 100.0')).not.toMatch(/green|red/);
+    });
+  });
+
+  describe('Values as they read', () => {
+    it('shows a censored or interval latest, minimum and maximum as printed', () => {
+      renderTrendStatistics({
+        statistics: {
+          ...mockStatistics,
+          latestPoint: point(7.5, { interval: { low: 5, high: 10 } }),
+          minPoint: point(10, { censored: '<' }),
+          maxPoint: point(200, { censored: '>' }),
+        },
+      });
+      expect(screen.getByText('5.0-10.0')).toBeInTheDocument();
+      expect(screen.getByText('< 10.0')).toBeInTheDocument();
+      expect(screen.getByText('> 200.0')).toBeInTheDocument();
     });
   });
 });

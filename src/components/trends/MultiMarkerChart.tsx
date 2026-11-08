@@ -18,7 +18,10 @@ import {
 } from 'recharts';
 import { Paper, Text, Stack, Group, Badge, Center, Loader, ColorSwatch } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
+import { ComparisonDot } from './ComparisonDot';
+import { ComparisonTooltip } from './ComparisonTooltip';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
+import type { ChartRow } from './comparisonChartRow';
 
 /**
  * Marker data for multi-marker chart
@@ -80,46 +83,6 @@ function formatDate(date: Date): string {
 }
 
 /**
- * Custom tooltip for multi-marker chart
- */
-function CustomTooltip({
-  active,
-  payload,
-  label,
-  markers,
-}: {
-  active?: boolean;
-  payload?: ReadonlyArray<{ dataKey: string; value: number; color: string }>;
-  label?: string | number;
-  markers: MarkerData[];
-}) {
-  if (!active || !payload || payload.length === 0) {
-    return null;
-  }
-
-  return (
-    <Paper shadow="md" p="sm" withBorder>
-      <Stack gap="xs">
-        <Text size="sm" fw={500}>
-          {label}
-        </Text>
-        {payload.map((entry) => {
-          const marker = markers.find((m) => m.name === entry.dataKey);
-          return (
-            <Group key={entry.dataKey} gap="xs">
-              <ColorSwatch color={entry.color} size={12} />
-              <Text size="sm">
-                {entry.dataKey}: {entry.value} {marker?.unit || ''}
-              </Text>
-            </Group>
-          );
-        })}
-      </Stack>
-    </Paper>
-  );
-}
-
-/**
  * MultiMarkerChart component for comparing biomarkers
  */
 export function MultiMarkerChart({
@@ -130,15 +93,17 @@ export function MultiMarkerChart({
   // Combine all data points into a unified dataset
   const chartData = useMemo(() => {
     // Get all unique dates
-    const dateMap = new Map<string, { timestamp: number } & Record<string, number>>();
+    const dateMap = new Map<string, ChartRow>();
 
     for (const marker of markers) {
       for (const point of marker.dataPoints) {
         const dateKey = formatDate(point.date);
         if (!dateMap.has(dateKey)) {
-          dateMap.set(dateKey, { timestamp: point.date.getTime() });
+          dateMap.set(dateKey, { timestamp: point.date.getTime(), points: {} } as ChartRow);
         }
-        dateMap.get(dateKey)![marker.name] = point.value;
+        const row = dateMap.get(dateKey)!;
+        row[marker.name] = point.value;
+        row.points[marker.name] = point;
       }
     }
 
@@ -264,7 +229,7 @@ export function MultiMarkerChart({
 
           <Tooltip
             content={(props) => (
-              <CustomTooltip {...props} markers={markersWithColors} />
+              <ComparisonTooltip {...props} markers={markersWithColors} />
             )}
           />
 
@@ -277,7 +242,9 @@ export function MultiMarkerChart({
               dataKey={marker.name}
               stroke={marker.color}
               strokeWidth={2}
-              dot={{ r: 4, fill: marker.color }}
+              dot={(props: { cx?: number; cy?: number; index?: number; payload?: ChartRow }) => (
+                <ComparisonDot key={`${marker.name}-${props.index}`} name={marker.name} color={marker.color} {...props} />
+              )}
               activeDot={{ r: 6, stroke: marker.color, strokeWidth: 2, fill: 'var(--mantine-color-body)' }}
               yAxisId={axisIdFor(marker.unit)}
               connectNulls

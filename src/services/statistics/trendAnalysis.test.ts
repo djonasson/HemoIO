@@ -9,7 +9,7 @@ import {
   calculateStatistics,
   analyzeTrend,
   determineTrendAlertSeverity,
-  measuredPoints,
+  directionPoints,
   type TrendDataPoint,
 } from './trendAnalysis';
 
@@ -307,12 +307,33 @@ describe('trendAnalysis', () => {
     });
   });
 
-  describe('measuredPoints', () => {
+  describe('directionPoints', () => {
+    const censored = (date: string, value: number, comparator: '<' | '>') => ({
+      ...createDataPoint(date, value),
+      censored: comparator,
+    });
+
     it('leaves out censored points', () => {
       const measured = createDataPoint('2024-02-01', 100);
-      expect(measuredPoints([{ ...createDataPoint('2024-01-01', 10), censored: '>' as const }, measured])).toEqual([
-        measured,
-      ]);
+      expect(directionPoints([censored('2024-01-01', 10, '>'), measured])).toEqual([measured]);
     });
+
+    it('starts over after a censored value whose bound proves the values turned', () => {
+      const rising = ['01', '02', '03', '04'].map((month, i) => createDataPoint(`2024-${month}-01`, 110 + i * 10));
+      expect(directionPoints([...rising, censored('2024-05-01', 60, '<')])).toEqual([]);
+      const after = createDataPoint('2024-06-01', 70);
+      expect(directionPoints([...rising, censored('2024-05-01', 60, '<'), after])).toEqual([after]);
+    });
+
+    it('keeps the run through a censored value going the same way', () => {
+      const falling = ['01', '02', '03', '04'].map((month, i) => createDataPoint(`2024-${month}-01`, 140 - i * 10));
+      expect(directionPoints([...falling, censored('2024-05-01', 60, '<')])).toEqual(falling);
+    });
+  });
+
+  it('reads no increase into values that turned below a censored bound: TSH 1, 2, 3, 4.5, then "< 0.01"', () => {
+    const points = [1, 2, 3, 4.5].map((value, i) => createDataPoint(`2024-0${i + 1}-01`, value));
+    const result = analyzeTrend([...points, { ...createDataPoint('2024-05-01', 0.01), censored: '<' as const }]);
+    expect(result.direction.direction).not.toBe('increasing');
   });
 });
