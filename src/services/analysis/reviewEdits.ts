@@ -47,8 +47,11 @@ const UNREAD: Identification = { candidates: [], identificationFlags: [] };
  * A value edited in review, its test read again: a test the user chose
  * stays; back at the printed name and unit, the analyzer's test (the AI's
  * choice too) is the value's again; else it is read as the analyzer reads
- * a printed name, with the learned tests. An emptied unit is one still to
- * choose: the value is read in the report's unit, and review asks for one.
+ * a printed name, with the learned tests. A test learned, or shared from
+ * the user's choice in another file, holds while the wording is the same and
+ * when only the unit the report did not print is given. An emptied unit is
+ * one still to choose: the value is read in the report's unit, and review
+ * asks for one.
  */
 function reidentify(
   original: MatchedBiomarker,
@@ -58,11 +61,13 @@ function reidentify(
 ): MatchedBiomarker {
   if (original.identifiedBy === 'user') return changed;
   const { analyzed } = original;
-  const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
-  if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
-  const reading = currentReading(changed, unit);
-  // A choice shared from the user's for the wording holds while it is that wording: a unit given for a result in words
-  if (original.identifiedBy === 'shared' && learnedKey(reading) === learnedKey(currentReading(original))) return changed;
+  const reading = currentReading(changed);
+  if (!analyzed && reading.unit.trim() === '') return identified(changed, UNREAD);
+  // A test learned, or shared from the user's choice, holds while the wording is the one it was decided for; and when
+  // the only change is the unit review asks for, which the report did not print
+  const decided = original.identifiedBy === 'learned' || original.identifiedBy === 'shared';
+  const unitGiven = analyzed?.unit.trim() === '' && isReadAsPrinted(changed, { ...reading, unit: '' });
+  if (decided && (learnedKey(reading) === learnedKey(currentReading(original)) || unitGiven)) return changed;
   // The analyzer's test holds for the value read as printed: a word typed over with a number, or given a unit, is read
   // again (a test learned for the word still comes back: it is learned with no unit)
   const identification =

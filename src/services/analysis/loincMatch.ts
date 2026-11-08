@@ -639,18 +639,16 @@ function namePartsOf(name: string): string[] {
  * is not the 2021 one). A word read neither way may name a method LOINC
  * has no test for, when the tests that fit all name a method and either
  * are estimates by different formulas or none has the method the word
- * names: then no test fits fully, and the value is asked; a formula LOINC
- * has no test for (see UNLISTED_FORMULAS: "eGFR (EKFC)", "(formula BIS)"; a year beside it is its own) is
- * the estimate of no formula, when LOINC has one. A brand or a technique of a measured value says nothing
- * ("Fibrinogeno (Clauss)").
+ * names: then no test fits fully, and the value is asked. A filtration rate
+ * by a formula LOINC lacks, or of creatinine and cystatin C together, is
+ * read as readEstimate says. A brand or a technique of a measured value
+ * says nothing ("Fibrinogeno (Clauss)").
  */
 function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
+  const estimate = readEstimate(catalog, name, found);
+  if (estimate) return estimate;
   let result = found;
-  const ofGfr = isGfrName(name);
-  // A part naming a formula LOINC lacks is read last, after a part naming the basis: "eGFR (EKFC) (cistatina C)"
-  const parts = namePartsOf(name);
-  const namesUnlisted = (part: string): boolean => ofGfr && wordsIn(part).some(isUnlistedFormula);
-  for (const part of [...parts.filter((one) => !namesUnlisted(one)), ...parts.filter(namesUnlisted)]) {
+  for (const part of namePartsOf(name)) {
     // The tests that fit about as well as the best: a name equal to the printed one sets aside those only sharing its words
     const least = Math.max(MATCH_SCORE - SCORE_EPSILON, ...result.map(({ score }) => score - MATCH_MARGIN + SCORE_EPSILON));
     let fitting = result.filter(({ score }) => score >= least);
@@ -671,16 +669,12 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     const methodOf = new Map(fitting.map(({ test }) => [test, new Set(wordsIn(test.method))]));
     const read = new Set<string>();
     let narrowed = fitting;
-    // A year beside a formula LOINC lacks is that formula's: "EKFC 2021" is no CKD-EPI 2021
-    const formulaYear = namesUnlisted(part);
-    for (const word of words.filter((one) => YEAR.test(one) && !formulaYear)) {
+    for (const word of words.filter((one) => YEAR.test(one))) {
       const ofYear = narrowed.filter(({ test }) => ![...methodOf.get(test)!].some((other) => YEAR.test(other) && other !== word));
       if (ofYear.length < narrowed.length || ofYear.some(({ test }) => methodOf.get(test)!.has(word))) read.add(word);
       narrowed = ofYear;
     }
-    const methodWords = words.filter(
-      (word) => !(formulaYear && YEAR.test(word)) && fitting.some(({ test }) => methodOf.get(test)!.has(methodReading(word)))
-    );
+    const methodWords = words.filter((word) => fitting.some(({ test }) => methodOf.get(test)!.has(methodReading(word))));
     narrowed = narrowed.filter(({ test }) => methodWords.every((word) => methodOf.get(test)!.has(methodReading(word))));
     for (const word of methodWords) read.add(word);
     if (narrowed.length > 0 && narrowed.length < fitting.length) {
@@ -697,51 +691,25 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
       still.some(({ test }) =>
         [test.name, ...test.names].some((testName) => wordsIn(testName).some((other) => isNearForm(word, other)))
       );
-    // A formula LOINC lacks is never named by a test, whatever word it looks like ("Malmo", "male")
-    const unread = words.filter(
-      (word) => !read.has(word) && /\p{L}/u.test(word) && ((ofGfr && isUnlistedFormula(word)) || !isNamed(word))
-    );
+    const unread = words.filter((word) => !read.has(word) && /\p{L}/u.test(word) && !isNamed(word));
     const methods = new Set(still.map(({ test }) => test.method));
     // An estimate by formulas: one LOINC lacks is none of them. A measured value's brand or technique says nothing ("Fibrinogeno (Clauss)")
     const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || namesFormula(method));
-    // Nor is a filtration rate by a formula LOINC lacks the one formula its name fits: "eGFRcr (EKFC)" is no CKD-EPI.
-    // A formula of a basis names none ("Cystatin C-based formula"): any of its formulas of that basis alone is it
-    // ("eGFR (cistatina C) (CAPA)"), not one of creatinine too ("(creatinina e cistatina C) (EKFC)")
-    const ofOneNamedFormula =
-      ofGfr &&
-      unread.some(isUnlistedFormula) &&
-      (NAMES_CREATININE.test(nameKey(name)) || still.every(({ test }) => namesFormulaByName(test.method)));
-    const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas || ofOneNamedFormula);
+    const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas);
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
-      // A formula LOINC lacks is the estimate of no formula, when LOINC has one ("eGFR (EKFC)" is 69405-9)
-      const unlisted =
-        (byFormulas || ofOneNamedFormula) &&
-        words.some(isUnlistedFormula) &&
-        words.every((word) => isUnlistedFormula(word) || word === 'formula' || YEAR.test(word));
-      const unnamed = unlisted ? estimateOfNoFormula(catalog, result, still) : undefined;
-      const capped = result
-        .filter((one) => one !== unnamed)
-        .map((one) => (one.score > cap ? { ...one, score: cap } : one));
-      return unnamed ? [{ ...unnamed, score: Math.max(unnamed.score, MATCH_SCORE) }, ...capped] : capped;
+      return result.map((one) => (one.score > cap ? { ...one, score: cap } : one));
     }
   }
   return result;
-}
-
-/** Whether two tests measure the same thing in the same sample, by whatever method */
-function sameQuantity(a: CatalogTest, b: CatalogTest): boolean {
-  return a.component === b.component && a.property === b.property && a.system === b.system && a.scale === b.scale;
 }
 
 /**
  * Estimating formulas LOINC has no test for, by the words naming them, each
  * the formula it names: the European Kidney Function Consortium's, the
  * Berlin Initiative Study's (BIS1 of creatinine, BIS2 with cystatin C, two
- * formulas), the bedside Schwartz, the full age spectrum, CAPA and
- * Lund-Malmö. Only these: any other word beside a formula's estimate (a
- * brand, "IDMS", a population) may say something of the formula LOINC has,
- * so its value is asked. Words as wordsIn reads them: "Malmö" is "malmo".
+ * formulas), the bedside Schwartz, the full age spectrum, CAPA (of cystatin
+ * C alone) and Lund-Malmö. Words as wordsIn reads them: "Malmö" is "malmo".
  */
 const UNLISTED_FORMULAS: Readonly<Record<string, string>> = {
   ekfc: 'ekfc',
@@ -754,27 +722,21 @@ const UNLISTED_FORMULAS: Readonly<Record<string, string>> = {
   lmr: 'lmr',
   lund: 'lmr',
   malmo: 'lmr',
+  malmoe: 'lmr',
 };
 
 function isUnlistedFormula(word: string): boolean {
   return Object.hasOwn(UNLISTED_FORMULAS, word);
 }
 
-/** A formula LOINC lacks set off by a dash or a space at a name's end: "eGFR - EKFC", "eGFR formula BIS", "eGFR Malmö" */
-const TRAILING_UNLISTED_FORMULA = new RegExp(
-  String.raw`^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:lund[\s-]+malm[oö]|${Object.keys(UNLISTED_FORMULAS)
-    .map((word) => word.replace('o', '[oö]'))
-    .join('|')}))$`,
-  'i'
-);
+/** Formulas LOINC lacks that always read creatinine */
+const CREATININE_FORMULAS = new Set(['bis', 'bis1', 'bis2', 'lmr']);
 
-/** A name with a formula LOINC lacks at its end read as if in brackets, as reports also print it: "eGFR (EKFC)" */
-function withFormulaBracketed(name: string): string {
-  return isGfrName(name) ? name.normalize('NFC').replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)') : name;
-}
+/** A filtration rate's name word saying creatinine: "creatinina", "SCr", "Krea", "eGFRcr" */
+const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr\p{L}*)$/u;
 
-/** A filtration rate's name saying creatinine: "(creatinina e cistatina C)", "cr-cys", "eGFRcr" */
-const NAMES_CREATININE = /\b(?:creatinin\p{L}*|crea|cr|egfrcr\p{L}*)\b/u;
+/** A filtration rate's name word saying cystatin C: "cistatina", "cys", "eGFRcys" */
+const CYSTATIN_WORD = /^(?:cys|cyst|cistatin\p{L}*|cystatin\p{L}*|egfrcys\p{L}*)$/u;
 
 /** A name of a glomerular filtration rate: "eGFR", "eGFRcr", "GFR stimato", "Filtrato glomerulare", "eVFG", "Glomerulär filtration" */
 const GFR_NAME = /\b(?:e?gfr\p{L}*|e?vfg|filtra(?:to|zione)\s+glomerulare|glomerul\p{L}*\s+filtra\p{L}*)\b/u;
@@ -784,36 +746,73 @@ function isGfrName(name: string): boolean {
   return GFR_NAME.test(nameKey(name));
 }
 
-/** Words of a filtration rate's name that say only that it is one: "eGFR", "Filtrato glomerulare stimato", "formula" */
+/**
+ * Words of a filtration rate's name that say only that it is one, or join
+ * its words: "eGFR", "e-GFR", "Velocità di filtrazione glomerulare stimata",
+ * "formula", "creatinina e cistatina C"
+ */
 const GFR_WORDS = new Set([
+  'e',
   'egfr',
   'gfr',
   'vfg',
   'evfg',
+  'velocita',
+  'rate',
   'filtrato',
   'filtrazione',
+  'filtration',
+  'filtrationsrate',
   'glomerulare',
   'glomerular',
-  'filtration',
+  'glomerulaere',
   'stimato',
   'stimata',
+  'stima',
+  'calcolato',
+  'calcolata',
   'estimated',
   'formula',
+  'di',
+  'del',
+  'della',
+  'and',
+  'och',
+  'und',
+  'con',
+  'with',
 ]);
 
 /**
+ * A word of a filtration rate's name as what it says: a formula however
+ * spelled ("lund" is "lmr"), a basis however spelled ("SCr" is
+ * "creatinine"), or the word itself; nothing for one saying only that it is
+ * a filtration rate, and for the "C" of cystatin C
+ */
+function gfrWordSays(word: string, saysCystatin: boolean): string | undefined {
+  if (GFR_WORDS.has(word) || (saysCystatin && word === 'c')) return undefined;
+  if (CREATININE_WORD.test(word)) return 'creatinine';
+  if (CYSTATIN_WORD.test(word)) return 'cystatin';
+  return UNLISTED_FORMULAS[word] ?? word;
+}
+
+/** What each word of a filtration rate's name says (see gfrWordSays) */
+function gfrSaid(name: string): string[] {
+  const words = wordsIn(name);
+  const saysCystatin = words.some((word) => CYSTATIN_WORD.test(word));
+  return words.map((word) => gfrWordSays(word, saysCystatin)).filter((said): said is string => said !== undefined);
+}
+
+/**
  * What a filtration rate's printed name says beyond being one, if it is
- * one: its formula, basis and any other word, each formula however spelled
- * ("eGFR (Lund-Malmö)" and "eGFR - LMR" say "lmr"; a plain "eGFR" says
- * nothing). Two estimates saying different things are two measurements,
- * however close: no estimate is set aside unseen as another's duplicate.
+ * one: its formula, basis and any other word ("eGFR (Lund-Malmö)" and
+ * "eGFR - LMR" say "lmr"; a plain "eGFR" says nothing). Two estimates
+ * saying different things are two measurements, however close: no estimate
+ * is set aside unseen as another's duplicate.
  */
 export function gfrQualifier(name: string): string | undefined {
   if (!isGfrName(name)) return undefined;
-  const said = wordsIn(name)
-    .filter((word) => !GFR_WORDS.has(word))
-    .map((word) => UNLISTED_FORMULAS[word] ?? word);
-  return [...new Set(said)].sort().join(' ');
+  return [...new Set(gfrSaid(name))].sort().join(' ');
 }
 
 /** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
@@ -821,27 +820,48 @@ function namesFormula(method: string): boolean {
   return /\bformula\b/i.test(method);
 }
 
-/** Whether a method names its formula, not only its basis: "formula (CKD-EPI 2021)", not "Cystatin C-based formula" */
-function namesFormulaByName(method: string): boolean {
-  return /\bformula\s*\(/i.test(method);
-}
+/** LOINC's component of a glomerular filtration rate */
+const GFR_COMPONENT = 'Glomerular filtration rate';
 
 /**
- * The one test that estimates what the formula tests still fitting do, by
- * a method naming no formula ("based on 1.73 sq M"), if there is one: among
- * those found, else in the catalog, as a name fitting one formula ("eGFRcr")
- * finds no other
+ * The tests found for a filtration rate by a formula LOINC lacks, or of
+ * creatinine and cystatin C together (which LOINC's catalog here has no
+ * test for), if the name is one: the estimate of cystatin C, by a formula
+ * it does not name ("Cystatin C-based formula"), when the name says only
+ * cystatin C ("eGFR (cistatina C) (EKFC)") or the formula is CAPA; else the
+ * estimate of no formula ("based on 1.73 sq M": "eGFR (EKFC)", "eGFR -
+ * Lund-Malmö 2021", "eGFR (creatinina e cistatina C)"). Taken without asking
+ * when the name says nothing else (a year of the formula, a word that it is
+ * an estimate); else asked, that test first ("eGFR (EKFC) (IDMS)").
+ * Whatever its brackets' order.
  */
-function estimateOfNoFormula(catalog: Catalog, found: Found[], formulaTests: Found[]): Found | undefined {
-  const isUnnamed = (test: CatalogTest): boolean =>
-    test.method !== '' &&
-    !test.method.startsWith(CALCULATED) &&
-    !namesFormula(test.method) &&
-    formulaTests.some((one) => sameQuantity(one.test, test));
-  const unnamed = found.filter(({ test }) => isUnnamed(test));
-  if (unnamed.length > 0 || formulaTests.length === 0) return unnamed.length === 1 ? unnamed[0] : undefined;
-  const listed = variantsBy(catalog, formulaTests[0], []).filter(({ test }) => isUnnamed(test));
-  return listed.length === 1 ? { ...listed[0], score: MATCH_SCORE } : undefined;
+function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] | undefined {
+  if (!isGfrName(name)) return undefined;
+  const said = gfrSaid(name);
+  const formula = said.find(isUnlistedFormula);
+  const creatinine = said.includes('creatinine');
+  const cystatin = said.includes('cystatin');
+  if (!formula && !(creatinine && cystatin)) return undefined;
+  const gfr = found
+    .filter(({ test }) => test.component === GFR_COMPONENT)
+    .reduce<Found | undefined>((best, one) => (!best || one.score > best.score ? one : best), undefined);
+  if (!gfr) return undefined;
+  const cystatinOnly = formula === 'capa' || (cystatin && !creatinine && !CREATININE_FORMULAS.has(formula ?? ''));
+  const fits = (method: string): boolean =>
+    cystatinOnly
+      ? /^Cystatin C-based formula\b/i.test(method) && !method.includes('(')
+      : method !== '' && !method.startsWith(CALCULATED) && !namesFormula(method);
+  const estimates = [gfr, ...variantsBy(catalog, gfr, [])].filter(({ test }) => fits(test.method));
+  if (estimates.length !== 1) return undefined;
+  const others = found.filter(({ test }) => test !== estimates[0].test);
+  const cap = MATCH_SCORE - MATCH_MARGIN;
+  const saysMore = said.some((word) => word !== formula && word !== 'creatinine' && word !== 'cystatin' && !YEAR.test(word));
+  // Asked, the estimate first: the others below it
+  const below = saysMore ? cap - MATCH_MARGIN / 2 : cap;
+  return [
+    { ...estimates[0], score: saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE) },
+    ...others.map((one) => (one.score > below ? { ...one, score: below } : one)),
+  ];
 }
 
 /** Whether a word is an Italian one for a method (see METHOD_READINGS) */
@@ -1444,7 +1464,7 @@ function matchIn(
   seen: Seen = {},
   limit = MAX_CANDIDATES
 ): LocalMatch {
-  const whole = withFormulaBracketed(spellGreekLetters(value.name.trim()));
+  const whole = spellGreekLetters(value.name.trim());
 
   // What looks like a prefix or a sample word is part of a name LOINC knows: "P-ANCA", "Sangue occulto"
   // Looked up only when needed: the first lookup builds the search index

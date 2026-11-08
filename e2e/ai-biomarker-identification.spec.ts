@@ -190,6 +190,11 @@ test.describe('Identifying the test of each value', () => {
       'eGFR (Lund-Malmö)',
       'eGFRcr (EKFC)',
       'Glomerulär filtration (EKFC)',
+      'eGFR Malmo',
+      'eGFR (EKFC 2021)',
+      'eGFR (EKFC) (stimato)',
+      'eGFR (creatinina e cistatina C) (formula EKFC)',
+      'eGFR (cistatina C) (BIS2)',
     ];
     // Values far apart: the three EKFC estimates are one formula, so close values would be one measurement
     const ai = await analyzeReport(
@@ -237,6 +242,18 @@ test.describe('Identifying the test of each value', () => {
     await changeTest(page, rowFor(page, '81'), GFR_NO_FORMULA);
     await expect(rowFor(page, '81').getByText('LOINC 69405-9')).toBeVisible();
     await expect(rowFor(page, '81.5')).toBeVisible();
+    await expect(page.getByText(/the same measurement as/)).toHaveCount(0);
+  });
+
+  test('keeps a creatinine and a combined estimate by one formula', async ({ page }) => {
+    // Scenario: A creatinine and a combined estimate by one formula are both kept
+    await analyzeReport(page, [
+      { name: 'eGFR (EKFC creatinina)', value: 80, unit: 'mL/min/1.73m²', confidence: 0.95 },
+      { name: 'eGFR (EKFC creatinina + cistatina C)', value: 81, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '80').getByText('LOINC 69405-9')).toBeVisible();
+    await expect(rowFor(page, '81').getByText('LOINC 69405-9')).toBeVisible();
+    await expect(page.getByText(/the same measurement as/)).toHaveCount(0);
   });
 
   test('keeps the estimates by the two Berlin Initiative Study formulas', async ({ page }) => {
@@ -266,6 +283,7 @@ test.describe('Identifying the test of each value', () => {
       ['eGFR (formula MDRD)', '77147-7'],
       ['eGFR (cistatina C)', '50210-4'],
       ['eGFR cystatin C (CAPA)', '50210-4'],
+      ['eGFR (EKFC) (cistatina C)', '50210-4'],
     ];
     const ai = await analyzeReport(
       page,
@@ -615,6 +633,18 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rows.nth(1))).toHaveText(SERUM_GLUCOSE);
   });
 
+  test('keeps a shared choice when the unit its test asks for is given', async ({ page }) => {
+    // Scenario: A shared choice holds when the unit its test asks for is given
+    await analyzeReport(page, [{ name: 'NT-proBNP', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' }], 2);
+    await page.getByRole('button', { name: /lab-report-2\.pdf/ }).click();
+    const rows = rowFor(page, 'Negativo (0)');
+    await expect(rows).toHaveCount(2);
+    await changeTest(page, rows.first(), NT_PRO_BNP_BLOOD, { search: false });
+    await expect(savedAsCell(rows.nth(1))).toHaveText(NT_PRO_BNP_BLOOD);
+    await editRow(page, rows.nth(1), { unit: 'pg/mL' });
+    await expect(savedAsCell(rows.nth(1))).toHaveText(NT_PRO_BNP_BLOOD);
+  });
+
   test('blocks Continue until a value has a test', async ({ page }) => {
     // Scenario: A value with no test chosen blocks Continue
     await analyzeReport(page, [GLUCOSIO]);
@@ -785,6 +815,29 @@ test.describe('Identifying the test of each value', () => {
 
     await analyzeReport(page, [{ name: batteri.name, value: 12, unit: '', confidence: 0.95, specimenHint: 'urine' }]);
     await expect(savedAsCell(rowFor(page, '12'))).not.toHaveText(MICROSCOPE);
+  });
+
+  test('does not use a count chosen in a urine sediment section for the urine', async ({ page }) => {
+    // Two imports, the first saved
+    test.slow();
+    // Scenario: A count chosen in a urine sediment section is not used for the urine
+    const MICROSCOPE_COUNT = 'Leukocytes [#/area] in Urine sediment by Microscopy high power field';
+    await analyzeReport(page, [{ name: 'Leucociti', value: 3, unit: '/µL', confidence: 0.95, specimenHint: 'urine sediment' }]);
+    await changeTest(page, rowFor(page, '3'), MICROSCOPE_COUNT);
+    await saveReviewed(page);
+
+    await analyzeReport(page, [{ name: 'Leucociti', value: 25, unit: '/µL', confidence: 0.95, specimenHint: 'urine' }]);
+    await expect(savedAsCell(rowFor(page, '25'))).toHaveText('Leukocytes [#/volume] in Urine');
+  });
+
+  test('reads a result in words given a unit again in it', async ({ page }) => {
+    // Scenario: A result in words given a unit is read again in it
+    await analyzeReport(page, [
+      { name: 'Glucosio (urine)', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine', qualitativeValue: 'Assente' },
+    ]);
+    await expect(savedAsCell(rowFor(page, 'Assente (0)'))).toContainText('[Presence]');
+    await editRow(page, rowFor(page, 'Assente (0)'), { unit: 'mg/dL' });
+    await expect(savedAsCell(rowFor(page, 'Assente (0)'))).not.toContainText('[Presence]');
   });
 
   test('does not use a test chosen in a urine sediment section for the urine', async ({ page }) => {

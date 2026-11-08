@@ -760,8 +760,13 @@ describe('gfrQualifier', () => {
     ['eGFR LMR', 'lmr'],
     ['eGFR (BIS1)', 'bis1'],
     ['eGFR (BIS-2)', '2 bis'],
-    ['eGFRcys (EKFC)', 'egfrcys ekfc'],
-    ['eGFR (EKFC creatinina + cistatina C)', 'c cistatina creatinina ekfc'],
+    ['eGFRcys (EKFC)', 'cystatin ekfc'],
+    ['eGFR-cys (EKFC)', 'cystatin ekfc'],
+    ['eGFR (EKFC creatinina + cistatina C)', 'creatinine cystatin ekfc'],
+    ['eGFR (EKFC) (SCr e cistatina C)', 'creatinine cystatin ekfc'],
+    ['e-GFR', ''],
+    ['Velocità di filtrazione glomerulare', ''],
+    ['Filtrato glomerulare stimato', ''],
   ])('reads what %s says beyond a filtration rate: %o', (name, said) => {
     expect(gfrQualifier(name)).toBe(said);
   });
@@ -1139,25 +1144,42 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(matchLocally(generated, { name, unit }).candidates.every(({ score }) => score < 0.9)).toBe(true);
   });
 
-  it.each(['eGFRcr (EKFC)', 'eGFRcr EKFC', 'eGFRcr (LMR)', 'eGFR Malmo', 'eGFR Malmö', 'eGFR (EKFC 2021)', 'eGFR (creatinina e cistatina C) (formula EKFC)'])(
-    'takes %s as the eGFR of no formula, never the one formula "eGFRcr" names',
-    (name) => {
-      expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
-    }
-  );
-
   it.each([
-    'eGFR cystatin C (CAPA)',
-    'eGFR-cys (CAPA)',
-    'eGFR cystatin C (EKFC)',
-    'eGFR (Cistatina C) (CAPA)',
-    'eGFR (CAPA) (cistatina C)',
-    'eGFR (EKFC) (cistatina C)',
-    'eGFR (FAS cistatina)',
-  ])(
-    'takes %s as the estimate by a cystatin C formula, which names none: any of them is it',
+    'eGFRcr (EKFC)',
+    'eGFRcr EKFC',
+    'eGFRcr (LMR)',
+    'eGFR Malmo',
+    'eGFR Malmö',
+    'eGFR (Malmoe)',
+    'eGFR (EKFC 2021)',
+    'eGFR - EKFC 2021',
+    'eGFR EKFC 2021',
+    'eGFR (EKFC) (stimato)',
+    'Filtrato glomerulare (EKFC) (stimato)',
+    'eGFR (EKFC) (SCr)',
+    'eGFR (Lund-Malmö) (kreatinin)',
+    // Of creatinine and cystatin C together, whatever the order or spelling
+    'eGFR (creatinina e cistatina C) (formula EKFC)',
+    'eGFR (EKFC) (creatinina e cistatina C)',
+    'eGFR (EKFC) (SCr + cistatina C)',
+    'eGFR (formula EKFC) (Creat. + cistatina C)',
+    'eGFR (cr-cys)',
+    'eGFR (cr_cys)',
+    'eGFR (creatinine and cystatin C)',
+    // BIS formulas always read creatinine
+    'eGFR (BIS2) (cistatina C)',
+    'eGFR (cistatina C) (BIS2)',
+    'eGFR (BIS) (cistatina C)',
+  ])('takes %s as the eGFR of no formula, never a formula LOINC has nor the cystatin C estimate', (name) => {
+    expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
+  });
+
+  it.each(['eGFR (EKFC) (IDMS)', 'eGFR (EKFC 2021) (IDMS)', 'eGFR (EKFC) (Roche)', 'eGFR (CKD-EPI 2021) (cr-cys)'])(
+    'asks about %s, which says more than its formula, the eGFR of no formula first',
     (name) => {
-      expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '50210-4' });
+      const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
+      expect(result.status).toBe('ambiguous');
+      expect(result.candidates[0].code).toBe('69405-9');
     }
   );
 

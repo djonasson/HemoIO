@@ -137,6 +137,11 @@ Feature: Identifying the test of each value
       | eGFR (Lund-Malmö)            |                                                        |
       | eGFRcr (EKFC)                | a name LOINC gives only the CKD-EPI estimate           |
       | Glomerulär filtration (EKFC) | a filtration rate in another language                  |
+      | eGFR Malmo                   | one word of the formula's name, set off by a space     |
+      | eGFR (EKFC 2021)             | the formula's year, no CKD-EPI 2021                    |
+      | eGFR (EKFC) (stimato)        | a word saying only that it is an estimate              |
+      | eGFR (creatinina e cistatina C) (formula EKFC) | of creatinine and cystatin C together |
+      | eGFR (cistatina C) (BIS2)    | BIS2 reads creatinine too, so no cystatin C estimate    |
 
   Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
     Given a report prints "eGFR (CKD-EPI IDMS)", "eGFR (Roche)" or "eGFR MDRD (donne)" in mL/min/1.73m²
@@ -153,6 +158,11 @@ Feature: Identifying the test of each value
     Given a report prints "eGFR" 81 and "eGFR (EKFC)" 81.5 in mL/min/1.73m²
     When I give the plain eGFR the eGFR test of no formula, as the estimate has
     Then both values should still be shown for review, neither set aside as the other's duplicate
+
+  Scenario: A creatinine and a combined estimate by one formula are both kept
+    Given a report prints "eGFR (EKFC creatinina)" 80 and "eGFR (EKFC creatinina + cistatina C)" 81 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, neither set aside as the other's duplicate
 
   Scenario: Estimates by the two Berlin Initiative Study formulas are both kept
     Given a report prints "eGFR (BIS1)" 61 and "eGFR (BIS2)" 62 in mL/min/1.73m²
@@ -177,6 +187,7 @@ Feature: Identifying the test of each value
       | eGFR (formula MDRD) | 77147-7 | the MDRD formula of no population named               |
       | eGFR (cistatina C)  | 50210-4 | the cystatin C-based formula, not a creatinine-based one |
       | eGFR cystatin C (CAPA) | 50210-4 | a cystatin C formula LOINC lacks is the cystatin C-based one, which names no formula |
+      | eGFR (EKFC) (cistatina C) | 50210-4 | the same, whatever the order of its brackets                  |
 
   Scenario: A method named in brackets picks its test, a brand beside it says nothing
     Given a report prints "HbA1c (HPLC Tosoh)" in mmol/mol and "Albumina (BCG Roche)" in g/dL
@@ -415,6 +426,12 @@ Feature: Identifying the test of each value
     When I correct the choice in the first report
     Then the second report's "Glucosio" should take the corrected test too
 
+  Scenario: A shared choice holds when the unit its test asks for is given
+    Given I import two reports that both print "NT-proBNP" as "Negativo", with no unit
+    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay" for it in the first report
+    And I give the second report's value the unit pg/mL
+    Then it should still be saved as "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay"
+
   Scenario: Choose the test from the keyboard
     Given a value the AI is not sure of
     When I open its test list from the keyboard, type "Hemoglobin" and press Enter
@@ -481,6 +498,16 @@ Feature: Identifying the test of each value
     Then the learned names should show "batteri (urine)" as learned in words
     And a later urine report printing "Batteri (urine)" as "Assenti" should be saved under that test without asking
     But a later urine report printing "Batteri (urine)" as the number 12, with no unit, should not be saved under that test
+
+  Scenario: A count chosen in a urine sediment section is not used for the urine
+    Given a report's urine sediment section prints "Leucociti" 3 /µL
+    When I choose "Leukocytes [#/area] in Urine sediment by Microscopy high power field" for it and save the import
+    Then a later report printing "Leucociti" 25 /µL under a urine heading should be saved as "Leukocytes [#/volume] in Urine"
+
+  Scenario: A result in words given a unit is read again in it
+    Given a urine report prints "Glucosio (urine)" as "Assente"
+    When I give it the unit mg/dL, keeping its result
+    Then it should no longer be saved as a presence test
 
   Scenario: A test chosen in a urine sediment section is not used for the urine
     Given a report's urine sediment section prints "Batteri" as "Assenti"

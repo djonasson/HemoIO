@@ -195,8 +195,13 @@ function printedReading(value: MatchedBiomarker): PrintedValue {
   return { name, unit, specimenHint: value.specimenHint, qualitative: value.qualitative };
 }
 
-/** A value as it now reads, in this unit (its own by default): a result in words typed over with a number is a number */
-export function currentReading(value: MatchedBiomarker, unit = value.unit): PrintedValue {
+/**
+ * A value as it now reads: a result in words typed over with a number is a
+ * number, and an emptied unit, one still to choose, is the report's
+ */
+export function currentReading(value: MatchedBiomarker): PrintedValue {
+  const printedUnit = value.analyzed?.unit ?? '';
+  const unit = value.unit.trim() === '' && printedUnit.trim() ? printedUnit : value.unit;
   return { name: value.name, unit, specimenHint: value.specimenHint, qualitative: heldQualitative(value) };
 }
 
@@ -226,7 +231,7 @@ export function isReadAsPrinted(
  * next time anyway.
  */
 export function toLearn(value: MatchedBiomarker): SavedValue {
-  const edited = !isReadAsPrinted(value);
+  const edited = !isReadAsPrinted(value, currentReading(value), { inUnit: true });
   const by = value.identifiedBy;
   return {
     key: learnedKey({ ...printedReading(value), qualitative: heldQualitative(value) }),
