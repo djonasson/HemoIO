@@ -268,12 +268,12 @@ Feature: Identifying the test of each value
       | Fattore VIII |
       | Proteina S   |
 
-  Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+  Scenario: A ratio of times printed in ratio is filed under that time ratio
     Given a report prints "Proteina C attivata resistenza" in ratio
     And LOINC gives the activated protein C resistance as a time ratio
     When the report is analyzed
-    Then the AI should be asked which test it is
-    And the first test to choose from should be "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
+    Then the value should be saved as "Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay"
+    And the AI should not be asked which test it is
 
   Scenario: A ratio printed with no unit is asked about, the ratio its name says first
     Given a report prints "Rapporto colesterolo/HDL" with no unit

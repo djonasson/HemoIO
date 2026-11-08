@@ -369,15 +369,15 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
   });
 
-  test('offers first a test of another kind than the unit whose name the printed one is', async ({ page }) => {
-    // Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+  test('files a ratio of times printed in ratio under that time ratio', async ({ page }) => {
+    // Scenario: A ratio of times printed in ratio is filed under that time ratio
     const ai = await analyzeReport(page, [
       { name: 'Proteina C attivata resistenza', value: 2.4, unit: 'ratio', confidence: 0.95 },
     ]);
-    expect(ai.choiceRequests).toHaveLength(1);
-    expect(ai.choiceRequests[0][0].candidates[0].name).toBe(
+    await expect(savedAsCell(rowFor(page, '2.4'))).toHaveText(
       'Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay'
     );
+    expect(ai.choiceRequests).toHaveLength(0);
   });
 
   test('asks about a ratio printed with no unit, the ratio its name says first', async ({ page }) => {
