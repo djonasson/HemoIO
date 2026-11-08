@@ -1294,12 +1294,9 @@ describe('matchLocally on names of real Italian reports', () => {
       expect(codes.every(inWords)).toBe(true);
     });
 
-    it("is the microscope's in a urine sediment section", () => {
+    it.each(['Batteri', 'Batteri (urine)'])("is the microscope's for %s in a urine sediment section", (name) => {
       expect(
-        matchLocally(generated, { name: 'Batteri', unit: '', specimenHint: 'urine sediment', qualitative: absent })
-      ).toMatchObject({ status: 'match', code: '25145-4' });
-      expect(
-        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine sediment', qualitative: absent })
+        matchLocally(generated, { name, unit: '', specimenHint: 'urine sediment', qualitative: absent })
       ).toMatchObject({ status: 'match', code: '25145-4' });
     });
 

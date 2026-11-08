@@ -23,6 +23,7 @@ import {
   type CatalogTest,
   type ScoredTest,
 } from '@data/loinc/catalog';
+import type { QualitativeReading } from '../ai';
 
 /** A value as the report prints it */
 export interface PrintedValue {
@@ -31,7 +32,7 @@ export interface PrintedValue {
   /** The sample the report section or the AI names: "urine", "24h urine", "urine sediment" */
   specimenHint?: string;
   /** A result printed in words ("Assenti", "++"), which only a test whose results are words can have */
-  qualitative?: { kind: 'boolean' | 'ordinal' };
+  qualitative?: QualitativeReading;
 }
 
 /** A test that may be the printed one */
@@ -82,7 +83,8 @@ const SCORE_EPSILON = 1e-9;
 const DAY_URINE = '24H urine';
 
 /** A spot urine sample, and its sediment (the cells and casts seen per field) */
-const URINE = ['Urine', 'Urine sed'];
+const URINE_SEDIMENT = 'Urine sed';
+const URINE = ['Urine', URINE_SEDIMENT];
 
 /** Where a value with no sample named most likely comes from, likeliest first */
 const DEFAULT_SYSTEMS = ['Ser/Plas', 'Ser', 'Plas', 'Ser/Plas/Bld', 'Bld', 'RBC', 'PPP'];
@@ -264,8 +266,12 @@ export function splitSamplePrefix(name: string): { name: string; systems?: strin
   return { name: rest, systems: day ? [DAY_URINE] : URINE };
 }
 
-/** The LOINC systems a specimen hint names, if any */
+/** A specimen hint naming the urine sediment: "urine sediment", "sedimento urinario" */
+const SEDIMENT_HINT = /\bsediment[oi]?\b/i;
+
+/** The LOINC systems a specimen hint names, if any: a urine sediment one, the sediment alone */
 function hintSystems(hint: string): string[] | undefined {
+  if (SEDIMENT_HINT.test(hint)) return [URINE_SEDIMENT];
   return splitSamplePrefix(hint).systems ?? SAMPLE_HINTS.find(([words]) => words.test(hint))?.[1];
 }
 
@@ -629,16 +635,16 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     const unread = words.filter((word) => !read.has(word) && /\p{L}/u.test(word) && !isNamed(word));
     const methods = new Set(still.map(({ test }) => test.method));
     // An estimate by formulas: one LOINC lacks is none of them. A measured value's brand or technique says nothing ("Fibrinogeno (Clauss)")
-    const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || /\bformula\b/i.test(method));
+    const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || namesFormula(method));
     const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas);
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
       // A formula LOINC lacks is the estimate of no formula, when LOINC has one ("eGFR (EKFC)" is 69405-9)
-      const unnamed = byFormulas ? result.filter(({ test }) => namesNoFormula(test.method) && still.some((one) => sameQuantity(one.test, test))) : [];
+      const unnamed = byFormulas ? estimateOfNoFormula(result, still) : undefined;
       const capped = result
-        .filter((one) => unnamed.length !== 1 || one !== unnamed[0])
+        .filter((one) => one !== unnamed)
         .map((one) => (one.score > cap ? { ...one, score: cap } : one));
-      return unnamed.length === 1 ? [{ ...unnamed[0], score: Math.max(unnamed[0].score, MATCH_SCORE) }, ...capped] : capped;
+      return unnamed ? [{ ...unnamed, score: Math.max(unnamed.score, MATCH_SCORE) }, ...capped] : capped;
     }
   }
   return result;
@@ -649,9 +655,24 @@ function sameQuantity(a: CatalogTest, b: CatalogTest): boolean {
   return a.component === b.component && a.property === b.property && a.system === b.system && a.scale === b.scale;
 }
 
-/** Whether an estimate's method names no formula: "based on 1.73 sq M", not "Creatinine-based formula (MDRD)" */
-function namesNoFormula(method: string): boolean {
-  return method !== '' && method !== CALCULATED && !/\bformula\b/i.test(method);
+/** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
+function namesFormula(method: string): boolean {
+  return /\bformula\b/i.test(method);
+}
+
+/**
+ * The one test found that estimates what the formula tests still fitting
+ * do, by a method naming no formula ("based on 1.73 sq M"), if there is one
+ */
+function estimateOfNoFormula(found: Found[], formulaTests: Found[]): Found | undefined {
+  const unnamed = found.filter(
+    ({ test }) =>
+      test.method !== '' &&
+      test.method !== CALCULATED &&
+      !namesFormula(test.method) &&
+      formulaTests.some((one) => sameQuantity(one.test, test))
+  );
+  return unnamed.length === 1 ? unnamed[0] : undefined;
 }
 
 /** Whether a word is an Italian one for a method (see METHOD_READINGS) */
@@ -819,15 +840,11 @@ function systemKind(system: string): string {
   return system === DAY_URINE ? 'Urine' : sampleKind(system);
 }
 
-/** A specimen hint naming the urine sediment: "urine sediment", "sedimento urinario" */
-const SEDIMENT_HINT = /\bsediment[oi]?\b/i;
-const URINE_SEDIMENT = 'Urine sed';
-
 /**
  * Where a value's test is looked for: the samples its name says (a
  * prefix, urine words or serum words), else its specimen hint (a urine
- * sediment one narrowing urine to its sediment), else serum, plasma or blood; and whether that sample is said, or only
- * loosely by "blood". A day's unit ("mg/24h") says its urine was
+ * sediment one narrowing urine to its sediment), else serum, plasma or
+ * blood; and whether that sample is said, or only loosely by "blood". A day's unit ("mg/24h") says its urine was
  * collected over 24 hours, as does the AI's "24h urine".
  */
 function sampleOf(
@@ -836,13 +853,12 @@ function sampleOf(
   hint: string | undefined,
   perDay: boolean
 ): { systems: string[]; sample: SampleSaid } {
-  const sediment = hint !== undefined && SEDIMENT_HINT.test(hint);
-  const hinted = hint ? (hintSystems(hint) ?? (sediment ? URINE : undefined)) : undefined;
+  const hinted = hint ? hintSystems(hint) : undefined;
   let said = split.systems ?? worded?.systems;
   if (isUrine(said) && hinted?.includes(DAY_URINE)) said = [DAY_URINE];
+  // A urine sediment section narrows a spot urine the name says to what a microscope sees in its fields
+  if (hinted?.[0] === URINE_SEDIMENT && said?.every((system) => URINE.includes(system))) said = hinted;
   let systems = said ?? hinted;
-  // A urine sediment section: what a microscope sees in its fields
-  if (sediment && systems !== undefined && systems.every((system) => URINE.includes(system))) systems = [URINE_SEDIMENT];
   if (perDay && (systems === undefined || isUrine(systems))) systems = [DAY_URINE];
   if (systems === undefined) return { systems: DEFAULT_SYSTEMS, sample: 'none' };
   const loosely = said === undefined ? BLOOD_HINT.test(hint ?? '') : !split.systems && worded?.loosely === true;
