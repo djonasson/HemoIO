@@ -5,8 +5,9 @@
 
 import type { LabFlag } from '@/types';
 
-const HIGH = new Set(['H', 'HH', 'HIGH', 'ALTO', 'A+', '↑', '+']);
-const LOW = new Set(['L', 'LL', 'LOW', 'BASSO', '↓', '-']);
+// Never "+" or "-": "-" is how an empty cell is most often written
+const HIGH = new Set(['H', 'HH', 'HIGH', 'ALTO', 'A+', '↑']);
+const LOW = new Set(['L', 'LL', 'LOW', 'BASSO', '↓']);
 const ABNORMAL = new Set(['A', '*', '**', '!', 'ABNORMAL', 'ANOMALO', 'ALTERATO']);
 
 /** The lab's mark as an optional property: absent when the model gave none or something else */

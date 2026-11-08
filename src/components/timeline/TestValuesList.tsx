@@ -170,7 +170,7 @@ export function TestValuesList({
               <Table.Tr
                 key={testValue.id}
                 data-status={testValue.status}
-                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}${testValue.method ? ` by ${testValue.method}` : ''}${flag ? `, ${flag.label}` : ''}, ${indicator.label}`}
+                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}${testValue.method ? ` by ${testValue.method}` : ''}${flag && testValue.statusBasis !== 'lab' ? `, ${flag.label}` : ''}, ${indicator.label}`}
               >
                 <Table.Td>
                   <Tooltip label={indicator.label}>

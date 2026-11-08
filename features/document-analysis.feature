@@ -80,6 +80,24 @@ Feature: Document Analysis
     And absent should read as 0, present as 1, traces as 0.5 and one to four crosses as 1 to 4
     And free text with no presence meaning, such as a colour, should still be skipped
 
+  Scenario: A measured number is never replaced by a word
+    Given the AI read a value of 0.05 S/CO with the word "Negativo" beside it
+    Then the value should stay 0.05 S/CO, a measured number with its unit
+    And a word the scale does not know, such as "N/A", "Normale" or "95 mg/dL", should never make a value a word
+    But a word given with no number, or with the number it stands for, should be kept as printed
+
+  Scenario: Values printed beyond what the lab can measure are read in every common form
+    Given a report prints values such as "> 200 H", "<10 mg/dL", "=< 5", "≥ 3" or "inferiore a 5"
+    When the AI gives them as printed
+    Then each should be read as its bound with its comparator
+    And "> 1.000" and "> 100.000" should read as 1000 and 100000, the dot separating thousands
+    And "< 0,2" should read as 0.2, the comma a decimal mark
+
+  Scenario: A value that cannot be read is left for review
+    Given the AI gave a value that cannot be read as a number, such as "vedi nota"
+    Then the value should be left empty, never saved as 0
+    And the review should show what the report printed and ask for the value
+
   Scenario: A value printed in two units needs no warning
     Given a report prints a value in two units, such as "Glucosio 95 mg/dL 5.27 mmol/L"
     When the AI analyzes the text

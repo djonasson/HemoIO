@@ -147,6 +147,37 @@ describe('parseIntervalValue', () => {
       expect(parseIntervalValue('5-10').censored).toBeUndefined();
     });
 
+    test.each([
+      ['> 200 H', '>', 200],
+      ['<10 mg/dL', '<', 10],
+      ['< 1.000 UI/mL', '<', 1000],
+      ['=< 5', '<=', 5],
+      ['=> 5', '>=', 5],
+      ['>= 5', '>=', 5],
+      ['≤ 0,2', '<=', 0.2],
+      ['≥3', '>=', 3],
+      ['inferiore a 5', '<', 5],
+      ['Inferiore a 0,5', '<', 0.5],
+      ['minore di 3', '<', 3],
+      ['superiore a 200', '>', 200],
+      ['maggiore di 90 mL/min', '>', 90],
+      ['> 1.000', '>', 1000],
+      ['> 100.000 UFC/mL', '>', 100000],
+      ['> 35.000', '>', 35000],
+      ['< 1.000,5', '<', 1000.5],
+      ['< 0.2', '<', 0.2],
+      ['< 1.50', '<', 1.5],
+    ] as const)('reads %o as its bound with its comparator', (raw, censored, value) => {
+      const result = parseIntervalValue(raw);
+      expect(result).toMatchObject({ censored, value, isInterval: false, rawValue: raw });
+    });
+
+    test('leaves a censored value whose number cannot be read missing', () => {
+      const result = parseIntervalValue('< 1,2,3');
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+    });
+
     test('should parse "> 20" with space', () => {
       const result = parseIntervalValue('> 20');
       expect(result.isInterval).toBe(false);
@@ -155,29 +186,18 @@ describe('parseIntervalValue', () => {
   });
 
   describe('edge cases', () => {
-    test('should handle empty string', () => {
-      const result = parseIntervalValue('');
-      expect(result.value).toBe(0);
+    test.each(['', null, undefined])('leaves %o missing, with nothing printed', (raw) => {
+      const result = parseIntervalValue(raw);
+      expect(result.value).toBeNaN();
       expect(result.isInterval).toBe(false);
+      expect(result.rawValue).toBeUndefined();
     });
 
-    test('should handle non-numeric string', () => {
-      const result = parseIntervalValue('negative');
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
-      expect(result.rawValue).toBe('negative');
-    });
-
-    test('should handle null', () => {
-      const result = parseIntervalValue(null);
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
-    });
-
-    test('should handle undefined', () => {
-      const result = parseIntervalValue(undefined);
-      expect(result.value).toBe(0);
-      expect(result.isInterval).toBe(false);
+    test('leaves a value it cannot read missing, never a measured 0, and keeps what was printed', () => {
+      const result = parseIntervalValue('vedi nota');
+      expect(result.value).toBeNaN();
+      expect(result.censored).toBeUndefined();
+      expect(result.rawValue).toBe('vedi nota');
     });
 
     test('should handle zero', () => {

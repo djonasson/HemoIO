@@ -543,7 +543,7 @@ test.describe('Timeline with Data', () => {
     const glucose = table.getByRole('row', { name: /^Glucose: 300 mg\/dL, Cannot be compared with the reference range$/ });
     await expect(glucose).toContainText('1 - 2 g/24h');
     await expect(
-      table.getByRole('row', { name: /^PCR: 12 mg\/L, flagged high by the lab, Flagged high by the lab$/ })
+      table.getByRole('row', { name: /^PCR: 12 mg\/L, Flagged high by the lab$/ })
     ).toBeVisible();
   });
 

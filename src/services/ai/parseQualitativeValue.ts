@@ -58,27 +58,23 @@ export function readQualitativeWord(printed: string): Omit<QualitativeReading, '
 
 /**
  * A model's value with the printed word it gave for a qualitative result.
- * A word the scale knows reads as the scale says. A word it does not know
- * (another language's) keeps the number the model gave it, a boolean when
- * that is 0 or 1. A value given as a word with no number reads by the
- * scale too. Anything else is a number or an interval (parseIntervalValue).
+ * Only a word the scale knows counts, and only while it does not replace a
+ * measured number: when the model gave no number, or the very number the
+ * word reads as. So "0.05 S/CO Negativo" stays 0.05, and "N/A", "Normale"
+ * or "95 mg/dL" never make a value a word. A value given as a word reads by
+ * the scale too. Anything else is a number or an interval (parseIntervalValue).
  */
 export function parseExtractedValue(value: unknown, printed: unknown): ReadValue {
+  const given = typeof value === 'string' ? readQualitativeWord(value) : undefined;
+  const read: ReadValue = given
+    ? qualitativeValue({ text: String(value).trim(), ...given })
+    : parseIntervalValue(value);
   const word = typeof printed === 'string' ? printed.trim() : '';
-  if (word !== '') {
-    const known = readQualitativeWord(word);
-    if (known) return qualitativeValue({ text: word, ...known });
-    // A number given as the word is no qualitative result
-    if (typeof value === 'number' && Number.isFinite(value) && !/^[\d.,\s<>-]+$/.test(word)) {
-      const kind = value === 0 || value === 1 ? 'boolean' : 'ordinal';
-      return qualitativeValue({ text: word, kind, value });
-    }
-  }
-  if (typeof value === 'string') {
-    const known = readQualitativeWord(value);
-    if (known) return qualitativeValue({ text: value.trim(), ...known });
-  }
-  return parseIntervalValue(value);
+  const known = word ? readQualitativeWord(word) : undefined;
+  if (!known || read.qualitative) return read;
+  const measured = Number.isFinite(read.value);
+  if (measured && (read.value !== known.value || read.isInterval || read.censored)) return read;
+  return qualitativeValue({ text: word, ...known });
 }
 
 function qualitativeValue(qualitative: QualitativeReading): ReadValue {

@@ -889,7 +889,27 @@ describe('ReviewStep', () => {
       renderReviewStep({ reviewedResults: withFirst({ value: 10, censored: '<', labFlag: 'low' }) });
 
       expect(screen.getByText('< 10')).toBeInTheDocument();
-      expect(screen.getByLabelText('flagged low by the lab')).toHaveTextContent('L');
+      expect(screen.getByTitle('flagged low by the lab')).toHaveTextContent('L');
+      expect(screen.getByText('flagged low by the lab')).toBeInTheDocument();
+    });
+
+    it("lets the lab's mark be changed or cleared while editing", async () => {
+      const onReviewChange = vi.fn();
+      renderReviewStep({ reviewedResults: withFirst({ value: 90, labFlag: 'low' }), onReviewChange });
+
+      fireEvent.click(screen.getByLabelText('Edit biomarker'));
+      const mark = screen.getByRole('combobox', { name: "Lab's mark" });
+      expect(mark).toHaveValue('low');
+      await userEvent.selectOptions(mark, 'H (high)');
+      expect(onReviewChange.mock.calls.at(-1)![0][0].editedBiomarkers[0].labFlag).toBe('high');
+      await userEvent.selectOptions(mark, 'No mark');
+      expect(onReviewChange.mock.calls.at(-1)![0][0].editedBiomarkers[0].labFlag).toBeUndefined();
+    });
+
+    it('shows what the report printed for a value that could not be read', () => {
+      renderReviewStep({ reviewedResults: withFirst({ value: NaN, rawValue: 'vedi nota' }) });
+
+      expect(screen.getByText('Printed: “vedi nota”')).toBeInTheDocument();
     });
 
     it('lets the comparator be chosen while editing', async () => {

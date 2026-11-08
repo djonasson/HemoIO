@@ -57,12 +57,12 @@ import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import { heldQualitative } from '@services/ai';
-import { COMPARATOR_SIGNS } from '@/utils/formatTestValue';
+import { COMPARATOR_SIGNS, LAB_FLAG_TEXT } from '@/utils/formatTestValue';
 import { LabFlagMark } from '@components/common/LabFlagMark';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
-import type { CensoredComparator } from '@/types';
+import type { CensoredComparator, LabFlag } from '@/types';
 
 /**
  * The LOINC code with LOINC's name for it, as the license asks, and
@@ -103,6 +103,12 @@ export interface ReviewedResult extends AnalysisResult {
 }
 
 /** The comparator choices of a value: measured ("="), or censored */
+/** The lab's marks as printed, with what each says; or none */
+const LAB_FLAG_OPTIONS = [
+  { value: '', label: 'No mark' },
+  ...(Object.keys(LAB_FLAG_TEXT) as LabFlag[]).map((flag) => ({ value: flag, label: `${LAB_FLAG_TEXT[flag].mark} (${flag})` })),
+];
+
 const COMPARATOR_OPTIONS = [
   { value: '', label: '=' },
   ...Object.entries(COMPARATOR_SIGNS).map(([value, label]) => ({ value, label })),
@@ -685,6 +691,19 @@ export function ReviewStep({
                                         {printedResult.text}
                                       </Text>
                                     )}
+                                    {/* The lab's mark, which the user may change or clear */}
+                                    <NativeSelect
+                                      size="xs"
+                                      aria-label="Lab's mark"
+                                      data={LAB_FLAG_OPTIONS}
+                                      value={biomarker.labFlag ?? ''}
+                                      onChange={(e) =>
+                                        updateBiomarker(resultIndex, bioIndex, {
+                                          labFlag: (e.currentTarget.value || undefined) as LabFlag | undefined,
+                                        })
+                                      }
+                                      w={110}
+                                    />
                                   </Group>
                                 )
                               ) : (
@@ -692,6 +711,12 @@ export function ReviewStep({
                                   <Text size="sm">{formatReviewedValue(biomarker)}</Text>
                                   {biomarker.labFlag && <LabFlagMark flag={biomarker.labFlag} />}
                                 </Group>
+                              )}
+                              {!Number.isFinite(biomarker.value) && !biomarker.isInterval && biomarker.rawValue && (
+                                // A value that could not be read: what the report printed, to type it from
+                                <Text size="xs" c="dimmed">
+                                  Printed: “{biomarker.rawValue}”
+                                </Text>
                               )}
                             </Table.Td>
                             <Table.Td>

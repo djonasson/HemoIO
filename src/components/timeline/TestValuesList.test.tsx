@@ -360,7 +360,8 @@ describe('TestValuesList', () => {
       />
     );
 
-    expect(screen.getByRole('row', { name: /, Flagged high by the lab$/ })).toBeInTheDocument();
+    // Said once: the mark is what gives the status
+    expect(screen.getByRole('row', { name: /^PCR: 12 mg\/L, Flagged high by the lab$/ })).toBeInTheDocument();
   });
 
   it('shows a range it cannot compare in its own unit, and says it cannot be compared', () => {

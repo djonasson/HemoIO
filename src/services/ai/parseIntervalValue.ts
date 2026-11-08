@@ -26,17 +26,43 @@ export interface ParsedValue {
   censored?: CensoredComparator;
 }
 
-/** A comparator and a number: "< 5", "<=0.2", "≥ 200" */
-const CENSORED = /^(<=|>=|<|>|≤|≥)\s*(\d+(?:[.,]\d+)?)$/;
+/**
+ * A comparator, as a sign or in Italian words, and a number, maybe with
+ * the unit or the lab's mark after it: "< 5", "=<0,2", "≥ 200",
+ * "> 200 H", "<10 mg/dL", "inferiore a 5"
+ */
+const CENSORED =
+  /^(<=|=<|>=|=>|<|>|≤|≥|inferiore\s+a|minore\s+di|superiore\s+a|maggiore\s+di)\s*(\d+(?:[.,]\d+)*)(?![\d.,])(?:\s*\S.*)?$/i;
 
 const COMPARATORS: Record<string, CensoredComparator> = {
   '<': '<',
   '<=': '<=',
+  '=<': '<=',
   '≤': '<=',
   '>': '>',
   '>=': '>=',
+  '=>': '>=',
   '≥': '>=',
+  'inferiore a': '<',
+  'minore di': '<',
+  'superiore a': '>',
+  'maggiore di': '>',
 };
+
+/**
+ * A censored value's bound as an Italian report prints it: a comma is the
+ * decimal mark and a dot then separates thousands ("1.000,5"); with no
+ * comma, a dot before groups of exactly three digits separates thousands
+ * ("> 1.000", "> 100.000"), any other dot is a decimal point ("< 0.2").
+ * NaN for anything else ("1,2,3").
+ */
+function readBound(text: string): number {
+  if (text.includes(',')) {
+    return /^\d{1,3}(?:\.\d{3})*,\d+$|^\d+,\d+$/.test(text) ? Number(text.replace(/\./g, '').replace(',', '.')) : NaN;
+  }
+  if (/^\d{1,3}(?:\.\d{3})+$/.test(text)) return Number(text.replace(/\./g, ''));
+  return /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : NaN;
+}
 
 /**
  * Regular expression patterns for interval detection
@@ -72,6 +98,11 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     };
   }
 
+  // No value at all: missing, with nothing printed to show
+  if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') {
+    return { value: NaN, isInterval: false };
+  }
+
   // Convert to string for parsing
   const valueStr = String(rawValue).trim();
 
@@ -104,13 +135,13 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
   // comparator, never as a plain number.
   const censoredMatch = valueStr.match(CENSORED);
   if (censoredMatch) {
-    const bound = parseFloat(censoredMatch[2].replace(',', '.'));
+    const bound = readBound(censoredMatch[2]);
     if (!isNaN(bound)) {
       return {
         value: bound,
         isInterval: false,
         rawValue: valueStr,
-        censored: COMPARATORS[censoredMatch[1]],
+        censored: COMPARATORS[censoredMatch[1].toLowerCase().replace(/\s+/g, ' ')],
       };
     }
   }
@@ -124,9 +155,10 @@ export function parseIntervalValue(rawValue: string | number | unknown): ParsedV
     };
   }
 
-  // Default: return 0 if unparseable (will likely be filtered out)
+  // Not read: left missing (never a measured 0), so the review asks for
+  // it and shows what was printed
   return {
-    value: 0,
+    value: NaN,
     isInterval: false,
     rawValue: valueStr,
   };

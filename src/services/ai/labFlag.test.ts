@@ -18,5 +18,7 @@ describe('withLabFlag', () => {
     expect(withLabFlag({})).toEqual({});
     expect(withLabFlag({ flag: null })).toEqual({});
     expect(withLabFlag({ flag: 'see note' })).toEqual({});
+    expect(withLabFlag({ flag: '-' })).toEqual({});
+    expect(withLabFlag({ flag: '+' })).toEqual({});
   });
 });

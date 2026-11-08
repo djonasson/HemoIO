@@ -31,4 +31,18 @@ describe('withParsedValue', () => {
     expect(read.unit).toBe('');
     expect(read.qualitative).toEqual({ text: 'Assenti', kind: 'boolean', value: 0 });
   });
+
+  it('keeps a measured number and its unit beside a word', () => {
+    expect(withParsedValue({ value: 0.05, qualitativeValue: 'Negativo' }, 'S/CO')).toMatchObject({
+      value: 0.05,
+      unit: 'S/CO',
+      qualitative: undefined,
+    });
+  });
+
+  it('leaves a value it cannot read missing, with what was printed', () => {
+    const read = withParsedValue({ value: 'vedi nota' }, 'mg/dL');
+    expect(read.value).toBeNaN();
+    expect(read.rawValue).toBe('vedi nota');
+  });
 });

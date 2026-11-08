@@ -174,6 +174,8 @@ Feature: Import Wizard
     When I edit its number to 3
     Then the review should show the value as 3, without the word
     And the value should be saved as 3
+    When I edit its number back to 0
+    Then the review should show the value as "Assenti (0)" again
 
   Scenario: A value printed beyond what the lab can measure keeps its comparator
     Given the AI read Glucose as "< 10" mg/dL with a reference range of 70-100 mg/dL
@@ -193,10 +195,21 @@ Feature: Import Wizard
     When I save the import
     Then the timeline should show "H" beside the value, read out as "flagged high by the lab"
 
+  Scenario: The lab's mark can be changed or cleared on review
+    Given the AI read a value the lab marked "L"
+    When I clear the lab's mark while editing the value
+    Then the review should show no mark beside the value
+    And the value should be saved with no mark
+
+  Scenario: A dash or a plus is no lab mark
+    Given the AI gave "-" or "+" as a value's mark, as reports write an empty cell
+    Then the value should have no mark
+
   Scenario: A reference range printed in another unit is compared in the value's unit
-    Given the AI read Glucose as 150 mg/dL with a reference range of 3.9-5.6 mmol/L
+    Given the AI read Glucose as 90 mg/dL with a reference range of 3.9-5.6 mmol/L
     When I save the import
-    Then the timeline should show the value above its reference range, the range converted to mg/dL
+    Then the timeline should show the value within its reference range, the range converted to mg/dL
+    And not above it, as 90 compared with 5.6 unconverted would read
 
   Scenario: Numbers keep every decimal the report printed
     Given I am editing a value on the review step

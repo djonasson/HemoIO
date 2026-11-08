@@ -544,11 +544,74 @@ test.describe('Import Wizard', () => {
           { extraction: extraction([{ name: 'Glucose', value: 130, unit: 'mg/dL', confidence: 0.95, flag: 'H' }]) },
         ]);
         await analyzeToReview(page, track(createTextLabReportPdf()));
-        await expect(reviewRow(page, 'Glucose').getByLabel('flagged high by the lab')).toHaveText('H');
+        await expect(reviewRow(page, 'Glucose').getByTitle('flagged high by the lab')).toHaveText('H');
 
         const card = await saveAndExpand(page);
-        const row = savedRow(card, 'Glucose', /130 mg\/dL, flagged high by the lab, Flagged high by the lab$/);
+        // Said once: the mark is what gives the status here
+        const row = savedRow(card, 'Glucose', /130 mg\/dL, Flagged high by the lab$/);
         await expect(row.getByTitle('flagged high by the lab')).toHaveText('H');
+      });
+
+      test("lets the lab's mark be cleared on review", async ({ page }) => {
+        // Scenario: The lab's mark can be changed or cleared on review
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 90, unit: 'mg/dL', confidence: 0.95, flag: 'L' }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await expect(row.getByTitle('flagged low by the lab')).toHaveText('L');
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await editingRow(page).getByRole('combobox', { name: "Lab's mark" }).selectOption('No mark');
+        await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+        await expect(row.getByTitle('flagged low by the lab')).toHaveCount(0);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /90 mg\/dL, No reference range available$/)).toBeVisible();
+      });
+
+      test('reads a censored value printed with thousands and its mark', async ({ page }) => {
+        // Scenario: Values printed beyond what the lab can measure are read in every common form
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '> 1.000 H',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100 },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('> 1000');
+      });
+
+      test('keeps a measured number beside a word', async ({ page }) => {
+        // Scenario: A measured number is never replaced by a word
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95, qualitativeValue: 'Normale' },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('95');
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Unit')).toHaveText('mg/dL');
+      });
+
+      test('leaves a value it cannot read for review, showing what was printed', async ({ page }) => {
+        // Scenario: A value that cannot be read is left for review
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Glucose', value: 'vedi nota', unit: 'mg/dL', confidence: 0.95 }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await expect(row.getByText('Printed: “vedi nota”')).toBeVisible();
+        await expect(reviewCell(row, 'Value')).not.toContainText('0');
       });
 
       test("compares a range printed in another unit in the value's unit", async ({ page }) => {
@@ -558,7 +621,7 @@ test.describe('Import Wizard', () => {
             extraction: extraction([
               {
                 name: 'Glucose',
-                value: 150,
+                value: 90,
                 unit: 'mg/dL',
                 confidence: 0.95,
                 referenceRange: { low: 3.9, high: 5.6, unit: 'mmol/L' },
@@ -569,7 +632,8 @@ test.describe('Import Wizard', () => {
         await analyzeToReview(page, track(createTextLabReportPdf()));
 
         const card = await saveAndExpand(page);
-        const row = savedRow(card, 'Glucose', /150 mg\/dL, Above reference range$/);
+        // 90 mg/dL is within 3.9-5.6 mmol/L (about 70-101 mg/dL); compared unconverted, it would read high
+        const row = savedRow(card, 'Glucose', /90 mg\/dL, Within reference range$/);
         await expect(row).toContainText(/mg\/dL$/);
       });
 
