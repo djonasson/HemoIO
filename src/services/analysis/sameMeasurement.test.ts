@@ -35,6 +35,23 @@ describe('isSettled', () => {
     expect(settled(values)).toBe(true);
   });
 
+  it('keeps two estimates however printed: "eGFR EKFC" and "eGFR - Schwartz"', () => {
+    const values = [
+      compared(value('eGFR EKFC', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+      compared(value('eGFR - Schwartz', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
+    ];
+    expect(clusterMeasurements(values)).toHaveLength(2);
+    expect(settled(values)).toBe(true);
+  });
+
+  it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {
+    const values = [
+      compared(value('Emoglobina (HGB)', 14.2, 'g/dL', '718-7'), 14.2),
+      compared(value('Emoglobina (Hb)', 14.2, 'g/dL', '718-7'), 14.2),
+    ];
+    expect(clusterMeasurements(values)).toHaveLength(1);
+  });
+
   it('calls two measurements of one printed name a conflict', () => {
     expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 45, 'ng/mL', 'A'), 45)])).toBe(false);
   });

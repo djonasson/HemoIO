@@ -389,18 +389,26 @@ function hasWordResults(test: CatalogTest, organisms: boolean): boolean {
   return WORD_SCALES.has(test.scale) && (organisms || test.property !== 'Prid');
 }
 
-/**
- * The catalog searched only for tests whose results are words: a result
- * printed as "Assenti" is a presence test's or an interpretation's, never a
- * count, nor a culture's organism unless the name asks for one. In a urine
- * sediment section it is what the microscope saw, not a strip's reading.
- */
-function withWordResultsOnly(catalog: Catalog, organisms: boolean, sediment: boolean): Catalog {
+/** The catalog searched only for the tests kept */
+function withTestsKept(catalog: Catalog, kept: (test: CatalogTest) => boolean): Catalog {
   const scoredSearch: Catalog['scoredSearch'] = (query, filter) =>
-    catalog
-      .scoredSearch(query, filter)
-      .filter(({ test }) => hasWordResults(test, organisms) && (!sediment || test.system !== 'Urine'));
+    catalog.scoredSearch(query, filter).filter(({ test }) => kept(test));
   return { ...catalog, scoredSearch };
+}
+
+/**
+ * The tests a value is first looked for among, if its printing narrows
+ * them: a result printed in words ("Assenti") is a presence test's or an
+ * interpretation's, never a count, nor a culture's organism unless the name
+ * looks for one; a result in words or a bare number in a urine sediment
+ * section is what the microscope saw, not a strip's reading
+ */
+function firstLookedAmong(value: PrintedValue): ((test: CatalogTest) => boolean) | undefined {
+  const inWords = value.qualitative !== undefined;
+  const ofSediment = SEDIMENT_HINT.test(value.specimenHint ?? '') && (inWords || value.unit.trim() === '');
+  if (!inWords && !ofSediment) return undefined;
+  const organisms = ORGANISM_SEARCH.test(value.name);
+  return (test) => (!inWords || hasWordResults(test, organisms)) && (!ofSediment || test.system !== 'Urine');
 }
 
 /**
@@ -687,11 +695,24 @@ function isUnlistedFormula(word: string): boolean {
 }
 
 /** A formula LOINC lacks set off by a dash or a space at a name's end: "eGFR - EKFC", "eGFR formula BIS" */
-const TRAILING_UNLISTED_FORMULA = /^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:ekfc|bis[12]?|schwartz|fas|capa|lmr|lund-malm[oö]))$/i;
+const TRAILING_UNLISTED_FORMULA = /^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:ekfc|bis[12]?|schwartz|fas|capa|lmr|lund[\s-]+malm[oö]))$/i;
 
 /** A name with a formula LOINC lacks at its end read as if in brackets, as reports also print it: "eGFR (EKFC)" */
 function withFormulaBracketed(name: string): string {
-  return name.replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)');
+  return GFR_NAME.test(name) ? name.replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)') : name;
+}
+
+/** A name of a glomerular filtration rate: "eGFR", "GFR stimato", "Filtrato glomerulare", "VFG" */
+const GFR_NAME = /\b(?:e?gfr|vfg|filtra(?:to|zione)\s+glomerulare|glomerular\s+filtration)\b/i;
+
+/**
+ * The formula LOINC has no test for that a filtration rate's printed name
+ * names ("eGFR (EKFC)", "eGFR - Schwartz"), if any: two such estimates are
+ * two measurements, however close
+ */
+export function unlistedFormulaOf(name: string): string | undefined {
+  if (!GFR_NAME.test(name)) return undefined;
+  return wordsIn(name).find(isUnlistedFormula);
 }
 
 /** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
@@ -1056,14 +1077,14 @@ const LOW_POWER = /\bLPF\b/;
 
 /**
  * The tests found that count as the unit does, when any does: a count per
- * microscope field ("per campo", "/HPF") is one of the tests counted per
- * field (#/area), and a count per volume ("/µL") one of the urine's, which
+ * microscope field ("per campo", "/HPF", "/LPF") is one of the tests counted
+ * per field (#/area) of that power, and a count per volume ("/µL") one of the urine's, which
  * a machine counts, not of its sediment, which a microscope's field shows.
  * The two give other numbers, as do counts per high- and low-power field.
  */
 function countedAsPrinted(found: Found[], ucum: string | null): Found[] {
   if (ucum === null) return found;
-  const perField = ucum.includes('[HPF]');
+  const perField = ucum.includes('[HPF]') || ucum.includes('[LPF]');
   if (!perField && !ucumProperties(ucum).includes('NCnc')) return found;
   const isField = (test: CatalogTest): boolean => test.system === URINE_SEDIMENT || FIELD_METHOD.test(test.method);
   const counted = found.filter(({ test }) =>
@@ -1072,14 +1093,15 @@ function countedAsPrinted(found: Found[], ucum: string | null): Found[] {
   if (!counted.length) return found;
   if (!perField) return counted;
   // A high-power field shows less than a low-power one: a count per one is not of the other, though maybe a misprint
-  const ofHighPower = counted.filter(({ test }) => !LOW_POWER.test(test.method));
+  const [power, otherPower] = ucum.includes('[LPF]') ? [LOW_POWER, HIGH_POWER] : [HIGH_POWER, LOW_POWER];
+  const ofPower = counted.filter(({ test }) => !otherPower.test(test.method));
   const cap = MATCH_SCORE - MATCH_MARGIN;
-  if (!ofHighPower.length) return counted.map((one) => ({ ...one, score: Math.min(one.score, cap) }));
-  // Of the best fits, the ones counted per high-power field
-  const best = Math.max(...ofHighPower.map(({ score }) => score));
+  if (!ofPower.length) return counted.map((one) => ({ ...one, score: Math.min(one.score, cap) }));
+  // Of the best fits, the ones counted per field of the printed power
+  const best = Math.max(...ofPower.map(({ score }) => score));
   const isBest = ({ score }: Found): boolean => score >= best - SCORE_EPSILON;
-  const byHighPower = ofHighPower.filter((one) => isBest(one) && HIGH_POWER.test(one.test.method));
-  return byHighPower.length ? ofHighPower.filter((one) => !isBest(one) || byHighPower.includes(one)) : ofHighPower;
+  const byPower = ofPower.filter((one) => isBest(one) && power.test(one.test.method));
+  return byPower.length ? ofPower.filter((one) => !isBest(one) || byPower.includes(one)) : ofPower;
 }
 
 /**
@@ -1128,16 +1150,27 @@ export function matchLocally(
   const catalog = withSearchesKept(fullCatalog);
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
-  const matchWith = (searched: Catalog): LocalMatch =>
+  const matchWith = (searched: Catalog, learnedTests: typeof learned): LocalMatch =>
     value.unit.trim() === ''
-      ? matchUnitless(searched, value, unit, learned)
-      : matchIn(searched, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learned);
-  if (!value.qualitative) return matchWith(catalog);
-  // A result in words is a test whose results are words, when one fits the name; else the name's own tests, of any kind
-  const sediment = SEDIMENT_HINT.test(value.specimenHint ?? '');
-  const inWords = matchWith(withWordResultsOnly(catalog, ORGANISM_SEARCH.test(value.name), sediment));
-  const fits = inWords.status === 'match' || inWords.candidates.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON);
-  return fits ? inWords : matchWith(catalog);
+      ? matchUnitless(searched, value, unit, learnedTests)
+      : matchIn(searched, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learnedTests);
+  const kept = firstLookedAmong(value);
+  if (!kept) return matchWith(catalog, learned);
+  // First among the tests its printing narrows to, a test learned too; else the name's own tests, of any kind, after those
+  const keptLearned = learned && ((key: string): string | undefined => {
+    const code = learned(key);
+    const test = code ? catalog.test(code) : undefined;
+    return test && kept(test) ? code : undefined;
+  });
+  const narrowed = matchWith(withTestsKept(catalog, kept), keptLearned);
+  if (narrowed.status === 'match' || narrowed.candidates.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)) return narrowed;
+  const any = matchWith(catalog, learned);
+  if (any.status === 'match') return any;
+  const candidates = [...any.candidates, ...narrowed.candidates]
+    .filter((candidate, i, all) => all.findIndex(({ code }) => code === candidate.code) === i)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CANDIDATES);
+  return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 
 /** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
@@ -1326,11 +1359,10 @@ function matchIn(
   const learnedCode = learned?.(learnedKey(value));
   const learnedTest = learnedCode ? catalog.test(learnedCode) : undefined;
   // The wording and unit learned of one sample say nothing of a value said to be of another
-  // and a test whose results are numbers nothing of a result printed in words
   const contradicted =
     learnedTest !== undefined &&
-    ((sample === 'named' && !systems.some((system) => systemKind(system) === systemKind(learnedTest.system))) ||
-      (value.qualitative !== undefined && !hasWordResults(learnedTest, true)));
+    sample === 'named' &&
+    !systems.some((system) => systemKind(system) === systemKind(learnedTest.system));
   if (learnedTest && !contradicted) {
     seen.learned = true;
     return { status: 'match', code: learnedTest.code, candidates: [toCandidate(learnedTest, 1)] };

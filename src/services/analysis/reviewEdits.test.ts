@@ -4,6 +4,7 @@ import { identifyValues } from './identification';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
+  applyBiomarkerValue,
   chooseTest,
   chooseTestForWording,
   searchTests,
@@ -145,6 +146,27 @@ describe('chooseTest', () => {
   });
 });
 
+describe('applyBiomarkerValue', () => {
+  it('reads a result in words typed over with a number again, and typed back, as printed', async () => {
+    const value = await analyzed('P-Glucosio', 'mg/dL');
+    const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
+    // As if the analyzer had filed the word under a presence test
+    const presence = { candidates: [], identifiedBy: 'local' as const, identificationFlags: [], loincCode: 'presence-test' };
+    const word: MatchedBiomarker = {
+      ...value,
+      ...presence,
+      value: 0,
+      qualitative: absent,
+      analyzed: { name: 'P-Glucosio', unit: 'mg/dL', identification: presence },
+    };
+    const typed = applyBiomarkerValue(word, 95, catalog);
+    expect(typed).toMatchObject({ value: 95, loincCode: '2345-7' });
+    expect(applyBiomarkerValue(typed, 0, catalog).loincCode).toBe('presence-test');
+    // A number edited to another number keeps its test
+    expect(applyBiomarkerValue(typed, 96, catalog).loincCode).toBe('2345-7');
+  });
+});
+
 describe('chooseTestForWording', () => {
   /** An undecided value as review shows it */
   const undecided = (name: string, unit: string, specimenHint?: string): MatchedBiomarker => ({
@@ -157,6 +179,14 @@ describe('chooseTestForWording', () => {
     ...(specimenHint && { specimenHint }),
   });
   const files = (...values: MatchedBiomarker[][]) => values.map((editedBiomarkers, i) => ({ fileName: `${i}.pdf`, editedBiomarkers }));
+
+  it('never gives a choice for a number to the same wording printed in words, nor the other way', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    const word = { ...undecided('Batteri (urine)', ''), value: 0, qualitative: absent };
+    const results = files([undecided('Batteri (urine)', '')], [word]);
+    const chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '51480-2');
+    expect(chosen[1].editedBiomarkers[0].loincCode).toBeUndefined();
+  });
 
   it('gives the choice to the same wording in every file', () => {
     const results = files([undecided('Ematocrito', '%')], [undecided('Ematocrito', '%'), undecided('MPV', 'fL')]);

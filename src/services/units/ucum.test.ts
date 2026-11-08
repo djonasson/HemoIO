@@ -25,6 +25,7 @@ describe('toUcum', () => {
     ['mL/min/1.73m²', 'mL/min/(1.73.m2)'],
     ['g/24h', 'g/(24.h)'],
     ['/HPF', '/[HPF]'],
+    ['/LPF', '/[LPF]'],
     // The litre as UCUM writes it, and units printed in capitals
     ['fl', 'fL'],
     ['FL', 'fL'],

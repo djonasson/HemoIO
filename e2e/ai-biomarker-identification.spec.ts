@@ -31,6 +31,7 @@ import type { ExtractedBiomarkerFixture } from './steps/ai.steps';
 
 const ALT = 'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma';
 const SERUM_GLUCOSE = 'Glucose [Mass/volume] in Serum or Plasma';
+const NT_PRO_BNP = 'Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma';
 const BLOOD_GLUCOSE = 'Glucose [Mass/volume] in Blood';
 const HEMOGLOBIN = 'Hemoglobin [Mass/volume] in Blood';
 
@@ -699,13 +700,46 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rowFor(page, '6.5'))).toHaveText('pH of Urine');
   });
 
-  test('offers a result in words of a test that has none in words its own tests', async ({ page }) => {
+  test('offers a result in words of a test that has none in words its own tests, and remembers the one chosen', async ({ page }) => {
+    // Two imports, each analyzed
+    test.slow();
     // Scenario: A result in words of a test that has none in words is offered its own tests
-    const ai = await analyzeReport(page, [
-      { name: 'NT-proBNP', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' },
-    ]);
+    const ntProBnp = { name: 'NT-proBNP', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' };
+    const ai = await analyzeReport(page, [ntProBnp]);
     const codes = ai.choiceRequests.flat()[0].candidates.map((c) => c.code);
     expect(codes).toContain('33762-6');
+    await changeTest(page, rowFor(page, 'Negativo (0)'), NT_PRO_BNP, { search: false });
+    // Its test is measured in a unit, which the report gave none
+    await editRow(page, rowFor(page, 'Negativo (0)'), { unit: 'pg/mL' });
+    await saveReviewed(page);
+
+    const again = await analyzeReport(page, [ntProBnp]);
+    await expect(savedAsCell(rowFor(page, 'Negativo (0)'))).toHaveText(NT_PRO_BNP);
+    expect(again.choiceRequests).toHaveLength(0);
+  });
+
+  test('reads a result in words corrected to a number again as a number', async ({ page }) => {
+    // Scenario: A result in words corrected to a number is read again as a number
+    await analyzeReport(page, [
+      { name: 'Glucosio (urine)', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine', qualitativeValue: 'Assente' },
+    ]);
+    await expect(savedAsCell(rowFor(page, 'Assente (0)'))).toContainText('[Presence]');
+    // The number alone: no longer the presence test
+    await rowFor(page, 'Assente (0)').getByRole('button', { name: 'Edit biomarker' }).click();
+    await editingRow(page).getByPlaceholder('Value').fill('95');
+    await expect(savedAsCell(editingRow(page))).not.toContainText('[Presence]');
+    // In mg/dL, the urine glucose concentration
+    await editingRow(page).getByPlaceholder('Unit', { exact: true }).fill('mg/dL');
+    await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+    await expect(savedAsCell(rowFor(page, '95'))).toHaveText('Glucose [Mass/volume] in Urine');
+  });
+
+  test('offers a count per low-power field the tests counted per low-power field', async ({ page }) => {
+    // Scenario: A count per low-power field is one counted per low-power field
+    await analyzeReport(page, [
+      { name: 'Cilindri ialini', value: 1, unit: '/LPF', confidence: 0.95, specimenHint: 'urine sediment' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '1'))).toHaveText('Hyaline casts [#/area] in Urine sediment by Microscopy low power field');
   });
 
   test('saves a value with no test to choose from as "Not a LOINC test" without asking', async ({ page }) => {

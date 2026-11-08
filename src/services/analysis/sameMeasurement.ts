@@ -7,6 +7,7 @@ import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { canConvert, COMPARISON_PRECISION, convertValue, normalizeUnit, unitsMatch } from '../units';
 import { quantityKind, type Catalog, type CatalogTest } from '@data/loinc/catalog';
+import { unlistedFormulaOf } from './loincMatch';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
@@ -124,17 +125,6 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
   }
 }
 
-/** What a printed name says in brackets: "eGFR (EKFC)" says "ekfc" */
-function qualifiersOf(name: string): string[] {
-  return [...name.matchAll(/\(([^()]*)\)/g)].map(([, inner]) => nameKey(inner)).filter(Boolean);
-}
-
-/** Whether two names each qualify their test in brackets, and differently */
-function qualifiedApart(a: string, b: string): boolean {
-  const [ofA, ofB] = [qualifiersOf(a), qualifiersOf(b)];
-  return ofA.length > 0 && ofB.length > 0 && ofA.join('|') !== ofB.join('|');
-}
-
 /**
  * Whether two values are the same measurement, reported in the same or
  * different units.
@@ -148,8 +138,8 @@ function qualifiedApart(a: string, b: string): boolean {
  */
 export function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
   if (a.comparison === undefined || b.comparison === undefined) return false;
-  // In one unit, "eGFR (EKFC)" and "eGFR (Schwartz)" are two estimates, however close
-  if (unitsMatch(a.biomarker.unit, b.biomarker.unit) && qualifiedApart(a.biomarker.name, b.biomarker.name)) return false;
+  // "eGFR (EKFC)" and "eGFR - Schwartz" are two estimates, however close, though both are the eGFR of no formula
+  if (unlistedFormulaOf(a.biomarker.name) !== unlistedFormulaOf(b.biomarker.name)) return false;
   // In one unit, "< 10" is a bound and 10 a measurement: never the same
   if (!a.biomarker.censored !== !b.biomarker.censored && unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
   // "> 0.50" and "< 44" bound the value from opposite sides: they say different things

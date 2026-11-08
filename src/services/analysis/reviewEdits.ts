@@ -61,8 +61,10 @@ function reidentify(
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
   if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
   const reading = { name: changed.name, unit, specimenHint: changed.specimenHint, qualitative: heldQualitative(changed) };
+  // The analyzer's test holds for the printed wording read as printed: a word typed over with a number is read again
+  const asPrinted = (changed.qualitative === undefined) === (reading.qualitative === undefined);
   const identification =
-    analyzed && learnedKey(reading) === learnedKey(analyzed)
+    analyzed && asPrinted && learnedKey(reading) === learnedKey(analyzed)
       ? analyzed.identification
       : identifyLocally(catalog, reading, learned);
   return identified(changed, identification);
@@ -76,6 +78,22 @@ export function applyBiomarkerName(
   learned?: LearnedTests
 ): MatchedBiomarker {
   return reidentify(biomarker, { ...biomarker, name }, catalog, learned);
+}
+
+/**
+ * Change a value's number. A result printed in words typed over with
+ * another number, or typed back, has its test read again (see reidentify):
+ * a presence test is no test of a measured 95.
+ */
+export function applyBiomarkerValue(
+  biomarker: MatchedBiomarker,
+  value: number,
+  catalog: Catalog,
+  learned?: LearnedTests
+): MatchedBiomarker {
+  const changed = { ...biomarker, value };
+  const word = (one: MatchedBiomarker): boolean => heldQualitative(one) !== undefined;
+  return word(changed) === word(biomarker) ? changed : reidentify(biomarker, changed, catalog, learned);
 }
 
 /** Change a value's unit; its test is read again in the new unit (see reidentify) */
@@ -124,13 +142,16 @@ export interface ValuePosition {
 
 /**
  * Whether two values are the same printed wording: name and unit, as they
- * are learned, and of the same sample, which learning does not tell apart
- * but a choice for "Glucosio" in urine must not reach the one in blood
+ * are learned, of the same sample, which learning does not tell apart but
+ * a choice for "Glucosio" in urine must not reach the one in blood, and
+ * both printed in words or both as numbers
  */
 function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
   const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
   // Rows added in review start with no name: blank rows are no wording
-  return a.name.trim() !== '' && learnedKey(a) === learnedKey(b) && sample(a) === sample(b);
+  // A result in words and a number of one wording are no one test: "Batteri" "Assenti" is not the count
+  const inWords = (value: MatchedBiomarker): boolean => heldQualitative(value) !== undefined;
+  return a.name.trim() !== '' && learnedKey(a) === learnedKey(b) && sample(a) === sample(b) && inWords(a) === inWords(b);
 }
 
 /**

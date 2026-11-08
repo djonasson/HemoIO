@@ -392,6 +392,7 @@ Feature: Identifying the test of each value
     When I choose "Glucose [Mass/volume] in Blood" for it in the first report
     Then "Glucosio" in the second report should be saved as "Glucose [Mass/volume] in Blood" too
     But a value whose test I chose myself, or of another unit or sample, keeps its own test
+    And a value of the wording printed in words where the other is a number keeps its own test
     When I correct the choice in the first report
     Then the second report's "Glucosio" should take the corrected test too
 
@@ -451,6 +452,18 @@ Feature: Identifying the test of each value
     Given a report prints "NT-proBNP" as "Negativo", with no unit
     When the report is analyzed
     Then the tests to choose from should be the NT-proBNP tests
+    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma" for it, give its unit and save the import
+    Then a later report printing "NT-proBNP" as "Negativo" should be saved under that test without asking
+
+  Scenario: A result in words corrected to a number is read again as a number
+    Given a urine report prints "Glucosio (urine)" as "Assente"
+    When I correct its value to 95 mg/dL
+    Then it should be saved as "Glucose [Mass/volume] in Urine", not as a presence test
+
+  Scenario: A count per low-power field is one counted per low-power field
+    Given a report's urine sediment section prints "Cilindri ialini" 1 /LPF
+    When the report is analyzed
+    Then the value should be saved as "Hyaline casts [#/area] in Urine sediment by Microscopy low power field", never a count per volume
 
   Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
     Given a report prints "Conduttività" in mS/cm, for which LOINC has no test

@@ -45,6 +45,7 @@ import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewed
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
+  applyBiomarkerValue,
   chooseTestForWording,
   unitOptionsFor,
 } from '@services/analysis/reviewEdits';
@@ -682,7 +683,11 @@ export function ReviewStep({
                                       value={biomarker.value}
                                       onValueChange={(value) =>
                                         // A cleared number is missing, not 0
-                                        updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
+                                        updateBiomarker(
+                                          resultIndex,
+                                          bioIndex,
+                                          applyBiomarkerValue(biomarker, value ?? NaN, catalog, learned)
+                                        )
                                       }
                                       placeholder="Value"
                                     />

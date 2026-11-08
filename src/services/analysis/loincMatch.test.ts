@@ -1093,6 +1093,18 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(result.candidates[0].code).not.toBe('69405-9');
   });
 
+  it.each([
+    ['Antigene Fas', ''],
+    ['Antigene Fas', 'mg/dL'],
+    ['Anticorpi anti CAPA', ''],
+  ])('reads %s in %o, no filtration rate, never as an eGFR formula: no test fits it fully', (name, unit) => {
+    expect(matchLocally(generated, { name, unit }).candidates.every(({ score }) => score < 0.9)).toBe(true);
+  });
+
+  it('takes "eGFR Lund Malmö" as the eGFR of no formula', () => {
+    expect(matchLocally(generated, { name: 'eGFR Lund Malmö', unit: 'mL/min/1.73m²' })).toMatchObject({ code: '69405-9' });
+  });
+
   it('asks about an anion gap whose bracket names an instrument, never the 4-ion formula', () => {
     expect(matchLocally(generated, { name: 'Sg-Anion gap (Radiometer)', unit: 'mmol/L' }).status).toBe('ambiguous');
   });
@@ -1105,6 +1117,18 @@ describe('matchLocally on names of real Italian reports', () => {
     ['Glucosio', 'mg/dL', '2350-7'],
   ])("files %s in %s of a urine sediment section as the urine's, a machine's count or a strip's", (name, unit, code) => {
     expect(matchLocally(generated, { name, unit, specimenHint: 'urine sediment' })).toMatchObject({ status: 'match', code });
+  });
+
+  it('offers a count per low-power field only tests counted per field, the low-power ones first', () => {
+    const codes = codesOf(matchLocally(generated, { name: 'Cilindri ialini', unit: '/LPF', specimenHint: 'urine sediment' }));
+    expect(codes).not.toContain('51484-4');
+    expect(codes[0]).toBe('5796-8');
+  });
+
+  it("offers a bare number of a urine sediment section the microscope's tests, not a strip's", () => {
+    const codes = codesOf(matchLocally(generated, { name: 'Leucociti', unit: '', specimenHint: 'urine sediment' }));
+    expect(codes.length).toBeGreaterThan(0);
+    expect(codes.every((code) => generated.test(code)?.system !== 'Urine')).toBe(true);
   });
 
   it.each([
@@ -1345,6 +1369,21 @@ describe('matchLocally on names of real Italian reports', () => {
     ])("offers %s of %s printed in words its own tests: %s", (name, specimenHint, code) => {
       const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
       expect(codesOf(matchLocally(generated, { name, unit: '', specimenHint, qualitative: negative }))).toContain(code);
+    });
+
+    it.each([
+      ['nt-probnp|', 'NT-proBNP', '33762-6'],
+      ['eritroblasti|', 'Eritroblasti', '58413-6'],
+    ])('takes the test confirmed for %s printed in words when no test with word results fits', (key, name, code) => {
+      const learned = (wording: string): string | undefined => (wording === key ? code : undefined);
+      expect(matchLocally(generated, { name, unit: '', qualitative: absent }, learned)).toMatchObject({ status: 'match', code });
+    });
+
+    it('takes the microscope test in a sediment section over a strip test learned in a urine one', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|' ? '50221-1' : undefined);
+      expect(
+        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine sediment', qualitative: absent }, learned)
+      ).toMatchObject({ status: 'match', code: '25145-4' });
     });
 
     it('never takes a test learned for a number of the wording for a result in words', () => {
