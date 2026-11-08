@@ -31,7 +31,7 @@ import {
   parseOllamaError,
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
-import { withParsedValue } from './withParsedValue';
+import { rangeUnitOf, withParsedValue } from './withParsedValue';
 import { withSpecimenHint } from './specimenHint';
 import { ollamaContext } from './ollamaContext';
 import { fetchWithRateLimitRetry } from './rateLimitedFetch';
@@ -654,7 +654,8 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
               ? {
                   low: finalLow,
                   high: finalHigh,
-                  unit: String(responseRange?.unit || cleanedUnit || ''),
+                  // Cleaned as the value's unit is ("UL" is U/L)
+                  unit: rangeUnitOf(cleanUnitAndExtractRange(String(responseRange?.unit ?? '')).unit, cleanedUnit),
                 }
               : undefined,
             method: b.method ? String(b.method) : undefined,

@@ -20,7 +20,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
-import { withParsedValue } from './withParsedValue';
+import { rangeUnitOf, withParsedValue } from './withParsedValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
@@ -303,7 +303,7 @@ export class AnthropicProvider implements AIProvider {
                   high: typeof (b.referenceRange as Record<string, unknown>).high === 'number'
                     ? (b.referenceRange as Record<string, unknown>).high as number
                     : undefined,
-                  unit: String((b.referenceRange as Record<string, unknown>).unit || b.unit || ''),
+                  unit: rangeUnitOf((b.referenceRange as Record<string, unknown>).unit, String(b.unit || '')),
                 }
               : undefined,
             method: b.method ? String(b.method) : undefined,

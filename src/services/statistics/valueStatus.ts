@@ -13,7 +13,7 @@
  * the value either way, so a range and a mark that disagree both show.
  */
 
-import { canConvert, convertMeasurement, unitsMatch } from '@services/units';
+import { canConvert, COMPARISON_PRECISION, ConversionError, convertValue, unitsMatch } from '@services/units';
 import type { Catalog } from '@data/loinc/catalog';
 import type { CensoredComparator, LabFlag, TestValue } from '@/types';
 
@@ -106,12 +106,15 @@ export function convertRange(
   if (unitsMatch(fromUnit, toUnit)) return range;
   const test = biomarkerKey ? catalog.test(biomarkerKey) : undefined;
   if (!test || !canConvert(test, fromUnit, toUnit)) return undefined;
-  const converted = convertMeasurement(
-    test,
-    { value: range.low ?? range.high ?? 0, unit: fromUnit, referenceRangeLow: range.low, referenceRangeHigh: range.high },
-    toUnit
-  );
-  return converted.unit === toUnit ? converted.referenceRange : undefined;
+  // At full precision: the range decides status, so it is rounded only where shown
+  const convert = (bound: number | undefined): number | undefined =>
+    bound === undefined ? undefined : convertValue(test, bound, fromUnit, toUnit, COMPARISON_PRECISION).convertedValue;
+  try {
+    return { low: convert(range.low), high: convert(range.high) };
+  } catch (error) {
+    if (error instanceof ConversionError) return undefined;
+    throw error;
+  }
 }
 
 /**

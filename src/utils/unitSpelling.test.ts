@@ -67,6 +67,12 @@ describe('unitsMatch', () => {
     expect(unitsMatch('mg/gcr', 'mg/g')).toBe(true);
     expect(unitsMatch('mg/g cr', 'mg/mmol')).toBe(false);
   });
+
+  it('matches the micro sign with its plain spelling "u"', () => {
+    expect(unitsMatch('10^3/uL', '10^3/µL')).toBe(true);
+    expect(unitsMatch('ug/L', 'µg/L')).toBe(true);
+    expect(unitsMatch('U/L', 'mg/L')).toBe(false);
+  });
 });
 
 describe('isPerHundredCounted', () => {

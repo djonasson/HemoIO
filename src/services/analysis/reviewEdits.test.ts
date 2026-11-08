@@ -90,6 +90,16 @@ describe('applyBiomarkerUnit', () => {
     expect(applyBiomarkerUnit(value, 'mmol/L', catalog)).toMatchObject({ unit: 'mmol/L', loincCode: '14749-6' });
   });
 
+  it("lets a range in the value's unit follow a corrected unit, its numbers as printed", async () => {
+    const value = await analyzed('Proteina C reattiva', 'mg/dL');
+    const inValueUnit = applyBiomarkerUnit({ ...value, referenceRange: { low: 0, high: 5 } }, 'mg/L', catalog);
+    expect(inValueUnit.referenceRange).toEqual({ low: 0, high: 5 });
+    const oldUnit = applyBiomarkerUnit({ ...value, referenceRange: { low: 0, high: 5, unit: 'mg/dl' } }, 'mg/L', catalog);
+    expect(oldUnit.referenceRange).toEqual({ low: 0, high: 5 });
+    const ownUnit = applyBiomarkerUnit({ ...value, referenceRange: { low: 2.1, high: 2.6, unit: 'mmol/L' } }, 'mg/L', catalog);
+    expect(ownUnit.referenceRange).toEqual({ low: 2.1, high: 2.6, unit: 'mmol/L' });
+  });
+
   it("keeps the report's test while the unit is emptied: it is one still to choose", async () => {
     const value = await analyzed('P-Glucosio', 'mg/dL');
     const emptied = applyBiomarkerUnit(value, '', catalog);

@@ -2,6 +2,7 @@
  * Choosing and editing a value's LOINC test in review
  */
 import { unitOptions } from '@data/loinc/display';
+import { unitsMatch } from '@/utils/unitSpelling';
 import { identifyLocally, type Identification, type LearnedTests } from './identification';
 import { learnedKey } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
@@ -83,7 +84,18 @@ export function applyBiomarkerUnit(
   catalog: Catalog,
   learned?: LearnedTests
 ): MatchedBiomarker {
-  return reidentify(biomarker, { ...biomarker, unit }, catalog, learned);
+  return reidentify(biomarker, { ...biomarker, unit, referenceRange: followingRange(biomarker) }, catalog, learned);
+}
+
+/**
+ * A value's range once its unit is corrected: one in the value's unit (no
+ * unit of its own, or the old value unit) follows the new unit, its numbers
+ * kept as printed; one printed in a unit of its own keeps it
+ */
+function followingRange(biomarker: MatchedBiomarker): MatchedBiomarker['referenceRange'] {
+  const range = biomarker.referenceRange;
+  if (!range?.unit || !unitsMatch(range.unit, biomarker.unit)) return range;
+  return { low: range.low, high: range.high };
 }
 
 /**

@@ -5,7 +5,7 @@
  */
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
-import { canConvert, convertValue, normalizeUnit, unitsMatch } from '../units';
+import { canConvert, COMPARISON_PRECISION, convertValue, normalizeUnit, unitsMatch } from '../units';
 import { quantityKind, type Catalog, type CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -20,9 +20,6 @@ import type { MatchedBiomarker } from './LabReportAnalyzer';
  * vs the lab's direct measurement of 79 mg/dL - a 1.26% difference
  */
 const RELATIVE_TOLERANCE = 0.02;
-
-/** Decimal places used when converting values only to compare them */
-const COMPARISON_PRECISION = 10;
 
 /**
  * Half the last reported digit: how far rounding can have moved a value. A

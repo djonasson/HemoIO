@@ -105,6 +105,29 @@ describe('OllamaProvider', () => {
       expect(result.modelUsed).toBe('llama3.2:8b');
     });
 
+    it("cleans a range's unit as the value's, and leaves it out when it is the value's", async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: {
+              content: JSON.stringify({
+                biomarkers: [
+                  { name: 'ALT', value: 80, unit: 'UL', confidence: 0.9, referenceRange: { low: 5, high: 34, unit: 'UL' } },
+                  { name: 'Calcio', value: 9, unit: 'mg/dL', confidence: 0.9, referenceRange: { low: 2.1, high: 2.6, unit: 'mmol/L' } },
+                ],
+              }),
+            },
+            done_reason: 'stop',
+          }),
+      } as Response);
+
+      const { biomarkers } = await new OllamaProvider().analyzeLabReport('ALT 80 UL (5-34)');
+
+      expect(biomarkers[0]).toMatchObject({ unit: 'U/L', referenceRange: { low: 5, high: 34, unit: undefined } });
+      expect(biomarkers[1].referenceRange).toEqual({ low: 2.1, high: 2.6, unit: 'mmol/L' });
+    });
+
     const cutOff = () =>
       ({
         ok: true,

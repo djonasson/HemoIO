@@ -211,6 +211,18 @@ Feature: Import Wizard
     Then the timeline should show the value within its reference range, the range converted to mg/dL
     And not above it, as 90 compared with 5.6 unconverted would read
 
+  Scenario: A range in the value's unit follows a unit corrected on review
+    Given the AI read Glucose as 150 mg/dL with a reference range of 70-100, printed with no unit of its own
+    When I correct the value's unit to mmol/L on review
+    Then the range should read 70-100 mmol/L, its numbers kept as printed
+    And a range printed in a unit of its own should keep that unit
+
+  Scenario: A converted range is compared at full precision
+    Given the AI read Calcium as 10.3 mg/dL with a reference range of 2.1-2.6 mmol/L
+    When I save the import
+    Then the range should be compared as 8.4168-10.4208 mg/dL, not rounded to 8.4-10
+    And the value should read within its reference range
+
   Scenario: Numbers keep every decimal the report printed
     Given I am editing a value on the review step
     When I type 1.015, or 0.005

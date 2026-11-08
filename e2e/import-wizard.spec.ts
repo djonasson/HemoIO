@@ -637,6 +637,52 @@ test.describe('Import Wizard', () => {
         await expect(row).toContainText(/mg\/dL$/);
       });
 
+      test("lets a range in the value's unit follow a unit corrected on review", async ({ page }) => {
+        // Scenario: A range in the value's unit follows a unit corrected on review
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: 150,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                // As models give it: the range unit copied from the misread value unit
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Glucose');
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        await editingRow(page).getByPlaceholder('Unit', { exact: true }).fill('mmol/L');
+        await editingRow(page).getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Reference Range')).toHaveText('70 - 100 mmol/L');
+      });
+
+      test('compares a converted range at full precision', async ({ page }) => {
+        // Scenario: A converted range is compared at full precision
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Calcium',
+                value: 10.3,
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 2.1, high: 2.6, unit: 'mmol/L' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+
+        const card = await saveAndExpand(page);
+        // Rounded to 8.4-10 mg/dL, 10.3 would read high
+        await expect(savedRow(card, 'Calcium', /10\.3 mg\/dL, Within reference range$/)).toContainText('8.4168 - 10.4208 mg/dL');
+      });
+
       for (const typed of ['1.015', '0.005']) {
         test(`keeps every decimal of ${typed}`, async ({ page }) => {
           // Scenario: Numbers keep every decimal the report printed

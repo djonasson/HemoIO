@@ -66,6 +66,15 @@ describe('convertRange', () => {
     expect(converted?.high).toBeCloseTo(101, 0);
   });
 
+  it('converts at full precision, the range deciding status', () => {
+    // Display rounding would give 70 and 101 mg/dL
+    const glucose = convertRange(catalog, '2345-7', { low: 3.9, high: 5.6 }, 'mmol/L', 'mg/dL');
+    expect(glucose?.low).toBeCloseTo(70.27, 1);
+    expect(glucose?.high).toBeCloseTo(100.9, 0);
+    expect(Number.isInteger(glucose!.low)).toBe(false);
+    expect(Number.isInteger(glucose!.high)).toBe(false);
+  });
+
   it('cannot convert between units the test does not, or for no test', () => {
     expect(convertRange(catalog, '2345-7', { low: 1, high: 2 }, 'g/24h', 'mg/dL')).toBeUndefined();
     expect(convertRange(catalog, 'unknown:zorb', { low: 1 }, 'mmol/L', 'mg/dL')).toBeUndefined();

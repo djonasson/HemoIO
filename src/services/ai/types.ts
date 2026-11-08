@@ -74,7 +74,8 @@ export interface ExtractedBiomarker {
   referenceRange?: {
     low?: number;
     high?: number;
-    unit: string;
+    /** The unit it was printed in, only when that is not the value's; else the value's, which it follows */
+    unit?: string;
   };
   /** Analytical method used for measurement (e.g., "Enzymatic", "HPLC", "Immunoassay") */
   method?: string;

@@ -750,7 +750,6 @@ export function ReviewStep({
                                         referenceRange: {
                                           ...biomarker.referenceRange,
                                           low,
-                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
                                     }
@@ -767,7 +766,6 @@ export function ReviewStep({
                                         referenceRange: {
                                           ...biomarker.referenceRange,
                                           high,
-                                          unit: biomarker.referenceRange?.unit || biomarker.unit,
                                         },
                                       })
                                     }
