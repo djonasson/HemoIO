@@ -917,6 +917,24 @@ describe('ReviewStep', () => {
       expect(glucoseText).toHaveStyle({ cursor: 'help' });
     });
 
+    it('shows the LOINC tooltip on keyboard focus too', async () => {
+      renderReviewStep();
+
+      const [glucoseText] = screen.getAllByText('Glucose');
+      expect(glucoseText).toHaveAttribute('tabindex', '0');
+      fireEvent.focus(glucoseText);
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('LOINC 2345-7');
+    });
+
+    it("puts the test's description on a line of its own in the tooltip", async () => {
+      renderReviewStep();
+
+      fireEvent.focus(screen.getAllByText('Glucose')[0]);
+
+      expect(await screen.findByRole('tooltip')).toHaveStyle({ whiteSpace: 'pre-line' });
+    });
+
     it('does not show tooltip styling for biomarkers without LOINC code', () => {
       const noLoincResult: ReviewedResult = {
         ...mockReviewedResult,

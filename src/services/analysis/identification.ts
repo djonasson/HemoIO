@@ -17,6 +17,8 @@ export type LearnedTests = Readonly<Record<string, string>>;
 export interface Identification {
   loincCode?: string;
   candidates: Candidate[];
+  /** The candidate the AI picked but was not sure of */
+  aiPick?: string;
   identifiedBy?: IdentifiedBy;
   identificationFlags: IdentificationFlag[];
   savedAsUnknown?: boolean;
@@ -30,10 +32,11 @@ export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[
 /**
  * A printed value's test as far as it is known without the AI: the one
  * learned for its wording and unit (a learned "Not a LOINC test" too), else
- * the one test that clearly fits. A value the report gives no unit is never
- * matched on its name alone (nothing tells a mass from a molar test, or an
- * ordinal from a count): its candidates, of any property, are left to the
- * AI and the user, as those of any value several tests fit.
+ * the one test that clearly fits. A value the report gives no unit is
+ * matched only to a common test that has none (pH, specific gravity, a
+ * dipstick's presence), never to a quantity a unit would tell apart; else
+ * its candidates, of any property, are left to the AI and the user, as
+ * those of any value several tests fit.
  */
 export function identifyLocally(
   catalog: Catalog,
@@ -81,7 +84,11 @@ function withChoice(value: MatchedBiomarker, choice: TestChoice | undefined): Ma
   }
   const picked = value.candidates.find((candidate) => candidate.code === choice.code);
   return picked
-    ? { ...value, candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)] }
+    ? {
+        ...value,
+        candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)],
+        aiPick: picked.code,
+      }
     : value;
 }
 
@@ -154,6 +161,7 @@ export function identificationOf(value: MatchedBiomarker): Identification {
   return {
     loincCode: value.loincCode,
     candidates: value.candidates,
+    aiPick: value.aiPick,
     identifiedBy: value.identifiedBy,
     identificationFlags: value.identificationFlags ?? [],
     savedAsUnknown: value.savedAsUnknown,
@@ -183,6 +191,6 @@ export function toLearn(value: MatchedBiomarker): SavedValue {
   return {
     key: learnedKey(printed),
     code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
-    confirmed: by === 'ai' || by === 'user' || (edited && isFoundWithoutAsking(value)),
+    confirmed: by === 'ai' || by === 'user' || by === 'shared' || (edited && isFoundWithoutAsking(value)),
   };
 }

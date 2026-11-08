@@ -228,6 +228,7 @@ test.describe('Document Analysis', () => {
       await expect(analyzeButton(page)).toBeFocused();
 
       await page.keyboard.press('Enter');
+      await expectAnalysisFinished(page);
       await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
     });
 
@@ -313,6 +314,7 @@ test.describe('Document Analysis - AI Processing', () => {
     await uploadFiles(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
     await recordRenderedTexts(page);
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
 
     // All lines reach the AI, intact and in document order
@@ -556,6 +558,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await main(page).getByRole('button', { name: 'Back' }).click();
     await uploadFiles(page, track(createTextLabReportPdf()));
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
   });
 
@@ -625,6 +628,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await expectAnalysisFinished(page);
 
     const item = analysisItem(page, 'lab-report.pdf');
+    await expectAnalysisFinished(page);
     await expect(item).toContainText('AI analysis failed: Ollama API error: server busy');
     await expect(item).not.toContainText('smaller files');
   });
@@ -701,6 +705,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await goToImport(page);
     await uploadFiles(page, track(createTextLabReportPdf()));
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
       'AI analysis failed: Ollama API error: service unavailable'
     );
@@ -709,6 +714,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await uploadFiles(page, track(createTextLabReportPdf()));
     await startAnalysis(page);
 
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 2 biomarker values from 1 file(s).'
     );
@@ -749,6 +755,7 @@ test.describe('Document Analysis - Error Handling', () => {
 
     // The rate-limited document is not lost
     await expect(page.getByRole('alert', { name: 'Some Files Failed' })).toBeHidden();
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 4 biomarker values from 2 file(s).'
     );
@@ -842,6 +849,7 @@ test.describe('Document Analysis - Performance', () => {
     // Processing carried on undisturbed
     await expect(main(page).getByText('Processing 1 file(s)...')).toBeVisible();
     ai.release();
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
   });
 
@@ -890,6 +898,7 @@ test.describe('Document Analysis - Performance', () => {
     await expect(page.getByRole('alert', { name: 'Some Files Failed' })).toContainText(
       '1 file(s) could not be processed'
     );
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
       'Successfully extracted 4 biomarker values from 2 file(s).'
     );

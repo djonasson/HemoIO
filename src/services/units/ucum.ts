@@ -105,6 +105,32 @@ export function toUcum(printed: string): string | null {
   return lower !== unit && readUnit(lower) ? lower : null;
 }
 
+/** The units a D-dimer is given in: fibrinogen equivalent units or D-dimer units, about two-fold apart */
+export type DimerMarker = 'FEU' | 'DDU';
+
+const DIMER_MARKER = /\b(FEU|DDU)\b/i;
+
+/** The D-dimer units a text names, a printed unit or a LOINC component or method ("Fibrin D-dimer FEU") */
+export function dimerMarkerIn(text: string): DimerMarker | undefined {
+  return text.match(DIMER_MARKER)?.[1].toUpperCase() as DimerMarker | undefined;
+}
+
+/**
+ * A printed unit as its plain unit and the D-dimer units it names, however
+ * the report sets them off: "ng/mL (FEU)", "ng/mL [FEU]", "mg/L FEU.",
+ * "ng/mL - FEU" and "µg/L{FEU}" are all ng/mL or mg/L or µg/L in FEU
+ */
+export function readUnitMarker(printed: string): { unit: string; marker?: DimerMarker } {
+  const marker = dimerMarkerIn(printed);
+  if (!marker) return { unit: printed.trim() };
+  const unit = printed
+    .replace(/[([{]\s*(?:FEU|DDU)\s*[)\]}]/gi, ' ')
+    .replace(/\b(?:FEU|DDU)\b/gi, ' ')
+    .replace(/^[\s\-.,;:]+|[\s\-.,;:]+$/g, '')
+    .replace(/\s+/g, ' ');
+  return { unit, marker };
+}
+
 function rewritten(unit: string): string {
   return UCUM_REWRITES.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement as string), unit);
 }

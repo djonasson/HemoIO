@@ -184,7 +184,7 @@ export async function selectModel(page: Page, modelId: string): Promise<void> {
 /**
  * Create a small text PDF that pdf.js recognises as a text (not scanned) document
  */
-export function createTextLabReportPdf(): string {
+export function createTextLabReportPdf(fileName = 'lab-report.pdf'): string {
   const lines = [
     'Test Laboratory - Blood Panel Report',
     'Collection date: 2026-01-15',
@@ -220,7 +220,7 @@ export function createTextLabReportPdf(): string {
   pdf += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
-  return writeTempFile('lab-report.pdf', pdf);
+  return writeTempFile(fileName, pdf);
 }
 
 /**

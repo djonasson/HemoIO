@@ -107,6 +107,296 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
+  test("matches usual lab names LOINC's names lack by HemoIO's own names", async ({ page }) => {
+    // Scenario Outline: A usual lab name that LOINC's names lack is matched by HemoIO's own names
+    const examples: [ExtractedBiomarkerFixture, string][] = [
+      [{ name: 'Ematocrito', value: 42.1, unit: '%', confidence: 0.95 }, 'Hematocrit [Volume Fraction] of Blood by Automated count'],
+      [{ name: 'MPV', value: 10.3, unit: 'fL', confidence: 0.95 }, 'Platelet [Entitic mean volume] in Blood by Automated count'],
+      [{ name: 'RDW', value: 13.2, unit: '%', confidence: 0.95 }, 'Erythrocyte [DistWidth] in Blood by Automated count'],
+      [
+        { name: 'Eritroblasti', value: 0.1, unit: '%', confidence: 0.95 },
+        'Nucleated erythrocytes/Leukocytes [Ratio] in Blood by Automated count',
+      ],
+      [
+        { name: 'Er-EMOGLOBINA GLICATA', value: 38, unit: 'mmol/mol', confidence: 0.95 },
+        'Hemoglobin A1c/Hemoglobin.total in Blood',
+      ],
+      [
+        { name: 'CREATINCHINASI - CK', value: 143, unit: 'U/L', confidence: 0.95 },
+        'Creatine kinase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
+      [{ name: 'GLICEMIA', value: 94, unit: 'mg/dL', confidence: 0.95 }, 'Glucose [Mass/volume] in Serum or Plasma'],
+      [{ name: 'SIDEREMIA', value: 88, unit: 'ug/dL', confidence: 0.95 }, 'Iron [Mass/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(page, examples.map(([value]) => value));
+    for (const [value, testName] of examples) {
+      await expect(savedAsCell(rowFor(page, String(value.value)))).toHaveText(testName);
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('files one measurement made by several methods under the general test', async ({ page }) => {
+    // Scenario: One measurement made by several methods is filed under the general test without asking
+    const ai = await analyzeReport(page, [
+      { name: 'Eritrociti', value: 12, unit: '/µL', confidence: 0.95, specimenHint: 'urine' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '12'))).toHaveText('Erythrocytes [#/volume] in Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('never takes squamous cells for non-squamous ones', async ({ page }) => {
+    // Scenario: Squamous cells are never taken for non-squamous ones
+    await analyzeReport(page, [
+      { name: 'Cellule Ep. Squamose', value: 7, unit: '/µL', confidence: 0.95, specimenHint: 'urine' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '7'))).toHaveText(
+      'Epithelial cells.squamous [#/volume] in Urine by Automated count'
+    );
+  });
+
+  test('files a D-dimer printed in FEU under an FEU test', async ({ page }) => {
+    // Scenario: A D-dimer printed in fibrinogen equivalent units is filed under an FEU test
+    const ai = await analyzeReport(page, [{ name: 'D Dimero', value: 410, unit: 'µg/L FEU', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '410'))).toHaveText('Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('asks about a D-dimer that names neither FEU nor DDU', async ({ page }) => {
+    // Scenario: A D-dimer that names neither FEU nor DDU is asked about
+    const ai = await analyzeReport(page, [{ name: 'D Dimero', value: 420, unit: 'ng/mL', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates.map((c) => c.code)).toEqual(
+      expect.arrayContaining(['48065-7', '48066-5'])
+    );
+  });
+
+  test("reads a D-dimer's units however the report sets them off", async ({ page }) => {
+    // Scenario: A D-dimer's units are read however the report sets them off
+    const ai = await analyzeReport(page, [{ name: 'D Dimero', value: 430, unit: 'ng/mL (FEU)', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '430'))).toHaveText('Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('asks about an eGFR by a formula LOINC has no test for, filtration rates first', async ({ page }) => {
+    // Scenario Outline: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+    const names = ['eGFR (formula EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: 81 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((asked) => asked.name).sort()).toEqual([...names].sort());
+    for (const { candidates } of ai.choiceRequests[0]) {
+      expect(candidates[0].code).toBe('98979-8');
+      expect(candidates.slice(0, 4).every((c) => c.name.startsWith('Glomerular filtration rate'))).toBe(true);
+    }
+  });
+
+  test('files an eGFR under the formula its bracket names', async ({ page }) => {
+    // Scenario Outline: An eGFR is filed under the formula its bracket names
+    const examples: [string, string][] = [
+      ['eGFR (CKD-EPI)', '98979-8'],
+      ['eGFR (CKD-EPI 2009)', '62238-1'],
+      ['eGFR (formula MDRD)', '77147-7'],
+      ['eGFR (cistatina C)', '50210-4'],
+    ];
+    const ai = await analyzeReport(
+      page,
+      examples.map(([name], i) => ({ name, value: 71 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
+    );
+    for (const [i, [, code]] of examples.entries()) {
+      await expect(rowFor(page, String(71 + i)).getByText(`LOINC ${code}`)).toBeVisible();
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('picks the test of a method named in brackets, a brand beside it saying nothing', async ({ page }) => {
+    // Scenario: A method named in brackets picks its test, a brand beside it says nothing
+    const ai = await analyzeReport(page, [
+      { name: 'HbA1c (HPLC Tosoh)', value: 39, unit: 'mmol/mol', confidence: 0.95 },
+      { name: 'Albumina (BCG Roche)', value: 4.4, unit: 'g/dL', confidence: 0.95 },
+    ]);
+    await expect(savedAsCell(rowFor(page, '39'))).toHaveText('Hemoglobin A1c/Hemoglobin.total in Blood by HPLC');
+    await expect(savedAsCell(rowFor(page, '4.4'))).toHaveText(
+      'Albumin [Mass/volume] in Serum or Plasma by Bromocresol green (BCG) dye binding method'
+    );
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('files a value said to be calculated under the calculated test, never a measured one', async ({ page }) => {
+    // Scenario: A value said to be calculated is filed under the calculated test, never a measured one
+    const ai = await analyzeReport(page, [{ name: 'Ematocrito (calcolato)', value: 41.7, unit: '%', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '41.7'))).toHaveText('Hematocrit [Volume Fraction] of Blood by calculation');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('never files a fibrinogen said to be derived under the Clauss fibrinogen', async ({ page }) => {
+    // Scenario: A fibrinogen said to be derived is never filed under the Clauss fibrinogen
+    const ai = await analyzeReport(page, [{ name: 'Fibrinogeno (derivato)', value: 310, unit: 'mg/dL', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    const names = ai.choiceRequests[0][0].candidates.map((c) => c.name);
+    expect(names[0]).toBe('Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation.derived');
+    expect(names).not.toContain('Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation assay');
+  });
+
+  test('asks about a value whose part after a dash names what the catalog cannot read', async ({ page }) => {
+    // Scenario Outline: A part after a dash naming what the catalog cannot read is asked about
+    const examples: [string, string, string][] = [
+      ['Glucosio - liquido cefalorachidiano', 'mg/dL', 'Glucose [Mass/volume] in Serum or Plasma'],
+      ['Proteine - liquor', 'mg/dL', 'Protein [Mass/volume] in Serum or Plasma'],
+      ['Potassio - sudore', 'mmol/L', 'Potassium [Moles/volume] in Serum or Plasma'],
+      ['Glucosio - 2 ore', 'mg/dL', 'Glucose [Mass/volume] in Serum or Plasma'],
+      ['Cortisolo - ore 8', 'ug/dL', 'Cortisol [Mass/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(
+      page,
+      examples.map(([name, unit], i) => ({ name, value: 51 + i, unit, confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    const asked = ai.choiceRequests[0];
+    expect(asked.map((value) => value.name).sort()).toEqual(examples.map(([name]) => name).sort());
+    for (const [name, , testName] of examples) {
+      expect(asked.find((value) => value.name === name)?.candidates.map((c) => c.name)).toContain(testName);
+    }
+  });
+
+  test('files a value whose part after a dash says only how the test is used', async ({ page }) => {
+    // Scenario: A part after a dash saying only how the test is used says nothing of which test it is
+    const ai = await analyzeReport(page, [
+      {
+        name: 'Rapporto albumina/creatinina - screening',
+        value: 12,
+        unit: 'mg/g',
+        confidence: 0.95,
+        specimenHint: 'urine',
+      },
+    ]);
+    await expect(savedAsCell(rowFor(page, '12'))).toHaveText('Albumin/Creatinine [Mass Ratio] in Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('reads an aPTT printed as a ratio as the aPTT over a normal one, never the lupus ratio', async ({ page }) => {
+    // Scenario Outline: An aPTT printed as a ratio is the aPTT over a normal one, never the lupus ratio
+    const names = ['aPTT', 'aPTT ratio', 'Rapporto aPTT'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [1.01, 1.02, 1.03][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+    for (const { candidates } of ai.choiceRequests[0]) {
+      expect(candidates.map((c) => c.code)).toContain('63561-5');
+      expect(candidates[0].code).not.toBe('75884-7');
+    }
+  });
+
+  test('files a value whose part after a dash is another name of the same test', async ({ page }) => {
+    // Scenario Outline: A part after a dash that is another name of the same test says nothing of which test it is
+    const examples: [ExtractedBiomarkerFixture, string][] = [
+      [
+        { name: 'ALT - GPT', value: 31, unit: 'U/L', confidence: 0.95 },
+        'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
+      [
+        { name: 'AST - GOT', value: 27, unit: 'U/L', confidence: 0.95 },
+        'Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma',
+      ],
+      [{ name: 'Ferro - sideremia', value: 92, unit: 'ug/dL', confidence: 0.95 }, 'Iron [Mass/volume] in Serum or Plasma'],
+      [{ name: 'Glucosio - glicemia', value: 97, unit: 'mg/dL', confidence: 0.95 }, 'Glucose [Mass/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(page, examples.map(([value]) => value));
+    for (const [value, testName] of examples) {
+      await expect(savedAsCell(rowFor(page, String(value.value)))).toHaveText(testName);
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('files a value of the blood count as one of blood', async ({ page }) => {
+    // Scenario: A value of the blood count is one of blood
+    const ai = await analyzeReport(page, [{ name: 'Emocromo - Emoglobina', value: 14.2, unit: 'g/dL', confidence: 0.95 }]);
+    await expect(savedAsCell(rowFor(page, '14.2'))).toHaveText('Hemoglobin [Mass/volume] in Blood');
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
+  test('never moves another test to blood under a blood count heading', async ({ page }) => {
+    // Scenario Outline: A blood count heading never moves another test to blood
+    await analyzeReport(page, [
+      { name: 'Emocromo - Vitamina B12', value: 412, unit: 'pg/mL', confidence: 0.95 },
+      { name: 'Emocromo - Colinesterasi', value: 7300, unit: 'U/L', confidence: 0.95 },
+      { name: 'Emocromo - Glucosio', value: 93, unit: 'mg/dL', confidence: 0.95 },
+    ]);
+    for (const value of ['412', '7300', '93']) {
+      await expect(savedAsCell(rowFor(page, value))).toBeVisible();
+      await expect(savedAsCell(rowFor(page, value))).not.toHaveText(/\bin (?:Blood|Red Blood Cells|Erythrocytes)\b/);
+    }
+  });
+
+  test('asks about a sample named beside a name known only for another sample', async ({ page }) => {
+    // Scenario Outline: A sample named beside a name known only for another sample is asked
+    await analyzeReport(page, [
+      { name: 'Glicemia urine', value: 15, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Sideremia urine', value: 21, unit: 'ug/dL', confidence: 0.95 },
+      { name: 'GPT urine', value: 9, unit: 'U/L', confidence: 0.95 },
+    ]);
+    for (const value of ['15', '21', '9']) {
+      await expect(savedAsCell(rowFor(page, value))).toBeVisible();
+      await expect(savedAsCell(rowFor(page, value))).not.toHaveText(/Serum/);
+    }
+  });
+
+  test('asks about "Protrombina" printed as a ratio with the prothrombin time over a normal one first', async ({ page }) => {
+    // Scenario Outline: "Protrombina" printed as a ratio is the prothrombin time over a normal one, never filed as prothrombin activity
+    const names = ['Protrombina', 'Protrombina ratio', 'Ratio protrombina', 'Protrombina - rapporto'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [1.04, 1.05, 1.06, 1.07][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+    for (const { candidates } of ai.choiceRequests[0]) {
+      expect(candidates[0].name).toBe('Prothrombin time (PT) actual/Normal');
+    }
+  });
+
+  test('asks about a clotting factor or protein printed as a ratio', async ({ page }) => {
+    // Scenario Outline: A clotting factor or protein printed as a ratio is asked about
+    const names = ['Fattore VIII', 'Proteina S'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: [0.95, 0.85][i], unit: 'ratio', confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0].map((value) => value.name).sort()).toEqual([...names].sort());
+  });
+
+  test('offers first a test of another kind than the unit whose name the printed one is', async ({ page }) => {
+    // Scenario: A name of a test of another kind than the unit says is offered first when none of the unit's kind fits well
+    const ai = await analyzeReport(page, [
+      { name: 'Proteina C attivata resistenza', value: 2.4, unit: 'ratio', confidence: 0.95 },
+    ]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates[0].name).toBe(
+      'Activated protein C resistance [Time Ratio] in Platelet poor plasma by Coagulation assay'
+    );
+  });
+
+  test('lists a ratio a name with no unit barely fits after the tests it fits better', async ({ page }) => {
+    // Scenario: A ratio a name with no unit barely fits is listed after the tests it fits better
+    const ai = await analyzeReport(page, [{ name: 'Rapporto colesterolo/HDL', value: 3.6, unit: '', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    expect(ai.choiceRequests[0][0].candidates[0].name).not.toBe('Cholesterol in VLDL/Triglyceride [Ratio] in Serum or Plasma');
+  });
+
+  test('files a count per microscope field under a test counted per field', async ({ page }) => {
+    // Scenario: A count per microscope field is filed under a test counted per field
+    await analyzeReport(page, [
+      { name: 'Batteri', value: 3, unit: 'per campo', confidence: 0.95, specimenHint: 'urine' },
+    ]);
+    await expect(savedAsCell(rowFor(page, '3'))).toHaveText(
+      'Bacteria [#/area] in Urine sediment by Microscopy high power field'
+    );
+  });
+
   test('lets the AI decide a value several tests fit', async ({ page }) => {
     // Scenario: A value several tests fit is decided by the AI
     await analyzeReport(page, [GLUCOSIO], 1, {
@@ -135,12 +425,79 @@ test.describe('Identifying the test of each value', () => {
 
     await row.getByRole('button', { name: /^Change test for / }).click();
     const list = testList(page);
-    await expect(testOption(list, SERUM_GLUCOSE)).toHaveAccessibleName(`${SERUM_GLUCOSE} · 2345-7`);
+    await expect(testOption(list, SERUM_GLUCOSE)).toHaveAccessibleName(`Glucose · Mass/volume, ${SERUM_GLUCOSE} · 2345-7`);
     await testOption(list, BLOOD_GLUCOSE).click();
     await expect(list).toBeHidden();
 
     await expect(savedAsCell(row)).toHaveText(BLOOD_GLUCOSE);
     await expectNoCheckLabel(row);
+  });
+
+  test('sets the tests to choose from side by side, and chooses one by a click on its row', async ({ page }) => {
+    // Scenario: The tests to choose from are set side by side
+    await analyzeReport(page, [GLUCOSIO], 1, {
+      testChoice: { choices: { Glucosio: { code: '2339-0', confident: false } } },
+    });
+    const row = rowFor(page, '95');
+    await row.getByRole('button', { name: /^Change test for / }).click();
+    const list = testList(page);
+    const table = list.getByRole('table', { name: 'Tests' });
+    await expect(table.getByRole('columnheader')).toHaveText(['Test', 'Sample', 'Method', 'Units', 'Code']);
+
+    const serum = table.getByRole('row').filter({ has: testOption(page, SERUM_GLUCOSE) });
+    await expect(serum).toContainText('Glucose · Mass/volume');
+    await expect(serum).toContainText('Serum/Plasma');
+    await expect(serum).toContainText('fits mg/dL');
+    await expect(serum).toContainText('2345-7');
+    await expect(serum).toContainText(`LOINC: ${SERUM_GLUCOSE}`);
+    await expect(serum).toContainText('Common');
+    await expect(serum).toContainText('Blood sugar level');
+    await expect(list.getByText('Printed: Glucosio · 95 mg/dL')).toBeVisible();
+    const blood = table.getByRole('row').filter({ has: testOption(page, BLOOD_GLUCOSE) });
+    await expect(blood).toContainText("The AI's best guess");
+
+    await blood.getByRole('cell', { name: 'Whole Blood' }).click();
+    await expect(list).toBeHidden();
+    await expect(savedAsCell(row)).toHaveText(BLOOD_GLUCOSE);
+  });
+
+  test('fills a phone screen with the tests as cards', async ({ page }) => {
+    // Scenario: The test list on a phone
+    await page.setViewportSize({ width: 320, height: 640 });
+    await analyzeReport(page, [GLUCOSIO]);
+    await rowFor(page, '95').getByRole('button', { name: /^Change test for / }).click();
+    const list = testList(page);
+    const cards = list.getByRole('group', { name: 'Tests' });
+    await expect(list.getByRole('table')).toHaveCount(0);
+    const blood = testOption(cards, BLOOD_GLUCOSE);
+    await expect(blood).toContainText('Sample: Whole Blood');
+    await expect(blood).toContainText('Method: —');
+    await expect(blood).toContainText('Code: 2339-0');
+    await expect(blood).toHaveAccessibleDescription(/Sample: Whole Blood.*fits mg\/dL/);
+    // Full screen, and nothing sticks out sideways
+    const box = await list.boundingBox();
+    expect(box?.width).toBe(320);
+    expect(await list.evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+    await blood.click();
+    await expect(list).toBeHidden();
+    await expect(savedAsCell(rowFor(page, '95'))).toHaveText(BLOOD_GLUCOSE);
+  });
+
+  test('gives one choice to the same wording in every file of the import', async ({ page }) => {
+    // Scenario: One choice covers the same wording in every file of the import
+    await analyzeReport(page, [GLUCOSIO], 2);
+    await page.getByRole('button', { name: /lab-report-2\.pdf/ }).click();
+    const rows = rowFor(page, '95');
+    await expect(rows).toHaveCount(2);
+    await expect(savedAsCell(rows.nth(1))).toHaveText('No test chosen');
+
+    await changeTest(page, rows.first(), BLOOD_GLUCOSE, { search: false });
+
+    await expect(savedAsCell(rows.first())).toHaveText(BLOOD_GLUCOSE);
+    await expect(savedAsCell(rows.nth(1))).toHaveText(BLOOD_GLUCOSE);
+
+    await changeTest(page, rows.first(), SERUM_GLUCOSE, { search: false });
+    await expect(savedAsCell(rows.nth(1))).toHaveText(SERUM_GLUCOSE);
   });
 
   test('blocks Continue until a value has a test', async ({ page }) => {
@@ -281,29 +638,37 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rowFor(page, '90'))).toHaveText(BLOOD_GLUCOSE);
   });
 
-  const URINE_PH: ExtractedBiomarkerFixture = { name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 };
-
-  test('never matches a value with no unit on its name alone', async ({ page }) => {
-    // Scenario: A value with no unit is never matched on its name alone
-    const ai = await analyzeReport(page, [URINE_PH], 1, {
-      testChoice: { choices: { 'pH (urine)': { code: '2756-5', confident: true } } },
-    });
-    expect(ai.choiceRequests).toHaveLength(1);
-    const [asked] = ai.choiceRequests[0];
-    expect(asked).toMatchObject({ name: 'pH (urine)', unit: '' });
-    expect(asked.candidates.map((c) => c.code)).toContain('2756-5');
+  test('matches a value with no unit to the common test that has none, of the sample it names', async ({ page }) => {
+    // Scenario: A value with no unit is matched to the common test that has none, of the sample it names
+    const ai = await analyzeReport(page, [{ name: 'pH (urine)', value: 6, unit: '', confidence: 0.95 }]);
     await expect(savedAsCell(rowFor(page, '6'))).toHaveText('pH of Urine');
+    expect(ai.choiceRequests).toHaveLength(0);
     await continueToConfirm(page);
+  });
+
+  test('asks about a value with no unit and no sample named', async ({ page }) => {
+    // Scenario: A value with no unit and no sample named is asked about
+    const ai = await analyzeReport(page, [{ name: 'Ferritina', value: 4, unit: '', confidence: 0.95 }]);
+    expect(ai.choiceRequests).toHaveLength(1);
+    const offered = ai.choiceRequests[0][0].candidates.map((c) => c.name);
+    expect(offered[0]).toBe('Ferritin [Interpretation] in Blood');
+    expect(offered).toContain('Ferritin [Mass/volume] in Serum or Plasma');
+  });
+
+  test('reads a dipstick result with no unit as present or absent', async ({ page }) => {
+    // Scenario: A dipstick result with no unit is read as present or absent, never as an amount
+    await analyzeReport(page, [{ name: 'Nitriti', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine' }]);
+    await expect(savedAsCell(rowFor(page, '0'))).toHaveText('Nitrite [Presence] in Urine by Test strip');
   });
 
   test('asks me the test of a value with no unit the AI is not sure of', async ({ page }) => {
     // Scenario: I choose the test of a value with no unit the AI is not sure of
-    await analyzeReport(page, [URINE_PH]);
+    await analyzeReport(page, [{ name: 'Glucosio', value: 6, unit: '', confidence: 0.95 }]);
     const row = rowFor(page, '6');
     await expect(savedAsCell(row)).toHaveText('No test chosen');
     await expect(row.getByText('No unit in report')).toBeVisible();
     await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
-    await expect(main(page).getByText(/pH \(urine\) in ".*" needs a test/)).toBeVisible();
+    await expect(main(page).getByText(/Glucosio in ".*" needs a test/)).toBeVisible();
     await changeTest(page, row, NOT_A_LOINC_TEST);
     await continueToConfirm(page);
   });

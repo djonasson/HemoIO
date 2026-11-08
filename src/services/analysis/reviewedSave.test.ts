@@ -3,7 +3,7 @@ import { fixtureCatalog } from '@/test/loincFixture';
 import { loadCatalog } from '@data/loinc/catalog';
 import { chooseTest } from './reviewEdits';
 import { toUcum } from '@services/units/ucum';
-import { missingFields, planSave, unitMisfits } from './reviewedSave';
+import { missingFields, planSave, unitFit, unitMisfits } from './reviewedSave';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 const catalog = fixtureCatalog();
@@ -88,6 +88,21 @@ describe('unitMisfits', () => {
     expect(misfits('2756-5', '[pH]')).toBe(false);
     // Still a misfit: an enzyme unit for a mass concentration
     expect(misfits('2345-7', 'UI/L')).toBe(true);
+  });
+
+  it('reads the D-dimer units a unit names: FEU misfits a DDU test, and the other way round', async () => {
+    const real = await loadCatalog();
+    const fit = (loincCode: string, unit: string): string => unitFit({ ...CODED, loincCode, unit }, real);
+    // 48065-7 is D-dimer FEU, 48066-5 D-dimer DDU, 48058-2 DDU by immunoassay
+    for (const unit of ['ng/mL FEU', 'ng/mL (FEU)', 'mg/L FEU.', 'ng/mL - FEU']) {
+      expect(fit('48065-7', unit)).toBe('fits');
+      expect(fit('48066-5', unit)).toBe('misfits');
+      expect(fit('48058-2', unit)).toBe('misfits');
+    }
+    expect(fit('48066-5', 'ng/mL [DDU]')).toBe('fits');
+    expect(fit('48065-7', 'ng/mL DDU')).toBe('misfits');
+    // No units named: the plain unit decides
+    expect(fit('48065-7', 'ng/mL')).toBe('fits');
   });
 
   it('says nothing of a unit it cannot read, no unit, or no test', () => {

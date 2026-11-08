@@ -7,8 +7,9 @@ import { isPerHundredCounted } from '@/utils/unitSpelling';
 import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { unitsMatch } from '@services/units';
-import { toUcum, ucumProperties } from '@services/units/ucum';
+import { readUnitMarker, toUcum, ucumProperties } from '@services/units/ucum';
 import { needsTest } from './identification';
+import { testDimerUnits } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { quantityKind, type Catalog } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
@@ -82,23 +83,38 @@ export function missingFields(biomarker: MatchedBiomarker, catalog?: Catalog): M
   return missing;
 }
 
+/** Whether a value's unit fits its test, surely does not, or tells nothing certain */
+export type UnitFit = 'fits' | 'misfits' | 'unknown';
+
 /**
- * Whether a value's unit is surely not one of its test's kind: a U/L value
- * saved as a mass concentration, a daily amount as a concentration. A unit
- * the test is offered in (HemoIO's own units for it, LOINC's examples) fits,
- * whatever UCUM reads it as ("UI/L" for an enzyme, "%" for MCHC). A unit
- * UCUM cannot read, or that tells nothing certain, is not judged.
+ * How a value's unit fits its test. A unit the test is offered in
+ * (HemoIO's own units for it, LOINC's examples) fits, whatever UCUM reads
+ * it as ("UI/L" for an enzyme, "%" for MCHC); else a unit fits when UCUM
+ * reads it as the test's kind of quantity, and misfits when it surely is
+ * not (a U/L value as a mass concentration, a daily amount as a
+ * concentration). A unit UCUM cannot read, or that tells nothing certain,
+ * is not judged. A unit naming D-dimer units (FEU, DDU) misfits a test in
+ * the other ones, which are about two-fold apart.
  */
-export function unitMisfits(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
+export function unitFit(biomarker: MatchedBiomarker, catalog: Catalog): UnitFit {
   const test = biomarker.loincCode ? catalog.test(biomarker.loincCode) : undefined;
-  const ucum = biomarker.unit.trim() ? toUcum(biomarker.unit) : null;
-  if (!test || !ucum) return false;
+  const { unit: plain, marker } = readUnitMarker(biomarker.unit);
+  const ucum = plain ? toUcum(plain) : null;
+  if (!test || !ucum) return 'unknown';
+  const testMarker = testDimerUnits(test);
+  if (marker && testMarker && marker !== testMarker) return 'misfits';
   const addon = getAddon(catalog, test.code);
   const offered = [...(addon?.canonicalUnit ? [addon.canonicalUnit] : []), ...(addon?.alternativeUnits ?? [])];
-  const fitsOffered = offered.some((unit) => unitsMatch(unit, biomarker.unit) || toUcum(unit) === ucum);
-  if (fitsOffered || test.units.includes(ucum)) return false;
+  const fitsOffered = offered.some((unit) => unitsMatch(unit, plain) || toUcum(unit) === ucum);
+  if (fitsOffered || test.units.includes(ucum)) return 'fits';
   const kinds = ucumProperties(ucum).map(quantityKind);
-  return kinds.length > 0 && !kinds.includes(quantityKind(test.property));
+  if (kinds.length === 0) return 'unknown';
+  return kinds.includes(quantityKind(test.property)) ? 'fits' : 'misfits';
+}
+
+/** Whether a value's unit is surely not one of its test's kind (see unitFit) */
+export function unitMisfits(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
+  return unitFit(biomarker, catalog) === 'misfits';
 }
 
 /** Whether a value has its test or "Not a LOINC test", and nothing missing */

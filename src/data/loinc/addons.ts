@@ -28,6 +28,13 @@ export interface TestAddon {
   highIndication?: string;
   /** What a low value may indicate */
   lowIndication?: string;
+  /**
+   * Usual Italian and English names and abbreviations of the test that
+   * LOINC's names lack ("ematocrito", "mpv"). The catalog counts them as
+   * names of the test and of every code it trends with, so the local match
+   * finds the test by them.
+   */
+  names?: string[];
 }
 
 /** Reticulocytes as a share of red cells, by automated count or with no method named */
@@ -71,6 +78,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate anemia or blood loss',
   },
   '4544-3': {
+    names: ['ematocrito'],
     shortName: 'Hematocrit',
     description: 'Percentage of blood volume made up of red blood cells.',
     referenceRange: { low: 36, high: 50, unit: '%' },
@@ -89,6 +97,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate bleeding risk or bone marrow problems',
   },
   '787-2': {
+    names: ['volume corpuscolare medio'],
     shortName: 'Mean Corpuscular Volume',
     description: 'Average size of red blood cells.',
     referenceRange: { low: 80, high: 100, unit: 'fL' },
@@ -116,6 +125,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate iron deficiency or thalassemia',
   },
   '788-0': {
+    names: ['rdw'],
     shortName: 'Red Cell Distribution Width',
     description: 'Variation in red blood cell size.',
     referenceRange: { low: 11.5, high: 14.5, unit: '%' },
@@ -208,7 +218,21 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     highIndication: 'May indicate allergic reaction',
     lowIndication: 'Generally not clinically significant',
   },
+  '2157-6': {
+    // Italian reports often join "creatina chinasi" into one word
+    names: ['creatinchinasi'],
+    shortName: 'Creatine Kinase',
+    description: 'Muscle enzyme; rises after muscle damage or strain.',
+    canonicalUnit: 'U/L',
+  },
+  '32623-1': {
+    names: ['mpv', 'volume piastrinico medio'],
+    shortName: 'Mean Platelet Volume',
+    description: 'Average size of platelets.',
+    canonicalUnit: 'fL',
+  },
   '30392-5': {
+    names: ['eritroblasti'],
     shortName: 'Nucleated Red Blood Cells',
     description: 'Immature red blood cells, normally absent from adult blood.',
     referenceRange: { low: 0, high: 0.1, unit: '10^9/L' },
@@ -218,6 +242,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding',
   },
   '58413-6': {
+    names: ['eritroblasti'],
     shortName: 'Nucleated Red Blood Cells Percentage',
     description: 'Immature red blood cells per 100 white blood cells, normally zero in adults.',
     canonicalUnit: '/100 WBC',
@@ -256,6 +281,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Generally indicates low inflammation',
   },
   '2345-7': {
+    // The Italian word for blood glucose
+    names: ['glicemia'],
     shortName: 'Glucose',
     description: 'Blood sugar level, primary energy source for cells.',
     referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
@@ -355,6 +382,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate malnutrition, alcoholism, diabetes, or medication effects',
   },
   '98979-8': {
+    names: ['egfr', 'filtrato glomerulare'],
     shortName: 'eGFR',
     description: 'Estimate of how well kidneys filter waste.',
     referenceRange: { low: 90, high: 120, unit: 'mL/min/1.73m²' },
@@ -471,6 +499,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding - no autoimmune thyroid disease',
   },
   '2498-4': {
+    // The Italian word for serum iron
+    names: ['sideremia'],
     shortName: 'Serum Iron',
     description: 'Amount of iron circulating in the blood.',
     referenceRange: { low: 60, high: 170, unit: 'µg/dL' },
@@ -551,6 +581,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate deficiency affecting vision',
   },
   '4548-4': {
+    names: ['emoglobina glicata'],
     shortName: 'Hemoglobin A1c',
     description: 'Average blood sugar over past 2-3 months.',
     referenceRange: { low: 4, high: 5.6, unit: '%' },
@@ -576,6 +607,7 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate acidosis or high protein diet',
   },
   '2965-2': {
+    names: ['densità relativa', 'peso specifico'],
     shortName: 'Urine Specific Gravity',
     description: 'Concentration of urine, reflects hydration status.',
     referenceRange: { low: 1.005, high: 1.03, unit: '1' },
@@ -600,12 +632,19 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Normal finding',
   },
   '5797-6': {
+    names: ['corpi chetonici'],
     shortName: 'Urine Ketones',
     description: 'Ketone bodies in urine from fat metabolism.',
     canonicalUnit: 'mg/dL',
     alternativeUnits: ['mmol/L'],
     highIndication: 'May indicate diabetic ketoacidosis or fasting',
     lowIndication: 'Normal finding',
+  },
+  // Ketones by dipstick read as present or absent, with no method named: the strip's variants trend apart
+  '33903-6': {
+    names: ['corpi chetonici'],
+    shortName: 'Urine Ketones Presence',
+    description: 'Ketone bodies in urine from fat metabolism, read as present or absent.',
   },
   '49137-3': {
     shortName: 'Urine Blood',
@@ -749,6 +788,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'May indicate low protein intake or kidney dysfunction',
   },
   '1742-6': {
+    // Glutamic-pyruvic transaminase, the name Italian reports still give it
+    names: ['gpt'],
     shortName: 'Alanine Aminotransferase',
     description: 'Liver enzyme, elevated in liver damage.',
     referenceRange: { low: 7, high: 56, unit: 'U/L' },
@@ -758,6 +799,8 @@ export const TEST_ADDONS: Readonly<Record<string, TestAddon>> = {
     lowIndication: 'Generally not concerning',
   },
   '1920-8': {
+    // Glutamic-oxaloacetic transaminase, the name Italian reports still give it
+    names: ['got'],
     shortName: 'Aspartate Aminotransferase',
     description: 'Enzyme found in liver, heart, and muscles.',
     referenceRange: { low: 10, high: 40, unit: 'U/L' },

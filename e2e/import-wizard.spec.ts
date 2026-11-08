@@ -568,6 +568,43 @@ test.describe('Import Wizard', () => {
       const tooltip = page.getByRole('tooltip');
       await expect(tooltip).toContainText('LOINC 2345-7: Glucose [Mass/volume] in Serum or Plasma');
       await expect(tooltip).toContainText('Blood sugar level, primary energy source for cells.');
+      // The description sits on a line of its own, below LOINC's name
+      await expect(tooltip).toHaveCSS('white-space', 'pre-line');
+    });
+
+    test('shows the LOINC tooltip on keyboard focus', async ({ page }) => {
+      // Scenario: Keyboard users see the LOINC tooltip too
+      await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+
+      // Reached with the keyboard: the tooltip opens on visible keyboard focus
+      const name = reviewCell(reviewRow(page, 'Glucose'), 'Biomarker').getByText('Glucose');
+      await name.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(name).toBeFocused();
+
+      await expect(page.getByRole('tooltip')).toContainText('LOINC 2345-7: Glucose [Mass/volume] in Serum or Plasma');
+    });
+
+    test('a long file name never squeezes the confidence badge on a phone', async ({ page }) => {
+      // Scenario: A long file name never squeezes the confidence badge
+      await loginWithOllama(page);
+      await page.setViewportSize({ width: 320, height: 640 });
+      await analyzeToReview(page, track(createTextLabReportPdf('Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf')));
+
+      const badge = main(page).getByText(/confidence$/).first();
+      await expect(badge).toBeVisible();
+      const fits = await badge.evaluate((label) => label.scrollWidth <= label.clientWidth);
+      expect(fits).toBe(true);
+
+      const name = await main(page)
+        .getByText('Referto_Laboratorio_Analisi_Cliniche_Gennaio_2024.pdf', { exact: true })
+        .boundingBox();
+      const badgeBox = await badge.boundingBox();
+      expect(badgeBox!.y).toBeGreaterThanOrEqual(name!.y + name!.height);
+      // Wide enough for whole syllables, not a column of letters
+      expect(name!.width).toBeGreaterThan(150);
     });
   });
 
@@ -699,6 +736,7 @@ test.describe('Import Wizard - With AI Mocking', () => {
 
     // 2. Analyze with the (mocked) AI
     await startAnalysis(page);
+    await expectAnalysisFinished(page);
     await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toBeVisible();
     expect(ai.prompts).toHaveLength(1);
 

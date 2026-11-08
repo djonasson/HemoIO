@@ -44,7 +44,7 @@ import { formatReviewedRange, formatReviewedValue } from '@/utils/formatReviewed
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
-  chooseTest,
+  chooseTestForWording,
   unitOptionsFor,
 } from '@services/analysis/reviewEdits';
 import { loincTestLabel, sampleLabel, testDescription } from '@data/loinc/display';
@@ -52,7 +52,8 @@ import { splitPrintedSample } from '@components/common/printedSample';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
 import { missingFields, needsTest, planSave } from '@services/analysis/reviewedSave';
-import { NOT_A_LOINC_TEST, SavedAsCell } from './SavedAsCell';
+import { NOT_A_LOINC_TEST } from './notLoincTest';
+import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
@@ -405,19 +406,21 @@ export function ReviewStep({
         {reviewedResults.map((result, resultIndex) => (
           <Accordion.Item key={result.fileId} value={String(resultIndex)}>
             <Accordion.Control>
-              <Group justify="space-between" wrap="nowrap" pr="md">
-                <Box miw={0}>
+              {/* Too narrow for both side by side, the badge goes below the name */}
+              <Group justify="space-between" gap="xs" pr="md">
+                <Box style={{ flex: '1 1 14rem', minWidth: 0 }}>
                   <FileName name={result.fileName} />
                   <Text size="sm" c="dimmed">
                     {result.editedBiomarkers.length} biomarker(s)
                   </Text>
                 </Box>
                 {result.manualEntry ? (
-                  <Badge color="gray" variant="light">
+                  <Badge color="gray" variant="light" style={{ flexShrink: 0 }}>
                     Entered manually
                   </Badge>
                 ) : (
-                  <Badge color={getConfidenceColor(result.confidence)}>
+                  // Never squeezed: the name wraps, or the badge goes below it
+                  <Badge color={getConfidenceColor(result.confidence)} style={{ flexShrink: 0 }}>
                     {getConfidenceLabel(result.confidence)} confidence
                   </Badge>
                 )}
@@ -536,8 +539,16 @@ export function ReviewStep({
                                       multiline
                                       w={300}
                                       withArrow
+                                      // LOINC's name and the description on lines of their own
+                                      styles={{ tooltip: { whiteSpace: 'pre-line' } }}
+                                      events={{ hover: true, focus: true, touch: false }}
                                     >
-                                      <Text size="sm" style={{ cursor: 'help', textDecoration: 'underline dotted' }}>
+                                      <Text
+                                        size="sm"
+                                        // Focusable, so keyboard users reach the tooltip
+                                        tabIndex={0}
+                                        style={{ cursor: 'help', textDecoration: 'underline dotted' }}
+                                      >
                                         {getDisplayName(biomarker)}
                                       </Text>
                                     </Tooltip>
@@ -573,7 +584,10 @@ export function ReviewStep({
                               <SavedAsCell
                                 biomarker={biomarker}
                                 onChoose={(code) =>
-                                  updateBiomarker(resultIndex, bioIndex, chooseTest(biomarker, code))
+                                  // The same wording in the other files takes the choice too
+                                  onReviewChange(
+                                    chooseTestForWording(reviewedResults, { resultIndex, biomarkerIndex: bioIndex }, code)
+                                  )
                                 }
                               />
                               {setAside.get(biomarker)?.reason === 'twin' && (

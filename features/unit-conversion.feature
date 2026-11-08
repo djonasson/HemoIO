@@ -155,7 +155,7 @@ Feature: Unit Conversion
     Then no value should be marked "Not saved": I settle the conflict, as the analysis leaves me to
 
   Scenario: Read the units Italian reports write for ratios to creatinine and cells per 100 white cells
-    Given a lab report gives the protein/creatinine ratio in "mg/g cr", the albumin/creatinine ratio in "mg/gcr" and nucleated red cells ("Eritroblasti") in "/100WBC"
+    Given a lab report gives a nephrin/creatinine ratio in "mg/g cr", the albumin/creatinine ratio in "mg/gcr" and nucleated red cells under a name LOINC lacks ("Normoblasti") in "/100WBC"
     When the values are reviewed
     Then each unit should be read as a unit of its test
     And none should be labelled "Unit doesn't fit the test"
