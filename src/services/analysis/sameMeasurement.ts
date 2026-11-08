@@ -139,6 +139,8 @@ export function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean
   if (a.comparison === undefined || b.comparison === undefined) return false;
   // In one unit, "< 10" is a bound and 10 a measurement: never the same
   if (!a.biomarker.censored !== !b.biomarker.censored && unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
+  // "> 0.50" and "< 44" bound the value from opposite sides: they say different things
+  if (a.biomarker.censored && b.biomarker.censored && a.biomarker.censored[0] !== b.biomarker.censored[0]) return false;
   if (a.comparison === b.comparison) return true;
   const diff = Math.abs(a.comparison - b.comparison);
   const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;

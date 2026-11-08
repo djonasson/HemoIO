@@ -102,4 +102,10 @@ describe('settleGroup', () => {
     const measured = value('PCR', 10, 'mg/L', '1988-5');
     expect(settleGroup([bound, measured], catalog).settled).toBe(false);
   });
+
+  it('never calls bounds on opposite sides one measurement: "> 0.50 mg/dL" is not "< 44 µmol/L"', () => {
+    const above: MatchedBiomarker = { ...value('Creatinina', 0.5, 'mg/dL', '2160-0'), censored: '>' };
+    const below: MatchedBiomarker = { ...value('Creatinina', 44, 'µmol/L', '14682-9'), censored: '<' };
+    expect(settleGroup([above, below], catalog).settled).toBe(false);
+  });
 });
