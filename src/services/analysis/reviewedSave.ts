@@ -182,28 +182,32 @@ function twins(values: readonly MatchedBiomarker[], catalog: Catalog): MatchedBi
 function duplicates(
   values: readonly MatchedBiomarker[],
   catalog: Catalog
-): Map<MatchedBiomarker, MatchedBiomarker> {
+): { left: Map<MatchedBiomarker, MatchedBiomarker>; merged: Map<MatchedBiomarker, MatchedBiomarker> } {
   const left = new Map<MatchedBiomarker, MatchedBiomarker>();
+  const merged = new Map<MatchedBiomarker, MatchedBiomarker>();
   const coded = values.filter((value) => value.loincCode && isReady(value, catalog));
   for (const group of groupBySameTest(coded, catalog)) {
     if (group.length === 1) continue;
     const settled = settleGroup(group, catalog);
-    if (settled.settled) for (const [biomarker, kept] of settled.setAside) left.set(biomarker, kept);
+    if (!settled.settled) continue;
+    for (const [biomarker, kept] of settled.setAside) left.set(biomarker, kept);
+    for (const [biomarker, kept] of settled.merged) merged.set(biomarker, kept);
   }
-  return left;
+  return { left, merged };
 }
 
 /** The values of a file the import leaves out, and why */
 function setAside(
   values: readonly MatchedBiomarker[],
   catalog: Catalog
-): Map<MatchedBiomarker, Omit<SetAsideValue, 'fileName'>> {
+): { left: Map<MatchedBiomarker, Omit<SetAsideValue, 'fileName'>>; merged: Map<MatchedBiomarker, MatchedBiomarker> } {
   const left = new Map<MatchedBiomarker, Omit<SetAsideValue, 'fileName'>>();
   for (const biomarker of twins(values, catalog)) left.set(biomarker, { biomarker, reason: 'twin' });
-  for (const [biomarker, savedAs] of duplicates(values, catalog)) {
+  const { left: same, merged } = duplicates(values, catalog);
+  for (const [biomarker, savedAs] of same) {
     left.set(biomarker, { biomarker, reason: 'duplicate', savedAs });
   }
-  return left;
+  return { left, merged };
 }
 
 /**
@@ -215,12 +219,16 @@ export function planSave<T extends ReviewedFile>(results: readonly T[], catalog:
   const toSave: T[] = [];
   const notSaved: SetAsideValue[] = [];
   for (const result of results) {
-    const left = setAside(result.editedBiomarkers, catalog);
+    const { left, merged } = setAside(result.editedBiomarkers, catalog);
     for (const value of left.values()) notSaved.push({ fileName: result.fileName, ...value });
+    // A kept value saved with a twin's comparator or mark (see settleGroup)
     const kept =
-      left.size === 0
+      left.size === 0 && merged.size === 0
         ? result
-        : { ...result, editedBiomarkers: result.editedBiomarkers.filter((b) => !left.has(b)) };
+        : {
+            ...result,
+            editedBiomarkers: result.editedBiomarkers.filter((b) => !left.has(b)).map((b) => merged.get(b) ?? b),
+          };
     if (kept.editedBiomarkers.length > 0) toSave.push(kept);
   }
   return { toSave, notSaved };

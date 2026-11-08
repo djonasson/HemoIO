@@ -17,7 +17,7 @@ import {
   renderPdfPages,
 } from '../ocr';
 import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
-import { getAIProvider, AIAnalysisError } from '../ai';
+import { getAIProvider, AIAnalysisError, extractedInterval, heldQualitative } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
 import {
   asAnalyzed,
@@ -478,6 +478,15 @@ function analyzingLabel(provider: AIProviderType, model: string | undefined): st
 }
 
 /**
+ * Whether a value reads only as printed, so a converted number beside it
+ * ("< 10 mg/dL (=10 mg/dL)") would misread it: a censored value, an
+ * interval or a qualitative word
+ */
+function readAsPrinted(biomarker: MatchedBiomarker): boolean {
+  return !!biomarker.censored || !!extractedInterval(biomarker) || !!heldQualitative(biomarker);
+}
+
+/**
  * Deduplicate biomarkers reported more than once, as labs do when they give
  * a value in two units (SI and conventional).
  *
@@ -532,7 +541,7 @@ function deduplicateBiomarkers(
               .map(
                 (v) =>
                   `${formatReviewedValue(v.biomarker)} ${v.biomarker.unit}` +
-                  (canonicalUnit && v.converted !== undefined
+                  (canonicalUnit && v.converted !== undefined && !readAsPrinted(v.biomarker)
                     ? ` (=${v.converted} ${canonicalUnit})`
                     : '')
               )

@@ -137,5 +137,27 @@ describe('analyzeLabReport: conflicting values', () => {
 
     expect(result.duplicateConflicts).toHaveLength(1);
     expect(result.duplicateConflicts[0].message).toContain('< 10 mg/dL');
+    // A bound read as printed is not restated as a converted number
+    expect(result.duplicateConflicts[0].message).not.toContain('(=10 mg/dL)');
+    expect(result.duplicateConflicts[0].message).toContain('5 mmol/L (=90');
+  });
+});
+
+describe('analyzeLabReport: twins with a comparator or a lab mark', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("keeps the twin's comparator and mark on the value kept", async () => {
+    const result = await analyze([
+      extracted('Creatinina', 0.5, 'mg/dL', 'serum'),
+      { ...extracted('Creatinina', 44, 'µmol/L', 'serum'), censored: '<' },
+      { ...extracted('Glucosio', 7.2, 'mmol/L', 'serum'), labFlag: 'high' },
+      extracted('Glucosio', 130, 'mg/dL', 'serum'),
+    ]);
+
+    expect(result.duplicateConflicts).toEqual([]);
+    expect(result.matchedBiomarkers).toEqual([
+      expect.objectContaining({ value: 0.5, unit: 'mg/dL', censored: '<' }),
+      expect.objectContaining({ value: 130, unit: 'mg/dL', labFlag: 'high' }),
+    ]);
   });
 });

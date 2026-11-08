@@ -206,6 +206,20 @@ describe('planSave', () => {
       expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: molar, reason: 'duplicate', savedAs: SERUM }]);
     });
 
+    it("saves the value kept with the comparator of the twin left out", () => {
+      const bound = { ...chooseTest(undecided(5), '14749-6'), censored: '<' as const };
+      const plan = planSave([file([bound, SERUM])], catalog);
+      expect(plan.toSave[0].editedBiomarkers).toEqual([{ ...SERUM, censored: '<' }]);
+      expect(plan.notSaved).toEqual([
+        { fileName: 'a.pdf', biomarker: bound, reason: 'duplicate', savedAs: { ...SERUM, censored: '<' } },
+      ]);
+    });
+
+    it('never leaves out a bound for a measured value in its unit', () => {
+      const bound = analyzed({ name: 'Glucosio', value: 90, unit: 'mg/dL', loincCode: '2345-7', censored: '<' });
+      expect(leftOut([bound, SERUM])).toEqual([]);
+    });
+
     it('is kept when it is another measurement, or still has no test', () => {
       expect(leftOut([chooseTest(undecided(8), '14749-6'), SERUM])).toEqual([]);
       expect(leftOut([undecided(5), SERUM])).toEqual([]);

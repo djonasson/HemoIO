@@ -135,6 +135,19 @@ Feature: Unit Conversion
     And only one value of each should be kept
     And no duplicate conflict warning should be shown
 
+  Scenario: Keep the comparator and the lab's mark of a value given in two units
+    Given a lab report gives creatinine as 0.50 mg/dL and as "< 44" µmol/L
+    And glucose as 7.2 mmol/L marked "H" by the lab and as 130 mg/dL
+    When the values are analyzed
+    Then creatinine should be kept once, as "< 0.5" mg/dL
+    And glucose should be kept once, as 130 mg/dL marked "H"
+    And no duplicate conflict warning should be shown
+
+  Scenario: Never merge a bound with a measured value in the same unit
+    Given a lab report gives creatinine as "< 0.76" mg/dL and as 0.76 mg/dL
+    When the values are analyzed
+    Then both values should be kept and flagged as a duplicate conflict, for me to settle
+
   Scenario: Merge a value once I choose its test
     Given a lab report gives creatinine under a blood heading as 67 µmol/L and 0.76 mg/dL, so blood and serum creatinine both fit
     And the AI knows the test of the mg/dL value but is not sure of the µmol/L one

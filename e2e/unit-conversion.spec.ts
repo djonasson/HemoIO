@@ -722,6 +722,46 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(main(page).getByText('the same measurement as < 0.76 mg/dL, which is saved.')).toBeVisible();
   });
 
+  test("should keep the comparator and the lab's mark of a value given in two units", async ({ page }) => {
+    // Scenario: Keep the comparator and the lab's mark of a value given in two units
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: 0.5, unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Creatinine', value: '< 44', unit: 'µmol/L', confidence: 0.95 },
+      { name: 'Glucose', value: 7.2, unit: 'mmol/L', confidence: 0.95, flag: 'H' },
+      { name: 'Glucose', value: 130, unit: 'mg/dL', confidence: 0.95 },
+    ], 1, {
+      testChoice: aiChooses({
+        ...SERUM_CREATININE.choices,
+        'Glucose|mmol/L': '14749-6',
+        'Glucose|mg/dL': '2345-7',
+      }),
+    });
+
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(2);
+    const creatinine = rows.filter({ hasText: 'Creatinine' });
+    await expect(creatinine.getByRole('cell', { name: '< 0.5', exact: true })).toBeVisible();
+    await expect(creatinine.getByRole('cell', { name: 'mg/dL', exact: true })).toBeVisible();
+    const glucose = rows.filter({ hasText: 'Glucose' });
+    await expect(glucose.getByRole('cell', { name: 'mg/dL', exact: true })).toBeVisible();
+    await expect(glucose.getByTitle('flagged high by the lab')).toHaveText('H');
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('should never merge a bound with a measured value in the same unit', async ({ page }) => {
+    // Scenario: Never merge a bound with a measured value in the same unit
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinine', value: '< 0.76', unit: 'mg/dL', confidence: 0.95 },
+      { name: 'Creatinine', value: 0.76, unit: 'mg/dL', confidence: 0.95 },
+    ], 1, { testChoice: SERUM_CREATININE });
+
+    await expect(reviewRows(page)).toHaveCount(2);
+    await expect(duplicateWarning(page)).toBeVisible();
+    await expect(page.getByText('2 conflicts', { exact: true })).toBeVisible();
+  });
+
   test('should merge a value once I choose the test of the other value of its name', async ({ page }) => {
     // Two imports, each analyzed
     test.slow();
