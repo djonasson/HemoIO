@@ -54,6 +54,11 @@ describe('isSettled', () => {
     expect(clusters('eGFR (LMR18)', 'eGFR (CAPA)')).toBe(2);
     // A plain eGFR first takes in no estimate
     expect(clusters('eGFR', 'eGFR (LMR)', 'eGFR (CAPA)')).toBe(3);
+    // One formula of other bases, or its two numbered forms however spelled
+    expect(clusters('eGFR (EKFC creatinina)', 'eGFR (EKFC creatinina + cistatina C)')).toBe(2);
+    expect(clusters('eGFR (EKFC)', 'eGFRcys (EKFC)')).toBe(2);
+    expect(clusters('eGFR (BIS-1)', 'eGFR (BIS-2)')).toBe(2);
+    expect(clusters('eGFR (formula EKFC)', 'eGFR - EKFC')).toBe(1);
   });
 
   it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {

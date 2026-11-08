@@ -200,9 +200,20 @@ export function currentReading(value: MatchedBiomarker, unit = value.unit): Prin
   return { name: value.name, unit, specimenHint: value.specimenHint, qualitative: heldQualitative(value) };
 }
 
-/** Whether a value, read now, is still the wording the analyzer read: learned the same, so identified the same */
-export function isReadAsPrinted(value: MatchedBiomarker, reading: PrintedValue = currentReading(value)): boolean {
-  return value.analyzed !== undefined && learnedKey(reading) === learnedKey(printedReading(value));
+/**
+ * Whether a value, read now, is still the wording the analyzer read: learned
+ * the same; and, `inUnit`, in the unit it was matched in too, which a
+ * result in words is learned without
+ */
+export function isReadAsPrinted(
+  value: MatchedBiomarker,
+  reading: PrintedValue = currentReading(value),
+  { inUnit = false }: { inUnit?: boolean } = {}
+): boolean {
+  if (!value.analyzed) return false;
+  const printed = printedReading(value);
+  if (learnedKey(reading) !== learnedKey(printed)) return false;
+  return !inUnit || learnedKey({ ...reading, qualitative: undefined }) === learnedKey({ ...printed, qualitative: undefined });
 }
 
 /**

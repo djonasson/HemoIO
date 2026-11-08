@@ -149,6 +149,11 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then both values should be shown for review, neither set aside as the other's duplicate
 
+  Scenario: A plain eGFR and an estimate by a formula LOINC lacks are both kept
+    Given a report prints "eGFR" 81 and "eGFR (EKFC)" 81.5 in mL/min/1.73m²
+    When I give the plain eGFR the eGFR test of no formula, as the estimate has
+    Then both values should still be shown for review, neither set aside as the other's duplicate
+
   Scenario: Estimates by the two Berlin Initiative Study formulas are both kept
     Given a report prints "eGFR (BIS1)" 61 and "eGFR (BIS2)" 62 in mL/min/1.73m²
     When the report is analyzed
@@ -466,8 +471,9 @@ Feature: Identifying the test of each value
     Given a report prints "NT-proBNP" as "Negativo", with no unit
     When the report is analyzed
     Then the tests to choose from should be the NT-proBNP tests
-    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma" for it, give its unit and save the import
+    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay" for it, give its unit and save the import
     Then a later report printing "NT-proBNP" as "Negativo" should be saved under that test without asking
+    And giving it the unit its test asks for should keep that test, and saving should keep it learned
 
   Scenario: A test chosen for a result in words is remembered for results in words only
     Given a urine report prints "Batteri (urine)" as "Assenti"

@@ -192,6 +192,13 @@ describe('applyBiomarkerValue', () => {
     // Nothing new to learn: the learned test stays
     expect(toLearn(withUnit)).toMatchObject({ key: 'glucosio|#words', confirmed: false });
   });
+
+  it('reads a result in words given a unit again in it, when no test was learned for it', async () => {
+    const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
+    const { values } = await identifyValues(catalog, [{ name: 'Glucosio', value: 0, unit: '', confidence: 0.9, qualitative: absent }], {});
+    expect(values[0].loincCode).toBeUndefined();
+    expect(applyBiomarkerUnit(values[0], 'mmol/L', catalog)).toMatchObject({ loincCode: '14749-6', identifiedBy: 'local' });
+  });
 });
 
 describe('chooseTestForWording', () => {
@@ -213,6 +220,21 @@ describe('chooseTestForWording', () => {
     const results = files([undecided('Batteri (urine)', '')], [word]);
     const chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '51480-2');
     expect(chosen[1].editedBiomarkers[0].loincCode).toBeUndefined();
+  });
+
+  it('keeps a choice shared to a result in words when a unit is given for its test', async () => {
+    const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
+    const word = async (): Promise<MatchedBiomarker> => {
+      const { values } = await identifyValues(catalog, [{ name: 'Glucosio', value: 0, unit: '', confidence: 0.9, qualitative: absent }], {
+        choose: async (requests) => requests.map(({ id }) => ({ id, code: '2345-7', confident: true })),
+      });
+      return values[0];
+    };
+    const results = files([await word()], [await word()]);
+    const chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '14749-6');
+    const shared = chosen[1].editedBiomarkers[0];
+    expect(shared).toMatchObject({ loincCode: '14749-6', identifiedBy: 'shared' });
+    expect(applyBiomarkerUnit(shared, 'mmol/L', catalog)).toMatchObject({ loincCode: '14749-6', identifiedBy: 'shared' });
   });
 
   it('gives the choice to the same wording in every file', () => {

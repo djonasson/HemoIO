@@ -5,8 +5,8 @@
  * without asking. Stored in the (sealed) preferences record.
  *
  * The keys are made by `learnedKey` in the analysis service: the printed
- * name, normalised, then "|" and the unit as UCUM, then the marks of how
- * the value was printed (see withMarks).
+ * name, normalised, then "|" and the unit as UCUM (none for a result in
+ * words), then the marks of how the value was printed (see withMarks).
  */
 
 /** How a value was printed, as learning tells wordings apart */
@@ -66,12 +66,13 @@ export function learnedWording(key: string): string {
   const separator = key.lastIndexOf('|');
   if (separator === -1) return key;
   let unit = key.slice(separator + 1);
-  const read = new Set<string>();
-  for (let mark = MARKS.find(([, suffix]) => unit.endsWith(suffix)); mark; mark = MARKS.find(([, suffix]) => unit.endsWith(suffix))) {
-    unit = unit.slice(0, -mark[1].length);
-    read.add(mark[2]);
+  const notes: string[] = [];
+  // Read back in the reverse of the order withMarks writes them
+  for (const [, suffix, note] of [...MARKS].reverse()) {
+    if (!unit.endsWith(suffix)) continue;
+    unit = unit.slice(0, -suffix.length);
+    notes.unshift(note);
   }
-  const notes = MARKS.map(([, , note]) => note).filter((note) => read.has(note));
   const said = [unit, ...notes].filter(Boolean).join(', ');
   const wording = key.slice(0, separator);
   return said ? `${wording} (${said})` : wording;

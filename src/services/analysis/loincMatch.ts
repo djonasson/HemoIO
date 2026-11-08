@@ -280,14 +280,9 @@ function hintSystems(hint: string): string[] | undefined {
   return splitSamplePrefix(hint).systems ?? SAMPLE_HINTS.find(([words]) => words.test(hint))?.[1];
 }
 
-/**
- * How a value was printed, as matching narrows its tests and learning tells
- * its wording apart: a result in words ("Assenti"), and a result in words
- * or a bare number of a urine sediment section, what the microscope saw
- */
+/** How a value was printed, as learning tells its wording apart: its result in words, and of a urine sediment section */
 function printingOf(value: PrintedValue): PrintingMarks {
-  const inWords = value.qualitative !== undefined;
-  return { inWords, ofSediment: SEDIMENT_HINT.test(value.specimenHint ?? '') && (inWords || value.unit.trim() === '') };
+  return { inWords: value.qualitative !== undefined, ofSediment: SEDIMENT_HINT.test(value.specimenHint ?? '') };
 }
 
 /**
@@ -415,6 +410,16 @@ function uniqueBy<T>(items: readonly T[], keyOf: (item: T) => unknown): T[] {
   });
 }
 
+/** Each key's item of the best score, of two as good the first, in the order each key first comes */
+function bestBy<T extends { score: number }>(items: readonly T[], keyOf: (item: T) => unknown): T[] {
+  const best = new Map<unknown, T>();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (item.score > (best.get(key)?.score ?? -Infinity)) best.set(key, item);
+  }
+  return [...best.values()];
+}
+
 /** The catalog searched only for the tests kept */
 function withTestsKept(catalog: Catalog, kept: (test: CatalogTest) => boolean): Catalog {
   const scoredSearch: Catalog['scoredSearch'] = (query, filter) =>
@@ -430,7 +435,9 @@ function withTestsKept(catalog: Catalog, kept: (test: CatalogTest) => boolean): 
  * section is what the microscope saw, not a strip's reading
  */
 function firstLookedAmong(value: PrintedValue): ((test: CatalogTest) => boolean) | undefined {
-  const { inWords, ofSediment } = printingOf(value);
+  const printing = printingOf(value);
+  const inWords = printing.inWords;
+  const ofSediment = printing.ofSediment && (inWords || value.unit.trim() === '');
   if (!inWords && !ofSediment) return undefined;
   const organisms = ORGANISM_SEARCH.test(value.name);
   return (test) => (!inWords || hasWordResults(test, organisms)) && (!ofSediment || test.system !== 'Urine');
@@ -633,13 +640,17 @@ function namePartsOf(name: string): string[] {
  * has no test for, when the tests that fit all name a method and either
  * are estimates by different formulas or none has the method the word
  * names: then no test fits fully, and the value is asked; a formula LOINC
- * has no test for (see UNLISTED_FORMULA: "eGFR (EKFC)", "(formula BIS)") is
+ * has no test for (see UNLISTED_FORMULAS: "eGFR (EKFC)", "(formula BIS)"; a year beside it is its own) is
  * the estimate of no formula, when LOINC has one. A brand or a technique of a measured value says nothing
  * ("Fibrinogeno (Clauss)").
  */
 function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
   let result = found;
-  for (const part of namePartsOf(name)) {
+  const ofGfr = isGfrName(name);
+  // A part naming a formula LOINC lacks is read last, after a part naming the basis: "eGFR (EKFC) (cistatina C)"
+  const parts = namePartsOf(name);
+  const namesUnlisted = (part: string): boolean => ofGfr && wordsIn(part).some(isUnlistedFormula);
+  for (const part of [...parts.filter((one) => !namesUnlisted(one)), ...parts.filter(namesUnlisted)]) {
     // The tests that fit about as well as the best: a name equal to the printed one sets aside those only sharing its words
     const least = Math.max(MATCH_SCORE - SCORE_EPSILON, ...result.map(({ score }) => score - MATCH_MARGIN + SCORE_EPSILON));
     let fitting = result.filter(({ score }) => score >= least);
@@ -660,12 +671,16 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     const methodOf = new Map(fitting.map(({ test }) => [test, new Set(wordsIn(test.method))]));
     const read = new Set<string>();
     let narrowed = fitting;
-    for (const word of words.filter((one) => YEAR.test(one))) {
+    // A year beside a formula LOINC lacks is that formula's: "EKFC 2021" is no CKD-EPI 2021
+    const formulaYear = namesUnlisted(part);
+    for (const word of words.filter((one) => YEAR.test(one) && !formulaYear)) {
       const ofYear = narrowed.filter(({ test }) => ![...methodOf.get(test)!].some((other) => YEAR.test(other) && other !== word));
       if (ofYear.length < narrowed.length || ofYear.some(({ test }) => methodOf.get(test)!.has(word))) read.add(word);
       narrowed = ofYear;
     }
-    const methodWords = words.filter((word) => fitting.some(({ test }) => methodOf.get(test)!.has(methodReading(word))));
+    const methodWords = words.filter(
+      (word) => !(formulaYear && YEAR.test(word)) && fitting.some(({ test }) => methodOf.get(test)!.has(methodReading(word)))
+    );
     narrowed = narrowed.filter(({ test }) => methodWords.every((word) => methodOf.get(test)!.has(methodReading(word))));
     for (const word of methodWords) read.add(word);
     if (narrowed.length > 0 && narrowed.length < fitting.length) {
@@ -682,14 +697,20 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
       still.some(({ test }) =>
         [test.name, ...test.names].some((testName) => wordsIn(testName).some((other) => isNearForm(word, other)))
       );
-    const unread = words.filter((word) => !read.has(word) && /\p{L}/u.test(word) && !isNamed(word));
+    // A formula LOINC lacks is never named by a test, whatever word it looks like ("Malmo", "male")
+    const unread = words.filter(
+      (word) => !read.has(word) && /\p{L}/u.test(word) && ((ofGfr && isUnlistedFormula(word)) || !isNamed(word))
+    );
     const methods = new Set(still.map(({ test }) => test.method));
     // An estimate by formulas: one LOINC lacks is none of them. A measured value's brand or technique says nothing ("Fibrinogeno (Clauss)")
     const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || namesFormula(method));
     // Nor is a filtration rate by a formula LOINC lacks the one formula its name fits: "eGFRcr (EKFC)" is no CKD-EPI.
-    // A formula of a basis names none ("Cystatin C-based formula"): any of its formulas is it ("eGFR cistatina (CAPA)")
+    // A formula of a basis names none ("Cystatin C-based formula"): any of its formulas of that basis alone is it
+    // ("eGFR (cistatina C) (CAPA)"), not one of creatinine too ("(creatinina e cistatina C) (EKFC)")
     const ofOneNamedFormula =
-      isGfrName(name) && unread.some(isUnlistedFormula) && still.every(({ test }) => namesFormulaByName(test.method));
+      ofGfr &&
+      unread.some(isUnlistedFormula) &&
+      (NAMES_CREATININE.test(nameKey(name)) || still.every(({ test }) => namesFormulaByName(test.method)));
     const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas || ofOneNamedFormula);
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
@@ -697,7 +718,7 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
       const unlisted =
         (byFormulas || ofOneNamedFormula) &&
         words.some(isUnlistedFormula) &&
-        words.every((word) => isUnlistedFormula(word) || word === 'formula');
+        words.every((word) => isUnlistedFormula(word) || word === 'formula' || YEAR.test(word));
       const unnamed = unlisted ? estimateOfNoFormula(catalog, result, still) : undefined;
       const capped = result
         .filter((one) => one !== unnamed)
@@ -739,16 +760,21 @@ function isUnlistedFormula(word: string): boolean {
   return Object.hasOwn(UNLISTED_FORMULAS, word);
 }
 
-/** A formula LOINC lacks set off by a dash or a space at a name's end: "eGFR - EKFC", "eGFR formula BIS" */
+/** A formula LOINC lacks set off by a dash or a space at a name's end: "eGFR - EKFC", "eGFR formula BIS", "eGFR Malmö" */
 const TRAILING_UNLISTED_FORMULA = new RegExp(
-  String.raw`^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:lund[\s-]+malm[oö]|${Object.keys(UNLISTED_FORMULAS).join('|')}))$`,
+  String.raw`^([^()]*?\S)(?:\s+-\s+|\s+)((?:formula\s+)?(?:lund[\s-]+malm[oö]|${Object.keys(UNLISTED_FORMULAS)
+    .map((word) => word.replace('o', '[oö]'))
+    .join('|')}))$`,
   'i'
 );
 
 /** A name with a formula LOINC lacks at its end read as if in brackets, as reports also print it: "eGFR (EKFC)" */
 function withFormulaBracketed(name: string): string {
-  return isGfrName(name) ? name.replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)') : name;
+  return isGfrName(name) ? name.normalize('NFC').replace(TRAILING_UNLISTED_FORMULA, '$1 ($2)') : name;
 }
+
+/** A filtration rate's name saying creatinine: "(creatinina e cistatina C)", "cr-cys", "eGFRcr" */
+const NAMES_CREATININE = /\b(?:creatinin\p{L}*|crea|cr|egfrcr\p{L}*)\b/u;
 
 /** A name of a glomerular filtration rate: "eGFR", "eGFRcr", "GFR stimato", "Filtrato glomerulare", "eVFG", "Glomerulär filtration" */
 const GFR_NAME = /\b(?:e?gfr\p{L}*|e?vfg|filtra(?:to|zione)\s+glomerulare|glomerul\p{L}*\s+filtra\p{L}*)\b/u;
@@ -758,16 +784,36 @@ function isGfrName(name: string): boolean {
   return GFR_NAME.test(nameKey(name));
 }
 
+/** Words of a filtration rate's name that say only that it is one: "eGFR", "Filtrato glomerulare stimato", "formula" */
+const GFR_WORDS = new Set([
+  'egfr',
+  'gfr',
+  'vfg',
+  'evfg',
+  'filtrato',
+  'filtrazione',
+  'glomerulare',
+  'glomerular',
+  'filtration',
+  'stimato',
+  'stimata',
+  'estimated',
+  'formula',
+]);
+
 /**
- * The formula LOINC has no test for that a filtration rate's printed name
- * names ("eGFR (EKFC)", "eGFR - Schwartz", "eGFR (Lund-Malmö)" as "lmr"),
- * if any: two estimates naming different ones, or one and none, are two
- * measurements, however close
+ * What a filtration rate's printed name says beyond being one, if it is
+ * one: its formula, basis and any other word, each formula however spelled
+ * ("eGFR (Lund-Malmö)" and "eGFR - LMR" say "lmr"; a plain "eGFR" says
+ * nothing). Two estimates saying different things are two measurements,
+ * however close: no estimate is set aside unseen as another's duplicate.
  */
-export function unlistedFormulaOf(name: string): string | undefined {
+export function gfrQualifier(name: string): string | undefined {
   if (!isGfrName(name)) return undefined;
-  const word = wordsIn(name).find(isUnlistedFormula);
-  return word === undefined ? undefined : UNLISTED_FORMULAS[word];
+  const said = wordsIn(name)
+    .filter((word) => !GFR_WORDS.has(word))
+    .map((word) => UNLISTED_FORMULAS[word] ?? word);
+  return [...new Set(said)].sort().join(' ');
 }
 
 /** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
@@ -794,11 +840,8 @@ function estimateOfNoFormula(catalog: Catalog, found: Found[], formulaTests: Fou
     formulaTests.some((one) => sameQuantity(one.test, test));
   const unnamed = found.filter(({ test }) => isUnnamed(test));
   if (unnamed.length > 0 || formulaTests.length === 0) return unnamed.length === 1 ? unnamed[0] : undefined;
-  const [{ test: formulaTest, preference }] = formulaTests;
-  const listed = catalog
-    .scoredSearch(formulaTest.component, { properties: [formulaTest.property], systems: [formulaTest.system] })
-    .filter(({ test }) => isUnnamed(test));
-  return listed.length === 1 ? { test: listed[0].test, score: MATCH_SCORE, preference } : undefined;
+  const listed = variantsBy(catalog, formulaTests[0], []).filter(({ test }) => isUnnamed(test));
+  return listed.length === 1 ? { ...listed[0], score: MATCH_SCORE } : undefined;
 }
 
 /** Whether a word is an Italian one for a method (see METHOD_READINGS) */
@@ -1230,11 +1273,9 @@ export function matchLocally(
   if (any.status === 'match') return any;
   // By how well they fit, each as well as either search found it: the name's own tests ("NT-proBNP") before a word test
   // of another, a word test first of those that fit as well
-  const best = new Map<string, Candidate>();
-  for (const candidate of [...narrowed.candidates, ...any.candidates]) {
-    if (candidate.score > (best.get(candidate.code)?.score ?? -1)) best.set(candidate.code, candidate);
-  }
-  const candidates = [...best.values()].sort((a, b) => b.score - a.score).slice(0, MAX_CANDIDATES);
+  const candidates = bestBy([...narrowed.candidates, ...any.candidates], ({ code }) => code)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CANDIDATES);
   return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 
@@ -1301,9 +1342,7 @@ function asClottingTimes(catalog: Catalog, found: Found[], name: string): Found[
       .map(({ test: other }) => ({ test: other, score, preference }))
   );
   const all = [...found, ...prothrombinTimes];
-  // Each test as it fits best; of two that fit as well, the first
-  const best = all.filter((one) => all.every((other) => other.test !== one.test || other === one || other.score <= one.score));
-  return uniqueBy(best, ({ test }) => test)
+  return bestBy(all, ({ test }) => test)
     .map((one) => (isActivity(one.test) && one.score > cap ? { ...one, score: cap } : one))
     .sort(
       (a, b) =>

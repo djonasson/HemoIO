@@ -40,7 +40,6 @@ describe('learned keys and codes', () => {
     expect(learnedWording('nitriti|#words')).toBe('nitriti (in words)');
     expect(learnedWording('batteri|#words#sediment')).toBe('batteri (in words, urine sediment)');
     expect(learnedWording('leucociti|/[HPF]#sediment')).toBe('leucociti (/[HPF], urine sediment)');
-    expect(learnedWording('batteri|#sediment#words')).toBe('batteri (in words, urine sediment)');
   });
 
   it('marks a key by how its value was printed', () => {

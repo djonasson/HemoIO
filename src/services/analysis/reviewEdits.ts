@@ -61,9 +61,14 @@ function reidentify(
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
   if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
   const reading = currentReading(changed, unit);
-  // The analyzer's test holds for the value read as printed: a word typed over with a number is read again
+  // A choice shared from the user's for the wording holds while it is that wording: a unit given for a result in words
+  if (original.identifiedBy === 'shared' && learnedKey(reading) === learnedKey(currentReading(original))) return changed;
+  // The analyzer's test holds for the value read as printed: a word typed over with a number, or given a unit, is read
+  // again (a test learned for the word still comes back: it is learned with no unit)
   const identification =
-    analyzed && isReadAsPrinted(changed, reading) ? analyzed.identification : identifyLocally(catalog, reading, learned);
+    analyzed && isReadAsPrinted(changed, reading, { inUnit: true })
+      ? analyzed.identification
+      : identifyLocally(catalog, reading, learned);
   return identified(changed, identification);
 }
 

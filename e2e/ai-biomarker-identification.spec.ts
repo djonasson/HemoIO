@@ -31,7 +31,9 @@ import type { ExtractedBiomarkerFixture } from './steps/ai.steps';
 
 const ALT = 'Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma';
 const SERUM_GLUCOSE = 'Glucose [Mass/volume] in Serum or Plasma';
-const NT_PRO_BNP = 'Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma';
+/** The eGFR test of no formula, 69405-9 */
+const GFR_NO_FORMULA = 'Glomerular filtration rate [Volume Rate/Area] in Serum, Plasma or Blood by based on 1.73 sq M';
+const NT_PRO_BNP_BLOOD = 'Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay';
 const BLOOD_GLUCOSE = 'Glucose [Mass/volume] in Blood';
 const HEMOGLOBIN = 'Hemoglobin [Mass/volume] in Blood';
 
@@ -223,6 +225,18 @@ test.describe('Identifying the test of each value', () => {
     await expect(rowFor(page, '81')).toBeVisible();
     await expect(rowFor(page, '82')).toBeVisible();
     await expect(page.getByText(/Conflicting values/)).toHaveCount(0);
+  });
+
+  test('keeps a plain eGFR and an estimate by a formula LOINC lacks', async ({ page }) => {
+    // Scenario: A plain eGFR and an estimate by a formula LOINC lacks are both kept
+    await analyzeReport(page, [
+      { name: 'eGFR', value: 81, unit: 'mL/min/1.73m²', confidence: 0.95 },
+      { name: 'eGFR (EKFC)', value: 81.5, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '81.5').getByText('LOINC 69405-9')).toBeVisible();
+    await changeTest(page, rowFor(page, '81'), GFR_NO_FORMULA);
+    await expect(rowFor(page, '81').getByText('LOINC 69405-9')).toBeVisible();
+    await expect(rowFor(page, '81.5')).toBeVisible();
   });
 
   test('keeps the estimates by the two Berlin Initiative Study formulas', async ({ page }) => {
@@ -737,14 +751,20 @@ test.describe('Identifying the test of each value', () => {
     const ai = await analyzeReport(page, [ntProBnp]);
     const codes = ai.choiceRequests.flat()[0].candidates.map((c) => c.code);
     expect(codes).toContain('33762-6');
-    await changeTest(page, rowFor(page, 'Negativo (0)'), NT_PRO_BNP, { search: false });
+    await changeTest(page, rowFor(page, 'Negativo (0)'), NT_PRO_BNP_BLOOD, { search: false });
     // Its test is measured in a unit, which the report gave none
     await editRow(page, rowFor(page, 'Negativo (0)'), { unit: 'pg/mL' });
     await saveReviewed(page);
 
     const again = await analyzeReport(page, [ntProBnp]);
-    await expect(savedAsCell(rowFor(page, 'Negativo (0)'))).toHaveText(NT_PRO_BNP);
+    await expect(savedAsCell(rowFor(page, 'Negativo (0)'))).toHaveText(NT_PRO_BNP_BLOOD);
     expect(again.choiceRequests).toHaveLength(0);
+    // The unit its test asks for keeps the test learned, though pg/mL alone reads as the serum test
+    await editRow(page, rowFor(page, 'Negativo (0)'), { unit: 'pg/mL' });
+    await expect(savedAsCell(rowFor(page, 'Negativo (0)'))).toHaveText(NT_PRO_BNP_BLOOD);
+    await saveReviewed(page);
+    await openLearnedNames(page);
+    await expect(learnedNames(page)).toContainText(`nt-probnp (in words) → ${NT_PRO_BNP_BLOOD}`);
   });
 
   test('remembers a test chosen for a result in words for results in words only', async ({ page }) => {

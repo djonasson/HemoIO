@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
-import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix, unlistedFormulaOf } from './loincMatch';
+import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix, gfrQualifier } from './loincMatch';
 import type { LocalMatch } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 
@@ -738,8 +738,8 @@ describe('learnedKey', () => {
     expect(learnedKey({ name: 'Batteri', unit: '', qualitative: absent, specimenHint: 'urine sediment' })).toBe('batteri|#words#sediment');
     expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'sedimento urinario' })).toBe('batteri|#sediment');
     expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'urine' })).toBe('batteri|');
-    // A count with its unit in a sediment section is the urine's, as matched
-    expect(learnedKey({ name: 'Leucociti', unit: '/µL', specimenHint: 'urine sediment' })).toBe('leucociti|/uL');
+    // A count of a sediment section is learned apart from the urine's, though matched to the same test
+    expect(learnedKey({ name: 'Leucociti', unit: '/µL', specimenHint: 'urine sediment' })).toBe('leucociti|/uL#sediment');
   });
 
   it('keys a result in words by its wording alone: a unit given for its test leaves it the same', () => {
@@ -748,25 +748,26 @@ describe('learnedKey', () => {
   });
 });
 
-describe('unlistedFormulaOf', () => {
+describe('gfrQualifier', () => {
   it.each([
+    ['eGFR', ''],
     ['eGFR (EKFC)', 'ekfc'],
-    ['eGFRcr - EKFC', 'ekfc'],
-    ['Glomerulär filtration (EKFC)', 'ekfc'],
+    ['eGFR - EKFC', 'ekfc'],
+    ['eGFR (formula EKFC)', 'ekfc'],
     ['Glomerulär filtration (EKFC)'.normalize('NFD'), 'ekfc'],
     ['eVFG (EKFC)', 'ekfc'],
     ['eGFR (Lund-Malmö)', 'lmr'],
     ['eGFR LMR', 'lmr'],
-    ['eGFR (formula BIS)', 'bis'],
-    // Two formulas of the Berlin Initiative Study: of creatinine, and with cystatin C
     ['eGFR (BIS1)', 'bis1'],
-    ['eGFR (BIS2)', 'bis2'],
-  ])('reads %s as estimated by %s, one formula however spelled', (name, formula) => {
-    expect(unlistedFormulaOf(name)).toBe(formula);
+    ['eGFR (BIS-2)', '2 bis'],
+    ['eGFRcys (EKFC)', 'egfrcys ekfc'],
+    ['eGFR (EKFC creatinina + cistatina C)', 'c cistatina creatinina ekfc'],
+  ])('reads what %s says beyond a filtration rate: %o', (name, said) => {
+    expect(gfrQualifier(name)).toBe(said);
   });
 
-  it.each(['eGFR', 'eGFR (CKD-EPI)', 'Antigene Fas', 'Base excess (bis)'])('finds no formula LOINC lacks in %s', (name) => {
-    expect(unlistedFormulaOf(name)).toBeUndefined();
+  it.each(['Antigene Fas', 'Base excess (bis)'])('reads %s as no filtration rate', (name) => {
+    expect(gfrQualifier(name)).toBeUndefined();
   });
 });
 
@@ -1138,14 +1139,22 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(matchLocally(generated, { name, unit }).candidates.every(({ score }) => score < 0.9)).toBe(true);
   });
 
-  it.each(['eGFRcr (EKFC)', 'eGFRcr EKFC', 'eGFRcr (LMR)'])(
+  it.each(['eGFRcr (EKFC)', 'eGFRcr EKFC', 'eGFRcr (LMR)', 'eGFR Malmo', 'eGFR Malmö', 'eGFR (EKFC 2021)', 'eGFR (creatinina e cistatina C) (formula EKFC)'])(
     'takes %s as the eGFR of no formula, never the one formula "eGFRcr" names',
     (name) => {
       expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
     }
   );
 
-  it.each(['eGFR cystatin C (CAPA)', 'eGFR-cys (CAPA)', 'eGFR cystatin C (EKFC)', 'eGFR (Cistatina C) (CAPA)', 'eGFR (FAS cistatina)'])(
+  it.each([
+    'eGFR cystatin C (CAPA)',
+    'eGFR-cys (CAPA)',
+    'eGFR cystatin C (EKFC)',
+    'eGFR (Cistatina C) (CAPA)',
+    'eGFR (CAPA) (cistatina C)',
+    'eGFR (EKFC) (cistatina C)',
+    'eGFR (FAS cistatina)',
+  ])(
     'takes %s as the estimate by a cystatin C formula, which names none: any of them is it',
     (name) => {
       expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '50210-4' });
@@ -1468,7 +1477,7 @@ describe('matchLocally on names of real Italian reports', () => {
     });
 
     it('never takes a test learned for the wording in words for a number', () => {
-      const learned = (key: string): string | undefined => (key === 'batteri (urine)|/uL#words' ? '25145-4' : undefined);
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words' ? '25145-4' : undefined);
       const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '/µL', specimenHint: 'urine' }, learned);
       expect(result).toMatchObject({ status: 'match', code: '51480-2' });
     });
