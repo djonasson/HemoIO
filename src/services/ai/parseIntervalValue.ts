@@ -35,14 +35,16 @@ const CENSORED =
 
 /**
  * Text after a censored value's number that is its unit or the lab's mark
- * ("H", "mg/dL", "µmol/L", "%"), not more of the number: a power of ten
+ * ("H", "mg/dL", "/campo", "(H)", "↑"), not more of the number: a power of ten
  * ("10^5", "x10^5", "1.5e3") or a titre ("1:80", "1/40") makes the bound
  * something else, so it is left for the review to read
  */
 function isUnitOrMark(text: string | undefined): boolean {
   if (text === undefined) return true;
   if (text.includes('^') || /^[x×*]\s*\d/i.test(text) || /^e[+-]?\d/i.test(text)) return false;
-  return /^[\p{L}µ%]/u.test(text);
+  // A unit per something ("/campo", but "/40" is a titre), or the lab's mark
+  // as a sign, an arrow or in brackets ("*", "↑", "(H)", "[H]")
+  return /^(?:[\p{L}µ%*↑↓]|\/\s*[^\s\d]|[([]\s*[\p{L}µ*])/u.test(text);
 }
 
 const COMPARATORS: Record<string, CensoredComparator> = {

@@ -184,6 +184,12 @@ Feature: Import Wizard
     Then the timeline should show the value as "< 10"
     And it should be marked below the reference range, as every value below 10 is
 
+  Scenario: A value beyond what the lab can measure keeps its comparator when a mark or a unit follows it
+    Given the AI read Glucose as "> 200 (H)" with a reference range of 70-100 mg/dL
+    Then the review should show the value as "> 200"
+    When I save the import
+    Then the timeline should show the value as "> 200", above the reference range
+
   Scenario: The comparator of a value can be changed on review
     Given I am editing a value on the review step
     When I choose the comparator "<" for it

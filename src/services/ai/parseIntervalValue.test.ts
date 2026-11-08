@@ -175,6 +175,14 @@ describe('parseIntervalValue', () => {
       ['< 5 mg/24h', '<', 5],
       ['> 50 µg/L', '>', 50],
       ['< 5 %', '<', 5],
+      // A unit per something, or the lab's mark in brackets, as a sign or an arrow
+      ['< 2 /campo', '<', 2],
+      ['<5/µL', '<', 5],
+      ['> 200 (H)', '>', 200],
+      ['> 200 [H]', '>', 200],
+      ['> 200 *', '>', 200],
+      ['> 200 ↑', '>', 200],
+      ['< 3 ↓', '<', 3],
     ] as const)('reads %o as its bound with its comparator', (raw, censored, value) => {
       const result = parseIntervalValue(raw);
       expect(result).toMatchObject({ censored, value, isInterval: false, rawValue: raw });
@@ -197,7 +205,10 @@ describe('parseIntervalValue', () => {
       '> 1 ×10 5',
       '< 1:80',
       '<1/40',
+      '< 1 / 40',
       '≥ 1.5e3',
+      '> 5 * 10',
+      '> 5 (10^3)',
     ])('leaves %o missing, keeping what was printed for the review', (raw) => {
       const result = parseIntervalValue(raw);
       expect(result.value).toBeNaN();

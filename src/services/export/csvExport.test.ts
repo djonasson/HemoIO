@@ -237,6 +237,17 @@ describe('csvExport', () => {
       expect(csv.split('\n')[1]).toMatch(/,3\.88544,5\.5499,mmol\/L$/);
     });
 
+    it('keeps every whole digit of a large range end', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [createMockTestValue(1, 1, '777-3', 300000, '/µL', 1234567.4, 4500000)],
+          biomarkerNames: new Map(),
+        },
+      ]);
+      expect(csv.split('\n')[1]).toMatch(/,1234567,4500000,\/µL$/);
+    });
+
     it('should exclude reference ranges when option is false', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data, { includeReferenceRanges: false });

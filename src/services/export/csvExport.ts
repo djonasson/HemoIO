@@ -123,7 +123,10 @@ function valueField(testValue: TestValue): string {
  * prints; a printed end has no more than six
  */
 function rangeEnd(bound: number): string {
-  return String(Number.isFinite(bound) ? Number(bound.toPrecision(6)) : bound);
+  if (!Number.isFinite(bound)) return String(bound);
+  // Six significant figures, but never fewer than the whole digits
+  const wholeDigits = Math.trunc(Math.abs(bound)).toString().length;
+  return String(Number(bound.toPrecision(Math.min(100, Math.max(6, wholeDigits)))));
 }
 
 /**

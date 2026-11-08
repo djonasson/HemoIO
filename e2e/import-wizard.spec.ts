@@ -525,6 +525,28 @@ test.describe('Import Wizard', () => {
         await expect(savedRow(card, 'Glucose', /< 10 mg\/dL, Below reference range$/)).toBeVisible();
       });
 
+      test('keeps the comparator when a mark or a unit follows the number', async ({ page }) => {
+        // Scenario: A value beyond what the lab can measure keeps its comparator when a mark or a unit follows it
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Glucose',
+                value: '> 200 (H)',
+                unit: 'mg/dL',
+                confidence: 0.95,
+                referenceRange: { low: 70, high: 100, unit: 'mg/dL' },
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Value')).toHaveText('> 200');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Glucose', /> 200 mg\/dL, Above reference range$/)).toBeVisible();
+      });
+
       test('lets the comparator be chosen on review', async ({ page }) => {
         // Scenario: The comparator of a value can be changed on review
         await loginWithOllama(page);
