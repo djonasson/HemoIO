@@ -31,6 +31,7 @@ import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
 import { formatTestValue, LAB_FLAG_TEXT } from '@/utils/formatTestValue';
 import { ScrollBox } from '@components/common/ScrollBox';
+import { LabFlagMark } from '@components/common/LabFlagMark';
 import { formatReferenceRange } from '@services/alerts/alertRules';
 import { BiomarkerName } from './BiomarkerName';
 
@@ -42,21 +43,16 @@ export interface TestValuesListProps {
 }
 
 /**
- * Get icon, color and words for a test value's status: by its range, else
- * by the lab's mark (see valueStatus)
+ * Get icon, color and words for a test value's status and what gave it:
+ * its range, or the lab's mark when the range cannot tell (see readValueStatus)
  */
 function getStatusIndicator(testValue: EnrichedTestValue): {
   icon: React.ReactNode;
   color: string;
   label: string;
 } {
-  const { status } = testValue;
-  const hasRange =
-    testValue.referenceRangeLow !== undefined ||
-    testValue.referenceRangeHigh !== undefined ||
-    testValue.unconvertedRange !== undefined;
-  if (testValue.statusByLab && status !== 'unknown') {
-    // The range cannot tell, so the lab's own mark gives the status
+  const { status, statusBasis } = testValue;
+  if (statusBasis === 'lab') {
     return {
       icon: status === 'high' ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />,
       color: statusColor(status),
@@ -86,8 +82,8 @@ function getStatusIndicator(testValue: EnrichedTestValue): {
       return {
         icon: <IconMinus size={14} />,
         color: statusColor(status),
-        // A censored value the range cannot place, or a range in a unit the value's does not convert to
-        label: hasRange ? 'Cannot be compared with the reference range' : 'No reference range available',
+        label:
+          statusBasis === 'uncomparable' ? 'Cannot be compared with the reference range' : 'No reference range available',
       };
   }
 }
@@ -218,12 +214,7 @@ export function TestValuesList({
                     >
                       {formatValue(testValue)}
                     </Text>
-                    {flag && (
-                      // The lab's mark as printed; in words on hover and in the row's label
-                      <Text size="xs" fw={700} component="abbr" title={flag.label} style={{ textDecoration: 'none' }}>
-                        {flag.mark}
-                      </Text>
-                    )}
+                    {testValue.labFlag && <LabFlagMark flag={testValue.labFlag} />}
                   </Group>
                   {testValue.method && (
                     <Text size="xs" c="dimmed">

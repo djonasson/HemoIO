@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
+import { parseIntervalValue, formatIntervalValue, extractedInterval } from './parseIntervalValue';
 
 describe('parseIntervalValue', () => {
   describe('single numeric values', () => {
@@ -207,5 +207,13 @@ describe('formatIntervalValue', () => {
 
   test('should format decimal interval', () => {
     expect(formatIntervalValue(1.5, 3.5, 'cells')).toBe('1.5-3.5 cells');
+  });
+});
+
+describe('extractedInterval', () => {
+  test('gives the ends of an interval value, and nothing for any other or an interval missing an end', () => {
+    expect(extractedInterval({ isInterval: true, intervalLow: 5, intervalHigh: 10 })).toEqual({ low: 5, high: 10 });
+    expect(extractedInterval({ isInterval: true, intervalLow: 5 })).toBeUndefined();
+    expect(extractedInterval({ isInterval: false, intervalLow: 5, intervalHigh: 10 })).toBeUndefined();
   });
 });

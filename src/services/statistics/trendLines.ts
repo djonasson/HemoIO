@@ -13,6 +13,7 @@ import {
   unitsMatch,
 } from '@services/units';
 import { isTrendable } from '@/utils/isTrendable';
+import { savedInterval } from '@/utils/formatTestValue';
 import type { Catalog } from '@data/loinc/catalog';
 import type { TrendDataPoint } from './trendAnalysis';
 import type { CensoredComparator, NumericValueType } from '@/types';
@@ -83,9 +84,8 @@ function intervalOf(
   value: TrendableResult['testValues'][number],
   shownUnit: string
 ): Pick<TrendDataPoint, 'interval'> {
-  const { numericValueType, intervalLow, intervalHigh } = value;
-  if (numericValueType !== 'interval' || intervalLow === undefined || intervalHigh === undefined) return {};
-  return shownUnit === value.unit ? { interval: { low: intervalLow, high: intervalHigh } } : {};
+  const interval = savedInterval(value);
+  return interval && shownUnit === value.unit ? { interval } : {};
 }
 
 /** Every line, in no order; keyed by TrendLine.key */

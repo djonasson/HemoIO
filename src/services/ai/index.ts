@@ -76,10 +76,10 @@ export type { AnthropicModelInfo } from './anthropicUtils';
 export { LAB_REPORT_SYSTEM_PROMPT, createAnalysisPrompt, RESPONSE_SCHEMA } from './prompts';
 
 // Interval value parsing
-export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
+export { parseIntervalValue, formatIntervalValue, extractedInterval } from './parseIntervalValue';
 export type { ParsedValue } from './parseIntervalValue';
 
 // Qualitative value parsing
-export { heldQualitative, parseExtractedValue, readQualitativeWord } from './parseQualitativeValue';
+export { heldQualitative, parseExtractedValue } from './parseQualitativeValue';
 
 export { RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';

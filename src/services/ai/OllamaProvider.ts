@@ -31,8 +31,7 @@ import {
   parseOllamaError,
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
-import { parseExtractedValue } from './parseQualitativeValue';
-import { withLabFlag } from './labFlag';
+import { withParsedValue } from './withParsedValue';
 import { withSpecimenHint } from './specimenHint';
 import { ollamaContext } from './ollamaContext';
 import { fetchWithRateLimitRetry } from './rateLimitedFetch';
@@ -647,15 +646,10 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
           const finalHigh = responseHigh ?? extractedRange?.high;
           const hasRange = finalLow !== undefined || finalHigh !== undefined;
 
-          // Parse the value, detecting intervals like "5-10" and qualitative
-          // results like "Assenti", which have no unit
-          const parsedValue = parseExtractedValue(b.value, b.qualitativeValue);
-
           return {
             name: String(b.name || ''),
             ...withSpecimenHint(b),
-            value: parsedValue.value,
-            unit: parsedValue.qualitative ? '' : cleanedUnit,
+            ...withParsedValue(b, cleanedUnit),
             referenceRange: hasRange
               ? {
                   low: finalLow,
@@ -666,13 +660,6 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
             method: b.method ? String(b.method) : undefined,
             confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
             notes: b.notes ? String(b.notes) : undefined,
-            ...withLabFlag(b),
-            censored: parsedValue.censored,
-            isInterval: parsedValue.isInterval,
-            intervalLow: parsedValue.intervalLow,
-            intervalHigh: parsedValue.intervalHigh,
-            rawValue: parsedValue.rawValue,
-            qualitative: parsedValue.qualitative,
           };
         }
       );

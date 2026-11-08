@@ -10,3 +10,4 @@ export { RelativeTime, type RelativeTimeProps } from './RelativeTime';
 export { PasswordStrengthMeter, type PasswordStrengthMeterProps } from './PasswordStrengthMeter';
 export { SaveFailedAlert, type SaveFailedAlertProps } from './SaveFailedAlert';
 export { ScrollBox, type ScrollBoxProps } from './ScrollBox';
+export { LabFlagMark, type LabFlagMarkProps } from './LabFlagMark';

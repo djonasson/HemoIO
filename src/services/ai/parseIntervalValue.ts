@@ -5,7 +5,8 @@
  * and morphological lab results (e.g., "5 - 10 eritrociti per campo").
  */
 
-import type { CensoredComparator } from '@/types';
+import { formatReading } from '@/utils/formatTestValue';
+import type { CensoredComparator, ValueReading } from '@/types';
 
 /**
  * Result of parsing a value that might be an interval
@@ -144,6 +145,14 @@ export function formatIntervalValue(
   intervalHigh: number,
   unit?: string
 ): string {
-  const range = `${intervalLow}-${intervalHigh}`;
+  const range = formatReading({ value: (intervalLow + intervalHigh) / 2, interval: { low: intervalLow, high: intervalHigh } });
   return unit ? `${range} ${unit}` : range;
+}
+
+/** An extracted interval value's ends; undefined for any other value, or an interval missing an end */
+export function extractedInterval(
+  value: { isInterval?: boolean; intervalLow?: number; intervalHigh?: number }
+): ValueReading['interval'] {
+  const { isInterval, intervalLow: low, intervalHigh: high } = value;
+  return isInterval && low !== undefined && high !== undefined ? { low, high } : undefined;
 }

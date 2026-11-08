@@ -117,6 +117,7 @@ function createMockTestValue(
     value,
     unit,
     status,
+    statusBasis: status === 'unknown' ? 'none' : 'range',
     rawText,
     referenceRangeLow,
     referenceRangeHigh,

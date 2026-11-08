@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { convertRange, valueStatus, withRangeInValueUnit } from './valueStatus';
+import { convertRange, readValueStatus, withRangeInValueUnit, type StatusInput } from './valueStatus';
 import type { TestValue } from '@/types';
 
 const range = (low?: number, high?: number) => ({ referenceRangeLow: low, referenceRangeHigh: high });
+const valueStatus = (input: StatusInput) => readValueStatus(input).status;
 
-describe('valueStatus', () => {
+describe('readValueStatus', () => {
   it('reads a plain number against its range', () => {
     expect(valueStatus({ value: 5, ...range(10, 50) })).toBe('low');
     expect(valueStatus({ value: 60, ...range(10, 50) })).toBe('high');
@@ -40,6 +41,15 @@ describe('valueStatus', () => {
 
   it("lets the range decide when it can, whatever the lab's mark", () => {
     expect(valueStatus({ value: 30, labFlag: 'high', ...range(10, 50) })).toBe('normal');
+  });
+
+  it('says what gave the status: the range, the lab, a range it cannot use, or none', () => {
+    expect(readValueStatus({ value: 30, labFlag: 'high', ...range(10, 50) }).basis).toBe('range');
+    expect(readValueStatus({ value: 30, labFlag: 'high' }).basis).toBe('lab');
+    expect(readValueStatus({ value: 30, censored: '<', labFlag: 'abnormal', ...range(20, 50) }).basis).toBe('uncomparable');
+    expect(readValueStatus({ value: 'Assenti', ...range(undefined, 5) }).basis).toBe('uncomparable');
+    expect(readValueStatus({ value: 30, unconvertedRange: { low: 1, unit: 'g/24h' } }).basis).toBe('uncomparable');
+    expect(readValueStatus({ value: 30, labFlag: 'abnormal' }).basis).toBe('none');
   });
 });
 
@@ -86,6 +96,6 @@ describe('withRangeInValueUnit', () => {
     const apart = withRangeInValueUnit(glucose({ ...range(1, 2), referenceRangeUnit: 'g/24h' }));
     expect(apart).toMatchObject({ referenceRangeLow: undefined, referenceRangeHigh: undefined });
     expect(apart.unconvertedRange).toEqual({ low: 1, high: 2, unit: 'g/24h' });
-    expect(valueStatus(apart)).toBe('unknown');
+    expect(readValueStatus(apart)).toEqual({ status: 'unknown', basis: 'uncomparable' });
   });
 });

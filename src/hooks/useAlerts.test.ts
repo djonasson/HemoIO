@@ -59,6 +59,7 @@ function createMockTestValue(
     value: options.value ?? 100,
     unit: options.unit || 'mg/dL',
     status: options.status || 'normal',
+    statusBasis: options.status === 'unknown' ? 'none' : 'range',
     rawText: options.rawText || 'Glucose',
     referenceRangeLow: options.referenceRangeLow,
     referenceRangeHigh: options.referenceRangeHigh,

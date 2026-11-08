@@ -83,6 +83,17 @@ describe('detectConsistentDirection', () => {
     ).toBeNull();
   });
 
+  it('reads no step from a censored value', () => {
+    expect(
+      detectConsistentDirection([
+        { date: d('2024-01-10'), value: 1, censored: '<' },
+        { date: d('2024-02-10'), value: 2 },
+        { date: d('2024-03-10'), value: 3 },
+        { date: d('2024-04-10'), value: 4 },
+      ])
+    ).toBeNull();
+  });
+
   it('only counts the run that ends with the latest value', () => {
     const result = detectConsistentDirection([
       { date: d('2024-01-10'), value: 9 },

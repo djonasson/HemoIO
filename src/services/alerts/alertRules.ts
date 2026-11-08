@@ -3,6 +3,8 @@
  */
 
 import { formatRange } from '@/utils/formatRange';
+import { measuredPoints } from '@services/statistics/trendAnalysis';
+import type { ValueReading } from '@/types';
 
 export type AlertSeverity = 'critical' | 'warning' | 'positive';
 export type AlertType = 'out_of_range' | 'trend' | 'improvement';
@@ -32,11 +34,12 @@ export function outOfRangeSeverity(
 }
 
 export function detectConsistentDirection(
-  points: Array<{ date: Date; value: number }>
+  points: ReadonlyArray<{ date: Date; value: number } & Pick<ValueReading, 'censored'>>
 ): { direction: TrendDirection; count: number; start: Date; end: Date } | null {
-  // One point per day (their mean): two labs on one day are not two steps
+  // One point per day (their mean): two labs on one day are not two steps.
+  // A censored value is a bound, not a step (see measuredPoints).
   const byDay = new Map<string, { date: Date; total: number; count: number }>();
-  for (const point of points) {
+  for (const point of measuredPoints(points)) {
     const day = `${point.date.getFullYear()}-${point.date.getMonth()}-${point.date.getDate()}`;
     const entry = byDay.get(day);
     if (entry) {

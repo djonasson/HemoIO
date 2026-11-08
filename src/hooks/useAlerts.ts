@@ -29,14 +29,14 @@ import { useCatalog } from '@contexts/useCatalog';
 import { isTrendable } from '@/utils/isTrendable';
 import { formatPointValue } from '@/utils/formatTestValue';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
-import type { CensoredComparator } from '@/types';
+import type { ValueReading } from '@/types';
 
 export type { AlertType };
 
 /**
  * Single alert for a biomarker value
  */
-export interface BiomarkerAlert {
+export interface BiomarkerAlert extends ValueReading {
   /** Unique alert ID */
   id: string;
   /** Type of alert */
@@ -54,10 +54,6 @@ export interface BiomarkerAlert {
   category?: string;
   /** Current value */
   value: number;
-  /** The ends of an interval value ("5-10"), whose midpoint is `value` */
-  interval?: { low: number; high: number };
-  /** A censored value's comparator ("< 10"): `value` is its bound */
-  censored?: CensoredComparator;
   /** Unit of measurement */
   unit: string;
   /** Reference range */
@@ -245,10 +241,7 @@ export function useAlerts(): UseAlertsResult {
       // unit change is not read as a trend and the chart it opens shows it
       const latestOutOfRange =
         latestStatus === 'high' || latestStatus === 'low' ? latestStatus : null;
-      // A censored value ("< 10") is a bound, not a measurement to read a direction from
-      const trend = latestOutOfRange
-        ? detectConsistentDirection(latest.line.dataPoints.filter((point) => !point.censored))
-        : null;
+      const trend = latestOutOfRange ? detectConsistentDirection(latest.line.dataPoints) : null;
       if (latestOutOfRange && trend) {
         alertList.push({
           ...alertFor(latest.point, 'trend', latestOutOfRange),

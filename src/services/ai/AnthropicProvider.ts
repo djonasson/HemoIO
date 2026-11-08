@@ -20,8 +20,7 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
-import { parseExtractedValue } from './parseQualitativeValue';
-import { withLabFlag } from './labFlag';
+import { withParsedValue } from './withParsedValue';
 import { withSpecimenHint } from './specimenHint';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
@@ -292,15 +291,10 @@ export class AnthropicProvider implements AIProvider {
       // Validate and normalize biomarkers
       const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
         (b: Record<string, unknown>) => {
-          // Parse the value, detecting intervals like "5-10" and qualitative
-          // results like "Assenti", which have no unit
-          const parsedValue = parseExtractedValue(b.value, b.qualitativeValue);
-
           return {
             name: String(b.name || ''),
             ...withSpecimenHint(b),
-            value: parsedValue.value,
-            unit: parsedValue.qualitative ? '' : String(b.unit || ''),
+            ...withParsedValue(b, String(b.unit || '')),
             referenceRange: b.referenceRange
               ? {
                   low: typeof (b.referenceRange as Record<string, unknown>).low === 'number'
@@ -315,13 +309,6 @@ export class AnthropicProvider implements AIProvider {
             method: b.method ? String(b.method) : undefined,
             confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
             notes: b.notes ? String(b.notes) : undefined,
-            ...withLabFlag(b),
-            censored: parsedValue.censored,
-            isInterval: parsedValue.isInterval,
-            intervalLow: parsedValue.intervalLow,
-            intervalHigh: parsedValue.intervalHigh,
-            rawValue: parsedValue.rawValue,
-            qualitative: parsedValue.qualitative,
           };
         }
       );

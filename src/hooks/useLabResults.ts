@@ -11,6 +11,7 @@ import { isWithinDays } from '@/utils/localDate';
 import {
   readValueStatus,
   withRangeInValueUnit,
+  type StatusBasis,
   type UnconvertedRange,
   type ValueStatus,
 } from '@services/statistics/valueStatus';
@@ -27,8 +28,8 @@ export type TestValueStatus = ValueStatus;
 export interface EnrichedTestValue extends TestValue {
   /** Status relative to reference range, or the lab's mark when the range cannot tell */
   status: TestValueStatus;
-  /** Whether the status is the lab's mark, the range telling nothing */
-  statusByLab?: boolean;
+  /** What gave the status: the range, the lab's mark, or neither (see StatusBasis) */
+  statusBasis: StatusBasis;
   /** A range printed in a unit the value's cannot be converted to: shown, never compared */
   unconvertedRange?: UnconvertedRange;
 }
@@ -103,8 +104,8 @@ export const LabResultsContext = createContext<LabResultsStore | null>(null);
  */
 export function enrichTestValue(testValue: TestValue): EnrichedTestValue {
   const inValueUnit = withRangeInValueUnit(testValue);
-  const { status, byLab } = readValueStatus(inValueUnit);
-  return byLab ? { ...inValueUnit, status, statusByLab: true } : { ...inValueUnit, status };
+  const { status, basis } = readValueStatus(inValueUnit);
+  return { ...inValueUnit, status, statusBasis: basis };
 }
 
 /**

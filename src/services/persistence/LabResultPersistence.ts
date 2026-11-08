@@ -5,6 +5,7 @@
  */
 
 import { heldQualitative } from '@services/ai/parseQualitativeValue';
+import { extractedInterval } from '@services/ai/parseIntervalValue';
 import { unknownKeyOf } from '@services/analysis/identification';
 import { convertRange } from '@services/statistics/valueStatus';
 import { normalizeLabDate } from '@/utils/labDate';
@@ -60,9 +61,9 @@ function storedValue(
   if (qualitative) {
     return { value: qualitative.text, qualitativeType: qualitative.kind, ordinalValue: qualitative.value };
   }
-  const { isInterval, intervalLow, intervalHigh } = biomarker;
-  if (isInterval && intervalLow !== undefined && intervalHigh !== undefined) {
-    return { value: biomarker.value, numericValueType: 'interval', intervalLow, intervalHigh };
+  const interval = extractedInterval(biomarker);
+  if (interval) {
+    return { value: biomarker.value, numericValueType: 'interval', intervalLow: interval.low, intervalHigh: interval.high };
   }
   // A censored value keeps its comparator: "< 10" is never a plain 10
   return biomarker.censored ? { value: biomarker.value, censored: biomarker.censored } : { value: biomarker.value };

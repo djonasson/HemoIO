@@ -53,6 +53,7 @@ function createTestValue(
     value: 14.5,
     unit: 'g/dL',
     status: 'normal',
+    statusBasis: options.status === 'unknown' ? 'none' : 'range',
     createdAt: new Date(),
     updatedAt: new Date(),
     ...options,
@@ -354,7 +355,7 @@ describe('TestValuesList', () => {
     renderWithProviders(
       <TestValuesList
         testValues={[
-          createTestValue(1, { rawText: 'PCR', value: 12, unit: 'mg/L', labFlag: 'high', status: 'high', statusByLab: true }),
+          createTestValue(1, { rawText: 'PCR', value: 12, unit: 'mg/L', labFlag: 'high', status: 'high', statusBasis: 'lab' }),
         ]}
       />
     );
@@ -371,6 +372,7 @@ describe('TestValuesList', () => {
             value: 12,
             unit: 'mg/dL',
             status: 'unknown',
+            statusBasis: 'uncomparable',
             unconvertedRange: { low: 0.1, high: 0.15, unit: 'g/24h' },
           }),
         ]}

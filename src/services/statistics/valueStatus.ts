@@ -26,7 +26,17 @@ export interface StatusInput {
   labFlag?: LabFlag;
   referenceRangeLow?: number;
   referenceRangeHigh?: number;
+  /** A range in a unit the value's does not convert to: shown, never compared */
+  unconvertedRange?: UnconvertedRange;
 }
+
+/**
+ * What gave a value its status: its range; the lab's mark, when the range
+ * could not tell; neither, though it has a range it cannot be compared with
+ * (a censored value it cannot place, a range in another unit, a word); or
+ * no range at all
+ */
+export type StatusBasis = 'range' | 'lab' | 'uncomparable' | 'none';
 
 /** The status a range gives a plain or censored number; unknown when it cannot tell */
 function rangeStatus(
@@ -62,23 +72,15 @@ function flagStatus(flag: LabFlag | undefined): ValueStatus {
   return flag === 'high' || flag === 'low' ? flag : 'unknown';
 }
 
-/**
- * A value's status: by its range when it tells, else by the lab's mark,
- * with whether the mark gave it
- */
-export function readValueStatus(input: StatusInput): { status: ValueStatus; byLab: boolean } {
-  const byRange =
-    typeof input.value === 'number'
-      ? rangeStatus(input.value, input.censored, input.referenceRangeLow, input.referenceRangeHigh)
-      : 'unknown';
-  if (byRange !== 'unknown') return { status: byRange, byLab: false };
+/** A value's status: by its range when it tells, else by the lab's mark; with what gave it */
+export function readValueStatus(input: StatusInput): { status: ValueStatus; basis: StatusBasis } {
+  const { referenceRangeLow: low, referenceRangeHigh: high } = input;
+  const byRange = typeof input.value === 'number' ? rangeStatus(input.value, input.censored, low, high) : 'unknown';
+  if (byRange !== 'unknown') return { status: byRange, basis: 'range' };
   const byLab = flagStatus(input.labFlag);
-  return { status: byLab, byLab: byLab !== 'unknown' };
-}
-
-/** A value's status: by its range when it tells, else by the lab's mark */
-export function valueStatus(input: StatusInput): ValueStatus {
-  return readValueStatus(input).status;
+  if (byLab !== 'unknown') return { status: byLab, basis: 'lab' };
+  const hasRange = low !== undefined || high !== undefined || input.unconvertedRange !== undefined;
+  return { status: 'unknown', basis: hasRange ? 'uncomparable' : 'none' };
 }
 
 /** A range printed in a unit it cannot be converted from to the value's */

@@ -21,10 +21,11 @@ Feature: Trend Charts
     And the band should be visually distinct from the data line
 
   Scenario: A censored value is drawn open at its bound
-    Given I have Glucose results of 95 mg/dL and "< 60" mg/dL
+    Given I have Glucose results of "< 60" mg/dL and then twice 95 mg/dL
     When I view the Glucose trend
     Then the "< 60" point should be drawn open, at its bound, not as a measurement
     And its label should read "< 60 mg/dL"
+    And the trend should read "Stable", from the measured values only, not rising from 60
 
   Scenario: Identify values outside reference range
     Given I am viewing the trend chart for a biomarker with abnormal values

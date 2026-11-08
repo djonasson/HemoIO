@@ -8,7 +8,7 @@
  */
 
 import type { EnrichedTestValue } from '@hooks/useLabResults';
-import type { CensoredComparator } from '@/types';
+import type { ValueReading } from '@/types';
 
 /**
  * Direction of a trend
@@ -21,9 +21,10 @@ export type TrendDirection = 'increasing' | 'decreasing' | 'stable' | 'insuffici
 export type TrendSeverity = 'critical' | 'warning' | 'info' | 'positive';
 
 /**
- * Data point for trend analysis
+ * Data point for trend analysis; an interval's ends only in the value's own
+ * unit, since the midpoint converts and its ends are not
  */
-export interface TrendDataPoint {
+export interface TrendDataPoint extends ValueReading {
   /** Date of the measurement */
   date: Date;
   /** Numeric value */
@@ -43,10 +44,6 @@ export interface TrendDataPoint {
   testValueId?: number;
   /** Lab result the measurement belongs to */
   labResultId?: number;
-  /** The ends of an interval ("5-10"), whose midpoint is the value; only in the value's own unit */
-  interval?: { low: number; high: number };
-  /** A censored value's comparator: the value is its bound, not a measurement */
-  censored?: CensoredComparator;
 }
 
 /**
@@ -347,7 +344,17 @@ export function calculateStatistics(points: TrendDataPoint[]): TrendStatistics {
 }
 
 /**
- * Perform complete trend analysis on a set of data points
+ * The points that are measurements: a censored value ("< 10") is a bound,
+ * not a reading to draw a direction or a slope from
+ */
+export function measuredPoints<T extends Pick<ValueReading, 'censored'>>(points: readonly T[]): T[] {
+  return points.filter((point) => !point.censored);
+}
+
+/**
+ * Perform complete trend analysis on a set of data points. The direction
+ * and rate of change are read from the measured points only (see
+ * measuredPoints); the statistics and status counts cover every point.
  *
  * @param points - Data points to analyze
  * @returns Complete TrendAnalysisResult
@@ -357,8 +364,9 @@ export function analyzeTrend(points: TrendDataPoint[]): TrendAnalysisResult {
     throw new Error('Cannot analyze trend for empty data set');
   }
 
-  const direction = calculateTrendDirection(points);
-  const rateOfChange = calculateRateOfChange(points);
+  const measured = measuredPoints(points);
+  const direction = calculateTrendDirection(measured);
+  const rateOfChange = calculateRateOfChange(measured);
   const statistics = calculateStatistics(points);
 
   // Count values by status

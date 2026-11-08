@@ -37,6 +37,15 @@ export type CensoredComparator = '<' | '<=' | '>' | '>=';
 /** The lab's own mark on a value: high, low, or abnormal with no direction */
 export type LabFlag = 'high' | 'low' | 'abnormal';
 
+/**
+ * How a number reads beyond itself: an interval it is the midpoint of
+ * ("5-10"), or the comparator of a censored value it is the bound of ("< 10")
+ */
+export interface ValueReading {
+  interval?: { low: number; high: number };
+  censored?: CensoredComparator;
+}
+
 // A single lab report/visit
 export interface LabResult {
   id?: number;

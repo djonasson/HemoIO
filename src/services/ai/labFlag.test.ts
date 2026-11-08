@@ -10,14 +10,13 @@ describe('withLabFlag', () => {
     expect(withLabFlag({ flag })).toEqual({ labFlag: 'low' });
   });
 
-  it('reads a mark with no direction, or flaggedAbnormal, as abnormal', () => {
+  it('reads a mark with no direction as abnormal', () => {
     expect(withLabFlag({ flag: '*' })).toEqual({ labFlag: 'abnormal' });
-    expect(withLabFlag({ flaggedAbnormal: true })).toEqual({ labFlag: 'abnormal' });
   });
 
   it('gives no flag for none, null or anything else', () => {
     expect(withLabFlag({})).toEqual({});
-    expect(withLabFlag({ flag: null, flaggedAbnormal: false })).toEqual({});
+    expect(withLabFlag({ flag: null })).toEqual({});
     expect(withLabFlag({ flag: 'see note' })).toEqual({});
   });
 });

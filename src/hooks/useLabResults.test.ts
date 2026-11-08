@@ -575,8 +575,8 @@ describe('enrichTestValue', () => {
 
   it("takes the lab's mark when the range cannot tell, and says so", () => {
     const enriched = enrichTestValue(value({ labFlag: 'high' }));
-    expect(enriched).toMatchObject({ status: 'high', statusByLab: true });
-    expect(enrichTestValue(value({ referenceRangeHigh: 50 })).statusByLab).toBeUndefined();
+    expect(enriched).toMatchObject({ status: 'high', statusBasis: 'lab' });
+    expect(enrichTestValue(value({ referenceRangeHigh: 50 })).statusBasis).toBe('range');
   });
 
   it('compares no range saved in another unit than its value', () => {

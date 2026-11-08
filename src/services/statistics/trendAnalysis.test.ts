@@ -9,6 +9,7 @@ import {
   calculateStatistics,
   analyzeTrend,
   determineTrendAlertSeverity,
+  measuredPoints,
   type TrendDataPoint,
 } from './trendAnalysis';
 
@@ -199,6 +200,34 @@ describe('trendAnalysis', () => {
       expect(result.lowCount).toBe(0);
     });
 
+    it('reads the direction and rate of change from measured points only, not censored ones', () => {
+      const points = [
+        { ...createDataPoint('2024-01-01', 10, 'normal'), censored: '<' as const },
+        createDataPoint('2024-02-01', 100),
+        createDataPoint('2024-03-01', 100),
+        createDataPoint('2024-04-01', 100),
+      ];
+      const result = analyzeTrend(points);
+
+      // Read as a plain 10, the first point would make an increase
+      expect(result.direction.direction).toBe('stable');
+      expect(result.rateOfChange?.percentageChange).toBe(0);
+      // Every point still counts in the summary
+      expect(result.statistics.count).toBe(4);
+      expect(result.normalCount).toBe(4);
+    });
+
+    it('has too little data for a direction when only one point is measured', () => {
+      const points = [
+        { ...createDataPoint('2024-01-01', 10), censored: '<' as const },
+        createDataPoint('2024-02-01', 100),
+      ];
+      const result = analyzeTrend(points);
+
+      expect(result.direction.direction).toBe('insufficient_data');
+      expect(result.rateOfChange).toBeNull();
+    });
+
     it('should count abnormal values correctly', () => {
       const points = [
         createDataPoint('2024-01-01', 100, 'normal'),
@@ -275,6 +304,15 @@ describe('trendAnalysis', () => {
       const severity = determineTrendAlertSeverity(analysis);
 
       expect(severity).toBeNull();
+    });
+  });
+
+  describe('measuredPoints', () => {
+    it('leaves out censored points', () => {
+      const measured = createDataPoint('2024-02-01', 100);
+      expect(measuredPoints([{ ...createDataPoint('2024-01-01', 10), censored: '>' as const }, measured])).toEqual([
+        measured,
+      ]);
     });
   });
 });

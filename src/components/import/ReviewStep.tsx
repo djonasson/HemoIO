@@ -57,7 +57,8 @@ import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
 import { heldQualitative } from '@services/ai';
-import { LAB_FLAG_TEXT } from '@/utils/formatTestValue';
+import { COMPARATOR_SIGNS } from '@/utils/formatTestValue';
+import { LabFlagMark } from '@components/common/LabFlagMark';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
@@ -104,10 +105,7 @@ export interface ReviewedResult extends AnalysisResult {
 /** The comparator choices of a value: measured ("="), or censored */
 const COMPARATOR_OPTIONS = [
   { value: '', label: '=' },
-  { value: '<', label: '<' },
-  { value: '<=', label: '≤' },
-  { value: '>', label: '>' },
-  { value: '>=', label: '≥' },
+  ...Object.entries(COMPARATOR_SIGNS).map(([value, label]) => ({ value, label })),
 ];
 
 /**
@@ -692,19 +690,7 @@ export function ReviewStep({
                               ) : (
                                 <Group gap={4} wrap="nowrap">
                                   <Text size="sm">{formatReviewedValue(biomarker)}</Text>
-                                  {biomarker.labFlag && (
-                                    // The lab's mark as printed; in words on hover and to screen readers
-                                    <Text
-                                      size="xs"
-                                      fw={700}
-                                      component="abbr"
-                                      title={LAB_FLAG_TEXT[biomarker.labFlag].label}
-                                      aria-label={LAB_FLAG_TEXT[biomarker.labFlag].label}
-                                      style={{ textDecoration: 'none' }}
-                                    >
-                                      {LAB_FLAG_TEXT[biomarker.labFlag].mark}
-                                    </Text>
-                                  )}
+                                  {biomarker.labFlag && <LabFlagMark flag={biomarker.labFlag} />}
                                 </Group>
                               )}
                             </Table.Td>

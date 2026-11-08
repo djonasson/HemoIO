@@ -2,9 +2,9 @@
  * How a reviewed value's number reads in the import wizard
  */
 
-import { formatIntervalValue, heldQualitative } from '@services/ai';
+import { extractedInterval, heldQualitative } from '@services/ai';
 import { formatReferenceRange } from '@services/alerts/alertRules';
-import { withComparator } from './formatTestValue';
+import { formatReading } from './formatTestValue';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /**
@@ -18,10 +18,9 @@ export function formatReviewedValue(
 ): string {
   const qualitative = heldQualitative(biomarker);
   if (qualitative) return `${qualitative.text} (${qualitative.value})`;
-  if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
-    return formatIntervalValue(biomarker.intervalLow, biomarker.intervalHigh);
-  }
-  return Number.isFinite(biomarker.value) ? withComparator(String(biomarker.value), biomarker.censored) : '';
+  const interval = extractedInterval(biomarker);
+  if (!interval && !Number.isFinite(biomarker.value)) return '';
+  return formatReading({ value: biomarker.value, interval, censored: biomarker.censored });
 }
 
 /**
