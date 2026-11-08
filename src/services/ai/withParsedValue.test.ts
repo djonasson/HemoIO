@@ -32,6 +32,14 @@ describe('withParsedValue', () => {
     expect(read.qualitative).toEqual({ text: 'Assenti', kind: 'boolean', value: 0 });
   });
 
+  it('reads a count in words with no unit, never as 0 per field', () => {
+    expect(withParsedValue({ value: 0, qualitativeValue: 'Rari' }, 'per campo')).toMatchObject({
+      value: 1,
+      unit: '',
+      qualitative: { text: 'Rari', kind: 'ordinal', value: 1 },
+    });
+  });
+
   it('keeps a measured number and its unit beside a word', () => {
     expect(withParsedValue({ value: 0.05, qualitativeValue: 'Negativo' }, 'S/CO')).toMatchObject({
       value: 0.05,

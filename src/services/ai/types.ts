@@ -106,7 +106,8 @@ export interface ExtractedBiomarker {
 
 /**
  * A qualitative result as printed, and the number it reads as: absent 0
- * and present 1 (boolean); traces 0.5 and one to four crosses 1-4 (ordinal)
+ * and present 1 (boolean); traces 0.5, one to four crosses 1-4, and a count
+ * in words on the crosses' steps, rare 1 to many 4 (ordinal)
  */
 export interface QualitativeReading {
   /** The result as printed ("Assenti", "Tracce", "++") */

@@ -178,7 +178,12 @@ everything the user stores per test is keyed by a code.
   shown or exported. A qualitative result is saved as printed ("Assenti",
   "++") with its kind (`qualitativeType`) and the number it reads as
   (`ordinalValue`: absent 0, present 1, traces 0.5, one to four crosses 1-4);
-  it is shown as printed and never charted.
+  it is shown as printed and never charted. A microscopy count in words
+  reads on the crosses' steps, above traces: rare, occasional or scarce
+  ("rari", "occasionali", "scarsi") 1, a few ("alcuni") 2, frequent
+  ("frequenti") 3, many or numerous ("molti", "numerosi") 4. Such a word
+  is kept over a 0 the model gave, and has no unit: a count of "few" is
+  never "0 per campo".
   A censored value ("< 10", beyond what the method measures) is saved as
   its bound with its comparator (`censored`), shown with it everywhere and
   drawn open at its bound on trend charts; it is high, low or normal only

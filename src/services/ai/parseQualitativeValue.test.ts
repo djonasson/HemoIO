@@ -29,6 +29,22 @@ describe('readQualitativeWord', () => {
     expect(readQualitativeWord(word)).toEqual({ kind: 'ordinal', value });
   });
 
+  it.each([
+    ['Rari', 1],
+    ['rare', 1],
+    ['Occasionali', 1],
+    ['occasional', 1],
+    ['Scarsi', 1],
+    ['Alcuni', 2],
+    ['few', 2],
+    ['Frequenti', 3],
+    ['Numerosi', 4],
+    ['Molti', 4],
+    ['many', 4],
+  ])('reads the count "%s" on the crosses\' steps as %s, above traces', (word, value) => {
+    expect(readQualitativeWord(word)).toEqual({ kind: 'ordinal', value });
+  });
+
   it('reads past brackets, full stops and spacing', () => {
     expect(readQualitativeWord('  (Assenti.) ')).toEqual({ kind: 'boolean', value: 0 });
     expect(readQualitativeWord('non   rilevato')).toEqual({ kind: 'boolean', value: 0 });
@@ -55,6 +71,15 @@ describe('parseExtractedValue', () => {
     expect(parseExtractedValue(undefined, 'Tracce').qualitative).toEqual({ text: 'Tracce', kind: 'ordinal', value: 0.5 });
     expect(parseExtractedValue('', 'Negativo')).toMatchObject({ value: 0, qualitative: { text: 'Negativo', value: 0 } });
     expect(parseExtractedValue('n.d.', 'Assenti')).toMatchObject({ value: 0, qualitative: { text: 'Assenti' } });
+  });
+
+  it('keeps a count in words over a 0 or no number: cells were seen', () => {
+    expect(parseExtractedValue(0, 'Rari')).toEqual({ value: 1, isInterval: false, qualitative: { text: 'Rari', kind: 'ordinal', value: 1 } });
+    expect(parseExtractedValue(undefined, 'few')).toMatchObject({ value: 2, qualitative: { text: 'few' } });
+    expect(parseExtractedValue('Numerosi', undefined)).toMatchObject({ value: 4, qualitative: { text: 'Numerosi' } });
+    // A measured count is kept beside it
+    expect(parseExtractedValue(5, 'Rari')).toEqual({ value: 5, isInterval: false });
+    expect(parseExtractedValue('0-2', 'Rari')).toMatchObject({ isInterval: true, intervalLow: 0, intervalHigh: 2 });
   });
 
   it('never lets a word replace a measured number', () => {

@@ -780,6 +780,21 @@ test.describe('Import Wizard', () => {
         await expect(savedRow(card, 'Batteri', /Assenti\s*,/)).toBeVisible();
       });
 
+      test('keeps a count printed in words, never as 0 per field', async ({ page }) => {
+        // Scenario: A count printed in words is never read as none (document-analysis.feature)
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Batteri', value: 0, qualitativeValue: 'Rari', unit: 'per campo', specimenHint: 'urine', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await expect(reviewCell(row, 'Value')).toHaveText('Rari (1)');
+        await expect(reviewCell(row, 'Unit')).toHaveText('');
+      });
+
       test('keeps a result printed as crosses as printed', async ({ page }) => {
         // Scenario: A result printed as crosses is kept as printed
         await loginWithOllama(page, [

@@ -80,6 +80,13 @@ Feature: Document Analysis
     And absent should read as 0, present as 1, traces as 0.5 and one to four crosses as 1 to 4
     And free text with no presence meaning, such as a colour, should still be skipped
 
+  Scenario: A count printed in words is never read as none
+    Given a report prints a sediment count in words, such as "Rari", "Alcuni", "Numerosi" or "few"
+    And the AI gives it with a value of 0 "per campo", or with no value
+    Then it should be kept as printed, with no unit, never as "0 per campo"
+    And rare, occasional or scarce should read as 1, a few as 2, frequent as 3, and many or numerous as 4
+    But a count the AI gave as a number beside the word, such as 5, should keep its number
+
   Scenario: A measured number is never replaced by a word
     Given the AI read a value of 0.05 S/CO with the word "Negativo" beside it
     Then the value should stay 0.05 S/CO, a measured number with its unit
