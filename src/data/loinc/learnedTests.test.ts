@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { learnFromSaved, learnedWording } from './learnedTests';
+import { learnFromSaved, learnedWording, withMarks } from './learnedTests';
 
 describe('learnFromSaved', () => {
   it('learns the code of every saved value the user confirmed', () => {
@@ -40,5 +40,11 @@ describe('learned keys and codes', () => {
     expect(learnedWording('nitriti|#words')).toBe('nitriti (in words)');
     expect(learnedWording('batteri|#words#sediment')).toBe('batteri (in words, urine sediment)');
     expect(learnedWording('leucociti|/[HPF]#sediment')).toBe('leucociti (/[HPF], urine sediment)');
+    expect(learnedWording('batteri|#sediment#words')).toBe('batteri (in words, urine sediment)');
+  });
+
+  it('marks a key by how its value was printed', () => {
+    expect(withMarks('batteri|', { inWords: true, ofSediment: true })).toBe('batteri|#words#sediment');
+    expect(withMarks('batteri|/uL', { inWords: false, ofSediment: false })).toBe('batteri|/uL');
   });
 });

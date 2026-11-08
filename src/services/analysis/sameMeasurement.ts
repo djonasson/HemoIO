@@ -138,10 +138,9 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
  */
 export function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
   if (a.comparison === undefined || b.comparison === undefined) return false;
-  // "eGFR (EKFC)" and "eGFR - Schwartz" are two estimates, however close, though both are the eGFR of no formula;
-  // a plain "eGFR" names none, so may be either printed again
-  const formulas = [a, b].map(({ biomarker }) => unlistedFormulaOf(biomarker.name));
-  if (formulas[0] && formulas[1] && formulas[0] !== formulas[1]) return false;
+  // "eGFR (EKFC)" and "eGFR - Schwartz" are two estimates, however close, though both are the eGFR of no formula. A
+  // plain "eGFR" may be either or neither: kept apart too, as merging it would set an estimate aside unseen
+  if (unlistedFormulaOf(a.biomarker.name) !== unlistedFormulaOf(b.biomarker.name)) return false;
   // In one unit, "< 10" is a bound and 10 a measurement: never the same
   if (!a.biomarker.censored !== !b.biomarker.censored && unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
   // "> 0.50" and "< 44" bound the value from opposite sides: they say different things

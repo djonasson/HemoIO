@@ -129,11 +129,14 @@ Feature: Identifying the test of each value
     And the AI should not be asked which test it is
 
     Examples:
-      | name                |
-      | eGFR (formula EKFC) |
-      | eGFR (Schwartz)     |
-      | eGFR (formula BIS)  |
-      | eGFR - EKFC         |
+      | name                         | why                                                    |
+      | eGFR (formula EKFC)          |                                                        |
+      | eGFR (Schwartz)              |                                                        |
+      | eGFR (formula BIS)           |                                                        |
+      | eGFR - EKFC                  | set off by a dash, not brackets                        |
+      | eGFR (Lund-Malmö)            |                                                        |
+      | eGFRcr (EKFC)                | a name LOINC gives only the CKD-EPI estimate           |
+      | Glomerulär filtration (EKFC) | a filtration rate in another language                  |
 
   Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
     Given a report prints "eGFR (CKD-EPI IDMS)", "eGFR (Roche)" or "eGFR MDRD (donne)" in mL/min/1.73m²
@@ -145,6 +148,16 @@ Feature: Identifying the test of each value
     Given a report prints "eGFR (Schwartz)" 81 and "eGFR (EKFC)" 82 in mL/min/1.73m²
     When the report is analyzed
     Then both values should be shown for review, neither set aside as the other's duplicate
+
+  Scenario: Estimates by the two Berlin Initiative Study formulas are both kept
+    Given a report prints "eGFR (BIS1)" 61 and "eGFR (BIS2)" 62 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, as BIS1 reads creatinine and BIS2 cystatin C too
+
+  Scenario: One estimate printed twice under two spellings of its formula is one value
+    Given a report prints "eGFR (Lund-Malmö)" 70 and "eGFR (LMR)" 70 in mL/min/1.73m²
+    When the report is analyzed
+    Then one value should be shown for review
 
   Scenario Outline: An eGFR is filed under the formula its bracket names
     Given a report prints "<name>" in mL/min/1.73m²
@@ -158,6 +171,7 @@ Feature: Identifying the test of each value
       | eGFR (CKD-EPI 2009) | 62238-1 | LOINC's CKD-EPI of no year, not the 2021 formula      |
       | eGFR (formula MDRD) | 77147-7 | the MDRD formula of no population named               |
       | eGFR (cistatina C)  | 50210-4 | the cystatin C-based formula, not a creatinine-based one |
+      | eGFR cystatin C (CAPA) | 50210-4 | a cystatin C formula LOINC lacks is the cystatin C-based one, which names no formula |
 
   Scenario: A method named in brackets picks its test, a brand beside it says nothing
     Given a report prints "HbA1c (HPLC Tosoh)" in mmol/mol and "Albumina (BCG Roche)" in g/dL
@@ -461,6 +475,11 @@ Feature: Identifying the test of each value
     Then the learned names should show "batteri (urine)" as learned in words
     And a later urine report printing "Batteri (urine)" as "Assenti" should be saved under that test without asking
     But a later urine report printing "Batteri (urine)" as the number 12, with no unit, should not be saved under that test
+
+  Scenario: A test chosen in a urine sediment section is not used for the urine
+    Given a report's urine sediment section prints "Batteri" as "Assenti"
+    When I save it as "Not a LOINC test"
+    Then a later report printing "Batteri" as "Assenti" under a urine heading should still be asked about
 
   Scenario: A result in words corrected to a number is read again as a number
     Given a urine report prints "Glucosio (urine)" as "Assente"

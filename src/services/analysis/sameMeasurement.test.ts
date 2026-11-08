@@ -44,15 +44,16 @@ describe('isSettled', () => {
     expect(settled(values)).toBe(true);
   });
 
-  it('keeps one formula however spelled, and a plain eGFR with either, as one estimate printed again', () => {
-    const one = (a: string, b: string): number =>
-      clusterMeasurements([
-        compared(value(a, 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
-        compared(value(b, 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
-      ]).length;
-    expect(one('eGFR (Lund-Malmö)', 'eGFR (LMR)')).toBe(1);
-    expect(one('eGFR (BIS1)', 'eGFR (formula BIS)')).toBe(1);
-    expect(one('eGFR', 'eGFR (EKFC)')).toBe(1);
+  it('merges one formula however spelled, and keeps BIS1 and BIS2, or a plain eGFR and an estimate, apart', () => {
+    const clusters = (...names: string[]): number =>
+      clusterMeasurements(names.map((name) => compared(value(name, 81, 'mL/min/{1.73_m2}', '69405-9'), 81))).length;
+    expect(clusters('eGFR (Lund-Malmö)', 'eGFR (LMR)')).toBe(1);
+    expect(clusters('eGFR (BIS1)', 'eGFR (BIS2)')).toBe(2);
+    expect(clusters('eGFR', 'eGFR (EKFC)')).toBe(2);
+    // An estimate by a formula not in the list stays apart from one in it
+    expect(clusters('eGFR (LMR18)', 'eGFR (CAPA)')).toBe(2);
+    // A plain eGFR first takes in no estimate
+    expect(clusters('eGFR', 'eGFR (LMR)', 'eGFR (CAPA)')).toBe(3);
   });
 
   it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {

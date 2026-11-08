@@ -180,13 +180,22 @@ test.describe('Identifying the test of each value', () => {
 
   test('files an eGFR by a formula LOINC has no test for under the eGFR of no formula', async ({ page }) => {
     // Scenario Outline: An eGFR by a formula LOINC has no test for is filed under the eGFR of no formula
-    const names = ['eGFR (formula EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)', 'eGFR - EKFC'];
+    const names = [
+      'eGFR (formula EKFC)',
+      'eGFR (Schwartz)',
+      'eGFR (formula BIS)',
+      'eGFR - EKFC',
+      'eGFR (Lund-Malmö)',
+      'eGFRcr (EKFC)',
+      'Glomerulär filtration (EKFC)',
+    ];
+    // Values far apart: the three EKFC estimates are one formula, so close values would be one measurement
     const ai = await analyzeReport(
       page,
-      names.map((name, i) => ({ name, value: 81 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
+      names.map((name, i) => ({ name, value: 50 + 10 * i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
     );
     for (const i of names.keys()) {
-      await expect(rowFor(page, String(81 + i)).getByText('LOINC 69405-9')).toBeVisible();
+      await expect(rowFor(page, String(50 + 10 * i)).getByText('LOINC 69405-9')).toBeVisible();
     }
     expect(ai.choiceRequests).toHaveLength(0);
   });
@@ -216,6 +225,25 @@ test.describe('Identifying the test of each value', () => {
     await expect(page.getByText(/Conflicting values/)).toHaveCount(0);
   });
 
+  test('keeps the estimates by the two Berlin Initiative Study formulas', async ({ page }) => {
+    // Scenario: Estimates by the two Berlin Initiative Study formulas are both kept
+    await analyzeReport(page, [
+      { name: 'eGFR (BIS1)', value: 61, unit: 'mL/min/1.73m²', confidence: 0.95 },
+      { name: 'eGFR (BIS2)', value: 62, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '61')).toBeVisible();
+    await expect(rowFor(page, '62')).toBeVisible();
+  });
+
+  test('shows one estimate printed twice under two spellings of its formula as one value', async ({ page }) => {
+    // Scenario: One estimate printed twice under two spellings of its formula is one value
+    await analyzeReport(page, [
+      { name: 'eGFR (Lund-Malmö)', value: 70, unit: 'mL/min/1.73m²', confidence: 0.95 },
+      { name: 'eGFR (LMR)', value: 70, unit: 'mL/min/1.73m²', confidence: 0.95 },
+    ]);
+    await expect(rowFor(page, '70')).toHaveCount(1);
+  });
+
   test('files an eGFR under the formula its bracket names', async ({ page }) => {
     // Scenario Outline: An eGFR is filed under the formula its bracket names
     const examples: [string, string][] = [
@@ -223,6 +251,7 @@ test.describe('Identifying the test of each value', () => {
       ['eGFR (CKD-EPI 2009)', '62238-1'],
       ['eGFR (formula MDRD)', '77147-7'],
       ['eGFR (cistatina C)', '50210-4'],
+      ['eGFR cystatin C (CAPA)', '50210-4'],
     ];
     const ai = await analyzeReport(
       page,
@@ -736,6 +765,20 @@ test.describe('Identifying the test of each value', () => {
 
     await analyzeReport(page, [{ name: batteri.name, value: 12, unit: '', confidence: 0.95, specimenHint: 'urine' }]);
     await expect(savedAsCell(rowFor(page, '12'))).not.toHaveText(MICROSCOPE);
+  });
+
+  test('does not use a test chosen in a urine sediment section for the urine', async ({ page }) => {
+    // Two imports, the first saved
+    test.slow();
+    // Scenario: A test chosen in a urine sediment section is not used for the urine
+    const batteri = { name: 'Batteri', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Assenti' };
+    await analyzeReport(page, [{ ...batteri, specimenHint: 'urine sediment' }]);
+    await changeTest(page, rowFor(page, 'Assenti (0)'), NOT_A_LOINC_TEST);
+    await saveReviewed(page);
+
+    const ai = await analyzeReport(page, [{ ...batteri, specimenHint: 'urine' }]);
+    expect(ai.choiceRequests.flat().map((asked) => asked.name)).toEqual(['Batteri']);
+    await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).not.toHaveText(NOT_A_LOINC_TEST);
   });
 
   test('reads a result in words corrected to a number again as a number', async ({ page }) => {

@@ -190,9 +190,19 @@ export function unknownKeyOf(value: Pick<MatchedBiomarker, 'name' | 'unknownKey'
 }
 
 /** A value as the analyzer read it: its printed name and unit, of its section, its result in words as printed */
-export function printedReading(value: MatchedBiomarker): PrintedValue {
+function printedReading(value: MatchedBiomarker): PrintedValue {
   const { name, unit } = value.analyzed ?? value;
   return { name, unit, specimenHint: value.specimenHint, qualitative: value.qualitative };
+}
+
+/** A value as it now reads, in this unit (its own by default): a result in words typed over with a number is a number */
+export function currentReading(value: MatchedBiomarker, unit = value.unit): PrintedValue {
+  return { name: value.name, unit, specimenHint: value.specimenHint, qualitative: heldQualitative(value) };
+}
+
+/** Whether a value, read now, is still the wording the analyzer read: learned the same, so identified the same */
+export function isReadAsPrinted(value: MatchedBiomarker, reading: PrintedValue = currentReading(value)): boolean {
+  return value.analyzed !== undefined && learnedKey(reading) === learnedKey(printedReading(value));
 }
 
 /**
@@ -205,12 +215,10 @@ export function printedReading(value: MatchedBiomarker): PrintedValue {
  * next time anyway.
  */
 export function toLearn(value: MatchedBiomarker): SavedValue {
-  const qualitative = heldQualitative(value);
-  const current = learnedKey({ name: value.name, unit: value.unit, specimenHint: value.specimenHint, qualitative });
-  const edited = !value.analyzed || current !== learnedKey(printedReading(value));
+  const edited = !isReadAsPrinted(value);
   const by = value.identifiedBy;
   return {
-    key: learnedKey({ ...printedReading(value), qualitative }),
+    key: learnedKey({ ...printedReading(value), qualitative: heldQualitative(value) }),
     code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
     confirmed: by === 'ai' || by === 'user' || by === 'shared' || (edited && isFoundWithoutAsking(value)),
   };

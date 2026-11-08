@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { identifyValues } from './identification';
+import { identifyValues, toLearn } from './identification';
 import {
   applyBiomarkerName,
   applyBiomarkerUnit,
@@ -167,18 +167,30 @@ describe('applyBiomarkerValue', () => {
   });
 
   it('never gives a number typed over a word the test learned for the word', async () => {
-    const value = await analyzed('P-Glucosio', 'mg/dL');
     const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
-    const learned = { 'p-glucosio|mg/dL#words': '25428-4' };
-    const word: MatchedBiomarker = {
-      ...value,
-      value: 0,
-      qualitative: absent,
-      loincCode: '25428-4',
-      identifiedBy: 'learned',
-      analyzed: { name: 'P-Glucosio', unit: 'mg/dL', identification: { candidates: [], identificationFlags: [], loincCode: '25428-4', identifiedBy: 'learned' } },
-    };
-    expect(applyBiomarkerValue(word, 95, catalog, learned)).toMatchObject({ loincCode: '2345-7', identifiedBy: 'local' });
+    // The fixture has no test of word results: a test learned for the word stands in
+    const learned = { 'glucosio|#words': '14749-6' };
+    const { values } = await identifyValues(
+      catalog,
+      [{ name: 'Glucosio', value: 0, unit: 'mg/dL', confidence: 0.9, qualitative: absent }],
+      { learned }
+    );
+    expect(values[0]).toMatchObject({ loincCode: '14749-6', identifiedBy: 'learned' });
+    const typed = applyBiomarkerValue(values[0], 95, catalog, learned);
+    expect(typed.identifiedBy).not.toBe('learned');
+    expect(typed.loincCode).not.toBe('14749-6');
+  });
+
+  it('keeps the test learned for a result in words when its test asks for a unit and one is given', async () => {
+    const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
+    const learned = { 'glucosio|#words': '14749-6' };
+    const { values } = await identifyValues(catalog, [{ name: 'Glucosio', value: 0, unit: '', confidence: 0.9, qualitative: absent }], {
+      learned,
+    });
+    const withUnit = applyBiomarkerUnit(values[0], 'mmol/L', catalog, learned);
+    expect(withUnit).toMatchObject({ loincCode: '14749-6', identifiedBy: 'learned' });
+    // Nothing new to learn: the learned test stays
+    expect(toLearn(withUnit)).toMatchObject({ key: 'glucosio|#words', confirmed: false });
   });
 });
 

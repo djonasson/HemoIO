@@ -5,13 +5,28 @@
  * without asking. Stored in the (sealed) preferences record.
  *
  * The keys are made by `learnedKey` in the analysis service: the printed
- * name, normalised, then "|" and the unit as UCUM, then the marks of a
- * result in words and of a urine sediment section.
+ * name, normalised, then "|" and the unit as UCUM, then the marks of how
+ * the value was printed (see withMarks).
  */
 
-/** Marks a learned key ends with: a result printed in words, and a value of a urine sediment section */
-export const LEARNED_IN_WORDS = '#words';
-export const LEARNED_IN_SEDIMENT = '#sediment';
+/** How a value was printed, as learning tells wordings apart */
+export interface PrintingMarks {
+  /** Its result in words ("Assenti") */
+  inWords: boolean;
+  /** Of a urine sediment section, where it is what the microscope saw */
+  ofSediment: boolean;
+}
+
+/** Each mark: as a key ends with it, and as the user reads it */
+const MARKS: ReadonlyArray<readonly [keyof PrintingMarks, string, string]> = [
+  ['inWords', '#words', 'in words'],
+  ['ofSediment', '#sediment', 'urine sediment'],
+];
+
+/** A learned key of a wording and unit with the marks of how the value was printed */
+export function withMarks(key: string, marks: PrintingMarks): string {
+  return key + MARKS.filter(([mark]) => marks[mark]).map(([, suffix]) => suffix).join('');
+}
 
 /** A saved value as learning reads it */
 export interface SavedValue {
@@ -51,15 +66,12 @@ export function learnedWording(key: string): string {
   const separator = key.lastIndexOf('|');
   if (separator === -1) return key;
   let unit = key.slice(separator + 1);
-  const notes: string[] = [];
-  if (unit.endsWith(LEARNED_IN_SEDIMENT)) {
-    unit = unit.slice(0, -LEARNED_IN_SEDIMENT.length);
-    notes.push('urine sediment');
+  const read = new Set<string>();
+  for (let mark = MARKS.find(([, suffix]) => unit.endsWith(suffix)); mark; mark = MARKS.find(([, suffix]) => unit.endsWith(suffix))) {
+    unit = unit.slice(0, -mark[1].length);
+    read.add(mark[2]);
   }
-  if (unit.endsWith(LEARNED_IN_WORDS)) {
-    unit = unit.slice(0, -LEARNED_IN_WORDS.length);
-    notes.unshift('in words');
-  }
+  const notes = MARKS.map(([, , note]) => note).filter((note) => read.has(note));
   const said = [unit, ...notes].filter(Boolean).join(', ');
   const wording = key.slice(0, separator);
   return said ? `${wording} (${said})` : wording;

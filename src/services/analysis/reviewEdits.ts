@@ -4,7 +4,7 @@
 import { unitOptions } from '@data/loinc/display';
 import { unitsMatch } from '@/utils/unitSpelling';
 import { heldQualitative } from '../ai';
-import { identifyLocally, printedReading, type Identification, type LearnedTests } from './identification';
+import { currentReading, identifyLocally, isReadAsPrinted, type Identification, type LearnedTests } from './identification';
 import { learnedKey } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
@@ -60,12 +60,10 @@ function reidentify(
   const { analyzed } = original;
   const unit = changed.unit.trim() === '' && analyzed?.unit.trim() ? analyzed.unit : changed.unit;
   if (!analyzed && unit.trim() === '') return identified(changed, UNREAD);
-  const reading = { name: changed.name, unit, specimenHint: changed.specimenHint, qualitative: heldQualitative(changed) };
+  const reading = currentReading(changed, unit);
   // The analyzer's test holds for the value read as printed: a word typed over with a number is read again
   const identification =
-    analyzed && learnedKey(reading) === learnedKey(printedReading(changed))
-      ? analyzed.identification
-      : identifyLocally(catalog, reading, learned);
+    analyzed && isReadAsPrinted(changed, reading) ? analyzed.identification : identifyLocally(catalog, reading, learned);
   return identified(changed, identification);
 }
 
@@ -147,7 +145,7 @@ export interface ValuePosition {
  */
 function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
   const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
-  const key = (value: MatchedBiomarker): string => learnedKey({ ...value, qualitative: heldQualitative(value) });
+  const key = (value: MatchedBiomarker): string => learnedKey(currentReading(value));
   // Rows added in review start with no name: blank rows are no wording
   return a.name.trim() !== '' && key(a) === key(b) && sample(a) === sample(b);
 }
