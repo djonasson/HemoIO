@@ -6,6 +6,7 @@
 import type { SavedValue } from '@data/loinc/learnedTests';
 import { isUnknownKey, unknownBiomarkerKey } from '@data/loinc/keys';
 import { learnedKey, matchLocally, type Candidate, type PrintedValue } from './loincMatch';
+import { heldQualitative } from '../ai';
 import type { Catalog } from '@data/loinc/catalog';
 import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
 import type { IdentificationFlag, IdentifiedBy, MatchedBiomarker } from './LabReportAnalyzer';
@@ -188,19 +189,28 @@ export function unknownKeyOf(value: Pick<MatchedBiomarker, 'name' | 'unknownKey'
   return value.unknownKey ?? unknownBiomarkerKey(value.name);
 }
 
+/** A value as the analyzer read it: its printed name and unit, of its section, its result in words as printed */
+export function printedReading(value: MatchedBiomarker): PrintedValue {
+  const { name, unit } = value.analyzed ?? value;
+  return { name, unit, specimenHint: value.specimenHint, qualitative: value.qualitative };
+}
+
 /**
  * What saving a value teaches: its code under the wording and unit the
- * report printed. It is the user's decision when they chose the test, saved
- * the AI's choice, or edited the value until it matched (by name and unit,
- * or through a wording learned before: a correction sticks); a test matched
- * with no edit, or learned, is matched the same way next time anyway.
+ * report printed, and its result in words, unless typed over with a number
+ * (see learnedKey). It is the user's decision when they chose the test,
+ * saved the AI's choice, or edited the value until it matched (by name,
+ * unit or result, or through a wording learned before: a correction
+ * sticks); a test matched with no edit, or learned, is matched the same way
+ * next time anyway.
  */
 export function toLearn(value: MatchedBiomarker): SavedValue {
-  const printed = value.analyzed ?? value;
-  const edited = !value.analyzed || learnedKey(value) !== learnedKey(value.analyzed);
+  const qualitative = heldQualitative(value);
+  const current = learnedKey({ name: value.name, unit: value.unit, specimenHint: value.specimenHint, qualitative });
+  const edited = !value.analyzed || current !== learnedKey(printedReading(value));
   const by = value.identifiedBy;
   return {
-    key: learnedKey(printed),
+    key: learnedKey({ ...printedReading(value), qualitative }),
     code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
     confirmed: by === 'ai' || by === 'user' || by === 'shared' || (edited && isFoundWithoutAsking(value)),
   };

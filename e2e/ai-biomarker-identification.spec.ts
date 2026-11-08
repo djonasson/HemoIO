@@ -718,6 +718,26 @@ test.describe('Identifying the test of each value', () => {
     expect(again.choiceRequests).toHaveLength(0);
   });
 
+  test('remembers a test chosen for a result in words for results in words only', async ({ page }) => {
+    // Three imports, the first saved
+    test.slow();
+    // Scenario: A test chosen for a result in words is remembered for results in words only
+    const MICROSCOPE = 'Bacteria [Presence] in Urine sediment by Light microscopy';
+    const batteri = { name: 'Batteri (urine)', value: 0, unit: '', confidence: 0.95, specimenHint: 'urine', qualitativeValue: 'Assenti' };
+    await analyzeReport(page, [batteri]);
+    await changeTest(page, rowFor(page, 'Assenti (0)'), MICROSCOPE);
+    await saveReviewed(page);
+    await openLearnedNames(page);
+    await expect(learnedNames(page)).toContainText(`batteri (urine) (in words) → ${MICROSCOPE}`);
+
+    const again = await analyzeReport(page, [batteri]);
+    await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).toHaveText(MICROSCOPE);
+    expect(again.choiceRequests).toHaveLength(0);
+
+    await analyzeReport(page, [{ name: batteri.name, value: 12, unit: '', confidence: 0.95, specimenHint: 'urine' }]);
+    await expect(savedAsCell(rowFor(page, '12'))).not.toHaveText(MICROSCOPE);
+  });
+
   test('reads a result in words corrected to a number again as a number', async ({ page }) => {
     // Scenario: A result in words corrected to a number is read again as a number
     await analyzeReport(page, [

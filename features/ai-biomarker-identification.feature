@@ -455,6 +455,13 @@ Feature: Identifying the test of each value
     When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Serum or Plasma" for it, give its unit and save the import
     Then a later report printing "NT-proBNP" as "Negativo" should be saved under that test without asking
 
+  Scenario: A test chosen for a result in words is remembered for results in words only
+    Given a urine report prints "Batteri (urine)" as "Assenti"
+    When I choose "Bacteria [Presence] in Urine sediment by Light microscopy" for it and save the import
+    Then the learned names should show "batteri (urine)" as learned in words
+    And a later urine report printing "Batteri (urine)" as "Assenti" should be saved under that test without asking
+    But a later urine report printing "Batteri (urine)" as the number 12, with no unit, should not be saved under that test
+
   Scenario: A result in words corrected to a number is read again as a number
     Given a urine report prints "Glucosio (urine)" as "Assente"
     When I correct its value to 95 mg/dL

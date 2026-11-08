@@ -5,8 +5,13 @@
  * without asking. Stored in the (sealed) preferences record.
  *
  * The keys are made by `learnedKey` in the analysis service: the printed
- * name, normalised, then "|" and the unit as UCUM.
+ * name, normalised, then "|" and the unit as UCUM, then the marks of a
+ * result in words and of a urine sediment section.
  */
+
+/** Marks a learned key ends with: a result printed in words, and a value of a urine sediment section */
+export const LEARNED_IN_WORDS = '#words';
+export const LEARNED_IN_SEDIMENT = '#sediment';
 
 /** A saved value as learning reads it */
 export interface SavedValue {
@@ -38,11 +43,24 @@ export function learnFromSaved(
   return next;
 }
 
-/** A learned key as the user reads it: "glucosio (mg/dL)", or the wording alone with no unit */
+/**
+ * A learned key as the user reads it: "glucosio (mg/dL)", the wording alone
+ * with no unit, and how it was printed: "batteri (in words, urine sediment)"
+ */
 export function learnedWording(key: string): string {
   const separator = key.lastIndexOf('|');
   if (separator === -1) return key;
-  const unit = key.slice(separator + 1);
+  let unit = key.slice(separator + 1);
+  const notes: string[] = [];
+  if (unit.endsWith(LEARNED_IN_SEDIMENT)) {
+    unit = unit.slice(0, -LEARNED_IN_SEDIMENT.length);
+    notes.push('urine sediment');
+  }
+  if (unit.endsWith(LEARNED_IN_WORDS)) {
+    unit = unit.slice(0, -LEARNED_IN_WORDS.length);
+    notes.unshift('in words');
+  }
+  const said = [unit, ...notes].filter(Boolean).join(', ');
   const wording = key.slice(0, separator);
-  return unit ? `${wording} (${unit})` : wording;
+  return said ? `${wording} (${said})` : wording;
 }

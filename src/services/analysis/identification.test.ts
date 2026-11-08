@@ -231,6 +231,22 @@ describe('toLearn', () => {
     });
   });
 
+  it('learns a result in words under its wording in words, and one typed over with a number under the number', async () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    const word = asAnalyzed(
+      { ...extracted('Batteri', 0, '', 'urine sediment'), qualitative: absent },
+      { candidates: [], identificationFlags: [] }
+    );
+    expect(toLearn({ ...word, loincCode: '25145-4', identifiedBy: 'user' })).toEqual({
+      key: 'batteri|#words#sediment',
+      code: '25145-4',
+      confirmed: true,
+    });
+    expect(toLearn({ ...word, value: 12, loincCode: '30405-5', identifiedBy: 'user' }).key).toBe('batteri|#sediment');
+    // Typed over with a number and saved with the local test: an edit, so the user's decision
+    expect(toLearn({ ...word, value: 12, loincCode: '30405-5', identifiedBy: 'local' }).confirmed).toBe(true);
+  });
+
   it('confirms an edit that reaches a test through a wording learned before: a correction sticks', async () => {
     // The printed wording was once learned as the wrong test
     const learned = { 'zorb fasting|mg/dL': '2339-0', 'zorb|mg/dL': '2345-7' };

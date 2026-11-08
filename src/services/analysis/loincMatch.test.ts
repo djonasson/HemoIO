@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
-import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix } from './loincMatch';
+import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix, unlistedFormulaOf } from './loincMatch';
 import type { LocalMatch } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 
@@ -731,6 +731,32 @@ describe('learnedKey', () => {
   it('reads a name with a Unicode dash as with a hyphen', () => {
     expect(learnedKey({ name: 'Colesterolo non\u2011HDL', unit: 'mg/dL' })).toBe(learnedKey({ name: 'Colesterolo non-HDL', unit: 'mg/dL' }));
   });
+
+  it('marks a result printed in words and a value of a urine sediment section: neither is the count of the urine', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    expect(learnedKey({ name: 'Batteri', unit: '', qualitative: absent })).toBe('batteri|#words');
+    expect(learnedKey({ name: 'Batteri', unit: '', qualitative: absent, specimenHint: 'urine sediment' })).toBe('batteri|#words#sediment');
+    expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'sedimento urinario' })).toBe('batteri|#sediment');
+    expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'urine' })).toBe('batteri|');
+  });
+});
+
+describe('unlistedFormulaOf', () => {
+  it.each([
+    ['eGFR (EKFC)', 'ekfc'],
+    ['eGFRcr - EKFC', 'ekfc'],
+    ['Glomerulär filtration (EKFC)', 'ekfc'],
+    ['eGFR (Lund-Malmö)', 'lmr'],
+    ['eGFR LMR', 'lmr'],
+    ['eGFR (BIS1)', 'bis'],
+    ['eGFR (formula BIS)', 'bis'],
+  ])('reads %s as estimated by %s, one formula however spelled', (name, formula) => {
+    expect(unlistedFormulaOf(name)).toBe(formula);
+  });
+
+  it.each(['eGFR', 'eGFR (CKD-EPI)', 'Antigene Fas'])('finds no formula LOINC lacks in %s', (name) => {
+    expect(unlistedFormulaOf(name)).toBeUndefined();
+  });
 });
 
 describe('matchLocally in the generated catalog', () => {
@@ -1101,6 +1127,13 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(matchLocally(generated, { name, unit }).candidates.every(({ score }) => score < 0.9)).toBe(true);
   });
 
+  it('asks about "eGFRcr (EKFC)", never filing it under the one formula "eGFRcr" names', () => {
+    for (const name of ['eGFRcr (EKFC)', 'eGFRcr EKFC']) {
+      const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
+      expect(result.status).not.toBe('match');
+    }
+  });
+
   it('takes "eGFR Lund Malmö" as the eGFR of no formula', () => {
     expect(matchLocally(generated, { name: 'eGFR Lund Malmö', unit: 'mL/min/1.73m²' })).toMatchObject({ code: '69405-9' });
   });
@@ -1372,8 +1405,8 @@ describe('matchLocally on names of real Italian reports', () => {
     });
 
     it.each([
-      ['nt-probnp|', 'NT-proBNP', '33762-6'],
-      ['eritroblasti|', 'Eritroblasti', '58413-6'],
+      ['nt-probnp|#words', 'NT-proBNP', '33762-6'],
+      ['eritroblasti|#words', 'Eritroblasti', '58413-6'],
     ])('takes the test confirmed for %s printed in words when no test with word results fits', (key, name, code) => {
       const learned = (wording: string): string | undefined => (wording === key ? code : undefined);
       expect(matchLocally(generated, { name, unit: '', qualitative: absent }, learned)).toMatchObject({ status: 'match', code });
@@ -1384,6 +1417,25 @@ describe('matchLocally on names of real Italian reports', () => {
       expect(
         matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine sediment', qualitative: absent }, learned)
       ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('takes the test learned for the wording printed in words, whatever else fits', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words' ? '25145-4' : undefined);
+      expect(
+        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned)
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('never takes a test learned for the wording in words for a number', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|/uL#words' ? '25145-4' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '/µL', specimenHint: 'urine' }, learned);
+      expect(result).toMatchObject({ status: 'match', code: '51480-2' });
+    });
+
+    it('never takes a test learned in a sediment section for the wording in a urine one', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words#sediment' ? '25145-4' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned);
+      expect(result.status).toBe('ambiguous');
     });
 
     it('never takes a test learned for a number of the wording for a result in words', () => {

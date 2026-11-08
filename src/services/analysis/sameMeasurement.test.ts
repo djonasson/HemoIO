@@ -44,6 +44,17 @@ describe('isSettled', () => {
     expect(settled(values)).toBe(true);
   });
 
+  it('keeps one formula however spelled, and a plain eGFR with either, as one estimate printed again', () => {
+    const one = (a: string, b: string): number =>
+      clusterMeasurements([
+        compared(value(a, 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+        compared(value(b, 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+      ]).length;
+    expect(one('eGFR (Lund-Malmö)', 'eGFR (LMR)')).toBe(1);
+    expect(one('eGFR (BIS1)', 'eGFR (formula BIS)')).toBe(1);
+    expect(one('eGFR', 'eGFR (EKFC)')).toBe(1);
+  });
+
   it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {
     const values = [
       compared(value('Emoglobina (HGB)', 14.2, 'g/dL', '718-7'), 14.2),

@@ -165,6 +165,21 @@ describe('applyBiomarkerValue', () => {
     // A number edited to another number keeps its test
     expect(applyBiomarkerValue(typed, 96, catalog).loincCode).toBe('2345-7');
   });
+
+  it('never gives a number typed over a word the test learned for the word', async () => {
+    const value = await analyzed('P-Glucosio', 'mg/dL');
+    const absent = { text: 'Assente', kind: 'boolean', value: 0 } as const;
+    const learned = { 'p-glucosio|mg/dL#words': '25428-4' };
+    const word: MatchedBiomarker = {
+      ...value,
+      value: 0,
+      qualitative: absent,
+      loincCode: '25428-4',
+      identifiedBy: 'learned',
+      analyzed: { name: 'P-Glucosio', unit: 'mg/dL', identification: { candidates: [], identificationFlags: [], loincCode: '25428-4', identifiedBy: 'learned' } },
+    };
+    expect(applyBiomarkerValue(word, 95, catalog, learned)).toMatchObject({ loincCode: '2345-7', identifiedBy: 'local' });
+  });
 });
 
 describe('chooseTestForWording', () => {

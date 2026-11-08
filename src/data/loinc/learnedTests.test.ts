@@ -35,4 +35,10 @@ describe('learned keys and codes', () => {
     expect(learnedWording('glucosio|mg/dL')).toBe('glucosio (mg/dL)');
     expect(learnedWording('nitriti|')).toBe('nitriti');
   });
+
+  it('says a key of a result in words, or of a urine sediment section', () => {
+    expect(learnedWording('nitriti|#words')).toBe('nitriti (in words)');
+    expect(learnedWording('batteri|#words#sediment')).toBe('batteri (in words, urine sediment)');
+    expect(learnedWording('leucociti|/[HPF]#sediment')).toBe('leucociti (/[HPF], urine sediment)');
+  });
 });
