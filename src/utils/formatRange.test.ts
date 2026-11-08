@@ -16,4 +16,11 @@ describe('formatRange', () => {
     expect(formatRange(8.4168336673, 10.4208416834)).toBe('8.417 - 10.42');
     expect(formatRange(undefined, 10.4208416834)).toBe('≤ 10.42');
   });
+
+  it('shows a converted end to four significant figures even when the conversion is exact', () => {
+    // Calcium 2.1-2.6 mmol/L in mg/dL, and glucose 3.9-5.6 mmol/L
+    expect(formatRange(8.4168, 10.4208)).toBe('8.417 - 10.42');
+    expect(formatRange(70.2624, 100.8896)).toBe('70.26 - 100.9');
+    expect(formatRange(12.5, 1234)).toBe('12.5 - 1234');
+  });
 });

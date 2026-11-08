@@ -1,12 +1,13 @@
 /**
- * A range end as it reads: as printed, or, for one converted from another
- * unit and kept at full precision (8.416833667 mg/dL from 2.1 mmol/L), to
- * four significant figures. A printed number has no more than six, so
- * only a converted one is rounded.
+ * A range end as it reads: to four significant figures, without trailing
+ * zeros, so one converted from another unit reads 8.417, not 8.416833667
+ * (from 2.1 mmol/L). A printed end of four figures or fewer reads as
+ * printed, and an integer part is never rounded (150000 stays 150000).
  */
 function formatBound(bound: number): string {
-  const printed = Number(bound.toPrecision(6)) === bound;
-  return String(printed ? bound : Number(bound.toPrecision(4)));
+  if (!Number.isFinite(bound)) return String(bound);
+  const integerDigits = Math.abs(bound) >= 1 ? Math.floor(Math.log10(Math.abs(bound))) + 1 : 1;
+  return String(Number(bound.toPrecision(Math.min(21, Math.max(4, integerDigits)))));
 }
 
 /**

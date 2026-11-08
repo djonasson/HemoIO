@@ -226,6 +226,17 @@ describe('csvExport', () => {
       expect(hemoglobin).toMatch(/,g\/dL,,,$/);
     });
 
+    it('writes range ends to six significant figures, as a range converted at full precision would not be printed', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [createMockTestValue(1, 1, '2345-7', 5.5, 'mmol/L', 3.8854351687, 5.5499)],
+          biomarkerNames: new Map(),
+        },
+      ]);
+      expect(csv.split('\n')[1]).toMatch(/,3\.88544,5\.5499,mmol\/L$/);
+    });
+
     it('should exclude reference ranges when option is false', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data, { includeReferenceRanges: false });

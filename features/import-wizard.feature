@@ -222,6 +222,7 @@ Feature: Import Wizard
     When I save the import
     Then the range should be compared as 8.4168-10.4208 mg/dL, not rounded to 8.4-10
     And the value should read within its reference range
+    And the range should read "8.417 - 10.42 mg/dL", to four significant figures
 
   Scenario: Numbers keep every decimal the report printed
     Given I am editing a value on the review step

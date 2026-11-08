@@ -118,6 +118,15 @@ function valueField(testValue: TestValue): string {
 }
 
 /**
+ * A reference range end to six significant figures: a range converted from
+ * another unit is kept at full precision (3.8854351687), which no report
+ * prints; a printed end has no more than six
+ */
+function rangeEnd(bound: number): string {
+  return String(Number.isFinite(bound) ? Number(bound.toPrecision(6)) : bound);
+}
+
+/**
  * Build CSV header row based on options
  */
 function buildHeader(options: CsvExportOptions): string[] {
@@ -156,8 +165,8 @@ function buildRow(
   if (options.includeReferenceRanges !== false) {
     const hasRange = testValue.referenceRangeLow !== undefined || testValue.referenceRangeHigh !== undefined;
     row.push(
-      testValue.referenceRangeLow !== undefined ? String(testValue.referenceRangeLow) : '',
-      testValue.referenceRangeHigh !== undefined ? String(testValue.referenceRangeHigh) : '',
+      testValue.referenceRangeLow !== undefined ? rangeEnd(testValue.referenceRangeLow) : '',
+      testValue.referenceRangeHigh !== undefined ? rangeEnd(testValue.referenceRangeHigh) : '',
       // A range printed in its own unit (a 24-hour amount beside a concentration) says so; any other is in the value's
       hasRange ? textField(testValue.referenceRangeUnit || testValue.unit) : ''
     );

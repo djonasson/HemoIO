@@ -699,7 +699,7 @@ test.describe('Import Wizard', () => {
 
         const card = await saveAndExpand(page);
         // Rounded to 8.4-10 mg/dL, 10.3 would read high
-        await expect(savedRow(card, 'Calcium', /10\.3 mg\/dL, Within reference range$/)).toContainText('8.4168 - 10.4208 mg/dL');
+        await expect(savedRow(card, 'Calcium', /10\.3 mg\/dL, Within reference range$/)).toContainText('8.417 - 10.42 mg/dL');
       });
 
       for (const typed of ['1.015', '0.005']) {
