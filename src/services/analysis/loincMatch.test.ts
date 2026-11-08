@@ -1073,14 +1073,9 @@ describe('matchLocally on names of real Italian reports', () => {
   });
 
   it.each(['eGFR (formula EKFC)', 'eGFR (EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'])(
-    'leaves %s, by a formula LOINC has no test for, to the AI or the user, the eGFR HemoIO describes first',
+    'takes %s, by a formula LOINC has no test for, as the eGFR of no formula, never another formula',
     (name) => {
-      const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
-      expect(result.status).toBe('ambiguous');
-      expect(result.candidates[0].code).toBe('98979-8');
-      // Filtration rates before the creatinine clearance a Cockcroft-Gault formula predicts
-      const closest = result.candidates.slice(0, 4).map(({ name: candidate }) => candidate);
-      expect(closest.every((candidate) => candidate.startsWith('Glomerular filtration rate'))).toBe(true);
+      expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
     }
   );
 

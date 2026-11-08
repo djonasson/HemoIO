@@ -177,19 +177,17 @@ test.describe('Identifying the test of each value', () => {
     expect(ai.choiceRequests).toHaveLength(0);
   });
 
-  test('asks about an eGFR by a formula LOINC has no test for, filtration rates first', async ({ page }) => {
-    // Scenario Outline: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+  test('files an eGFR by a formula LOINC has no test for under the eGFR of no formula', async ({ page }) => {
+    // Scenario Outline: An eGFR by a formula LOINC has no test for is filed under the eGFR of no formula
     const names = ['eGFR (formula EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'];
     const ai = await analyzeReport(
       page,
       names.map((name, i) => ({ name, value: 81 + i, unit: 'mL/min/1.73m²', confidence: 0.95 }))
     );
-    expect(ai.choiceRequests).toHaveLength(1);
-    expect(ai.choiceRequests[0].map((asked) => asked.name).sort()).toEqual([...names].sort());
-    for (const { candidates } of ai.choiceRequests[0]) {
-      expect(candidates[0].code).toBe('98979-8');
-      expect(candidates.slice(0, 4).every((c) => c.name.startsWith('Glomerular filtration rate'))).toBe(true);
+    for (const i of names.keys()) {
+      await expect(rowFor(page, String(81 + i)).getByText('LOINC 69405-9')).toBeVisible();
     }
+    expect(ai.choiceRequests).toHaveLength(0);
   });
 
   test('files an eGFR under the formula its bracket names', async ({ page }) => {

@@ -612,10 +612,25 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas);
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
-      return result.map((one) => (one.score > cap ? { ...one, score: cap } : one));
+      // A formula LOINC lacks is the estimate of no formula, when LOINC has one ("eGFR (EKFC)" is 69405-9)
+      const unnamed = byFormulas ? result.filter(({ test }) => namesNoFormula(test.method) && still.some((one) => sameQuantity(one.test, test))) : [];
+      const capped = result
+        .filter((one) => unnamed.length !== 1 || one !== unnamed[0])
+        .map((one) => (one.score > cap ? { ...one, score: cap } : one));
+      return unnamed.length === 1 ? [{ ...unnamed[0], score: Math.max(unnamed[0].score, MATCH_SCORE) }, ...capped] : capped;
     }
   }
   return result;
+}
+
+/** Whether two tests measure the same thing in the same sample, by whatever method */
+function sameQuantity(a: CatalogTest, b: CatalogTest): boolean {
+  return a.component === b.component && a.property === b.property && a.system === b.system && a.scale === b.scale;
+}
+
+/** Whether an estimate's method names no formula: "based on 1.73 sq M", not "Creatinine-based formula (MDRD)" */
+function namesNoFormula(method: string): boolean {
+  return method !== '' && method !== CALCULATED && !/\bformula\b/i.test(method);
 }
 
 /** Whether a word is an Italian one for a method (see METHOD_READINGS) */

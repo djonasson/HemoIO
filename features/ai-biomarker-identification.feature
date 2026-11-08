@@ -121,12 +121,12 @@ Feature: Identifying the test of each value
     Then the value should be saved as "Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma"
     And the AI should not be asked which test it is
 
-  Scenario Outline: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+  Scenario Outline: An eGFR by a formula LOINC has no test for is filed under the eGFR of no formula
     Given a report prints "<name>" in mL/min/1.73m²
     When the report is analyzed
-    Then the AI should be asked which test it is
-    And the first test to choose from should be the eGFR HemoIO describes
-    And the filtration rates should come before any creatinine clearance
+    Then the value should be saved under the eGFR test 69405-9, which names no formula
+    And it should never be saved under the eGFR of another formula
+    And the AI should not be asked which test it is
 
     Examples:
       | name                |
