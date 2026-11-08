@@ -22,6 +22,7 @@ import { Paper, Text, Stack, Group, Badge, Center, Loader, Box } from '@mantine/
 import { IconTrendingUp, IconTrendingDown, IconMinus, IconAlertCircle } from '@tabler/icons-react';
 import type { TrendDataPoint, TrendDirectionResult } from '@services/statistics/trendAnalysis';
 import { statusColor } from '@/utils/statusColor';
+import { formatPointValue } from '@/utils/formatTestValue';
 import { CustomTooltip } from './TrendChartTooltip';
 import {
   TrendChartFocusOverlay,
@@ -212,7 +213,7 @@ export function TrendChart({
             </Text>
             <Group gap="xs">
               <Text size="xl" fw={700}>
-                {chartData[0].value}
+                {formatPointValue(chartData[0])}
               </Text>
               <Text size="lg" c="dimmed">
                 {unit}
@@ -354,7 +355,7 @@ export function TrendChart({
                       stroke={highlighted ? '#1c7ed6' : 'var(--mantine-color-body)'}
                       strokeWidth={highlighted ? 3 : 2}
                       aria-current={highlighted ? 'true' : undefined}
-                      aria-label={`${payload.formattedDate}: ${payload.value} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
+                      aria-label={`${payload.formattedDate}: ${formatPointValue(payload)} ${payload.unit} (${status})${preview ? ', has notes' : ''}`}
                       role={select ? 'button' : undefined}
                       tabIndex={select ? 0 : undefined}
                       style={select ? { cursor: 'pointer' } : undefined}

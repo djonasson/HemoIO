@@ -432,6 +432,22 @@ describe('AnthropicProvider rate limiting', () => {
 
     expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
+
+  it('keeps a qualitative result as printed, with no unit', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ content: [{ type: 'text', text: JSON.stringify({ biomarkers: [ { name: 'Batteri', value: 0, unit: 'per campo', confidence: 0.9, qualitativeValue: 'Assenti' }, { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9 } ], warnings: [] }) }], stop_reason: 'end_turn' }),
+    } as Response);
+
+    const result = await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).analyzeLabReport('Batteri Assenti');
+
+    expect(result.biomarkers[0]).toMatchObject({
+      value: 0,
+      unit: '',
+      qualitative: { text: 'Assenti', kind: 'boolean', value: 0 },
+    });
+    expect(result.biomarkers[1].qualitative).toBeUndefined();
+  });
 });
 
 describe('AnthropicProvider prompt caching', () => {

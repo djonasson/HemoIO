@@ -172,6 +172,13 @@ everything the user stores per test is keyed by a code.
 - **TestValue**: One measurement. `biomarkerKey` holds the test's LOINC code
   ("2345-7"), or `unknown:<name key>` for a value the user saved as "not a
   LOINC test", which is then trended by its printed name and unit only.
+  It keeps the method printed with it. An interval ("5-10 per campo") is
+  saved as its midpoint, which charts and status use, with its two ends
+  (`numericValueType: 'interval'`), and reads as its ends everywhere it is
+  shown or exported. A qualitative result is saved as printed ("Assenti",
+  "++") with its kind (`qualitativeType`) and the number it reads as
+  (`ordinalValue`: absent 0, present 1, traces 0.5, one to four crosses 1-4);
+  it is shown as printed and never charted.
 - **CatalogTest**: A LOINC test of the shipped catalog. Never stored in the
   database: a value refers to it by code.
 - **TestAddon**: What HemoIO adds to LOINC for the tests it describes: a

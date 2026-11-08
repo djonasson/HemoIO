@@ -490,6 +490,122 @@ test.describe('Import Wizard', () => {
       });
     }
 
+    test.describe('Values as printed', () => {
+      /** Save the reviewed import and open its result on the timeline */
+      async function saveAndExpand(page: Page): Promise<Locator> {
+        await continueToConfirm(page);
+        await saveResults(page);
+        return expandLabResult(page, '2024-01-15');
+      }
+
+      /** A timeline row by what it says to screen readers: "name: value unit, ..." */
+      function savedRow(card: Locator, name: string, value: RegExp): Locator {
+        return card.getByRole('row', { name: new RegExp(`^${name}: ${value.source}`) });
+      }
+
+      test('saves an interval as its two ends', async ({ page }) => {
+        // Scenario: An interval is saved as its two ends
+        await loginWithOllama(page, [
+          { extraction: extraction([{ name: 'Erythrocytes', value: '5-10', unit: '/HPF', confidence: 0.95 }]) },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Erythrocytes');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Erythrocytes', /5-10 \/HPF,/)).toBeVisible();
+        await expect(card.getByText('7.5', { exact: true })).toHaveCount(0);
+      });
+
+      test("saves a value's method", async ({ page }) => {
+        // Scenario: A value's method is saved
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95, method: 'Enzymatic' },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        await expect(reviewCell(reviewRow(page, 'Glucose'), 'Method')).toHaveText('Enzymatic');
+
+        const card = await saveAndExpand(page);
+        const row = savedRow(card, 'Glucose', /95 mg\/dL by Enzymatic,/);
+        await expect(row).toBeVisible();
+        await expect(row.getByText('Enzymatic', { exact: true })).toBeVisible();
+      });
+
+      test('keeps a result printed as a word as printed', async ({ page }) => {
+        // Scenario: A result printed as a word is kept as printed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              {
+                name: 'Batteri',
+                value: 0,
+                qualitativeValue: 'Assenti',
+                unit: 'per campo',
+                specimenHint: 'urine',
+                confidence: 0.95,
+              },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await expect(reviewCell(row, 'Value')).toHaveText('Assenti (0)');
+        // A presence has no unit, whatever column the report printed beside it
+        await expect(reviewCell(row, 'Unit')).toHaveText('');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Batteri', /Assenti\s*,/)).toBeVisible();
+      });
+
+      test('keeps a result printed as crosses as printed', async ({ page }) => {
+        // Scenario: A result printed as crosses is kept as printed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Emoglobina', value: 2, qualitativeValue: '++', unit: '', specimenHint: 'urine', confidence: 0.9 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Emoglobina');
+        await expect(reviewCell(row, 'Value')).toHaveText('++ (2)');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Emoglobina', /\+\+\s*,/)).toBeVisible();
+      });
+
+      test("saves the number typed over a word's", async ({ page }) => {
+        // Scenario: A word's number changed on review is saved as the number typed
+        await loginWithOllama(page, [
+          {
+            extraction: extraction([
+              { name: 'Batteri', value: 0, qualitativeValue: 'Assenti', unit: '', specimenHint: 'urine', confidence: 0.95 },
+            ]),
+          },
+        ]);
+        await analyzeToReview(page, track(createTextLabReportPdf()));
+        const row = reviewRow(page, 'Batteri');
+        await changeTest(page, row, NOT_A_LOINC_TEST);
+
+        await row.getByRole('button', { name: 'Edit biomarker' }).click();
+        const editing = editingRow(page);
+        await expect(editing.getByText('Assenti', { exact: true })).toBeVisible();
+        await editing.getByPlaceholder('Value', { exact: true }).fill('3');
+        await expect(editing.getByText('Assenti', { exact: true })).toHaveCount(0);
+        await editing.getByRole('button', { name: 'Save changes' }).click();
+        await expect(reviewCell(row, 'Value')).toHaveText('3');
+
+        const card = await saveAndExpand(page);
+        await expect(savedRow(card, 'Batteri', /3\s*,/)).toBeVisible();
+      });
+    });
+
     test('should show date picker for lab date', async ({ page }) => {
       await loginWithOllama(page);
       await analyzeToReview(page, track(createTextLabReportPdf()));

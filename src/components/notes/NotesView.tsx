@@ -19,6 +19,7 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { toLocalDay } from '@/utils/localDate';
+import { formatTestValue } from '@/utils/formatTestValue';
 import { IconNotes, IconSearch } from '@tabler/icons-react';
 import { useNotes } from '@hooks/useNotes';
 import { useLabResults } from '@hooks/useLabResults';
@@ -73,7 +74,7 @@ export function NotesView({ onOpenLabResult, onOpenTrend }: NotesViewProps): Rea
       for (const tv of result.testValues) {
         if (tv.id !== undefined) {
           testValues.set(tv.id, {
-            value: String(tv.value),
+            value: formatTestValue(tv),
             unit: tv.unit,
             labResultId: tv.labResultId,
           });

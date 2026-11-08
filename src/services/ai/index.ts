@@ -14,6 +14,7 @@ export type {
   AnalysisOptions,
   LabReportAnalysisResult,
   ExtractedBiomarker,
+  QualitativeReading,
   TestCandidate,
   TestChoice,
   TestChoiceRequest,
@@ -77,5 +78,8 @@ export { LAB_REPORT_SYSTEM_PROMPT, createAnalysisPrompt, RESPONSE_SCHEMA } from 
 // Interval value parsing
 export { parseIntervalValue, formatIntervalValue } from './parseIntervalValue';
 export type { ParsedValue } from './parseIntervalValue';
+
+// Qualitative value parsing
+export { heldQualitative, parseExtractedValue, readQualitativeWord } from './parseQualitativeValue';
 
 export { RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';

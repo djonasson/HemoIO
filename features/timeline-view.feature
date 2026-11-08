@@ -57,6 +57,13 @@ Feature: Timeline View
     And the lab result card should show a badge with the abnormal count
 
   # Opening a test's trend
+  Scenario: Values read as they were printed
+    Given I have a lab result with an interval value of "5-10" per microscope field, a value measured by the "Enzymatic" method, and a result printed as "Assenti"
+    When I expand the lab result card
+    Then the interval should read "5-10", not its midpoint
+    And the method should be shown with its value, and said to screen readers
+    And the printed result should read "Assenti"
+
   Scenario: Open a test's trend from a lab result
     Given I have a lab result from "Quest Diagnostics" on "2024-01-15" with a glucose value of 125 mg/dL
     And another lab result with a glucose value on a later date

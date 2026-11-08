@@ -7,6 +7,7 @@
 import { isUnknownKey } from '@data/loinc/keys';
 import type { LabResult, TestValue } from '@/types';
 import { isWithinDays } from '@/utils/localDate';
+import { formatTestValue } from '@/utils/formatTestValue';
 
 /**
  * Options for CSV export
@@ -103,6 +104,15 @@ function loincField(key: string): string {
 }
 
 /**
+ * The Value column: an interval as its ends, as text a spreadsheet keeps
+ * (it reads a bare 5-10 as a date); a qualitative result as printed
+ */
+function valueField(testValue: TestValue): string {
+  const shown = formatTestValue(testValue);
+  return testValue.numericValueType === 'interval' && shown.includes('-') ? asText(shown) : textField(shown);
+}
+
+/**
  * Build CSV header row based on options
  */
 function buildHeader(options: CsvExportOptions): string[] {
@@ -134,7 +144,7 @@ function buildRow(
     textField(biomarkerName),
     // The value's LOINC code; none for a value saved as not a LOINC test
     isUnknownKey(testValue.biomarkerKey) ? '' : loincField(testValue.biomarkerKey),
-    textField(String(testValue.value)),
+    valueField(testValue),
     textField(testValue.unit),
   ];
 

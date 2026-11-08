@@ -29,6 +29,7 @@ import { usePreferences } from '@hooks/usePreferences';
 import { convertForDisplay, preferredUnitFor } from '@services/units';
 import { statusColor } from '@/utils/statusColor';
 import { isTrendable } from '@/utils/isTrendable';
+import { formatTestValue } from '@/utils/formatTestValue';
 import { ScrollBox } from '@components/common/ScrollBox';
 import { formatReferenceRange } from '@services/alerts/alertRules';
 import { BiomarkerName } from './BiomarkerName';
@@ -84,23 +85,10 @@ function formatNumericValue(value: number): string {
 }
 
 /**
- * Format the value for display, including interval values
+ * Format the value for display, including interval and qualitative values
  */
 function formatValue(testValue: EnrichedTestValue): string {
-  const { value, numericValueType, intervalLow, intervalHigh } = testValue;
-
-  // Handle interval values
-  if (numericValueType === 'interval' && intervalLow !== undefined && intervalHigh !== undefined) {
-    return `${formatNumericValue(intervalLow)}-${formatNumericValue(intervalHigh)}`;
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'Positive' : 'Negative';
-  }
-  if (typeof value === 'number') {
-    return formatNumericValue(value);
-  }
-  return String(value);
+  return formatTestValue(testValue, formatNumericValue);
 }
 
 /**
@@ -168,7 +156,7 @@ export function TestValuesList({
               <Table.Tr
                 key={testValue.id}
                 data-status={testValue.status}
-                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}, ${indicator.label}`}
+                aria-label={`${biomarkerName}: ${formatValue(testValue)} ${testValue.unit}${testValue.method ? ` by ${testValue.method}` : ''}, ${indicator.label}`}
               >
                 <Table.Td>
                   <Tooltip label={indicator.label}>
@@ -213,6 +201,11 @@ export function TestValuesList({
                       {formatValue(testValue)}
                     </Text>
                   </Group>
+                  {testValue.method && (
+                    <Text size="xs" c="dimmed">
+                      {testValue.method}
+                    </Text>
+                  )}
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c="dimmed">

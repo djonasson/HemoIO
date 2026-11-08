@@ -146,6 +146,35 @@ Feature: Import Wizard
     Then I should be able to continue to the confirmation
     And the confirmation should show the value as the interval "5-10"
 
+  Scenario: An interval is saved as its two ends
+    Given the AI read a value of "5-10" per microscope field from a report
+    When I save the import
+    Then the timeline should show the value as "5-10", not as its midpoint 7.5
+
+  Scenario: A value's method is saved
+    Given the AI read a value of 95 mg/dL measured by the "Enzymatic" method
+    When I save the import
+    Then the timeline should show "Enzymatic" with the value
+
+  Scenario: A result printed as a word is kept as printed
+    Given the AI read "Batteri" as "Assenti" from a urine report
+    Then the review should show the value as "Assenti (0)", the word with the number it stands for
+    And it should have no unit
+    When I save the import
+    Then the timeline should show the value as "Assenti", not as 0
+
+  Scenario: A result printed as crosses is kept as printed
+    Given the AI read "Emoglobina" in urine as "++"
+    Then the review should show the value as "++ (2)"
+    When I save the import
+    Then the timeline should show the value as "++"
+
+  Scenario: A word's number changed on review is saved as the number typed
+    Given the AI read "Batteri" as "Assenti" from a urine report
+    When I edit its number to 3
+    Then the review should show the value as 3, without the word
+    And the value should be saved as 3
+
   Scenario: User enters a name that is not a LOINC test
     Given I am editing a value on the review step
     When I type a name that no LOINC test fits

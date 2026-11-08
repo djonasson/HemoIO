@@ -6,6 +6,7 @@
 import { trendCode } from '@data/loinc/display';
 import { convertForDisplay } from '@services/units';
 import type { Catalog } from '@data/loinc/catalog';
+import type { NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -17,7 +18,9 @@ export interface SummarizableResult {
     value: number | string | boolean;
     unit: string;
     status: Status;
-    numericValueType?: string;
+    numericValueType?: NumericValueType;
+    intervalLow?: number;
+    intervalHigh?: number;
   }>;
 }
 
@@ -27,6 +30,10 @@ export interface BiomarkerResultSummary {
   latest: {
     value: number | string | boolean;
     unit: string;
+    /** An interval's kind and ends, so it reads as its ends ("5-10") */
+    numericValueType?: NumericValueType;
+    intervalLow?: number;
+    intervalHigh?: number;
     date: Date;
     status: Status;
     labName: string;
@@ -52,6 +59,9 @@ export function summarizeBiomarkerResults(
       latest = {
         value: shown.value,
         unit: shown.unit,
+        numericValueType: shown.numericValueType,
+        intervalLow: shown.intervalLow,
+        intervalHigh: shown.intervalHigh,
         date: result.date,
         status: testValue.status,
         labName: result.labName,

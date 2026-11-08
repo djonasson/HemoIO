@@ -56,6 +56,22 @@ describe('summarizeBiomarkerResults', () => {
     expect(summary?.latest).toEqual(expect.objectContaining({ value: 5.55, unit: 'mmol/L' }));
   });
 
+  it("reports an interval's ends with its midpoint, unconverted", () => {
+    const summary = summarizeBiomarkerResults(
+      catalog,
+      [
+        result('2024-02-20', [
+          { ...glucose(7.5), numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 },
+        ]),
+      ],
+      GLUCOSE,
+      'mmol/L'
+    );
+    expect(summary?.latest).toEqual(
+      expect.objectContaining({ value: 7.5, unit: 'mg/dL', numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 })
+    );
+  });
+
   it('reports a latest value that is not a number as recorded', () => {
     const summary = summarizeBiomarkerResults(
       catalog,

@@ -295,6 +295,55 @@ describe('TestValuesList', () => {
     expect(screen.getByText('95')).toBeInTheDocument();
   });
 
+  it('shows an interval as its ends, not its midpoint', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, {
+            rawText: 'Eritrociti',
+            value: 7.5,
+            unit: '/[HPF]',
+            numericValueType: 'interval',
+            intervalLow: 5,
+            intervalHigh: 10,
+          }),
+        ]}
+      />
+    );
+
+    expect(screen.getByRole('row', { name: /^Eritrociti: 5-10 \/\[HPF\],/ })).toBeInTheDocument();
+    expect(screen.queryByText('7.50')).toBeNull();
+  });
+
+  it("shows a value's method beneath it, and says it", () => {
+    renderWithProviders(
+      <TestValuesList testValues={[createTestValue(1, { rawText: 'Test', value: 95, unit: 'mg/dL', method: 'Enzymatic' })]} />
+    );
+
+    const row = screen.getByRole('row', { name: /^Test: 95 mg\/dL by Enzymatic,/ });
+    expect(within(row).getByText('Enzymatic')).toBeInTheDocument();
+  });
+
+  it('shows a qualitative result as printed', () => {
+    renderWithProviders(
+      <TestValuesList
+        testValues={[
+          createTestValue(1, {
+            rawText: 'Batteri',
+            value: 'Assenti',
+            unit: '',
+            qualitativeType: 'boolean',
+            ordinalValue: 0,
+            status: 'unknown',
+          }),
+        ]}
+      />
+    );
+
+    const row = screen.getByRole('row', { name: /^Batteri: Assenti/ });
+    expect(within(row).getByText('Assenti')).toBeInTheDocument();
+  });
+
   describe('Specimen type display', () => {
     it('should display specimen type for known biomarkers', () => {
       const testValues = [createTestValue(1, { biomarkerKey: '718-7', rawText: 'Hemoglobin' })];

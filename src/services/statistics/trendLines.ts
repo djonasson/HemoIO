@@ -15,6 +15,7 @@ import {
 import { isTrendable } from '@/utils/isTrendable';
 import type { Catalog } from '@data/loinc/catalog';
 import type { TrendDataPoint } from './trendAnalysis';
+import type { NumericValueType } from '@/types';
 
 type Status = 'normal' | 'low' | 'high' | 'unknown';
 
@@ -31,6 +32,9 @@ export interface TrendableResult {
     referenceRangeLow?: number;
     referenceRangeHigh?: number;
     status: Status;
+    numericValueType?: NumericValueType;
+    intervalLow?: number;
+    intervalHigh?: number;
   }>;
 }
 
@@ -68,6 +72,19 @@ function unitKey(unit: string): string {
 /** A line of its own's name: the test's, with the unit its values share */
 function ownLineName(name: string, unit: string): string {
   return unit ? `${name} in ${unit}` : `${name} with no unit`;
+}
+
+/**
+ * An interval's ends, which read in its own unit only: converted, its
+ * midpoint is a number in another unit, and its ends are not
+ */
+function intervalOf(
+  value: TrendableResult['testValues'][number],
+  shownUnit: string
+): Pick<TrendDataPoint, 'interval'> {
+  const { numericValueType, intervalLow, intervalHigh } = value;
+  if (numericValueType !== 'interval' || intervalLow === undefined || intervalHigh === undefined) return {};
+  return shownUnit === value.unit ? { interval: { low: intervalLow, high: intervalHigh } } : {};
 }
 
 /** Every line, in no order; keyed by TrendLine.key */
@@ -122,6 +139,7 @@ export function buildTrendLines(
         labName: result.labName,
         testValueId: value.id,
         labResultId: value.labResultId,
+        ...intervalOf(value, converted.unit),
       };
       if (unitsMatch(converted.unit, lineUnit)) {
         main.push({ ...point, unit: lineUnit });

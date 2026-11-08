@@ -168,6 +168,23 @@ describe('BiomarkerDetail', () => {
       expect(screen.getByText('Positive')).toBeInTheDocument();
     });
 
+    it('shows a qualitative result as printed', () => {
+      renderDetail({
+        summary: { ...summary, latest: { ...summary.latest, value: 'Assenti', unit: '' } },
+      });
+      expect(screen.getByText('Assenti')).toBeInTheDocument();
+    });
+
+    it('shows an interval as its ends', () => {
+      renderDetail({
+        summary: {
+          ...summary,
+          latest: { ...summary.latest, value: 7.5, numericValueType: 'interval', intervalLow: 5, intervalHigh: 10 },
+        },
+      });
+      expect(screen.getByText(`5-10 ${summary.latest.unit}`)).toBeInTheDocument();
+    });
+
     it('says when there are no recorded values', () => {
       renderDetail({ summary: null });
       const yours = screen.getByRole('region', { name: 'Your results' });

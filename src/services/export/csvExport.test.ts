@@ -118,6 +118,38 @@ describe('csvExport', () => {
       expect(csv).toContain('20/3/2024');
     });
 
+    it('exports an interval as its ends, as text a spreadsheet keeps', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [
+            {
+              ...createMockTestValue(1, 1, 'unknown:eritrociti', 7.5, '/[HPF]'),
+              numericValueType: 'interval',
+              intervalLow: 5,
+              intervalHigh: 10,
+            },
+          ],
+          biomarkerNames: new Map([['unknown:eritrociti', 'Eritrociti']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',"=""5-10""",');
+      expect(csv).not.toContain('7.5');
+    });
+
+    it('exports a qualitative result as printed', () => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [{ ...createMockTestValue(1, 1, '25145-4', 0, ''), value: 'Assenti', qualitativeType: 'boolean' }],
+          biomarkerNames: new Map([['25145-4', 'Bacteria']]),
+        },
+      ]);
+
+      expect(csv.split('\n')[1]).toContain(',Assenti,');
+    });
+
     it('should include lab name and biomarker name', () => {
       const data = createMockExportData();
       const csv = exportToCsv(data);

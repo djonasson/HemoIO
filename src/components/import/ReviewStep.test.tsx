@@ -360,6 +360,35 @@ describe('ReviewStep', () => {
       expect(edited[0].editedBiomarkers[0].value).toBeNaN();
     });
 
+    describe('a qualitative result', () => {
+      const bacteria = (value: number) => ({
+        ...mockReviewedResult.editedBiomarkers[0],
+        name: 'Batteri',
+        value,
+        unit: '',
+        qualitative: { text: 'Assenti', kind: 'boolean' as const, value: 0 },
+      });
+      const renderBacteria = (value: number) =>
+        renderReviewStep({ reviewedResults: [{ ...mockReviewedResult, editedBiomarkers: [bacteria(value)] }] });
+
+      it('shows the result as printed beside its number', () => {
+        renderBacteria(0);
+        expect(screen.getByText('Assenti (0)')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByLabelText('Edit biomarker'));
+        expect(screen.getByPlaceholderText('Value')).toHaveValue('0');
+        expect(screen.getByText('Assenti')).toBeInTheDocument();
+      });
+
+      it('no longer shows the printed result once its number is changed', () => {
+        renderBacteria(2);
+        expect(screen.getByText('2')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByLabelText('Edit biomarker'));
+        expect(screen.queryByText('Assenti')).toBeNull();
+      });
+    });
+
     it('takes a cleared number as missing, not as 0', async () => {
       const onReviewChange = vi.fn();
       renderReviewStep({ onReviewChange });

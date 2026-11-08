@@ -44,6 +44,7 @@ import {
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
 import { formatShortDate } from '@/utils/formatShortDate';
+import { formatTestValue } from '@/utils/formatTestValue';
 import { hasTargetRange } from '@components/settings/personalTarget';
 import type { BiomarkerResultSummary } from '@services/statistics';
 import type { PersonalTargetRange } from '@hooks/usePreferences';
@@ -55,11 +56,6 @@ const STATUS_LABELS: Record<BiomarkerResultSummary['latest']['status'], string> 
   normal: 'Normal',
   unknown: 'No reference range',
 };
-
-function formatSummaryValue(value: number | string | boolean): string {
-  if (typeof value === 'boolean') return value ? 'Positive' : 'Negative';
-  return String(value);
-}
 
 /**
  * Props for BiomarkerDetail component
@@ -200,7 +196,7 @@ export function BiomarkerDetail({
             <Stack gap="xs">
               <Group gap="xs">
                 <Text size="sm" fw={500}>
-                  {`${formatSummaryValue(summary.latest.value)} ${summary.latest.unit}`.trim()}
+                  {`${formatTestValue(summary.latest)} ${summary.latest.unit}`.trim()}
                 </Text>
                 <Text size="sm" c="dimmed">
                   {formatShortDate(summary.latest.date)}

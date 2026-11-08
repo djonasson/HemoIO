@@ -62,6 +62,18 @@ describe('buildTrendLines', () => {
     expect(lines.get('2345-7')!.elsewhere).toEqual({ count: 2, units: ['mg/g'] });
   });
 
+  it("keeps an interval's ends on its point in its own unit, never once converted", () => {
+    const interval = { numericValueType: 'interval' as const, intervalLow: 90, intervalHigh: 110 };
+    const results = [result('2024-01-15', [{ ...value('2345-7', 100, 'mg/dL', 'Glucose'), ...interval }])];
+
+    const own = buildTrendLines(catalog, results, {}).get('2345-7')!;
+    expect(own.dataPoints[0]).toMatchObject({ value: 100, interval: { low: 90, high: 110 } });
+
+    const converted = buildTrendLines(catalog, results, { [testKey(catalog, '2345-7')]: 'mmol/L' }).get('2345-7')!;
+    expect(converted.dataPoints[0].unit).toBe('mmol/L');
+    expect(converted.dataPoints[0].interval).toBeUndefined();
+  });
+
   it('names a line of values with no unit as such', () => {
     const lines = buildTrendLines(
       catalog,

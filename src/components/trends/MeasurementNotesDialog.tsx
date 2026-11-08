@@ -8,12 +8,15 @@ import { SaveFailedAlert } from '@components/common/SaveFailedAlert';
 import { useSaveState } from '@hooks/useSaveState';
 import { NoteDisplay, NoteEditor } from '@components/notes';
 import { formatShortDate } from '@/utils/formatShortDate';
+import { formatPointValue } from '@/utils/formatTestValue';
 import type { UserNote } from '@/types';
 
 export interface Measurement {
   testValueId: number;
   labResultId?: number;
   value: number;
+  /** The ends of an interval, which reads as them rather than as its midpoint */
+  interval?: { low: number; high: number };
   unit: string;
   date: Date;
   status?: string;
@@ -45,7 +48,7 @@ export function MeasurementNotesDialog({
   // The modal stays mounted and opens and closes through `opened`, so it can
   // return focus to the point that opened it
   const what = measurement
-    ? `${measurement.value} ${measurement.unit} on ${formatShortDate(measurement.date)}`
+    ? `${formatPointValue(measurement)} ${measurement.unit} on ${formatShortDate(measurement.date)}`
     : '';
   const stopAdding = () => {
     setAdding(false);

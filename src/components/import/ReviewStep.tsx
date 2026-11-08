@@ -55,6 +55,7 @@ import { missingFields, needsTest, planSave } from '@services/analysis/reviewedS
 import { NOT_A_LOINC_TEST } from './notLoincTest';
 import { SavedAsCell } from './SavedAsCell';
 import { ContinueProblems } from './ContinueProblems';
+import { heldQualitative } from '@services/ai';
 import { NumberField } from './NumberField';
 import { FileName } from './FileName';
 import type { Catalog } from '@data/loinc/catalog';
@@ -502,6 +503,8 @@ export function ReviewStep({
                         const isEditing =
                           editingBiomarker?.resultIndex === resultIndex &&
                           editingBiomarker?.biomarkerIndex === bioIndex;
+                        // The printed result, while the number is still the one it reads as
+                        const printedResult = heldQualitative(biomarker);
 
                         // Determine row background color based on issues
                         let rowBg: string | undefined;
@@ -644,16 +647,23 @@ export function ReviewStep({
                                     />
                                   </Group>
                                 ) : (
-                                  <NumberField
-                                    size="xs"
-                                    value={biomarker.value}
-                                    onValueChange={(value) =>
-                                      // A cleared number is missing, not 0
-                                      updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
-                                    }
-                                    decimalScale={2}
-                                    placeholder="Value"
-                                  />
+                                  <Group gap="xs" wrap="nowrap">
+                                    <NumberField
+                                      size="xs"
+                                      value={biomarker.value}
+                                      onValueChange={(value) =>
+                                        // A cleared number is missing, not 0
+                                        updateBiomarker(resultIndex, bioIndex, { value: value ?? NaN })
+                                      }
+                                      decimalScale={2}
+                                      placeholder="Value"
+                                    />
+                                    {printedResult && (
+                                      <Text size="xs" c="dimmed">
+                                        {printedResult.text}
+                                      </Text>
+                                    )}
+                                  </Group>
                                 )
                               ) : (
                                 <Text size="sm">{formatReviewedValue(biomarker)}</Text>

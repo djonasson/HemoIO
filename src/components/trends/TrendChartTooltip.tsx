@@ -5,6 +5,7 @@
 import { Paper, Text, Stack, Group, Badge } from '@mantine/core';
 import { formatRange } from '@/utils/formatRange';
 import { statusColor } from '@/utils/statusColor';
+import { formatPointValue } from '@/utils/formatTestValue';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 /**
@@ -39,7 +40,7 @@ export function CustomTooltip({
         <Group gap="xs">
           <Text size="sm">Value:</Text>
           <Text size="sm" fw={500}>
-            {data.value} {data.unit}
+            {formatPointValue(data)} {data.unit}
           </Text>
         </Group>
         {hasRange && (

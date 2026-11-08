@@ -217,6 +217,58 @@ describe('saveImportResults', () => {
     ).rejects.toEqual(new SaveError('quota'));
   });
 
+  it("saves a value's method", async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Glucose', 95, 'mg/dL', { loincCode: '2345-7', method: 'Enzymatic' }),
+      ])
+    );
+
+    expect(result.values[0].method).toBe('Enzymatic');
+  });
+
+  it('saves an interval with its ends, and its midpoint as the number', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Eritrociti', 7.5, '/[HPF]', { isInterval: true, intervalLow: 5, intervalHigh: 10 }),
+      ])
+    );
+
+    expect(result.values[0]).toMatchObject({
+      value: 7.5,
+      numericValueType: 'interval',
+      intervalLow: 5,
+      intervalHigh: 10,
+    });
+  });
+
+  it('saves a qualitative result as printed, with the number it reads as', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Batteri', 0, '', {
+          loincCode: '25145-4',
+          qualitative: { text: 'Assenti', kind: 'boolean', value: 0 },
+        }),
+        createMockBiomarker('Emoglobina', 2, '', { qualitative: { text: '++', kind: 'ordinal', value: 2 } }),
+      ])
+    );
+
+    const byName = Object.fromEntries(result.values.map((v) => [v.rawText, v]));
+    expect(byName.Batteri).toMatchObject({ value: 'Assenti', qualitativeType: 'boolean', ordinalValue: 0 });
+    expect(byName.Emoglobina).toMatchObject({ value: '++', qualitativeType: 'ordinal', ordinalValue: 2 });
+  });
+
+  it('saves the number typed for a qualitative result edited to another number', async () => {
+    const result = await saveOne(
+      createMockReviewedResult('test.pdf', [
+        createMockBiomarker('Batteri', 3, '', { qualitative: { text: 'Assenti', kind: 'boolean', value: 0 } }),
+      ])
+    );
+
+    expect(result.values[0].value).toBe(3);
+    expect(result.values[0].qualitativeType).toBeUndefined();
+  });
+
   it('saves nothing for an empty import', async () => {
     const { db } = await openTestDb();
 

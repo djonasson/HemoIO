@@ -42,6 +42,8 @@ export interface TrendDataPoint {
   testValueId?: number;
   /** Lab result the measurement belongs to */
   labResultId?: number;
+  /** The ends of an interval ("5-10"), whose midpoint is the value; only in the value's own unit */
+  interval?: { low: number; high: number };
 }
 
 /**

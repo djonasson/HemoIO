@@ -73,6 +73,19 @@ Feature: Document Analysis
     And units should be identified
     And reference ranges should be extracted when present
 
+  Scenario: AI extracts results printed as words or crosses for any test
+    Given a report prints results such as "Assenti", "Positivo", "Tracce" or "++"
+    When the AI analyzes the text
+    Then it should be asked to extract them for any test, with no unit and the result as printed
+    And absent should read as 0, present as 1, traces as 0.5 and one to four crosses as 1 to 4
+    And free text with no presence meaning, such as a colour, should still be skipped
+
+  Scenario: A value printed in two units needs no warning
+    Given a report prints a value in two units, such as "Glucosio 95 mg/dL 5.27 mmol/L"
+    When the AI analyzes the text
+    Then it should be asked to extract both, which are merged later, without a warning about it
+    And the review should show the value once
+
   Scenario: AI provides confidence scores
     Given the AI has extracted values
     Then each value should have a confidence score

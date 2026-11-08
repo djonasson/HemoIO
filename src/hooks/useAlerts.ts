@@ -27,6 +27,7 @@ import {
 import { buildTrendLines, type TrendLine } from '@services/statistics/trendLines';
 import { useCatalog } from '@contexts/useCatalog';
 import { isTrendable } from '@/utils/isTrendable';
+import { formatPointValue } from '@/utils/formatTestValue';
 import type { TrendDataPoint } from '@services/statistics/trendAnalysis';
 
 export type { AlertType };
@@ -52,6 +53,8 @@ export interface BiomarkerAlert {
   category?: string;
   /** Current value */
   value: number;
+  /** The ends of an interval value ("5-10"), whose midpoint is `value` */
+  interval?: { low: number; high: number };
   /** Unit of measurement */
   unit: string;
   /** Reference range */
@@ -205,6 +208,7 @@ export function useAlerts(): UseAlertsResult {
         biomarkerName,
         category: isLoincTest ? classLabel : undefined,
         value: point.value,
+        interval: point.interval,
         unit: point.unit,
         referenceRange: { low: point.referenceRange?.low, high: point.referenceRange?.high },
         status,
@@ -225,7 +229,7 @@ export function useAlerts(): UseAlertsResult {
           message: outOfRangeMessage(
             biomarkerName,
             point.status,
-            alert.value,
+            formatPointValue(alert),
             alert.unit,
             alert.referenceRange!
           ),

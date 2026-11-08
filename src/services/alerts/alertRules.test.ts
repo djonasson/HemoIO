@@ -114,6 +114,9 @@ describe('messages', () => {
     expect(outOfRangeMessage('Glucose', 'high', 150, 'mg/dL', { low: 70, high: 100 })).toBe(
       'Glucose is high at 150 mg/dL (reference 70 - 100 mg/dL)'
     );
+    expect(outOfRangeMessage('Eritrociti', 'high', '5-10', '/[HPF]', { high: 2 })).toBe(
+      'Eritrociti is high at 5-10 /[HPF] (reference ≤ 2 /[HPF])'
+    );
     expect(outOfRangeMessage('Hemoglobin', 'low', 10, 'g/dL', undefined)).toBe('Hemoglobin is low at 10 g/dL');
     expect(trendMessage('decreasing', d('2024-01-10'), d('2024-04-10'))).toBe(
       'Consistently decreasing over 3 months (Jan–Apr 2024)'

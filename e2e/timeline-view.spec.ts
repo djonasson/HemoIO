@@ -454,6 +454,52 @@ test.describe('Timeline with Data', () => {
     await expect(table.getByRole('button')).toHaveCount(0);
   });
 
+  // Scenario: Values read as they were printed
+  test('shows an interval as its ends, a method with its value, and a printed result as printed', async ({
+    page,
+  }) => {
+    const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
+    const [glucose] = testValues(result, [{ biomarker: BIOMARKERS.GLUCOSE, value: 95 }], 1);
+    const stamps = { labResultId: 1, confidence: 0.9, createdAt: result.createdAt, updatedAt: result.updatedAt };
+    await seedLabData(page, {
+      labResults: [result],
+      testValues: [
+        { ...glucose, method: 'Enzymatic' },
+        {
+          ...stamps,
+          id: 2,
+          biomarkerKey: 'unknown:eritrociti',
+          rawText: 'Eritrociti',
+          value: 7.5,
+          unit: '/HPF',
+          numericValueType: 'interval',
+          intervalLow: 5,
+          intervalHigh: 10,
+        },
+        {
+          ...stamps,
+          id: 3,
+          biomarkerKey: 'unknown:batteri',
+          rawText: 'Batteri',
+          value: 'Assenti',
+          unit: '',
+          qualitativeType: 'boolean',
+          ordinalValue: 0,
+        },
+      ],
+    });
+
+    await goToTimeline(page);
+    const card = await expandLabResult(page, '2024-01-15');
+    const table = card.getByRole('table', { name: 'Test values' });
+
+    await expect(table.getByRole('row', { name: /^Eritrociti: 5-10 \/HPF,/ })).toBeVisible();
+    await expect(table.getByText('7.50', { exact: true })).toHaveCount(0);
+    const glucoseRow = table.getByRole('row', { name: /^Glucose: 95 mg\/dL by Enzymatic,/ });
+    await expect(glucoseRow.getByText('Enzymatic', { exact: true })).toBeVisible();
+    await expect(table.getByRole('row', { name: /^Batteri: Assenti\s*,/ })).toBeVisible();
+  });
+
   test('should filter by date range', async ({ page }) => {
     const days = ['2024-01-15', '2024-03-20', '2024-06-10', '2024-09-05'];
     const results = days.map((day, i) => labResult(i + 1, day, 'Quest Diagnostics'));

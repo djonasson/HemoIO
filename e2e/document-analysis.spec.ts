@@ -538,6 +538,35 @@ test.describe('Document Analysis - AI Processing', () => {
     await expect(reviewCell(reviewRow(page, 'Hemoglobin'), 'Unit')).toHaveText('g/dL');
     await expect(reviewCell(reviewRow(page, 'ALT'), 'Unit')).toHaveText('U/L');
   });
+
+  test('asks for results printed as words or crosses, of any test', async ({ page }) => {
+    // Scenario: AI extracts results printed as words or crosses for any test
+    const ai = await loginWithOllama(page);
+    await analyzeToReview(page, track(createTextLabReportPdf()));
+
+    const instructions = squash(ai.systemPrompts[0]);
+    expect(instructions).toContain('QUALITATIVE VALUES (any test, not only urinalysis)');
+    expect(instructions).toContain('with unit "" (empty string), the number below as value, and the result exactly as printed in qualitativeValue');
+    expect(instructions).toContain('"tracce"/"traccia"/"trace"/"traces" → value: 0.5');
+    expect(instructions).toContain('"+" → 1, "++" → 2, "+++" → 3, "++++" → 4');
+    expect(instructions).toContain('Skip free text with no presence meaning');
+  });
+
+  test('asks for both units of a value printed in two, without a warning, and shows it once', async ({ page }) => {
+    // Scenario: A value printed in two units needs no warning
+    const ai = await loginWithOllama(page, [
+      {
+        extraction: extraction([
+          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 },
+          { name: 'Glucose', value: 5.27, unit: 'mmol/L', confidence: 0.95 },
+        ]),
+      },
+    ]);
+    await analyzeToReview(page, track(createTextLabReportPdf()));
+
+    expect(squash(ai.systemPrompts[0])).toMatch(/printed in two units.*extract both.*do not add a warning about it/);
+    await expect(reviewRow(page, 'Glucose')).toHaveCount(1);
+  });
 });
 
 test.describe('Document Analysis - Error Handling', () => {

@@ -91,6 +91,25 @@ export interface ExtractedBiomarker {
   intervalHigh?: number;
   /** Raw value string before parsing (e.g., "5 - 10") */
   rawValue?: string;
+  /**
+   * A qualitative result ("Assenti", "Positivo", "++") as printed, with its
+   * kind and the number it reads as (see parseQualitativeValue). It holds
+   * while `value` is still that number: a value edited to another number is
+   * no longer the printed word.
+   */
+  qualitative?: QualitativeReading;
+}
+
+/**
+ * A qualitative result as printed, and the number it reads as: absent 0
+ * and present 1 (boolean); traces 0.5 and one to four crosses 1-4 (ordinal)
+ */
+export interface QualitativeReading {
+  /** The result as printed ("Assenti", "Tracce", "++") */
+  text: string;
+  kind: 'boolean' | 'ordinal';
+  /** The number it reads as */
+  value: number;
 }
 
 /**

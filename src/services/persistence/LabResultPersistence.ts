@@ -4,6 +4,7 @@
  * Transforms reviewed import results into database format and saves them.
  */
 
+import { heldQualitative } from '@services/ai/parseQualitativeValue';
 import { unknownKeyOf } from '@services/analysis/identification';
 import { normalizeLabDate } from '@/utils/labDate';
 import type { ReviewedResult } from '@components/import';
@@ -43,6 +44,24 @@ function resolveBiomarkerKey(biomarker: MatchedBiomarker): string {
 }
 
 /**
+ * The stored value: a qualitative result as printed ("Assenti"), with the
+ * number it reads as; an interval's midpoint, with its ends; else the number
+ */
+function storedValue(
+  biomarker: MatchedBiomarker
+): Pick<TestValue, 'value' | 'qualitativeType' | 'ordinalValue' | 'numericValueType' | 'intervalLow' | 'intervalHigh'> {
+  const qualitative = heldQualitative(biomarker);
+  if (qualitative) {
+    return { value: qualitative.text, qualitativeType: qualitative.kind, ordinalValue: qualitative.value };
+  }
+  const { isInterval, intervalLow, intervalHigh } = biomarker;
+  if (isInterval && intervalLow !== undefined && intervalHigh !== undefined) {
+    return { value: biomarker.value, numericValueType: 'interval', intervalLow, intervalHigh };
+  }
+  return { value: biomarker.value };
+}
+
+/**
  * Transform a MatchedBiomarker to a TestValue for database storage
  */
 function transformBiomarkerToTestValue(
@@ -52,10 +71,11 @@ function transformBiomarkerToTestValue(
 
   return {
     biomarkerKey: resolveBiomarkerKey(biomarker),
-    value: biomarker.value,
+    ...storedValue(biomarker),
     unit: biomarker.unit,
     referenceRangeLow: biomarker.referenceRange?.low,
     referenceRangeHigh: biomarker.referenceRange?.high,
+    method: biomarker.method,
     rawText: biomarker.name, // Store original name as raw text
     confidence: biomarker.confidence,
     createdAt: now,

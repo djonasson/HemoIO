@@ -102,7 +102,8 @@ export function formatReferenceRange(range: ReferenceRange | undefined, unit: st
 export function outOfRangeMessage(
   name: string,
   status: 'high' | 'low',
-  value: number,
+  /** The value as it reads: a number, or an interval's ends */
+  value: number | string,
   unit: string,
   range?: ReferenceRange
 ): string {

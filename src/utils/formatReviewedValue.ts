@@ -2,17 +2,20 @@
  * How a reviewed value's number reads in the import wizard
  */
 
-import { formatIntervalValue } from '@services/ai';
+import { formatIntervalValue, heldQualitative } from '@services/ai';
 import { formatReferenceRange } from '@services/alerts/alertRules';
 import type { MatchedBiomarker } from '@services/analysis/LabReportAnalyzer';
 
 /**
- * A value's number, or its interval ("0-1"), or nothing when it has no
- * number yet (a cleared field or a row not filled in)
+ * A value's number, or its interval ("0-1"), or a qualitative result as
+ * printed with the number it reads as ("Assenti (0)"), or nothing when it
+ * has no number yet (a cleared field or a row not filled in)
  */
 export function formatReviewedValue(
-  biomarker: Pick<MatchedBiomarker, 'value' | 'isInterval' | 'intervalLow' | 'intervalHigh'>
+  biomarker: Pick<MatchedBiomarker, 'value' | 'isInterval' | 'intervalLow' | 'intervalHigh' | 'qualitative'>
 ): string {
+  const qualitative = heldQualitative(biomarker);
+  if (qualitative) return `${qualitative.text} (${qualitative.value})`;
   if (biomarker.isInterval && biomarker.intervalLow !== undefined && biomarker.intervalHigh !== undefined) {
     return formatIntervalValue(biomarker.intervalLow, biomarker.intervalHigh);
   }

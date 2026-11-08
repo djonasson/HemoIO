@@ -358,6 +358,22 @@ describe('OpenAIProvider quota', () => {
     expect(result.biomarkers.map((b) => b.specimenHint)).toEqual(['serum', undefined]);
   });
 
+  it('keeps a qualitative result as printed, with no unit', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify({ biomarkers: [ { name: 'Batteri', value: 0, unit: 'per campo', confidence: 0.9, qualitativeValue: 'Assenti' }, { name: 'Glicemia', value: 95, unit: 'mg/dL', confidence: 0.9 } ], warnings: [] }) }, finish_reason: 'stop' }] }),
+    } as Response);
+
+    const result = await new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL }).analyzeLabReport('Batteri Assenti');
+
+    expect(result.biomarkers[0]).toMatchObject({
+      value: 0,
+      unit: '',
+      qualitative: { text: 'Assenti', kind: 'boolean', value: 0 },
+    });
+    expect(result.biomarkers[1].qualitative).toBeUndefined();
+  });
+
   describe('chooseTests', () => {
     const requests = [
       {

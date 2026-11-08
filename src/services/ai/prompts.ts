@@ -31,7 +31,8 @@ Respond with a JSON object containing:
 Each biomarker object should have:
 - name: Biomarker name as found in report
 - specimenHint: the sample the report names for this value, from its section heading or name: "blood", "serum", "plasma", "urine" or "24h urine"; null when it names none
-- value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10")
+- value: Numeric value OR interval/range string. For single values use a number (e.g., 5.5). For ranges like "5-10" or "5 - 10" in microscopy results (e.g., "5-10 eritrociti per campo"), use the range STRING as-is (e.g., "5-10"). For qualitative results, the number given under QUALITATIVE VALUES
+- qualitativeValue: for a qualitative result only, the result exactly as printed (e.g., "Assenti", "Positivo", "++"); omit it otherwise
 - unit: Unit of measurement
 - referenceRange: { low, high, unit } if available - IMPORTANT: extract numeric values only
 - method: Analytical method if specified (e.g., "Enzymatic", "HPLC", "Immunoassay", "Colorimetric", "Turbidimetric")
@@ -67,17 +68,22 @@ BIOMARKER NAMING:
   - Section "S-Elettroforesi" with test "albumina" → name: "albumina (elettroforesi)" or just "S-Elettroforesi albumina"
   - "Esame morfologico: 5-10 eritrociti per campo" → name: "Eritrociti (urine, per campo)"
 
-QUALITATIVE URINALYSIS VALUES:
-Some urinalysis tests have qualitative (text) results. Convert these to numeric values:
-- Nitriti/Nitrites: "assenti"/"absent"/"negativi"/"negative" → value: 0, "presenti"/"present"/"positivi"/"positive" → value: 1
-- Esterasi leucocitaria/Leukocyte esterase: "assente"/"absent"/"negativa"/"negative" → value: 0, "presente"/"present"/"positiva"/"positive" → value: 1
-- For these qualitative tests, use empty string "" as the unit
-- Add the original text value in notes (e.g., notes: "assenti (negative)")
-- Skip purely descriptive items like Colore (color) and Aspetto (appearance) - these are observations, not measurable biomarkers
+QUALITATIVE VALUES (any test, not only urinalysis):
+Some results are printed as a word or as crosses instead of a number. Extract them for ANY test, with unit "" (empty string), the number below as value, and the result exactly as printed in qualitativeValue:
+- Absent: "assente"/"assenti"/"negativo"/"negativa"/"negative"/"absent"/"non rilevato"/"not detected" → value: 0
+- Present: "presente"/"presenti"/"positivo"/"positiva"/"positive"/"present"/"rilevato"/"detected" → value: 1
+- Traces: "tracce"/"traccia"/"trace"/"traces" → value: 0.5
+- Crosses: "+" → 1, "++" → 2, "+++" → 3, "++++" → 4 (also written "1+" to "4+")
+- Skip free text with no presence meaning, such as Colore (color), Aspetto (appearance) or "vedere valore leucociti" - these are observations, not measurable results
+
+DUAL UNITS:
+When a value is printed in two units (e.g., "Glucosio 95 mg/dL 5.3 mmol/L"), extract both as separate biomarkers with the same name. They are merged later; do not add a warning about it.
 
 Examples:
-  - "Nitriti assenti [assenti]" → name: "Nitriti (urine)", value: 0, unit: "", notes: "assenti (negative)"
-  - "Esterasi leucocitaria assente [assente]" → name: "Esterasi leucocitaria (urine)", value: 0, unit: "", notes: "assente (negative)"
+  - "Nitriti assenti [assenti]" → name: "Nitriti (urine)", value: 0, unit: "", qualitativeValue: "assenti"
+  - "Esterasi leucocitaria assente [assente]" → name: "Esterasi leucocitaria (urine)", value: 0, unit: "", qualitativeValue: "assente"
+  - "Batteri Assenti" (sediment) → name: "Batteri (urine)", value: 0, unit: "", qualitativeValue: "Assenti"
+  - "Emoglobina ++" (urine) → name: "Emoglobina (urine)", value: 2, unit: "", qualitativeValue: "++"
   - "Glucosio 100 mg/dL" → value: 100
   - "Glucosio < 10 mg/dL" (in U-Esame standard) → name: "Glucosio (urine)", value: 10, notes: "< 10 (below detection)"
   - "Eritrociti 5-10 per campo" → name: "Eritrociti (urine, per campo)", value: "5-10" (microscopy range)
@@ -161,6 +167,7 @@ export const RESPONSE_SCHEMA = {
           specimenHint: { type: ['string', 'null'] },
           value: { oneOf: [{ type: 'number' }, { type: 'string' }] }, // Can be number or range string like "5-10"
           unit: { type: 'string' },
+          qualitativeValue: { type: 'string' },
           referenceRange: {
             type: 'object',
             properties: {
