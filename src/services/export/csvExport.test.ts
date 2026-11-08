@@ -138,6 +138,29 @@ describe('csvExport', () => {
       expect(csv).not.toContain('7.5');
     });
 
+    it.each([
+      ['a text value', { value: '1-1"&HYPERLINK("https://example.test")&"' }],
+      ['a text end', { intervalLow: '1"&HYPERLINK("https://example.test")&"' as unknown as number }],
+    ])('never writes %s of a restored interval inside a formula', (_case, fields) => {
+      const csv = exportToCsv([
+        {
+          labResult: createMockLabResult(1, '2024-01-15', 'Lab'),
+          testValues: [
+            {
+              ...createMockTestValue(1, 1, 'unknown:eritrociti', 7.5, '/[HPF]'),
+              numericValueType: 'interval',
+              intervalLow: 5,
+              intervalHigh: 10,
+              ...fields,
+            },
+          ],
+          biomarkerNames: new Map([['unknown:eritrociti', 'Eritrociti']]),
+        },
+      ]);
+
+      expect(csv).not.toContain('="');
+    });
+
     it('exports a censored value with its comparator', () => {
       const csv = exportToCsv([
         {

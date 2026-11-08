@@ -7,7 +7,7 @@
 import { isUnknownKey } from '@data/loinc/keys';
 import type { LabResult, TestValue } from '@/types';
 import { isWithinDays } from '@/utils/localDate';
-import { formatTestValue } from '@/utils/formatTestValue';
+import { formatTestValue, savedInterval } from '@/utils/formatTestValue';
 
 /**
  * Options for CSV export
@@ -108,8 +108,13 @@ function loincField(key: string): string {
  * (it reads a bare 5-10 as a date); a qualitative result as printed
  */
 function valueField(testValue: TestValue): string {
-  const shown = formatTestValue(testValue);
-  return testValue.numericValueType === 'interval' && shown.includes('-') ? asText(shown) : textField(shown);
+  // Only two numbers are written inside ="…": a restored backup's text could close the quotes and add a formula
+  const interval = savedInterval(testValue);
+  if (interval && Number.isFinite(interval.low) && Number.isFinite(interval.high) && typeof testValue.value === 'number') {
+    const shown = formatTestValue(testValue);
+    if (/^[<>≤≥\s\d.eE+-]+$/.test(shown)) return asText(shown);
+  }
+  return textField(formatTestValue(testValue));
 }
 
 /**
