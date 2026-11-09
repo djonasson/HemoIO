@@ -8,7 +8,7 @@ import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { unitsMatch } from '@services/units';
 import { readUnitMarker, toUcum, ucumProperties } from '@services/units/ucum';
-import { needsTest } from './identification';
+import { isNoneFound, needsTest } from './identification';
 import { PLAIN_RATIO, RATIO_KINDS, testDimerUnits } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { quantityKind, type Catalog } from '@data/loinc/catalog';
@@ -127,7 +127,7 @@ function isReady(biomarker: MatchedBiomarker, catalog: Catalog): boolean {
 
 /**
  * Whether a value is a twin the import may leave out on its own: one with
- * no test, unchanged by the user, given as a share of 100 of something UCUM
+ * no test (or "Not a LOINC test" only for want of one), unchanged by the user, given as a share of 100 of something UCUM
  * cannot read ("/100 HPF"). Any other unit may be another measurement (a
  * 24-hour amount next to a concentration), and a value the user chose a
  * test for, or typed, is theirs: they still ask for a test.
@@ -137,7 +137,7 @@ function mayLeaveOut(biomarker: MatchedBiomarker): boolean {
   return (
     !!analyzed &&
     biomarker.identifiedBy !== 'user' &&
-    needsTest(biomarker) &&
+    (needsTest(biomarker) || isNoneFound(biomarker)) &&
     nameKey(biomarker.name) === nameKey(analyzed.name) &&
     biomarker.unit === analyzed.unit &&
     isPerHundredCounted(biomarker.unit) &&

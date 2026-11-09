@@ -58,9 +58,10 @@ export interface ExtractedBiomarker {
   /** Biomarker name as found in the report */
   name: string;
   /**
-   * The sample the report names for the value ("urine", "24h urine",
-   * "serum", "plasma", "blood"), as the model read it from headings and
-   * names; absent when it names none
+   * The sample the report names for the value ("urine", "urine sediment",
+   * "24h urine", "serum", "plasma", "blood"), as the model read it from
+   * headings and names; absent when it names none. "urine sediment" puts
+   * the sediment's tests before the urine's.
    */
   specimenHint?: string;
   /**
@@ -173,7 +174,7 @@ export interface TestChoiceRequest {
   id: string;
   name: string;
   unit: string;
-  /** The sample the report section names: "urine", "24h urine" */
+  /** The sample the report section names: "urine", "urine sediment", "24h urine" */
   specimenHint?: string;
   candidates: TestCandidate[];
 }

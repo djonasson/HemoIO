@@ -6,6 +6,7 @@
 import type { SavedValue } from '@data/loinc/learnedTests';
 import { isUnknownKey, unknownBiomarkerKey } from '@data/loinc/keys';
 import { learnedKey, matchLocally, type Candidate, type PrintedValue } from './loincMatch';
+import { heldQualitative } from '../ai';
 import type { Catalog } from '@data/loinc/catalog';
 import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
 import type { IdentificationFlag, IdentifiedBy, MatchedBiomarker } from './LabReportAnalyzer';
@@ -32,7 +33,8 @@ export type ChooseTests = (requests: TestChoiceRequest[]) => Promise<TestChoice[
 /**
  * A printed value's test as far as it is known without the AI: the one
  * learned for its wording and unit (a learned "Not a LOINC test" too), else
- * the one test that clearly fits. A value the report gives no unit is
+ * the one test that clearly fits; a value no test may be is "Not a LOINC
+ * test", labelled for review. A value the report gives no unit is
  * matched only to a common test that has none (pH, specific gravity, a
  * dipstick's presence), never to a quantity a unit would tell apart; else
  * its candidates, of any property, are left to the AI and the user, as
@@ -58,15 +60,25 @@ export function identifyLocally(
       identificationFlags: [],
     };
   }
-  // A name that fits no test still has the common tests of its unit to choose from
+  // A name that fits no test still has the common tests of its unit to choose from, when its unit has any
   const flags: IdentificationFlag[] = [match.status === 'none' ? 'not-identified' : 'ambiguous'];
   if (value.unit.trim() === '') flags.push('no-unit');
+  // No test to choose from ("Conduttività", which LOINC lacks): "Not a LOINC test", still labelled, and changeable in
+  // review. Nobody decided it, so it is never learned, nor counted as a test found
+  if (match.candidates.length === 0) return { candidates: [], identificationFlags: flags, savedAsUnknown: true };
   return { candidates: match.candidates, identificationFlags: flags };
 }
 
 /** Whether a value has no test decided yet: no code, and not "Not a LOINC test" */
 export function needsTest(identification: Pick<Identification, 'loincCode' | 'savedAsUnknown'>): boolean {
   return !identification.loincCode && !identification.savedAsUnknown;
+}
+
+/** Whether a value is "Not a LOINC test" only because no test was found to choose from, nobody deciding it */
+export function isNoneFound(
+  identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'identifiedBy'>
+): boolean {
+  return !identification.loincCode && identification.savedAsUnknown === true && identification.identifiedBy === undefined;
 }
 
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */
@@ -177,19 +189,52 @@ export function unknownKeyOf(value: Pick<MatchedBiomarker, 'name' | 'unknownKey'
   return value.unknownKey ?? unknownBiomarkerKey(value.name);
 }
 
+/** A value as the analyzer read it: its printed name and unit, of its section, its result in words as printed */
+function printedReading(value: MatchedBiomarker): PrintedValue {
+  const { name, unit } = value.analyzed ?? value;
+  return { name, unit, specimenHint: value.specimenHint, qualitative: value.qualitative };
+}
+
+/**
+ * A value as it now reads: a result in words typed over with a number is a
+ * number, and an emptied unit, one still to choose, is the report's
+ */
+export function currentReading(value: MatchedBiomarker): PrintedValue {
+  const printedUnit = value.analyzed?.unit ?? '';
+  const unit = value.unit.trim() === '' && printedUnit.trim() ? printedUnit : value.unit;
+  return { name: value.name, unit, specimenHint: value.specimenHint, qualitative: heldQualitative(value) };
+}
+
+/**
+ * Whether a value, read now, is still the wording the analyzer read: learned
+ * the same; and, `inUnit`, in the unit it was matched in too, which a
+ * result in words is learned without
+ */
+export function isReadAsPrinted(
+  value: MatchedBiomarker,
+  reading: PrintedValue = currentReading(value),
+  { inUnit = false }: { inUnit?: boolean } = {}
+): boolean {
+  if (!value.analyzed) return false;
+  const printed = printedReading(value);
+  if (learnedKey(reading) !== learnedKey(printed)) return false;
+  return !inUnit || learnedKey({ ...reading, qualitative: undefined }) === learnedKey({ ...printed, qualitative: undefined });
+}
+
 /**
  * What saving a value teaches: its code under the wording and unit the
- * report printed. It is the user's decision when they chose the test, saved
- * the AI's choice, or edited the value until it matched (by name and unit,
- * or through a wording learned before: a correction sticks); a test matched
- * with no edit, or learned, is matched the same way next time anyway.
+ * report printed, and its result in words, unless typed over with a number
+ * (see learnedKey). It is the user's decision when they chose the test,
+ * saved the AI's choice, or edited the value until it matched (by name,
+ * unit or result, or through a wording learned before: a correction
+ * sticks); a test matched with no edit, or learned, is matched the same way
+ * next time anyway.
  */
 export function toLearn(value: MatchedBiomarker): SavedValue {
-  const printed = value.analyzed ?? value;
-  const edited = !value.analyzed || learnedKey(value) !== learnedKey(value.analyzed);
+  const edited = !isReadAsPrinted(value, currentReading(value), { inUnit: true });
   const by = value.identifiedBy;
   return {
-    key: learnedKey(printed),
+    key: learnedKey({ ...printedReading(value), qualitative: heldQualitative(value) }),
     code: value.savedAsUnknown ? unknownKeyOf(value) : value.loincCode,
     confirmed: by === 'ai' || by === 'user' || by === 'shared' || (edited && isFoundWithoutAsking(value)),
   };

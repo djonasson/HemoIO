@@ -19,11 +19,79 @@ function compared(biomarker: MatchedBiomarker, comparison?: number): ComparableV
 }
 
 describe('isSettled', () => {
-  const settled = (values: ComparableValue[]): boolean => isSettled(values, clusterMeasurements(values));
+  const settled = (values: ComparableValue[], estimates = false): boolean =>
+    isSettled(values, clusterMeasurements(values, estimates));
 
   it('settles one measurement, and distinct ones under distinct printed names', () => {
     expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 30, 'ng/mL', 'A'), 30)])).toBe(true);
     expect(settled([compared(value('Spot', 1, 'g/L', 'A'), 1), compared(value('Daily', 5, 'g/L', 'A'), 5)])).toBe(true);
+  });
+
+  it('keeps two estimates qualified apart in brackets, however close: "eGFR (Schwartz)" and "eGFR (EKFC)"', () => {
+    const values = [
+      compared(value('eGFR (Schwartz)', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+      compared(value('eGFR (EKFC)', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
+    ];
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
+  });
+
+  it('keeps two variants of one formula apart: "eGFR (MDRD-4)" and "eGFR (MDRD-6)"', () => {
+    const values = [
+      compared(value('eGFR (MDRD-4)', 61, 'mL/min/{1.73_m2}', '77147-7'), 61),
+      compared(value('eGFR (MDRD-6)', 62, 'mL/min/{1.73_m2}', '77147-7'), 62),
+    ];
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
+  });
+
+  it('keeps two estimates however printed: "eGFR EKFC" and "eGFR - Schwartz"', () => {
+    const values = [
+      compared(value('eGFR EKFC', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
+      compared(value('eGFR - Schwartz', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
+    ];
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
+  });
+
+  it('merges one formula however spelled, and keeps BIS1 and BIS2, or a plain eGFR and an estimate, apart', () => {
+    const clusters = (...names: string[]): number =>
+      clusterMeasurements(
+        names.map((name) => compared(value(name, 81, 'mL/min/{1.73_m2}', '69405-9'), 81)),
+        true
+      ).length;
+    expect(clusters('eGFR (Lund-Malmö)', 'eGFR (LMR)')).toBe(1);
+    expect(clusters('eGFR (BIS1)', 'eGFR (BIS2)')).toBe(2);
+    expect(clusters('eGFR', 'eGFR (EKFC)')).toBe(2);
+    // An estimate by a formula not in the list stays apart from one in it
+    expect(clusters('eGFR (LMR18)', 'eGFR (CAPA)')).toBe(2);
+    // A plain eGFR first takes in no estimate
+    expect(clusters('eGFR', 'eGFR (LMR)', 'eGFR (CAPA)')).toBe(3);
+    // One formula of other bases, or its two numbered forms however spelled
+    expect(clusters('eGFR (EKFC creatinina)', 'eGFR (EKFC creatinina + cistatina C)')).toBe(2);
+    expect(clusters('eGFR (EKFC)', 'eGFRcys (EKFC)')).toBe(2);
+    expect(clusters('eGFR (BIS-1)', 'eGFR (BIS-2)')).toBe(2);
+    expect(clusters('eGFR (formula EKFC)', 'eGFR - EKFC')).toBe(1);
+  });
+
+  it('keeps estimates of a filtration rate apart by their names whatever their unit, and no other test', () => {
+    const kept = (a: MatchedBiomarker, b: MatchedBiomarker): number => {
+      const group = settleGroup([a, b], catalog);
+      return group.settled ? group.kept.length : 0;
+    };
+    // Printed with no unit, the code given by the AI or learned
+    expect(kept(value('eGFR (EKFC)', 70, '', '69405-9'), value('eGFR (Lund-Malmö)', 71, '', '69405-9'))).toBe(2);
+    expect(kept(value('eGFR (EKFC)', 70, 'mL/minuto/1.73m²', '69405-9'), value('eGFR (CAPA)', 71, 'mL/minuto/1.73m²', '69405-9'))).toBe(2);
+    // Creatinine printed for the eGFR is the creatinine: one measurement in two units
+    expect(kept(value('Creatinina', 0.9, 'mg/dL', '2160-0'), value('Creatinina (eGFR)', 80, 'umol/L', '14682-9'))).toBe(1);
+  });
+
+  it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {
+    const values = [
+      compared(value('Emoglobina (HGB)', 14.2, 'g/dL', '718-7'), 14.2),
+      compared(value('Emoglobina (Hb)', 14.2, 'g/dL', '718-7'), 14.2),
+    ];
+    expect(clusterMeasurements(values)).toHaveLength(1);
   });
 
   it('calls two measurements of one printed name a conflict', () => {

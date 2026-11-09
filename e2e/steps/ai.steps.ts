@@ -14,7 +14,7 @@ export interface ExtractedBiomarkerFixture {
   unit: string;
   confidence: number;
   referenceRange?: { low?: number; high?: number; unit?: string };
-  /** The sample the AI reads from the report: "urine", "24h urine", "serum" */
+  /** The sample the AI reads from the report: "urine", "urine sediment", "24h urine", "serum" */
   specimenHint?: string;
   /** A qualitative result as printed: "Assenti", "++" */
   qualitativeValue?: string;

@@ -6,6 +6,7 @@
  */
 import { getAddon, TEST_ADDONS } from '@data/loinc/addons';
 import { foldDashes, nameKey } from '@data/loinc/keys';
+import { withMarks, type PrintingMarks } from '@data/loinc/learnedTests';
 import {
   dimerMarkerIn,
   isCatalyticUnit,
@@ -23,13 +24,16 @@ import {
   type CatalogTest,
   type ScoredTest,
 } from '@data/loinc/catalog';
+import type { QualitativeReading } from '../ai';
 
 /** A value as the report prints it */
 export interface PrintedValue {
   name: string;
   unit: string;
-  /** The sample the report section or the AI names: "urine", "24h urine" */
+  /** The sample the report section or the AI names: "urine", "24h urine", "urine sediment" */
   specimenHint?: string;
+  /** A result printed in words ("Assenti", "++"), which only a test whose results are words can have */
+  qualitative?: QualitativeReading;
 }
 
 /** A test that may be the printed one */
@@ -80,7 +84,8 @@ const SCORE_EPSILON = 1e-9;
 const DAY_URINE = '24H urine';
 
 /** A spot urine sample, and its sediment (the cells and casts seen per field) */
-const URINE = ['Urine', 'Urine sed'];
+const URINE_SEDIMENT = 'Urine sed';
+const URINE = ['Urine', URINE_SEDIMENT];
 
 /** Where a value with no sample named most likely comes from, likeliest first */
 const DEFAULT_SYSTEMS = ['Ser/Plas', 'Ser', 'Plas', 'Ser/Plas/Bld', 'Bld', 'RBC', 'PPP'];
@@ -262,19 +267,36 @@ export function splitSamplePrefix(name: string): { name: string; systems?: strin
   return { name: rest, systems: day ? [DAY_URINE] : URINE };
 }
 
-/** The LOINC systems a specimen hint names, if any */
+/** A specimen hint naming the urine sediment: "urine sediment", "sedimento urinario" */
+const SEDIMENT_HINT = /\bsediment[oi]?\b/i;
+
+/**
+ * The LOINC systems a specimen hint names, if any: a urine sediment one,
+ * the sediment before the urine, whose machine counts per volume a sediment
+ * section prints too
+ */
 function hintSystems(hint: string): string[] | undefined {
+  if (SEDIMENT_HINT.test(hint)) return [URINE_SEDIMENT, 'Urine'];
   return splitSamplePrefix(hint).systems ?? SAMPLE_HINTS.find(([words]) => words.test(hint))?.[1];
+}
+
+/** How a value was printed, as learning tells its wording apart: its result in words, and of a urine sediment section */
+function printingOf(value: PrintedValue): PrintingMarks {
+  return { inWords: value.qualitative !== undefined, ofSediment: SEDIMENT_HINT.test(value.specimenHint ?? '') };
 }
 
 /**
  * The key a value's code is remembered under: its printed name and unit,
  * with the D-dimer units the unit names ("ng/mL (FEU)" and "ng/mL FEU" are
- * one unit, apart from "ng/mL DDU")
+ * one unit, apart from "ng/mL DDU"); and how it was printed (see
+ * printingOf), as "Batteri" "Assenti" in the sediment is neither the count
+ * nor the strip's reading of the urine. A result in words has no unit of
+ * its own: one given in review for its test leaves it the same wording.
  */
 export function learnedKey(value: PrintedValue): string {
-  const { unit, marker } = readUnitMarker(value.unit);
-  return `${nameKey(value.name)}|${toUcum(unit) ?? nameKey(unit)}${marker ? ` ${marker}` : ''}`;
+  const printing = printingOf(value);
+  const { unit, marker } = readUnitMarker(printing.inWords ? '' : value.unit);
+  return withMarks(`${nameKey(value.name)}|${toUcum(unit) ?? nameKey(unit)}${marker ? ` ${marker}` : ''}`, printing);
 }
 
 interface Found {
@@ -358,6 +380,67 @@ function withSearchesKept(catalog: Catalog): Catalog {
     return result;
   };
   return { ...catalog, scoredSearch };
+}
+
+/**
+ * LOINC scales whose results are words: ordinal ("Absent", "2+"),
+ * semi-quantitative steps (a strip's, a RAST class), and nominal ("Negative")
+ */
+const WORD_SCALES: ReadonlySet<string> = new Set(['Ord', 'OrdQn', 'SemiQn', 'Nom']);
+
+/** A name saying its test looks for an organism: a culture, a search ("Urinocoltura", "Ricerca parassiti") */
+const ORGANISM_SEARCH = /\b(?:\p{L}*coltur\p{L}*|cultur\p{L}*|ricerca|search|identif\p{L}*)\b/iu;
+
+/**
+ * Whether a test's results are words a report prints as a presence, a step
+ * or a reading; an organism a culture names only when the name looks for one
+ */
+function hasWordResults(test: CatalogTest, organisms: boolean): boolean {
+  return WORD_SCALES.has(test.scale) && (organisms || test.property !== 'Prid');
+}
+
+/** The items, each key's first only */
+function uniqueBy<T>(items: readonly T[], keyOf: (item: T) => unknown): T[] {
+  const seen = new Set<unknown>();
+  return items.filter((item) => {
+    const key = keyOf(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Each key's item of the best score, of two as good the first, in the order each key first comes */
+function bestBy<T extends { score: number }>(items: readonly T[], keyOf: (item: T) => unknown): T[] {
+  const best = new Map<unknown, T>();
+  for (const item of items) {
+    const key = keyOf(item);
+    if (item.score > (best.get(key)?.score ?? -Infinity)) best.set(key, item);
+  }
+  return [...best.values()];
+}
+
+/** The catalog searched only for the tests kept */
+function withTestsKept(catalog: Catalog, kept: (test: CatalogTest) => boolean): Catalog {
+  const scoredSearch: Catalog['scoredSearch'] = (query, filter) =>
+    catalog.scoredSearch(query, filter).filter(({ test }) => kept(test));
+  return { ...catalog, scoredSearch };
+}
+
+/**
+ * The tests a value is first looked for among, if its printing narrows
+ * them: a result printed in words ("Assenti") is a presence test's or an
+ * interpretation's, never a count, nor a culture's organism unless the name
+ * looks for one; a result in words or a bare number in a urine sediment
+ * section is what the microscope saw, not a strip's reading
+ */
+function firstLookedAmong(value: PrintedValue): ((test: CatalogTest) => boolean) | undefined {
+  const printing = printingOf(value);
+  const inWords = printing.inWords;
+  const ofSediment = printing.ofSediment && (inWords || value.unit.trim() === '');
+  if (!inWords && !ofSediment) return undefined;
+  const organisms = ORGANISM_SEARCH.test(value.name);
+  return (test) => (!inWords || hasWordResults(test, organisms)) && (!ofSediment || test.system !== 'Urine');
 }
 
 /**
@@ -555,12 +638,15 @@ function namePartsOf(name: string): string[] {
  * variantsBy). A year rules out a formula of another year ("CKD-EPI 2009"
  * is not the 2021 one). A word read neither way may name a method LOINC
  * has no test for, when the tests that fit all name a method and either
- * are estimates by different formulas ("eGFR (EKFC)", "(formula BIS)") or
- * none has the method the word names: then no test fits fully, and the
- * value is asked. A brand or a technique of a measured value says nothing
- * ("Fibrinogeno (Clauss)").
+ * are estimates by different formulas or none has the method the word
+ * names: then no test fits fully, and the value is asked. A filtration rate
+ * by a formula LOINC lacks, or of creatinine and cystatin C together, is
+ * read as readEstimate says. A brand or a technique of a measured value
+ * says nothing ("Fibrinogeno (Clauss)").
  */
 function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
+  const estimate = readEstimate(catalog, name, found);
+  if (estimate) return estimate;
   let result = found;
   for (const part of namePartsOf(name)) {
     // The tests that fit about as well as the best: a name equal to the printed one sets aside those only sharing its words
@@ -608,7 +694,7 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     const unread = words.filter((word) => !read.has(word) && /\p{L}/u.test(word) && !isNamed(word));
     const methods = new Set(still.map(({ test }) => test.method));
     // An estimate by formulas: one LOINC lacks is none of them. A measured value's brand or technique says nothing ("Fibrinogeno (Clauss)")
-    const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || /\bformula\b/i.test(method));
+    const byFormulas = methods.size > 1 && [...methods].some((method) => method === CALCULATED || namesFormula(method));
     const mayNameMethod = unread.length > 0 && !methods.has('') && (unread.some(isMethodWord) || byFormulas);
     if (mayNameMethod) {
       const cap = MATCH_SCORE - MATCH_MARGIN;
@@ -616,6 +702,194 @@ function readParts(catalog: Catalog, name: string, found: Found[]): Found[] {
     }
   }
   return result;
+}
+
+/**
+ * Estimating formulas LOINC has no test for, by the words naming them, each
+ * the formula it names: the European Kidney Function Consortium's, the
+ * Berlin Initiative Study's (BIS1 of creatinine, BIS2 with cystatin C, two
+ * formulas), the bedside Schwartz, the full age spectrum, CAPA (of cystatin
+ * C alone) and Lund-Malmö. Words as wordsIn reads them: "Malmö" is "malmo".
+ */
+const UNLISTED_FORMULAS: Readonly<Record<string, string>> = {
+  ekfc: 'ekfc',
+  bis: 'bis',
+  bis1: 'bis1',
+  bis2: 'bis2',
+  schwartz: 'schwartz',
+  fas: 'fas',
+  capa: 'capa',
+  lmr: 'lmr',
+  lund: 'lmr',
+  malmo: 'lmr',
+  malmoe: 'lmr',
+};
+
+function isUnlistedFormula(word: string): boolean {
+  return Object.hasOwn(UNLISTED_FORMULAS, word);
+}
+
+/** Formulas LOINC lacks that always read creatinine */
+const CREATININE_FORMULAS = new Set(['bis', 'bis1', 'bis2', 'lmr']);
+
+/** A filtration rate's name word saying creatinine: "creatinina", "SCr", "Krea", "eGFRcr" */
+const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr(?:ea|eat\p{L}*)?)$/u;
+
+/** A filtration rate's name word saying cystatin C: "cistatina", "cist.", "Cis C", "CysC", "eGFRcys" */
+const CYSTATIN_WORD = /^(?:cys|cysc|cyst|cystc|cis|cisc|cist|cistat|cistatin\p{L}*|cystatin\p{L}*|egfrcys(?:tatin\p{L}*)?)$/u;
+
+/** A filtration rate's name word saying both: "eGFRcrcys" */
+const BOTH_BASES_WORD = /^egfrcr-?cys$/u;
+
+/** A name of a glomerular filtration rate: "eGFR", "eGFRcr", "GFR stimato", "Filtrato glomerulare", "eVFG", "Glomerulär filtration" */
+const GFR_NAME = /\b(?:e?gfr\p{L}*|e?vfg|filtra(?:to|zione)\s+glomerulare|glomerul\p{L}*\s+filtra\p{L}*)\b/u;
+
+/** Whether a printed name is a glomerular filtration rate's, however its accents are stored */
+function isGfrName(name: string): boolean {
+  return GFR_NAME.test(nameKey(name));
+}
+
+/**
+ * Words of a filtration rate's name that say only that it is one, or join
+ * its words: "eGFR", "e-GFR", "Velocità di filtrazione glomerulare stimata",
+ * "formula", "creatinina e cistatina C"
+ */
+const GFR_WORDS = new Set([
+  'e',
+  'egfr',
+  'gfr',
+  'vfg',
+  'evfg',
+  'velocita',
+  'rate',
+  'filtrato',
+  'filtrazione',
+  'filtration',
+  'filtrationsrate',
+  'glomerulare',
+  'glomerular',
+  'glomerulaere',
+  'stimato',
+  'stimata',
+  'stima',
+  'calcolato',
+  'calcolata',
+  'estimated',
+  'formula',
+  'di',
+  'del',
+  'della',
+  'and',
+  'based',
+  'baserat',
+  'basiert',
+  'och',
+  'und',
+  'con',
+  'with',
+]);
+
+/**
+ * A word of a filtration rate's name as what it says: a formula however
+ * spelled ("lund" is "lmr"), a basis however spelled ("SCr" is
+ * "creatinine"), or the word itself; nothing for one saying only that it is
+ * a filtration rate or joining its words ("by", "-based"), for the "C" of
+ * cystatin C
+ */
+function gfrWordSays(word: string, saysCystatin: boolean): string[] {
+  if (GFR_WORDS.has(word) || isStopWord(word) || (saysCystatin && word === 'c')) return [];
+  if (BOTH_BASES_WORD.test(word)) return ['creatinine', 'cystatin'];
+  if (CREATININE_WORD.test(word)) return ['creatinine'];
+  if (CYSTATIN_WORD.test(word)) return ['cystatin'];
+  return [UNLISTED_FORMULAS[word] ?? word];
+}
+
+/**
+ * What each word of a filtration rate's name says (see gfrWordSays): "BIS 1"
+ * and "BIS-1" are BIS1; a footnote's "[1]" says nothing, while any other
+ * number may name a variant ("MDRD-4" is not "MDRD-6")
+ */
+function gfrSaid(name: string): string[] {
+  const words = wordsIn(name.replace(/\[\d+\]/gu, ' ')).reduce<string[]>((joined, word) => {
+    const last = joined.length - 1;
+    if (joined[last] === 'bis' && /^[12]$/.test(word)) joined[last] = `bis${word}`;
+    else joined.push(word);
+    return joined;
+  }, []);
+  const saysCystatin = words.some((word) => CYSTATIN_WORD.test(word) || BOTH_BASES_WORD.test(word));
+  return words.flatMap((word) => gfrWordSays(word, saysCystatin));
+}
+
+/**
+ * What a filtration rate's printed name says beyond being one, if it is
+ * one: its formula, basis and any other word ("eGFR (Lund-Malmö)" and
+ * "eGFR - LMR" say "lmr"; a plain "eGFR" says nothing). Two estimates
+ * saying different things are two measurements, however close: no estimate
+ * is set aside unseen as another's duplicate.
+ */
+export function gfrQualifier(name: string): string | undefined {
+  if (!isGfrName(name)) return undefined;
+  return [...new Set(gfrSaid(name))].sort().join(' ');
+}
+
+/** Whether a method names a formula: "Creatinine-based formula (MDRD)" */
+function namesFormula(method: string): boolean {
+  return /\bformula\b/i.test(method);
+}
+
+/** LOINC's component of a glomerular filtration rate */
+const GFR_COMPONENT = 'Glomerular filtration rate';
+
+/** Whether a test is a glomerular filtration rate, an estimate of one formula or another */
+export function isFiltrationRate(test: CatalogTest | undefined): boolean {
+  return test?.component === GFR_COMPONENT;
+}
+
+/**
+ * The tests found for a filtration rate by a formula LOINC lacks, or of
+ * creatinine and cystatin C together (which LOINC's catalog here has no
+ * test for), if the name is one: the estimate of cystatin C, by a formula
+ * it does not name ("Cystatin C-based formula"), when the name says only
+ * cystatin C ("eGFR (cistatina C) (EKFC)") or the formula is CAPA; else the
+ * estimate of no formula ("based on 1.73 sq M": "eGFR (EKFC)", "eGFR -
+ * Lund-Malmö 2021", "eGFR (creatinina e cistatina C)"). Taken without asking
+ * when the name says nothing else (a year of the formula, a word that it is
+ * an estimate); else asked, that test first ("eGFR (EKFC) (IDMS)").
+ * Whatever its brackets' order.
+ */
+function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] | undefined {
+  if (!isGfrName(name)) return undefined;
+  const said = gfrSaid(name);
+  const formulas = said.filter(isUnlistedFormula);
+  const creatinine = said.includes('creatinine');
+  const cystatin = said.includes('cystatin');
+  if (formulas.length === 0 && !(creatinine && cystatin)) return undefined;
+  const gfr = found
+    .filter(({ test }) => test.component === GFR_COMPONENT)
+    .reduce<Found | undefined>((best, one) => (!best || one.score > best.score ? one : best), undefined);
+  if (!gfr) return undefined;
+  // Read from the formulas named, whatever their order: CAPA alone is of cystatin C, one reading creatinine never
+  const cystatinOnly =
+    !creatinine &&
+    !formulas.some((formula) => CREATININE_FORMULAS.has(formula)) &&
+    (cystatin || (formulas.length > 0 && formulas.every((formula) => formula === 'capa')));
+  const fits = (method: string): boolean =>
+    cystatinOnly
+      ? /^Cystatin C-based formula\b/i.test(method) && !method.includes('(')
+      : method !== '' && !method.startsWith(CALCULATED) && !namesFormula(method);
+  const estimates = [gfr, ...variantsBy(catalog, gfr, [])].filter(({ test }) => fits(test.method));
+  if (estimates.length !== 1) return undefined;
+  const others = found.filter(({ test }) => test !== estimates[0].test);
+  const cap = MATCH_SCORE - MATCH_MARGIN;
+  const saysMore = said.some(
+    (word) => !isUnlistedFormula(word) && word !== 'creatinine' && word !== 'cystatin' && !YEAR.test(word)
+  );
+  // Asked, the estimate first: the others below it
+  const below = saysMore ? cap - MATCH_MARGIN / 2 : cap;
+  return [
+    { ...estimates[0], score: saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE) },
+    ...others.map((one) => (one.score > below ? { ...one, score: below } : one)),
+  ];
 }
 
 /** Whether a word is an Italian one for a method (see METHOD_READINGS) */
@@ -785,9 +1059,9 @@ function systemKind(system: string): string {
 
 /**
  * Where a value's test is looked for: the samples its name says (a
- * prefix, urine words or serum words), else its specimen hint, else
- * serum, plasma or blood; and whether that sample is said, or only
- * loosely by "blood". A day's unit ("mg/24h") says its urine was
+ * prefix, urine words or serum words), else its specimen hint (a urine
+ * sediment one narrowing urine to its sediment), else serum, plasma or
+ * blood; and whether that sample is said, or only loosely by "blood". A day's unit ("mg/24h") says its urine was
  * collected over 24 hours, as does the AI's "24h urine".
  */
 function sampleOf(
@@ -799,6 +1073,8 @@ function sampleOf(
   const hinted = hint ? hintSystems(hint) : undefined;
   let said = split.systems ?? worded?.systems;
   if (isUrine(said) && hinted?.includes(DAY_URINE)) said = [DAY_URINE];
+  // A urine sediment section puts what a microscope sees in its fields before the urine a name says
+  if (hinted?.[0] === URINE_SEDIMENT && said?.every((system) => URINE.includes(system))) said = hinted;
   let systems = said ?? hinted;
   if (perDay && (systems === undefined || isUrine(systems))) systems = [DAY_URINE];
   if (systems === undefined) return { systems: DEFAULT_SYSTEMS, sample: 'none' };
@@ -958,30 +1234,31 @@ const LOW_POWER = /\bLPF\b/;
 
 /**
  * The tests found that count as the unit does, when any does: a count per
- * microscope field ("per campo", "/HPF") is one of the tests counted per
- * field (#/area), and a count per volume ("/µL") one of the urine's, which
+ * microscope field ("per campo", "/HPF", "/LPF") is one of the tests counted
+ * per field (#/area) of that power, and a count per volume ("/µL") one of the urine's, which
  * a machine counts, not of its sediment, which a microscope's field shows.
  * The two give other numbers, as do counts per high- and low-power field.
  */
 function countedAsPrinted(found: Found[], ucum: string | null): Found[] {
   if (ucum === null) return found;
-  const perField = ucum.includes('[HPF]');
+  const perField = ucum.includes('[HPF]') || ucum.includes('[LPF]');
   if (!perField && !ucumProperties(ucum).includes('NCnc')) return found;
-  const isField = (test: CatalogTest): boolean => test.system === 'Urine sed' || FIELD_METHOD.test(test.method);
+  const isField = (test: CatalogTest): boolean => test.system === URINE_SEDIMENT || FIELD_METHOD.test(test.method);
   const counted = found.filter(({ test }) =>
     perField ? test.property === 'Naric' : test.property !== 'NCnc' || !isField(test)
   );
   if (!counted.length) return found;
   if (!perField) return counted;
   // A high-power field shows less than a low-power one: a count per one is not of the other, though maybe a misprint
-  const ofHighPower = counted.filter(({ test }) => !LOW_POWER.test(test.method));
+  const [power, otherPower] = ucum.includes('[LPF]') ? [LOW_POWER, HIGH_POWER] : [HIGH_POWER, LOW_POWER];
+  const ofPower = counted.filter(({ test }) => !otherPower.test(test.method));
   const cap = MATCH_SCORE - MATCH_MARGIN;
-  if (!ofHighPower.length) return counted.map((one) => ({ ...one, score: Math.min(one.score, cap) }));
-  // Of the best fits, the ones counted per high-power field
-  const best = Math.max(...ofHighPower.map(({ score }) => score));
+  if (!ofPower.length) return counted.map((one) => ({ ...one, score: Math.min(one.score, cap) }));
+  // Of the best fits, the ones counted per field of the printed power
+  const best = Math.max(...ofPower.map(({ score }) => score));
   const isBest = ({ score }: Found): boolean => score >= best - SCORE_EPSILON;
-  const byHighPower = ofHighPower.filter((one) => isBest(one) && HIGH_POWER.test(one.test.method));
-  return byHighPower.length ? ofHighPower.filter((one) => !isBest(one) || byHighPower.includes(one)) : ofHighPower;
+  const byPower = ofPower.filter((one) => isBest(one) && power.test(one.test.method));
+  return byPower.length ? ofPower.filter((one) => !isBest(one) || byPower.includes(one)) : ofPower;
 }
 
 /**
@@ -1030,8 +1307,24 @@ export function matchLocally(
   const catalog = withSearchesKept(fullCatalog);
   const value = { ...printed, name: foldDashes(printed.name) };
   const unit = readUnit(value.unit);
-  if (value.unit.trim() === '') return matchUnitless(catalog, value, unit, learned);
-  return matchIn(catalog, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learned);
+  const matchWith = (searched: Catalog, learnedTests: typeof learned): LocalMatch =>
+    value.unit.trim() === ''
+      ? matchUnitless(searched, value, unit, learnedTests)
+      : matchIn(searched, value, unit, unit.ucum ? unitProperties(unit.ucum, value.name) : [], learnedTests);
+  const kept = firstLookedAmong(value);
+  if (!kept) return matchWith(catalog, learned);
+  // First among the tests its printing narrows to (a learned test is learned for the printing too); else the name's own
+  // tests, of any kind, after those
+  const narrowed = matchWith(withTestsKept(catalog, kept), learned);
+  if (narrowed.status === 'match' || narrowed.candidates.some(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)) return narrowed;
+  const any = matchWith(catalog, learned);
+  if (any.status === 'match') return any;
+  // By how well they fit, each as well as either search found it: the name's own tests ("NT-proBNP") before a word test
+  // of another, a word test first of those that fit as well
+  const candidates = bestBy([...narrowed.candidates, ...any.candidates], ({ code }) => code)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CANDIDATES);
+  return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 
 /** A plain ratio as UCUM writes it: "ratio" is 1, "{ratio}" an annotation */
@@ -1097,9 +1390,7 @@ function asClottingTimes(catalog: Catalog, found: Found[], name: string): Found[
       .map(({ test: other }) => ({ test: other, score, preference }))
   );
   const all = [...found, ...prothrombinTimes];
-  return all
-    .filter((one) => all.every((other) => other.test !== one.test || other === one || other.score < one.score))
-    .filter((one, i, kept) => kept.findIndex(({ test }) => test === one.test) === i)
+  return bestBy(all, ({ test }) => test)
     .map((one) => (isActivity(one.test) && one.score > cap ? { ...one, score: cap } : one))
     .sort(
       (a, b) =>
@@ -1172,9 +1463,7 @@ function matchUnitless(
     }
     merged.push(candidate);
   }
-  const candidates = [...merged, ...ratios]
-    .filter((candidate, i, all) => all.findIndex(({ code }) => code === candidate.code) === i)
-    .slice(0, MAX_CANDIDATES);
+  const candidates = uniqueBy([...merged, ...ratios], ({ code }) => code).slice(0, MAX_CANDIDATES);
   return { status: candidates.length ? 'ambiguous' : 'none', candidates };
 }
 

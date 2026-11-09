@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { createCatalog, loadCatalog } from '@data/loinc/catalog';
-import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix } from './loincMatch';
+import { isCommon, learnedKey, matchLocally, readAntibody, spellGreek, splitSamplePrefix, gfrQualifier } from './loincMatch';
 import type { LocalMatch } from './loincMatch';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 
@@ -731,6 +731,58 @@ describe('learnedKey', () => {
   it('reads a name with a Unicode dash as with a hyphen', () => {
     expect(learnedKey({ name: 'Colesterolo non\u2011HDL', unit: 'mg/dL' })).toBe(learnedKey({ name: 'Colesterolo non-HDL', unit: 'mg/dL' }));
   });
+
+  it('marks a result printed in words and a value of a urine sediment section: neither is the count of the urine', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    expect(learnedKey({ name: 'Batteri', unit: '', qualitative: absent })).toBe('batteri|#words');
+    expect(learnedKey({ name: 'Batteri', unit: '', qualitative: absent, specimenHint: 'urine sediment' })).toBe('batteri|#words#sediment');
+    expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'sedimento urinario' })).toBe('batteri|#sediment');
+    expect(learnedKey({ name: 'Batteri', unit: '', specimenHint: 'urine' })).toBe('batteri|');
+    // A count of a sediment section is learned apart from the urine's, though matched to the same test
+    expect(learnedKey({ name: 'Leucociti', unit: '/µL', specimenHint: 'urine sediment' })).toBe('leucociti|/uL#sediment');
+  });
+
+  it('keys a result in words by its wording alone: a unit given for its test leaves it the same', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    expect(learnedKey({ name: 'NT-proBNP', unit: 'pg/mL', qualitative: absent })).toBe(learnedKey({ name: 'NT-proBNP', unit: '', qualitative: absent }));
+  });
+});
+
+describe('gfrQualifier', () => {
+  it.each([
+    ['eGFR', ''],
+    ['eGFR (EKFC)', 'ekfc'],
+    ['eGFR - EKFC', 'ekfc'],
+    ['eGFR (formula EKFC)', 'ekfc'],
+    ['Glomerulär filtration (EKFC)'.normalize('NFD'), 'ekfc'],
+    ['eVFG (EKFC)', 'ekfc'],
+    ['eGFR (Lund-Malmö)', 'lmr'],
+    ['eGFR LMR', 'lmr'],
+    ['eGFR (BIS1)', 'bis1'],
+    ['eGFR (BIS-2)', 'bis2'],
+    ['eGFR (BIS 1)', 'bis1'],
+    ['eGFRcrcys (CKD-EPI 2021)', '2021 ckd creatinine cystatin epi'],
+    ['eGFRcr (CKD-EPI 2021)', '2021 ckd creatinine epi'],
+    ['eGFR (EKFC) [1]', 'ekfc'],
+    ['eGFR (MDRD-4)', '4 mdrd'],
+    ['eGFR (MDRD 6)', '6 mdrd'],
+    ['eGFRcrea (EKFC)', 'creatinine ekfc'],
+    ['eGFRcystatin (EKFC)', 'cystatin ekfc'],
+    ['eGFR by EKFC', 'ekfc'],
+    ['eGFRcys (EKFC)', 'cystatin ekfc'],
+    ['eGFR-cys (EKFC)', 'cystatin ekfc'],
+    ['eGFR (EKFC creatinina + cistatina C)', 'creatinine cystatin ekfc'],
+    ['eGFR (EKFC) (SCr e cistatina C)', 'creatinine cystatin ekfc'],
+    ['e-GFR', ''],
+    ['Velocità di filtrazione glomerulare', ''],
+    ['Filtrato glomerulare stimato', ''],
+  ])('reads what %s says beyond a filtration rate: %o', (name, said) => {
+    expect(gfrQualifier(name)).toBe(said);
+  });
+
+  it.each(['Antigene Fas', 'Base excess (bis)'])('reads %s as no filtration rate', (name) => {
+    expect(gfrQualifier(name)).toBeUndefined();
+  });
 });
 
 describe('matchLocally in the generated catalog', () => {
@@ -1072,17 +1124,147 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(codesOf(result)).toEqual(expect.arrayContaining(['14804-9', '14805-6']));
   });
 
-  it.each(['eGFR (formula EKFC)', 'eGFR (EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)'])(
-    'leaves %s, by a formula LOINC has no test for, to the AI or the user, the eGFR HemoIO describes first',
+  it.each(['eGFR (formula EKFC)', 'eGFR (EKFC)', 'eGFR (Schwartz)', 'eGFR (formula BIS)', 'eGFR - EKFC', 'eGFR EKFC', 'eGFR formula BIS'])(
+    'takes %s, by a formula LOINC has no test for, as the eGFR of no formula, never another formula',
+    (name) => {
+      expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
+    }
+  );
+
+  it.each([
+    'eGFR (CKD-EPI IDMS)',
+    'eGFR (MDRD-IDMS)',
+    'eGFR (CKD-EPI adulti)',
+    'eGFR (CKD-EPI) (Roche)',
+    'eGFR MDRD (donne)',
+    'eGFR CKD-EPI (razza nera)',
+    'eGFR (Roche)',
+  ])('asks about %s: a word beside a formula LOINC has may say something of it, never the eGFR of no formula', (name) => {
+    const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
+    expect(result.status).toBe('ambiguous');
+    expect(result.candidates[0].code).not.toBe('69405-9');
+  });
+
+  it.each([
+    ['Antigene Fas', ''],
+    ['Antigene Fas', 'mg/dL'],
+    ['Anticorpi anti CAPA', ''],
+  ])('reads %s in %o, no filtration rate, never as an eGFR formula: no test fits it fully', (name, unit) => {
+    expect(matchLocally(generated, { name, unit }).candidates.every(({ score }) => score < 0.9)).toBe(true);
+  });
+
+  it.each([
+    'eGFRcr (EKFC)',
+    'eGFRcr EKFC',
+    'eGFRcr (LMR)',
+    'eGFR Malmo',
+    'eGFR Malmö',
+    'eGFR (Malmoe)',
+    'eGFR (EKFC 2021)',
+    'eGFR - EKFC 2021',
+    'eGFR EKFC 2021',
+    'eGFR (EKFC) (stimato)',
+    'Filtrato glomerulare (EKFC) (stimato)',
+    'eGFR (EKFC) (SCr)',
+    'eGFR (Lund-Malmö) (kreatinin)',
+    // Of creatinine and cystatin C together, whatever the order or spelling
+    'eGFR (creatinina e cistatina C) (formula EKFC)',
+    'eGFR (EKFC) (creatinina e cistatina C)',
+    'eGFR (EKFC) (SCr + cistatina C)',
+    'eGFR (formula EKFC) (Creat. + cistatina C)',
+    'eGFR (cr-cys)',
+    'eGFR (cr_cys)',
+    'eGFR (creatinine and cystatin C)',
+    // Two formulas, whatever their order, and joining words
+    'eGFR (CAPA + LMR)',
+    'eGFR (LMR + CAPA)',
+    'eGFR (CAPA + EKFC)',
+    'eGFR by EKFC',
+    'eGFR (EKFC) in serum',
+    'eGFR (EKFC) (creatinine-based)',
+    'eGFR (EKFC) [1]',
+    'eGFRcrea (EKFC)',
+    'eGFR (BIS-1)',
+    // BIS and Lund-Malmö formulas always read creatinine
+    'eGFR (BIS1) (CysC)',
+    'eGFR (Lund-Malmö) (cistatina C)',
+    'eGFR (BIS2) (cistatina C)',
+    'eGFR (cistatina C) (BIS2)',
+    'eGFR (BIS) (cistatina C)',
+  ])('takes %s as the eGFR of no formula, never a formula LOINC has nor the cystatin C estimate', (name) => {
+    expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
+  });
+
+  it.each([
+    'eGFR (CAPA)',
+    'eGFR - CAPA',
+    'eGFR cystatin C (CAPA)',
+    'eGFR (Cistatina C) (CAPA)',
+    'eGFR (CAPA) (cystatin C-baserat)',
+    'eGFR (cistatina C) (EKFC)',
+    'eGFR (EKFC) (cistatina C)',
+    'eGFR (cist. C) (EKFC)',
+    'eGFR (Cistat. C) (EKFC)',
+    'eGFR (EKFC) (Cis C)',
+    'eGFR (EKFC) (CysC)',
+  ])('takes %s, of cystatin C alone by a formula LOINC lacks, as the cystatin C estimate', (name) => {
+    expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '50210-4' });
+  });
+
+  it.each(['eGFR (EKFC) (IDMS)', 'eGFR (EKFC 2021) (IDMS)', 'eGFR (EKFC) (Roche)', 'eGFR (CKD-EPI 2021) (cr-cys)', 'eGFRcrcys (CKD-EPI 2021)'])(
+    'asks about %s, which says more than its formula, the eGFR of no formula first',
     (name) => {
       const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });
       expect(result.status).toBe('ambiguous');
-      expect(result.candidates[0].code).toBe('98979-8');
-      // Filtration rates before the creatinine clearance a Cockcroft-Gault formula predicts
-      const closest = result.candidates.slice(0, 4).map(({ name: candidate }) => candidate);
-      expect(closest.every((candidate) => candidate.startsWith('Glomerular filtration rate'))).toBe(true);
+      expect(result.candidates[0].code).toBe('69405-9');
     }
   );
+
+  it.each([
+    ['Base excess (bis)', 'mmol/L', '11555-0'],
+    ['Base excess (Lund)', 'mmol/L', '11555-0'],
+    ['Ematocrito (calcolato) (bis)', '%', '20570-8'],
+    ['Globuline (calcolate) (FAS)', 'g/dL', '10834-0'],
+  ])('reads a formula word beside %s, no filtration rate, as saying nothing of it', (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit })).toMatchObject({ status: 'match', code });
+  });
+
+  it.each([
+    ['Prothrombin time ratio', 'ratio'],
+    ['Prothrombin ratio', ''],
+  ])('offers %s in %o the prothrombin time ratio first', (name, unit) => {
+    expect(matchLocally(generated, { name, unit }).candidates[0].code).toBe('5894-1');
+  });
+
+  it('takes "eGFR Lund Malmö" as the eGFR of no formula', () => {
+    expect(matchLocally(generated, { name: 'eGFR Lund Malmö', unit: 'mL/min/1.73m²' })).toMatchObject({ code: '69405-9' });
+  });
+
+  it('asks about an anion gap whose bracket names an instrument, never the 4-ion formula', () => {
+    expect(matchLocally(generated, { name: 'Sg-Anion gap (Radiometer)', unit: 'mmol/L' }).status).toBe('ambiguous');
+  });
+
+  it.each([
+    ['Leucociti', '/µL', '30405-5'],
+    ['Eritrociti', '/µL', '30391-7'],
+    ['Batteri', '/µL', '51480-2'],
+    ['pH', '', '2756-5'],
+    ['Glucosio', 'mg/dL', '2350-7'],
+  ])("files %s in %s of a urine sediment section as the urine's, a machine's count or a strip's", (name, unit, code) => {
+    expect(matchLocally(generated, { name, unit, specimenHint: 'urine sediment' })).toMatchObject({ status: 'match', code });
+  });
+
+  it('offers a count per low-power field only tests counted per field, the low-power ones first', () => {
+    const codes = codesOf(matchLocally(generated, { name: 'Cilindri ialini', unit: '/LPF', specimenHint: 'urine sediment' }));
+    expect(codes).not.toContain('51484-4');
+    expect(codes[0]).toBe('5796-8');
+  });
+
+  it("offers a bare number of a urine sediment section the microscope's tests, not a strip's", () => {
+    const codes = codesOf(matchLocally(generated, { name: 'Leucociti', unit: '', specimenHint: 'urine sediment' }));
+    expect(codes.length).toBeGreaterThan(0);
+    expect(codes.every((code) => generated.test(code)?.system !== 'Urine')).toBe(true);
+  });
 
   it.each([
     // HemoIO's name of the eGFR it describes never outweighs a bracket naming another formula
@@ -1279,6 +1461,107 @@ describe('matchLocally on names of real Italian reports', () => {
 
   it('keeps every test of two results joined by a slash, the ratio of them not pushing one out: "Borrelia IgG/IgM"', () => {
     expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '' }))).toContain('46248-1');
+  });
+
+  describe('a result printed in words', () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    // Ordinal, semi-quantitative or nominal, but never an organism a culture names
+    const inWords = (code: string): boolean => {
+      const test = generated.test(code);
+      return test !== undefined && ['Ord', 'OrdQn', 'Nom'].includes(test.scale) && test.property !== 'Prid';
+    };
+
+    it('is only a test whose results are words: no culture, no count', () => {
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent });
+      expect(result.status).toBe('ambiguous');
+      const codes = codesOf(result);
+      expect(codes).toEqual(expect.arrayContaining(['50221-1', '25145-4']));
+      expect(codes).not.toContain('630-4');
+      expect(codes).not.toContain('51480-2');
+      expect(codes.every(inWords)).toBe(true);
+    });
+
+    it.each(['Batteri', 'Batteri (urine)'])("is the microscope's for %s in a urine sediment section", (name) => {
+      expect(
+        matchLocally(generated, { name, unit: '', specimenHint: 'urine sediment', qualitative: absent })
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('is an interpretation read as a word: "Borrelia IgG/IgM" "Negativo"', () => {
+      const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
+      expect(codesOf(matchLocally(generated, { name: 'Borrelia IgG/IgM', unit: '', qualitative: negative }))).toContain('46248-1');
+    });
+
+    it.each([
+      // An analyte with no test whose results are words: its own tests, not another's that has some
+      ['NT-proBNP', undefined, '33762-6'],
+      ['Eritroblasti', undefined, '58413-6'],
+      // A strip's semi-quantitative step
+      ['Microalbumina (urine)', 'urine', '11218-5'],
+      // A search for an organism: the organism it finds
+      ['Ricerca parassiti malarici', 'blood', '24429-3'],
+      ['Urine culture', 'urine', '630-4'],
+    ])("offers %s of %s printed in words its own tests: %s", (name, specimenHint, code) => {
+      const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
+      expect(codesOf(matchLocally(generated, { name, unit: '', specimenHint, qualitative: negative }))).toContain(code);
+    });
+
+    it.each([
+      ['nt-probnp|#words', 'NT-proBNP', '33762-6'],
+      ['eritroblasti|#words', 'Eritroblasti', '58413-6'],
+    ])('takes the test confirmed for %s printed in words when no test with word results fits', (key, name, code) => {
+      const learned = (wording: string): string | undefined => (wording === key ? code : undefined);
+      expect(matchLocally(generated, { name, unit: '', qualitative: absent }, learned)).toMatchObject({ status: 'match', code });
+    });
+
+    it('takes the microscope test in a sediment section over a strip test learned in a urine one', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|' ? '50221-1' : undefined);
+      expect(
+        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine sediment', qualitative: absent }, learned)
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('offers a result in words the tests that fit its name as well as they fit, before a word test of another', () => {
+      const negative = { text: 'Negativo', kind: 'boolean', value: 0 } as const;
+      const { candidates } = matchLocally(generated, { name: 'Bilirubina (diretta)', unit: 'mg/dL', qualitative: negative });
+      expect(candidates.slice(0, 3).map(({ code }) => code)).toEqual(expect.arrayContaining(['1968-7', '1975-2', '1971-1']));
+      expect(candidates.slice(0, 3).every(({ score }) => score >= 0.9)).toBe(true);
+    });
+
+    it('takes the test learned for the wording printed in words, whatever else fits', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words' ? '25145-4' : undefined);
+      expect(
+        matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned)
+      ).toMatchObject({ status: 'match', code: '25145-4' });
+    });
+
+    it('never takes a test learned for the wording in words for a number', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words' ? '25145-4' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '/µL', specimenHint: 'urine' }, learned);
+      expect(result).toMatchObject({ status: 'match', code: '51480-2' });
+    });
+
+    it('never takes a test learned in a sediment section for the wording in a urine one', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|#words#sediment' ? '25145-4' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned);
+      expect(result.status).toBe('ambiguous');
+    });
+
+    it('never takes a test learned for a number of the wording for a result in words', () => {
+      const learned = (key: string): string | undefined => (key === 'batteri (urine)|' ? '51480-2' : undefined);
+      const result = matchLocally(generated, { name: 'Batteri (urine)', unit: '', specimenHint: 'urine', qualitative: absent }, learned);
+      expect(codesOf(result)).not.toContain('51480-2');
+    });
+
+    it.each([
+      ['Nitriti (urine)', 'urine', { text: 'assenti', kind: 'boolean', value: 0 }],
+      ['Emoglobina (urine)', 'urine', { text: '++', kind: 'ordinal', value: 2 }],
+      ['Proteine/Albumina', 'urine', { text: 'Assenti', kind: 'boolean', value: 0 }],
+    ] as const)('keeps %s of %s to tests whose results are words', (name, specimenHint, qualitative) => {
+      const words = matchLocally(generated, { name, unit: '', specimenHint, qualitative });
+      expect(words.candidates.length).toBeGreaterThan(0);
+      expect(words.candidates.every(({ code }) => inWords(code))).toBe(true);
+    });
   });
 
   it('lists only ratios as ratios: a slash name no ratio fits keeps its own order', () => {

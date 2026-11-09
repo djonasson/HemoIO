@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import { beforeEach, afterEach } from 'vitest';
+import { afterAll, beforeEach, afterEach } from 'vitest';
 
 // Mock window.matchMedia for Mantine
 Object.defineProperty(window, 'matchMedia', {
@@ -14,6 +14,51 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }),
+});
+
+// A timer or animation frame left pending when a file's tests end would run
+// once the page is gone and fail the run ("window is not defined"). Mantine's
+// transitions start one through two animation frames, which unmounting does
+// not cancel. Each one still pending is cancelled when the file's tests end.
+const pendingTimeouts = new Set<number>();
+const pendingFrames = new Set<number>();
+const { setTimeout: startTimeout, clearTimeout: stopTimeout } = window;
+window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+  const id = startTimeout(
+    (...callArgs: unknown[]) => {
+      pendingTimeouts.delete(id);
+      if (typeof handler === 'function') (handler as (...values: unknown[]) => void)(...callArgs);
+    },
+    delay,
+    ...args
+  );
+  pendingTimeouts.add(id);
+  return id;
+}) as typeof window.setTimeout;
+window.clearTimeout = ((id?: number) => {
+  if (id !== undefined) pendingTimeouts.delete(id);
+  stopTimeout(id);
+}) as typeof window.clearTimeout;
+if (window.requestAnimationFrame) {
+  const { requestAnimationFrame: requestFrame, cancelAnimationFrame: cancelFrame } = window;
+  window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+    const id = requestFrame((time) => {
+      pendingFrames.delete(id);
+      callback(time);
+    });
+    pendingFrames.add(id);
+    return id;
+  };
+  window.cancelAnimationFrame = (id: number) => {
+    pendingFrames.delete(id);
+    cancelFrame(id);
+  };
+}
+afterAll(() => {
+  for (const id of pendingFrames) window.cancelAnimationFrame(id);
+  for (const id of pendingTimeouts) stopTimeout(id);
+  pendingFrames.clear();
+  pendingTimeouts.clear();
 });
 
 // jsdom does not implement scrollIntoView; Mantine Select calls it when

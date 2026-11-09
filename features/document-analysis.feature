@@ -150,7 +150,7 @@ Feature: Document Analysis
     And a value matched this way should not be counted in the analysis notes as one to identify
 
   Scenario: Handle unknown biomarkers
-    Given the AI extracts a name no LOINC test fits
+    Given the AI extracts a name no LOINC test fits, in a unit with common tests to choose from
     Then it should be labelled "Not identified" for user review
     And the analysis notes should count it among the values whose test I must choose
     And the user should be able to choose its test, or "Not a LOINC test"

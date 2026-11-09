@@ -50,6 +50,7 @@ const UCUM_REWRITES: ReadonlyArray<[RegExp, string | ((...groups: string[]) => s
   [/‰/, '[ppth]'],
   [/^ratio$/i, '1'],
   [/\/hpf$/i, '/[HPF]'],
+  [/\/lpf$/i, '/[LPF]'],
   // The Italian "per field", of a microscope's high-power field, maybe after what it counts
   [/^(?:([A-Za-z]{3,}) )?per campo$/i, (_all, word?: string) => `${word ? countedWord(word) : ''}/[HPF]`],
   // What is counted, named before the slash: "RBC/HPF", "Ery/µL"
@@ -172,7 +173,7 @@ export function ucumProperties(ucum: string): string[] {
   const amount = isAmount(unit);
   const perCell = (...properties: string[]): string[] => (PER_CELL_UNITS.has(ucum) ? properties : []);
 
-  if (ucum.includes('[HPF]')) return ['Naric', 'NCnc'];
+  if (ucum.includes('[HPF]') || ucum.includes('[LPF]')) return ['Naric', 'NCnc'];
   if (isShare(ucum)) return ['NFr', 'MFr', 'VFr', 'SFr', 'Ratio', 'DistWidth'];
   if (unit.isArbitrary_ || /^\{[^}]*\}$/.test(ucum)) {
     // So many per volume is a concentration, never a ratio or a titer (a

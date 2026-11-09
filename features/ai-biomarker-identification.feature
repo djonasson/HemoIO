@@ -121,18 +121,58 @@ Feature: Identifying the test of each value
     Then the value should be saved as "Fibrin D-dimer FEU [Mass/volume] in Platelet poor plasma"
     And the AI should not be asked which test it is
 
-  Scenario Outline: An eGFR by a formula LOINC has no test for is asked about, filtration rates first
+  Scenario Outline: An eGFR by a formula LOINC has no test for is filed under the eGFR of no formula
     Given a report prints "<name>" in mL/min/1.73m²
     When the report is analyzed
-    Then the AI should be asked which test it is
-    And the first test to choose from should be the eGFR HemoIO describes
-    And the filtration rates should come before any creatinine clearance
+    Then the value should be saved under the eGFR test 69405-9, which names no formula
+    And it should never be saved under the eGFR of another formula
+    And the AI should not be asked which test it is
 
     Examples:
-      | name                |
-      | eGFR (formula EKFC) |
-      | eGFR (Schwartz)     |
-      | eGFR (formula BIS)  |
+      | name                         | why                                                    |
+      | eGFR (formula EKFC)          |                                                        |
+      | eGFR (Schwartz)              |                                                        |
+      | eGFR (formula BIS)           |                                                        |
+      | eGFR - EKFC                  | set off by a dash, not brackets                        |
+      | eGFR (Lund-Malmö)            |                                                        |
+      | eGFRcr (EKFC)                | a name LOINC gives only the CKD-EPI estimate           |
+      | Glomerulär filtration (EKFC) | a filtration rate in another language                  |
+      | eGFR Malmo                   | one word of the formula's name, set off by a space     |
+      | eGFR (EKFC 2021)             | the formula's year, no CKD-EPI 2021                    |
+      | eGFR (EKFC) (stimato)        | a word saying only that it is an estimate              |
+      | eGFR (creatinina e cistatina C) (formula EKFC) | of creatinine and cystatin C together |
+      | eGFR (cistatina C) (BIS2)    | BIS2 reads creatinine too, so no cystatin C estimate    |
+
+  Scenario: An eGFR whose bracket says more of a formula LOINC has is asked about
+    Given a report prints "eGFR (CKD-EPI IDMS)", "eGFR (Roche)" or "eGFR MDRD (donne)" in mL/min/1.73m²
+    When the report is analyzed
+    Then the AI should be asked which test each is
+    And none should be saved under the eGFR of no formula without asking
+
+  Scenario: Two estimates by formulas LOINC has no test for are both kept
+    Given a report prints "eGFR (Schwartz)" 81 and "eGFR (EKFC)" 82 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, neither set aside as the other's duplicate
+
+  Scenario: A plain eGFR and an estimate by a formula LOINC lacks are both kept
+    Given a report prints "eGFR" 81 and "eGFR (EKFC)" 81.5 in mL/min/1.73m²
+    When I give the plain eGFR the eGFR test of no formula, as the estimate has
+    Then both values should still be shown for review, neither set aside as the other's duplicate
+
+  Scenario: A creatinine and a combined estimate by one formula are both kept
+    Given a report prints "eGFR (EKFC creatinina)" 80 and "eGFR (EKFC creatinina + cistatina C)" 81 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, neither set aside as the other's duplicate
+
+  Scenario: Estimates by the two Berlin Initiative Study formulas are both kept
+    Given a report prints "eGFR (BIS1)" 61 and "eGFR (BIS2)" 62 in mL/min/1.73m²
+    When the report is analyzed
+    Then both values should be shown for review, as BIS1 reads creatinine and BIS2 cystatin C too
+
+  Scenario: One estimate printed twice under two spellings of its formula is one value
+    Given a report prints "eGFR (Lund-Malmö)" 70 and "eGFR (LMR)" 70 in mL/min/1.73m²
+    When the report is analyzed
+    Then one value should be shown for review
 
   Scenario Outline: An eGFR is filed under the formula its bracket names
     Given a report prints "<name>" in mL/min/1.73m²
@@ -146,6 +186,8 @@ Feature: Identifying the test of each value
       | eGFR (CKD-EPI 2009) | 62238-1 | LOINC's CKD-EPI of no year, not the 2021 formula      |
       | eGFR (formula MDRD) | 77147-7 | the MDRD formula of no population named               |
       | eGFR (cistatina C)  | 50210-4 | the cystatin C-based formula, not a creatinine-based one |
+      | eGFR cystatin C (CAPA) | 50210-4 | a cystatin C formula LOINC lacks is the cystatin C-based one, which names no formula |
+      | eGFR (EKFC) (cistatina C) | 50210-4 | the same, whatever the order of its brackets                  |
 
   Scenario: A method named in brackets picks its test, a brand beside it says nothing
     Given a report prints "HbA1c (HPLC Tosoh)" in mmol/mol and "Albumina (BCG Roche)" in g/dL
@@ -293,7 +335,8 @@ Feature: Identifying the test of each value
   Scenario: A slash joining two names of one test does not put ratios first
     Given a urine report prints "Proteine/Albumina" as "Assenti", or "Glucosio/Glukose" with no unit
     When the report is analyzed
-    Then the first test to choose from should be the test of presence, as for the name alone
+    Then "Proteine/Albumina" should be saved as "Albumin [Presence] in Urine", its result in words being a presence
+    And the first test to choose from for "Glucosio/Glukose" should be the test of presence, as for the name alone
     And "Borrelia IgG/IgM" should still offer the interpretation of both antibodies
 
   Scenario: A ratio's name by its parts needs the slash
@@ -379,8 +422,23 @@ Feature: Identifying the test of each value
     When I choose "Glucose [Mass/volume] in Blood" for it in the first report
     Then "Glucosio" in the second report should be saved as "Glucose [Mass/volume] in Blood" too
     But a value whose test I chose myself, or of another unit or sample, keeps its own test
+    And a value of the wording printed in words where the other is a number keeps its own test
     When I correct the choice in the first report
     Then the second report's "Glucosio" should take the corrected test too
+
+  Scenario: A shared choice holds when the unit its test asks for is given
+    Given I import two reports that both print "NT-proBNP" as "Negativo", with no unit
+    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay" for it in the first report
+    And I give the second report's value the unit pg/mL
+    Then it should still be saved as "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay"
+
+  Scenario: A shared choice for a number printed with no unit holds when its unit is given
+    Given I import two reports that both print "Glucosio" 42 with no unit
+    When I choose "Glucose [Mass/volume] in Blood" for it in the first report
+    And I give the second report's value the unit mg/dL
+    Then it should still be saved as "Glucose [Mass/volume] in Blood"
+    When I correct the choice in the first report
+    Then the second report's value should take the corrected test too
 
   Scenario: Choose the test from the keyboard
     Given a value the AI is not sure of
@@ -415,6 +473,72 @@ Feature: Identifying the test of each value
     When I choose "Not a LOINC test" for it and save the import
     Then the timeline should show the value as "Zorblatina"
     And a later report printing "Zorblatina" in mg/dL should be saved as "Not a LOINC test" without asking
+
+  Scenario: A result printed in words is only a test whose results are words
+    Given a report prints "Batteri (urine)" as "Assenti", with no unit
+    When the report is analyzed
+    Then the tests to choose from should be the presence tests of bacteria in urine, by machine or by microscope
+    And never the urine culture or a count of bacteria
+
+  Scenario: A result in words in the urine sediment is the microscope's
+    Given a report prints "Batteri" as "Assenti" in its urine sediment section
+    When the report is analyzed
+    Then the value should be saved as "Bacteria [Presence] in Urine sediment by Light microscopy"
+    And the AI should not be asked which test it is
+
+  Scenario: A count or a strip's reading in a urine sediment section is the urine's
+    Given a report's urine sediment section prints "Leucociti" 25 /µL and "pH" 6.0
+    When the report is analyzed
+    Then "Leucociti" should be saved as "Leukocytes [#/volume] in Urine"
+    And "pH" should be saved as "pH of Urine"
+
+  Scenario: A result in words of a test that has none in words is offered its own tests
+    Given a report prints "NT-proBNP" as "Negativo", with no unit
+    When the report is analyzed
+    Then the tests to choose from should be the NT-proBNP tests
+    When I choose "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay" for it, give its unit and save the import
+    Then a later report printing "NT-proBNP" as "Negativo" should be saved under that test without asking
+    And giving it the unit its test asks for should keep that test, and saving should keep it learned
+
+  Scenario: A test chosen for a result in words is remembered for results in words only
+    Given a urine report prints "Batteri (urine)" as "Assenti"
+    When I choose "Bacteria [Presence] in Urine sediment by Light microscopy" for it and save the import
+    Then the learned names should show "batteri (urine)" as learned in words
+    And a later urine report printing "Batteri (urine)" as "Assenti" should be saved under that test without asking
+    But a later urine report printing "Batteri (urine)" as the number 12, with no unit, should not be saved under that test
+
+  Scenario: A count chosen in a urine sediment section is not used for the urine
+    Given a report's urine sediment section prints "Leucociti" 3 /µL
+    When I choose "Leukocytes [#/area] in Urine sediment by Microscopy high power field" for it and save the import
+    Then a later report printing "Leucociti" 25 /µL under a urine heading should be saved as "Leukocytes [#/volume] in Urine"
+
+  Scenario: A result in words given a unit is read again in it
+    Given a urine report prints "Glucosio (urine)" as "Assente"
+    When I give it the unit mg/dL, keeping its result
+    Then it should no longer be saved as a presence test
+
+  Scenario: A test chosen in a urine sediment section is not used for the urine
+    Given a report's urine sediment section prints "Batteri" as "Assenti"
+    When I save it as "Not a LOINC test"
+    Then a later report printing "Batteri" as "Assenti" under a urine heading should still be asked about
+
+  Scenario: A result in words corrected to a number is read again as a number
+    Given a urine report prints "Glucosio (urine)" as "Assente"
+    When I correct its value to 95 mg/dL
+    Then it should be saved as "Glucose [Mass/volume] in Urine", not as a presence test
+
+  Scenario: A count per low-power field is one counted per low-power field
+    Given a report's urine sediment section prints "Cilindri ialini" 1 /LPF
+    When the report is analyzed
+    Then the value should be saved as "Hyaline casts [#/area] in Urine sediment by Microscopy low power field", never a count per volume
+
+  Scenario: A value with no test to choose from is saved as "Not a LOINC test" without asking
+    Given a report prints "Conduttività" in mS/cm, for which LOINC has no test
+    When the report is analyzed
+    Then the value should be saved as "Not a LOINC test", labelled "Not identified"
+    And the AI should not be asked which test it is
+    And the analysis notes should not count it among the values whose test I must choose
+    And I can still choose a test for it
 
   Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series
     Given a report prints "Zorblatina" in mg/dL, which no LOINC test fits

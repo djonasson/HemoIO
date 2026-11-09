@@ -5,8 +5,28 @@
  * without asking. Stored in the (sealed) preferences record.
  *
  * The keys are made by `learnedKey` in the analysis service: the printed
- * name, normalised, then "|" and the unit as UCUM.
+ * name, normalised, then "|" and the unit as UCUM (none for a result in
+ * words), then the marks of how the value was printed (see withMarks).
  */
+
+/** How a value was printed, as learning tells wordings apart */
+export interface PrintingMarks {
+  /** Its result in words ("Assenti") */
+  inWords: boolean;
+  /** Of a urine sediment section, where it is what the microscope saw */
+  ofSediment: boolean;
+}
+
+/** Each mark: as a key ends with it, and as the user reads it */
+const MARKS: ReadonlyArray<readonly [keyof PrintingMarks, string, string]> = [
+  ['inWords', '#words', 'in words'],
+  ['ofSediment', '#sediment', 'urine sediment'],
+];
+
+/** A learned key of a wording and unit with the marks of how the value was printed */
+export function withMarks(key: string, marks: PrintingMarks): string {
+  return key + MARKS.filter(([mark]) => marks[mark]).map(([, suffix]) => suffix).join('');
+}
 
 /** A saved value as learning reads it */
 export interface SavedValue {
@@ -38,11 +58,22 @@ export function learnFromSaved(
   return next;
 }
 
-/** A learned key as the user reads it: "glucosio (mg/dL)", or the wording alone with no unit */
+/**
+ * A learned key as the user reads it: "glucosio (mg/dL)", the wording alone
+ * with no unit, and how it was printed: "batteri (in words, urine sediment)"
+ */
 export function learnedWording(key: string): string {
   const separator = key.lastIndexOf('|');
   if (separator === -1) return key;
-  const unit = key.slice(separator + 1);
+  let unit = key.slice(separator + 1);
+  const notes: string[] = [];
+  // Read back in the reverse of the order withMarks writes them
+  for (const [, suffix, note] of [...MARKS].reverse()) {
+    if (!unit.endsWith(suffix)) continue;
+    unit = unit.slice(0, -suffix.length);
+    notes.unshift(note);
+  }
+  const said = [unit, ...notes].filter(Boolean).join(', ');
   const wording = key.slice(0, separator);
-  return unit ? `${wording} (${unit})` : wording;
+  return said ? `${wording} (${said})` : wording;
 }

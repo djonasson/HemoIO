@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { loadCatalog } from '@data/loinc/catalog';
 import { learnFromSaved } from '@data/loinc/learnedTests';
-import { identifyLocally, identifyValues, needsChoice, toLearn, unknownKeyOf } from './identification';
+import { asAnalyzed, identifyLocally, identifyValues, isNoneFound, needsChoice, needsTest, toLearn, unknownKeyOf } from './identification';
 import { applyBiomarkerName, chooseTest } from './reviewEdits';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoiceRequest } from '../ai';
@@ -80,10 +80,18 @@ describe('identifyLocally', () => {
     expect(needsChoice(identification)).toBe(true);
   });
 
-  it('asks the user about a value with no unit no test fits', () => {
+  it('saves a value with no test to choose from as "Not a LOINC test", still labelled', () => {
     const identification = identifyLocally(catalog, { name: 'Zorblatina', unit: '' });
-    expect(identification).toMatchObject({ candidates: [], identificationFlags: ['not-identified', 'no-unit'] });
-    expect(identification.savedAsUnknown).toBeFalsy();
+    expect(identification).toMatchObject({
+      candidates: [],
+      identificationFlags: ['not-identified', 'no-unit'],
+      savedAsUnknown: true,
+    });
+    // Nobody decided it: never learned, nor counted as a test found
+    expect(identification.identifiedBy).toBeUndefined();
+    expect(isNoneFound(identification)).toBe(true);
+    expect(needsTest(identification)).toBe(false);
+    expect(needsChoice(identification)).toBe(false);
   });
 
   it('uses a test learned for a wording with no unit', () => {
@@ -134,6 +142,7 @@ describe('identifyValues', () => {
       ['15074-8', 'ai'],
       [undefined, undefined],
     ]);
+    expect(values[2].savedAsUnknown).toBe(true);
     expect(values[1].identificationFlags).toEqual([]);
     expect(values[1].analyzed).toMatchObject({ name: 'Glucosio', unit: 'mmol/L' });
   });
@@ -200,6 +209,12 @@ describe('toLearn', () => {
     });
   });
 
+  it('never learns a "Not a LOINC test" nobody chose, even after the value was renamed', () => {
+    const [noneFound] = [identifyLocally(catalog, { name: 'Zorblatina', unit: '' })];
+    const value = asAnalyzed(extracted('Zorblatina', 1, ''), noneFound);
+    expect(toLearn({ ...value, name: 'Zorb' })).toMatchObject({ confirmed: false });
+  });
+
   it("confirms a choice shared from the user's choice for the same wording", async () => {
     const value = await analyzed('Glucosio', 'mmol/L');
     expect(toLearn({ ...value, loincCode: '14749-6', identifiedBy: 'shared' })).toMatchObject({ confirmed: true });
@@ -214,6 +229,22 @@ describe('toLearn', () => {
       code: '2345-7',
       confirmed: true,
     });
+  });
+
+  it('learns a result in words under its wording in words, and one typed over with a number under the number', async () => {
+    const absent = { text: 'Assenti', kind: 'boolean', value: 0 } as const;
+    const word = asAnalyzed(
+      { ...extracted('Batteri', 0, '', 'urine sediment'), qualitative: absent },
+      { candidates: [], identificationFlags: [] }
+    );
+    expect(toLearn({ ...word, loincCode: '25145-4', identifiedBy: 'user' })).toEqual({
+      key: 'batteri|#words#sediment',
+      code: '25145-4',
+      confirmed: true,
+    });
+    expect(toLearn({ ...word, value: 12, loincCode: '30405-5', identifiedBy: 'user' }).key).toBe('batteri|#sediment');
+    // Typed over with a number and saved with the local test: an edit, so the user's decision
+    expect(toLearn({ ...word, value: 12, loincCode: '30405-5', identifiedBy: 'local' }).confirmed).toBe(true);
   });
 
   it('confirms an edit that reaches a test through a wording learned before: a correction sticks', async () => {

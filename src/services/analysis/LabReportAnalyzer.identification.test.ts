@@ -91,8 +91,9 @@ describe('analyzeLabReport: identifying each value', () => {
       loincCode: '14749-6',
       identifiedBy: 'ai',
     });
-    // Only the value no test fits is left to the user
-    expect(result.warnings).toEqual([unidentifiedNote(1)]);
+    // The value with no test to choose from is saved as "Not a LOINC test": nothing is left to the user
+    expect(result.matchedBiomarkers.find((b) => b.name === 'Zorb')).toMatchObject({ savedAsUnknown: true });
+    expect(result.warnings).toEqual([]);
   });
 
   it('leaves the candidates to the user when the AI cannot be asked', async () => {

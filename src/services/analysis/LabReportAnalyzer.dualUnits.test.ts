@@ -4,7 +4,7 @@
  * deduplicated with the real unit conversions. Only text extraction and the
  * AI are mocked; the AI picks the best candidate of each value.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
 import { analyzeLabReport } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoiceRequest } from '../ai';
@@ -66,6 +66,11 @@ async function kept(biomarkers: ExtractedBiomarker[]): Promise<string[]> {
 }
 
 describe('analyzeLabReport: values reported in two units', () => {
+  // Reading the 13 MB catalog and building its search index take seconds on a busy machine
+  beforeAll(async () => {
+    (await loadCatalog()).scoredSearch('glucosio');
+  }, 60_000);
+
   beforeEach(() => vi.clearAllMocks());
 
   it('keeps one value, in the standard unit, for each value reported in its mass and molar unit', async () => {

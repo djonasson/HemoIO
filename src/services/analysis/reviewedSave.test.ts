@@ -176,6 +176,13 @@ describe('planSave', () => {
     expect(plan.notSaved).toEqual([{ fileName: 'a.pdf', biomarker: TWIN, reason: 'twin' }]);
   });
 
+  it('leaves out a twin saved as "Not a LOINC test" only for want of a test to choose from', () => {
+    const noneFound = { ...TWIN, candidates: [], savedAsUnknown: true, identificationFlags: ['not-identified' as const] };
+    expect(leftOut([noneFound, CODED])).toEqual([noneFound]);
+    // One the user decided is theirs
+    expect(leftOut([{ ...noneFound, identifiedBy: 'user' }, CODED])).toEqual([]);
+  });
+
   it('pairs a twin only with a value of the same test, not one of its name in another sample', () => {
     expect(leftOut([{ ...TWIN, specimenHint: 'urine' }, { ...CODED, specimenHint: 'blood' }])).toEqual([]);
     expect(leftOut([{ ...TWIN, specimenHint: 'blood' }, { ...CODED, specimenHint: 'blood' }])).toHaveLength(1);
