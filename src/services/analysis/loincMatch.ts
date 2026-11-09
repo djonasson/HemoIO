@@ -514,6 +514,7 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
     let carriers: Map<string, number> | undefined;
     let tellsApart: boolean | undefined;
     let told: Set<string> | undefined;
+    let formTop: number | undefined;
     const formFound = findTests(catalog, form, scope);
     // How well the rest fits the tests the form fits best: of the tests a bracket names, those the rest fits less are not meant
     let restBest: number | undefined;
@@ -547,13 +548,18 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
         continue;
       } else {
         const isUnread = carriers?.size === 0 && !part;
-        if (isUnread) told ??= testsToldBy(catalog, form, left, true);
-        bracketsTellApart ||= isUnread && told!.size > 0;
+        if (!isUnread) {
+          keep(found, found.score, false);
+          continue;
+        }
+        told ??= testsToldByBracket(catalog, form, left);
+        bracketsTellApart ||= told.size > 0;
         // The test a bracket tells apart is read by it, a full fit of the whole name: "Fosfatasi alcalina (ossea)" is
         // the bone one
-        const isTold = isUnread && told!.has(found.test.code);
-        if (isTold) keep({ ...found, toldApart: true }, Math.max(...formFound.map(({ score }) => score)), false);
-        else keep(found, found.score, isUnread);
+        if (told.has(found.test.code)) {
+          formTop ??= Math.max(...formFound.map(({ score }) => score));
+          keep({ ...found, toldApart: true }, formTop, false);
+        } else keep(found, found.score, true);
       }
     }
   }
@@ -595,34 +601,55 @@ function methodReading(word: string): string {
   return METHOD_READINGS[word.replace(/[aeio]$/, '')] ?? word;
 }
 
-/**
- * The tests the rest of a name fits, of any sample, that a part of the name
- * tells from the others: one of its words, or its method reading, is in
- * their names ("diretta" of direct bilirubin, "salivare" of cortisol in
- * saliva, "ossea" of the bone phosphatase, "HPLC"). With `apartFromMethod`,
- * a word naming a test's method does not count: readParts reads those.
- */
-function testsToldBy(catalog: Catalog, rest: string, part: string, apartFromMethod = false): Set<string> {
-  const words = wordsIn(part).filter((word) => !isStopWord(word) && /\p{L}/u.test(word));
-  return new Set(
-    catalog
-      .scoredSearch(rest)
-      .filter(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)
-      .filter(({ test }) => {
-        const method = wordsIn(test.method);
-        const telling = apartFromMethod ? words.filter((word) => !method.includes(methodReading(word))) : words;
-        const readings = telling.map(methodReading);
-        return [test.name, test.method, ...test.names].some((testName) =>
-          wordsIn(testName).some((other) => readings.includes(other) || telling.some((word) => isNearForm(word, other)))
-        );
-      })
-      .map(({ test }) => test.code)
+/** The words of a part of a name that may tell tests apart: neither stop words nor numbers */
+function tellingWords(part: string): string[] {
+  return wordsIn(part).filter((word) => !isStopWord(word) && /\p{L}/u.test(word));
+}
+
+/** Whether a word, or its method reading, is in one of a test's names ("diretta" of direct bilirubin) */
+function namesWord(test: CatalogTest, word: string): boolean {
+  const reading = methodReading(word);
+  return [test.name, test.method, ...test.names].some((testName) =>
+    wordsIn(testName).some((other) => other === reading || isNearForm(word, other))
   );
 }
 
-/** Whether a part of a name tells some of the tests the rest fits from the others (see testsToldBy) */
+/** Whether a word names a test's method, as readParts reads it ("HPLC", "calcolato") */
+function isMethodOf(test: CatalogTest, word: string): boolean {
+  return wordsIn(test.method).includes(methodReading(word));
+}
+
+/** The tests the rest of a name fits fully, of any sample */
+function fullFits(catalog: Catalog, rest: string): CatalogTest[] {
+  return catalog
+    .scoredSearch(rest)
+    .filter(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)
+    .map(({ test }) => test);
+}
+
+/**
+ * Whether a part of a name tells some of the tests the rest fits, of any
+ * sample, from the others: one of its words, or its method reading, is in
+ * the names of some ("diretta" of direct bilirubin, "salivare" of cortisol
+ * in saliva, "HPLC")
+ */
 function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
-  return testsToldBy(catalog, rest, part).size > 0;
+  const words = tellingWords(part);
+  return fullFits(catalog, rest).some((test) => words.some((word) => namesWord(test, word)));
+}
+
+/**
+ * The tests the rest of a name fits that a bracket tells apart by a word
+ * other than their method, which readParts reads: "ossea" of the bone
+ * phosphatase, "indiretta" of indirect bilirubin
+ */
+function testsToldByBracket(catalog: Catalog, rest: string, bracket: string): Set<string> {
+  const words = tellingWords(bracket);
+  return new Set(
+    fullFits(catalog, rest)
+      .filter((test) => words.some((word) => !isMethodOf(test, word) && namesWord(test, word)))
+      .map((test) => test.code)
+  );
 }
 
 /**
@@ -917,10 +944,11 @@ function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] |
   );
   // Asked, the estimate first: the others below it
   const below = saysMore ? cap - MATCH_MARGIN / 2 : cap;
-  // Read here from all the name says, its brackets too: no bracket tells another test apart
+  // Read here from all the name says, its brackets too: what findByForms marked a bracket tells apart is read anew
+  const read = (one: Found, score: number): Found => ({ test: one.test, preference: one.preference, score });
   return [
-    { ...estimates[0], score: saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE), toldApart: false },
-    ...others.map((one) => ({ ...one, score: Math.min(one.score, below), toldApart: false })),
+    read(estimates[0], saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE)),
+    ...others.map((one) => read(one, Math.min(one.score, below))),
   ];
 }
 
