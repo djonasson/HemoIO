@@ -416,6 +416,38 @@ test.describe('Identifying the test of each value', () => {
     }
   });
 
+  test('asks about a qualifier in brackets with the test it names first', async ({ page }) => {
+    // Scenario Outline: A qualifier in brackets is asked about, the test it names first
+    const examples: [string, string, string][] = [
+      ['Bilirubina (diretta)', 'mg/dL', 'Bilirubin.direct [Mass/volume] in Serum or Plasma'],
+      ['Bilirubina (indiretta)', 'mg/dL', 'Bilirubin.indirect [Mass/volume] in Serum or Plasma'],
+      ['Fosfatasi alcalina (ossea)', 'U/L', 'Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma'],
+    ];
+    const ai = await analyzeReport(
+      page,
+      examples.map(([name, unit], i) => ({ name, value: 1.1 + i, unit, confidence: 0.95 }))
+    );
+    expect(ai.choiceRequests).toHaveLength(1);
+    const asked = ai.choiceRequests[0];
+    expect(asked.map((value) => value.name).sort()).toEqual(examples.map(([name]) => name).sort());
+    for (const [name, , testName] of examples) {
+      expect(asked.find((value) => value.name === name)?.candidates[0].name).toBe(testName);
+    }
+  });
+
+  test('files a cortisol whose name says saliva under the saliva test', async ({ page }) => {
+    // Scenario Outline: Saliva named in the name is the sample
+    const names = ['Cortisolo (salivare)', 'Cortisolo salivare', 'Cortisol (saliva)'];
+    const ai = await analyzeReport(
+      page,
+      names.map((name, i) => ({ name, value: 11 + i, unit: 'nmol/L', confidence: 0.95 }))
+    );
+    for (const i of names.keys()) {
+      await expect(rowFor(page, String(11 + i)).getByText('LOINC 51844-9')).toBeVisible();
+    }
+    expect(ai.choiceRequests).toHaveLength(0);
+  });
+
   test('asks about a sample named beside a name known only for another sample', async ({ page }) => {
     // Scenario Outline: A sample named beside a name known only for another sample is asked
     await analyzeReport(page, [

@@ -884,6 +884,10 @@ describe('matchLocally in the generated catalog', () => {
     ['ACTH', 'pg/mL', 'plasma', '2141-0'],
     // A substance of red cells by "eritrocitario"
     ['Folati eritrocitari', 'ng/mL', 'blood', '2283-0'],
+    // Saliva, however said, is the sample
+    ['Cortisolo (salivare)', 'nmol/L', undefined, '51844-9'],
+    ['Cortisolo salivare', 'nmol/L', undefined, '51844-9'],
+    ['Cortisol (saliva)', 'nmol/L', undefined, '51844-9'],
     // A synonym of a test in brackets is read, as is the printed name when a rewriting of it fits less
     ['Glucosio (glicemia)', 'mg/dL', undefined, '2345-7'],
     ['eGFR (CKD-EPI)', 'mL/min/1.73m2', undefined, '98979-8'],
@@ -942,7 +946,10 @@ describe('matchLocally in the generated catalog', () => {
     ['Emoglobina A 1', '%', undefined],
     // A qualifier changes the test: never the plain one unasked
     ['Bilirubina - diretta', 'mg/dL', undefined],
-    ['Bilirubina (diretta)', 'mg/dL', undefined],
+    // A qualifier in brackets puts the test it names first
+    ['Bilirubina (diretta)', 'mg/dL', '1968-7'],
+    ['Bilirubina (indiretta)', 'mg/dL', '1971-1'],
+    ['Fosfatasi alcalina (ossea)', 'U/L', '1777-2'],
     ['Troponina I - hs', 'ng/L', undefined],
     ['Troponina I (hs)', 'ng/L', undefined],
     ['Cortisolo - salivare', 'µg/dL', undefined],

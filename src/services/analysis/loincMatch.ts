@@ -120,6 +120,8 @@ const PLASMA_WORDS = 'plasma|plasmatic[oaie]|plasmatiche';
 // The red cells: "Folati eritrocitari"
 const RED_CELL_WORDS = 'erythrocytes?|eritrocitari[oae]?';
 const BLOOD_WORDS = 'blood|sangue|ematic[oaie]|ematiche';
+// Saliva: "Cortisolo salivare", "Cortisol (saliva)"
+const SALIVA_WORDS = 'saliva|salivar[eiy]|salivary';
 // The blood count, whose values are all of blood and its cells: "Emocromo - Emoglobina"
 const BLOOD_COUNT_WORDS = 'emocromo|emocromocitometrico';
 const wordsOf = (words: string, flags: string): RegExp => new RegExp(`\\b(?:${words})\\b`, flags);
@@ -131,15 +133,19 @@ const SAMPLE_HINTS: ReadonlyArray<[RegExp, string[]]> = [
   [wordsOf(SERUM_WORDS, 'i'), ['Ser/Plas', 'Ser', 'Ser/Plas/Bld']],
   [wordsOf(PLASMA_WORDS, 'i'), ['Ser/Plas', 'Plas', 'PPP', 'Ser/Plas/Bld']],
   [wordsOf(RED_CELL_WORDS, 'i'), ['RBC']],
+  [wordsOf(SALIVA_WORDS, 'i'), ['Saliva']],
   [BLOOD_COUNT_HINT, BLOOD_FIRST],
   [BLOOD_HINT, BLOOD_FIRST],
 ];
 
 /**
- * Words naming serum, plasma, red cells, the blood count or blood in a printed name:
- * "Glucosio sangue", "Calcium, Blood", "Piombo ematico", "Folati eritrocitari"
+ * Words naming serum, plasma, red cells, saliva, the blood count or blood in a printed name:
+ * "Glucosio sangue", "Calcium, Blood", "Piombo ematico", "Folati eritrocitari", "Cortisolo salivare"
  */
-const SAMPLE_WORDS = wordsOf([SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, BLOOD_COUNT_WORDS, BLOOD_WORDS].join('|'), 'gi');
+const SAMPLE_WORDS = wordsOf(
+  [SERUM_WORDS, PLASMA_WORDS, RED_CELL_WORDS, SALIVA_WORDS, BLOOD_COUNT_WORDS, BLOOD_WORDS].join('|'),
+  'gi'
+);
 
 /**
  * What says the value's sample: nothing; a prefix or a hint, which rule
@@ -304,6 +310,8 @@ interface Found {
   score: number;
   /** Index of the test's sample among the samples searched: lower is likelier */
   preference: number;
+  /** A bracket of the name tells this test from the others the rest fits ("Fosfatasi alcalina (ossea)"): it is asked, first */
+  toldApart?: boolean;
 }
 
 /** Where a search looks: samples by likelihood, and the properties and UCUM unit the printed unit reads as */
@@ -484,6 +492,8 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
   // Tests found only by a form leaving out words that name no test, and those a form reading more fits
   const unread = new Set<string>();
   const fitByMore = new Set<string>();
+  // A bracket the catalog cannot read as a test may still tell the tests apart: "Bilirubina (indiretta)"
+  let bracketsTellApart = false;
   const keep = (found: Found, score: number, isUnread: boolean): void => {
     const known = best.get(found.test.code);
     if (!isUnread && isFit(score)) fitByMore.add(found.test.code);
@@ -503,6 +513,7 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
     // Searched only once a test is found that the rest may rule out
     let carriers: Map<string, number> | undefined;
     let tellsApart: boolean | undefined;
+    let told: Set<string> | undefined;
     const formFound = findTests(catalog, form, scope);
     // How well the rest fits the tests the form fits best: of the tests a bracket names, those the rest fits less are not meant
     let restBest: number | undefined;
@@ -535,13 +546,21 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
         // "AA Saccaromyces cer. IgA (ASCA)": ASCA names the yeast antibodies of every class, the rest the IgA one
         continue;
       } else {
-        keep(found, found.score, carriers?.size === 0 && !part);
+        const isUnread = carriers?.size === 0 && !part;
+        if (isUnread) told ??= testsToldBy(catalog, form, left, true);
+        bracketsTellApart ||= isUnread && told!.size > 0;
+        // The test a bracket tells apart is read by it, a full fit of the whole name: "Fosfatasi alcalina (ossea)" is
+        // the bone one
+        const isTold = isUnread && told!.has(found.test.code);
+        if (isTold) keep({ ...found, toldApart: true }, Math.max(...formFound.map(({ score }) => score)), false);
+        else keep(found, found.score, isUnread);
       }
     }
   }
   // Words left out that name no test say nothing of it, but set it above no test the name fits
-  // when they are read: "Bilirubina (diretta)" is direct bilirubin as well as total bilirubin
-  if (wholeFits || [...fitByMore].some((code) => !unread.has(code))) {
+  // when they are read, or tell the tests apart: "Bilirubina (diretta)" is direct bilirubin as well as total
+  // bilirubin, and "Fosfatasi alcalina (ossea)" may be the bone one
+  if (wholeFits || bracketsTellApart || [...fitByMore].some((code) => !unread.has(code))) {
     for (const code of unread) {
       const found = best.get(code)!;
       if (!fitByMore.has(code)) best.set(code, { ...found, score: Math.min(found.score, MATCH_SCORE) });
@@ -563,6 +582,7 @@ const METHOD_READINGS: Readonly<Record<string, string>> = {
   cistatin: 'cystatin',
   derivat: 'derived',
   dirett: 'direct',
+  indirett: 'indirect',
 };
 
 /** The words of a text as lookups read them: "Creatinine-based formula (CKD-EPI 2021)" is creatinine, based, formula, ckd, epi, 2021 */
@@ -576,22 +596,33 @@ function methodReading(word: string): string {
 }
 
 /**
- * Whether a part of a name tells some of the tests the rest fits, of any
- * sample, from the others: one of its words, or its method reading, is in
- * the names of some ("diretta" of direct bilirubin, "salivare" of cortisol
- * in saliva, "HPLC")
+ * The tests the rest of a name fits, of any sample, that a part of the name
+ * tells from the others: one of its words, or its method reading, is in
+ * their names ("diretta" of direct bilirubin, "salivare" of cortisol in
+ * saliva, "ossea" of the bone phosphatase, "HPLC"). With `apartFromMethod`,
+ * a word naming a test's method does not count: readParts reads those.
  */
-function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
+function testsToldBy(catalog: Catalog, rest: string, part: string, apartFromMethod = false): Set<string> {
   const words = wordsIn(part).filter((word) => !isStopWord(word) && /\p{L}/u.test(word));
-  const readings = words.map(methodReading);
-  return catalog
-    .scoredSearch(rest)
-    .filter(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)
-    .some(({ test }) =>
-      [test.name, test.method, ...test.names].some((testName) =>
-        wordsIn(testName).some((other) => readings.includes(other) || words.some((word) => isNearForm(word, other)))
-      )
-    );
+  return new Set(
+    catalog
+      .scoredSearch(rest)
+      .filter(({ score }) => score >= MATCH_SCORE - SCORE_EPSILON)
+      .filter(({ test }) => {
+        const method = wordsIn(test.method);
+        const telling = apartFromMethod ? words.filter((word) => !method.includes(methodReading(word))) : words;
+        const readings = telling.map(methodReading);
+        return [test.name, test.method, ...test.names].some((testName) =>
+          wordsIn(testName).some((other) => readings.includes(other) || telling.some((word) => isNearForm(word, other)))
+        );
+      })
+      .map(({ test }) => test.code)
+  );
+}
+
+/** Whether a part of a name tells some of the tests the rest fits from the others (see testsToldBy) */
+function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
+  return testsToldBy(catalog, rest, part).size > 0;
 }
 
 /**
@@ -886,9 +917,10 @@ function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] |
   );
   // Asked, the estimate first: the others below it
   const below = saysMore ? cap - MATCH_MARGIN / 2 : cap;
+  // Read here from all the name says, its brackets too: no bracket tells another test apart
   return [
-    { ...estimates[0], score: saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE) },
-    ...others.map((one) => (one.score > below ? { ...one, score: below } : one)),
+    { ...estimates[0], score: saysMore ? cap : Math.max(estimates[0].score, MATCH_SCORE), toldApart: false },
+    ...others.map((one) => ({ ...one, score: Math.min(one.score, below), toldApart: false })),
   ];
 }
 
@@ -1618,6 +1650,8 @@ function matchIn(
   const fits = plain.length ? plain : representatives;
   const meant = fits.length === 1 ? fits[0] : usualMeaning(catalog, fits, systems, sample);
   if (!meant || meant.score < MATCH_SCORE - SCORE_EPSILON) return unsure;
+  // A qualifier in brackets changes the test: the one it tells apart goes first, asked ("Fosfatasi alcalina (ossea)")
+  if (fitting.some(({ toldApart }) => toldApart)) return unsure;
   // A rare test only by a name of its own that fits nothing else as well; an adjusted one never
   if (isAdjusted(meant.test)) return unsure;
   if (!isCommon(catalog, meant.test.code) && (meant.score < 1 || fits.length > 1 || !ucum)) return unsure;
