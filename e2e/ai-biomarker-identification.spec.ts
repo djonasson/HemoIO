@@ -633,6 +633,20 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rows.nth(1))).toHaveText(SERUM_GLUCOSE);
   });
 
+  test('keeps a shared choice for a number printed with no unit when its unit is given', async ({ page }) => {
+    // Scenario: A shared choice for a number printed with no unit holds when its unit is given
+    await analyzeReport(page, [{ name: 'Glucosio', value: 42, unit: '', confidence: 0.95 }], 2);
+    await page.getByRole('button', { name: /lab-report-2\.pdf/ }).click();
+    const rows = rowFor(page, '42');
+    await expect(rows).toHaveCount(2);
+    await changeTest(page, rows.first(), BLOOD_GLUCOSE);
+    await expect(savedAsCell(rows.nth(1))).toHaveText(BLOOD_GLUCOSE);
+    await editRow(page, rows.nth(1), { unit: 'mg/dL' });
+    await expect(savedAsCell(rows.nth(1))).toHaveText(BLOOD_GLUCOSE);
+    await changeTest(page, rows.first(), SERUM_GLUCOSE);
+    await expect(savedAsCell(rows.nth(1))).toHaveText(SERUM_GLUCOSE);
+  });
+
   test('keeps a shared choice when the unit its test asks for is given', async ({ page }) => {
     // Scenario: A shared choice holds when the unit its test asks for is given
     await analyzeReport(page, [{ name: 'NT-proBNP', value: 0, unit: '', confidence: 0.95, qualitativeValue: 'Negativo' }], 2);

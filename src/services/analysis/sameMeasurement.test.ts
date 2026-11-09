@@ -19,7 +19,8 @@ function compared(biomarker: MatchedBiomarker, comparison?: number): ComparableV
 }
 
 describe('isSettled', () => {
-  const settled = (values: ComparableValue[]): boolean => isSettled(values, clusterMeasurements(values));
+  const settled = (values: ComparableValue[], estimates = false): boolean =>
+    isSettled(values, clusterMeasurements(values, estimates));
 
   it('settles one measurement, and distinct ones under distinct printed names', () => {
     expect(settled([compared(value('Vit D', 30, 'ng/mL', 'A'), 30), compared(value('Vit D', 30, 'ng/mL', 'A'), 30)])).toBe(true);
@@ -31,8 +32,8 @@ describe('isSettled', () => {
       compared(value('eGFR (Schwartz)', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
       compared(value('eGFR (EKFC)', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
     ];
-    expect(clusterMeasurements(values)).toHaveLength(2);
-    expect(settled(values)).toBe(true);
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
   });
 
   it('keeps two estimates however printed: "eGFR EKFC" and "eGFR - Schwartz"', () => {
@@ -40,13 +41,16 @@ describe('isSettled', () => {
       compared(value('eGFR EKFC', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),
       compared(value('eGFR - Schwartz', 82, 'mL/min/{1.73_m2}', '69405-9'), 82),
     ];
-    expect(clusterMeasurements(values)).toHaveLength(2);
-    expect(settled(values)).toBe(true);
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
   });
 
   it('merges one formula however spelled, and keeps BIS1 and BIS2, or a plain eGFR and an estimate, apart', () => {
     const clusters = (...names: string[]): number =>
-      clusterMeasurements(names.map((name) => compared(value(name, 81, 'mL/min/{1.73_m2}', '69405-9'), 81))).length;
+      clusterMeasurements(
+        names.map((name) => compared(value(name, 81, 'mL/min/{1.73_m2}', '69405-9'), 81)),
+        true
+      ).length;
     expect(clusters('eGFR (Lund-Malmö)', 'eGFR (LMR)')).toBe(1);
     expect(clusters('eGFR (BIS1)', 'eGFR (BIS2)')).toBe(2);
     expect(clusters('eGFR', 'eGFR (EKFC)')).toBe(2);
@@ -59,6 +63,18 @@ describe('isSettled', () => {
     expect(clusters('eGFR (EKFC)', 'eGFRcys (EKFC)')).toBe(2);
     expect(clusters('eGFR (BIS-1)', 'eGFR (BIS-2)')).toBe(2);
     expect(clusters('eGFR (formula EKFC)', 'eGFR - EKFC')).toBe(1);
+  });
+
+  it('keeps estimates of a filtration rate apart by their names whatever their unit, and no other test', () => {
+    const kept = (a: MatchedBiomarker, b: MatchedBiomarker): number => {
+      const group = settleGroup([a, b], catalog);
+      return group.settled ? group.kept.length : 0;
+    };
+    // Printed with no unit, the code given by the AI or learned
+    expect(kept(value('eGFR (EKFC)', 70, '', '69405-9'), value('eGFR (Lund-Malmö)', 71, '', '69405-9'))).toBe(2);
+    expect(kept(value('eGFR (EKFC)', 70, 'mL/minuto/1.73m²', '69405-9'), value('eGFR (CAPA)', 71, 'mL/minuto/1.73m²', '69405-9'))).toBe(2);
+    // Creatinine printed for the eGFR is the creatinine: one measurement in two units
+    expect(kept(value('Creatinina', 0.9, 'mg/dL', '2160-0'), value('Creatinina (eGFR)', 80, 'umol/L', '14682-9'))).toBe(1);
   });
 
   it('still merges one value printed twice under bracket wordings that say the same: "Emoglobina (HGB)", "Emoglobina (Hb)"', () => {

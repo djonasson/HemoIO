@@ -7,7 +7,7 @@ import { getAddon } from '@data/loinc/addons';
 import { nameKey } from '@data/loinc/keys';
 import { canConvert, COMPARISON_PRECISION, convertValue, normalizeUnit, unitsMatch } from '../units';
 import { quantityKind, type Catalog, type CatalogTest } from '@data/loinc/catalog';
-import { gfrQualifier } from './loincMatch';
+import { gfrQualifier, isFiltrationRate } from './loincMatch';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
 /**
@@ -125,11 +125,6 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
   }
 }
 
-/** Whether a value is in a rate's unit, as a filtration rate is: "Creatinina (per eGFR)" in mg/dL is no estimate */
-function isRate({ biomarker }: ComparableValue): boolean {
-  return /\/\s*(?:min|s)\b|\/(?:min|s)\//i.test(biomarker.unit);
-}
-
 /**
  * Whether two values are the same measurement, reported in the same or
  * different units.
@@ -141,11 +136,12 @@ function isRate({ biomarker }: ComparableValue): boolean {
  * flagged for review rather than merged: a borderline difference costs a
  * review, not data.
  */
-export function sameMeasurement(a: ComparableValue, b: ComparableValue): boolean {
+export function sameMeasurement(a: ComparableValue, b: ComparableValue, estimates = false): boolean {
   if (a.comparison === undefined || b.comparison === undefined) return false;
-  // "eGFR (EKFC)" and "eGFR - Schwartz", or a creatinine and a cystatin C estimate, are two estimates, however close,
-  // though of one code; a plain "eGFR" is kept apart too, as merging it would set an estimate aside unseen
-  if (isRate(a) && isRate(b) && gfrQualifier(a.biomarker.name) !== gfrQualifier(b.biomarker.name)) return false;
+  // Of a filtration rate, "eGFR (EKFC)" and "eGFR - Schwartz", or a creatinine and a cystatin C estimate, are two
+  // estimates, however close, though of one code; a plain "eGFR" is kept apart too, as merging it would set an
+  // estimate aside unseen. "Creatinina (per eGFR)" is no estimate
+  if (estimates && gfrQualifier(a.biomarker.name) !== gfrQualifier(b.biomarker.name)) return false;
   // In one unit, "< 10" is a bound and 10 a measurement: never the same
   if (!a.biomarker.censored !== !b.biomarker.censored && unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
   // "> 0.50" and "< 44" bound the value from opposite sides: they say different things
@@ -173,11 +169,11 @@ export function groupBySameTest(
   return [...groups.values()];
 }
 
-/** Values that are the same measurement, each cluster in report order */
-export function clusterMeasurements(values: readonly ComparableValue[]): ComparableValue[][] {
+/** Values that are the same measurement, each cluster in report order; `estimates` when they are of a filtration rate */
+export function clusterMeasurements(values: readonly ComparableValue[], estimates = false): ComparableValue[][] {
   const clusters: ComparableValue[][] = [];
   for (const value of values) {
-    const cluster = clusters.find((c) => sameMeasurement(c[0], value));
+    const cluster = clusters.find((c) => sameMeasurement(c[0], value, estimates));
     if (cluster) cluster.push(value);
     else clusters.push([value]);
   }
@@ -256,7 +252,9 @@ export type SettledGroup =
 export function settleGroup(group: readonly MatchedBiomarker[], catalog: Catalog): SettledGroup {
   const unit = groupUnit(group, catalog);
   const values = group.map((b) => comparable(b, unit));
-  const clusters = clusterMeasurements(values);
+  // Estimates of a filtration rate, each told by what its name says (see gfrQualifier)
+  const estimates = group.some((b) => isFiltrationRate(b.loincCode ? catalog.test(b.loincCode) : undefined));
+  const clusters = clusterMeasurements(values, estimates);
   if (!isSettled(values, clusters)) return { settled: false, values, unit };
   const kept: MatchedBiomarker[] = [];
   const setAside = new Map<MatchedBiomarker, MatchedBiomarker>();

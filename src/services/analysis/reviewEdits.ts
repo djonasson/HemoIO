@@ -6,6 +6,7 @@ import { unitsMatch } from '@/utils/unitSpelling';
 import { heldQualitative } from '../ai';
 import { currentReading, identifyLocally, isReadAsPrinted, type Identification, type LearnedTests } from './identification';
 import { learnedKey } from './loincMatch';
+import { unitMisfits } from './reviewedSave';
 import type { Catalog, CatalogTest } from '@data/loinc/catalog';
 import type { MatchedBiomarker } from './LabReportAnalyzer';
 
@@ -47,11 +48,11 @@ const UNREAD: Identification = { candidates: [], identificationFlags: [] };
  * A value edited in review, its test read again: a test the user chose
  * stays; back at the printed name and unit, the analyzer's test (the AI's
  * choice too) is the value's again; else it is read as the analyzer reads
- * a printed name, with the learned tests. A test learned, or shared from
- * the user's choice in another file, holds while the wording is the same and
- * when only the unit the report did not print is given. An emptied unit is
- * one still to choose: the value is read in the report's unit, and review
- * asks for one.
+ * a printed name, with the learned tests. The analyzer's test, learned or
+ * the AI's, holds when only the unit the report did not print is given; a
+ * choice shared from the user's in another file holds while the value is
+ * that wording. An emptied unit is one still to choose: the value is read
+ * in the report's unit, and review asks for one.
  */
 function reidentify(
   original: MatchedBiomarker,
@@ -63,18 +64,32 @@ function reidentify(
   const { analyzed } = original;
   const reading = currentReading(changed);
   if (!analyzed && reading.unit.trim() === '') return identified(changed, UNREAD);
-  // A test learned, or shared from the user's choice, holds while the wording is the one it was decided for; and when
-  // the only change is the unit review asks for, which the report did not print
-  const decided = original.identifiedBy === 'learned' || original.identifiedBy === 'shared';
-  const unitGiven = analyzed?.unit.trim() === '' && isReadAsPrinted(changed, { ...reading, unit: '' });
-  if (decided && (learnedKey(reading) === learnedKey(currentReading(original)) || unitGiven)) return changed;
-  // The analyzer's test holds for the value read as printed: a word typed over with a number, or given a unit, is read
-  // again (a test learned for the word still comes back: it is learned with no unit)
+  // A choice shared from the user's in another file holds, as theirs does, while the value is that wording, whatever
+  // unit is given: a rename, or a word typed over with a number, reads it again
+  if (original.identifiedBy === 'shared' && wordingKey(changed) === wordingKey(original)) return changed;
+  // The analyzer's test holds for the value read as printed; and, when the test was learned or the AI's, for the
+  // value given only the unit review asks for, which the report did not print, while that unit fits it (a unit half
+  // typed may not: the test comes back once it does)
+  const decided = analyzed?.identification.identifiedBy === 'learned' || analyzed?.identification.identifiedBy === 'ai';
+  const unitGiven =
+    decided &&
+    analyzed.unit.trim() === '' &&
+    isReadAsPrinted(changed, { ...reading, unit: '' }) &&
+    !unitMisfits({ ...changed, loincCode: analyzed.identification.loincCode, unit: reading.unit }, catalog);
   const identification =
-    analyzed && isReadAsPrinted(changed, reading, { inUnit: true })
+    analyzed && (isReadAsPrinted(changed, reading, { inUnit: true }) || unitGiven)
       ? analyzed.identification
       : identifyLocally(catalog, reading, learned);
   return identified(changed, identification);
+}
+
+/**
+ * A value's wording as learned, a unit given in review where the report
+ * printed none aside: still the wording the report printed
+ */
+function wordingKey(value: MatchedBiomarker): string {
+  const reading = currentReading(value);
+  return learnedKey(value.analyzed?.unit.trim() === '' ? { ...reading, unit: '' } : reading);
 }
 
 /** Rename a value; its test is read again from the new name (see reidentify) */
@@ -155,9 +170,8 @@ export interface ValuePosition {
  */
 function isSameWording(a: MatchedBiomarker, b: MatchedBiomarker): boolean {
   const sample = (value: MatchedBiomarker): string => (value.specimenHint ?? '').trim().toLowerCase();
-  const key = (value: MatchedBiomarker): string => learnedKey(currentReading(value));
   // Rows added in review start with no name: blank rows are no wording
-  return a.name.trim() !== '' && key(a) === key(b) && sample(a) === sample(b);
+  return a.name.trim() !== '' && wordingKey(a) === wordingKey(b) && sample(a) === sample(b);
 }
 
 /**

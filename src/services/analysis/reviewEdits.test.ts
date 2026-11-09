@@ -201,6 +201,31 @@ describe('applyBiomarkerValue', () => {
     expect(toLearn(withUnit)).toMatchObject({ key: 'glucosio|', code: '15074-8' });
   });
 
+  it("gives back the AI's test, not one passed through, when a value printed with no unit comes back to its wording", async () => {
+    // An earlier report taught the wording in mmol/L another test
+    const learned = { 'glucosio|mmol/L': '14749-6', 'glucosio hdl|': '2085-9' };
+    const value = await analyzed('Glucosio', '', '2345-7');
+    expect(value).toMatchObject({ loincCode: '2345-7', identifiedBy: 'ai' });
+    // mmol/L fits the AI's test too, which HemoIO converts: it holds
+    const mistaken = applyBiomarkerUnit(value, 'mmol/L', catalog, learned);
+    expect(mistaken.loincCode).toBe('2345-7');
+    const cleared = applyBiomarkerUnit(mistaken, '', catalog, learned);
+    expect(applyBiomarkerUnit(cleared, 'mg/dL', catalog, learned)).toMatchObject({ loincCode: '2345-7', identifiedBy: 'ai' });
+    const renamed = applyBiomarkerName(value, 'Glucosio HDL', catalog, learned);
+    const back = applyBiomarkerName(renamed, 'Glucosio', catalog, learned);
+    expect(applyBiomarkerUnit(back, 'mg/dL', catalog, learned)).toMatchObject({ loincCode: '2345-7', identifiedBy: 'ai' });
+  });
+
+  it('keeps the learned test of a value printed with no unit through a unit typed key by key and a name corrected', async () => {
+    const learned = { 'glucosio|': '15074-8' };
+    const { values } = await identifyValues(catalog, [{ name: 'Glucosioo', value: 5, unit: '', confidence: 0.9 }], {
+      learned: { ...learned, 'glucosioo|': '15074-8' },
+    });
+    let value = values[0];
+    for (const unit of ['m', 'mm', 'mmo', 'mmol', 'mmol/', 'mmol/L']) value = applyBiomarkerUnit(value, unit, catalog, learned);
+    expect(value).toMatchObject({ loincCode: '15074-8' });
+  });
+
   it('learns the test a result in words is read as once given a unit, the AI picking none', async () => {
     const { values } = await identifyValues(catalog, [{ name: 'Glucosio', value: 0, unit: '', confidence: 0.9, qualitative: ABSENT }], {});
     const withUnit = applyBiomarkerUnit(values[0], 'mmol/L', catalog);
@@ -246,6 +271,19 @@ describe('chooseTestForWording', () => {
     const shared = chosen[1].editedBiomarkers[0];
     expect(shared).toMatchObject({ loincCode: '15074-8', identifiedBy: 'shared' });
     expect(applyBiomarkerUnit(shared, 'mmol/L', catalog)).toMatchObject({ loincCode: '15074-8', identifiedBy: 'shared' });
+  });
+
+  it('keeps a choice shared to a number printed with no unit through its unit, and lets a correction reach it', async () => {
+    const unitless = async (): Promise<MatchedBiomarker> => analyzed('Glucosio', '', '2345-7');
+    const results = files([await unitless()], [await unitless()]);
+    let chosen = chooseTestForWording(results, { resultIndex: 0, biomarkerIndex: 0 }, '2339-0');
+    // Each given its unit, key by key
+    const typed = (value: MatchedBiomarker): MatchedBiomarker =>
+      ['m', 'mg', 'mg/', 'mg/d', 'mg/dL'].reduce((one, unit) => applyBiomarkerUnit(one, unit, catalog), value);
+    chosen = chosen.map((file) => ({ ...file, editedBiomarkers: file.editedBiomarkers.map(typed) }));
+    expect(chosen[1].editedBiomarkers[0]).toMatchObject({ loincCode: '2339-0', identifiedBy: 'shared' });
+    const corrected = chooseTestForWording(chosen, { resultIndex: 0, biomarkerIndex: 0 }, '2345-7');
+    expect(corrected[1].editedBiomarkers[0]).toMatchObject({ loincCode: '2345-7', identifiedBy: 'shared' });
   });
 
   it('keeps a shared choice when the unit is cleared and the printed one chosen again', async () => {

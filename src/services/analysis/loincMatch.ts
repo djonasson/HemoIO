@@ -733,10 +733,13 @@ function isUnlistedFormula(word: string): boolean {
 const CREATININE_FORMULAS = new Set(['bis', 'bis1', 'bis2', 'lmr']);
 
 /** A filtration rate's name word saying creatinine: "creatinina", "SCr", "Krea", "eGFRcr" */
-const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr\p{L}*)$/u;
+const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr)$/u;
 
-/** A filtration rate's name word saying cystatin C: "cistatina", "cys", "eGFRcys" */
-const CYSTATIN_WORD = /^(?:cys|cyst|cistatin\p{L}*|cystatin\p{L}*|egfrcys\p{L}*)$/u;
+/** A filtration rate's name word saying cystatin C: "cistatina", "cist.", "Cis C", "CysC", "eGFRcys" */
+const CYSTATIN_WORD = /^(?:cys|cysc|cyst|cystc|cis|cisc|cist|cistat|cistatin\p{L}*|cystatin\p{L}*|egfrcys)$/u;
+
+/** A filtration rate's name word saying both: "eGFRcrcys" */
+const BOTH_BASES_WORD = /^egfrcr-?cys$/u;
 
 /** A name of a glomerular filtration rate: "eGFR", "eGFRcr", "GFR stimato", "Filtrato glomerulare", "eVFG", "Glomerulär filtration" */
 const GFR_NAME = /\b(?:e?gfr\p{L}*|e?vfg|filtra(?:to|zione)\s+glomerulare|glomerul\p{L}*\s+filtra\p{L}*)\b/u;
@@ -777,6 +780,9 @@ const GFR_WORDS = new Set([
   'del',
   'della',
   'and',
+  'based',
+  'baserat',
+  'basiert',
   'och',
   'und',
   'con',
@@ -787,20 +793,28 @@ const GFR_WORDS = new Set([
  * A word of a filtration rate's name as what it says: a formula however
  * spelled ("lund" is "lmr"), a basis however spelled ("SCr" is
  * "creatinine"), or the word itself; nothing for one saying only that it is
- * a filtration rate, and for the "C" of cystatin C
+ * a filtration rate or joining its words ("by", "-based"), for the "C" of
+ * cystatin C, and for a number that is no year (a footnote's "[1]")
  */
-function gfrWordSays(word: string, saysCystatin: boolean): string | undefined {
-  if (GFR_WORDS.has(word) || (saysCystatin && word === 'c')) return undefined;
-  if (CREATININE_WORD.test(word)) return 'creatinine';
-  if (CYSTATIN_WORD.test(word)) return 'cystatin';
-  return UNLISTED_FORMULAS[word] ?? word;
+function gfrWordSays(word: string, saysCystatin: boolean): string[] {
+  if (GFR_WORDS.has(word) || isStopWord(word) || (saysCystatin && word === 'c')) return [];
+  if (/^\d+$/.test(word) && !YEAR.test(word)) return [];
+  if (BOTH_BASES_WORD.test(word)) return ['creatinine', 'cystatin'];
+  if (CREATININE_WORD.test(word)) return ['creatinine'];
+  if (CYSTATIN_WORD.test(word)) return ['cystatin'];
+  return [UNLISTED_FORMULAS[word] ?? word];
 }
 
-/** What each word of a filtration rate's name says (see gfrWordSays) */
+/** What each word of a filtration rate's name says (see gfrWordSays): "BIS 1" and "BIS-1" are BIS1 */
 function gfrSaid(name: string): string[] {
-  const words = wordsIn(name);
-  const saysCystatin = words.some((word) => CYSTATIN_WORD.test(word));
-  return words.map((word) => gfrWordSays(word, saysCystatin)).filter((said): said is string => said !== undefined);
+  const words = wordsIn(name).reduce<string[]>((joined, word) => {
+    const last = joined.length - 1;
+    if (joined[last] === 'bis' && /^[12]$/.test(word)) joined[last] = `bis${word}`;
+    else joined.push(word);
+    return joined;
+  }, []);
+  const saysCystatin = words.some((word) => CYSTATIN_WORD.test(word) || BOTH_BASES_WORD.test(word));
+  return words.flatMap((word) => gfrWordSays(word, saysCystatin));
 }
 
 /**
@@ -823,6 +837,11 @@ function namesFormula(method: string): boolean {
 /** LOINC's component of a glomerular filtration rate */
 const GFR_COMPONENT = 'Glomerular filtration rate';
 
+/** Whether a test is a glomerular filtration rate, an estimate of one formula or another */
+export function isFiltrationRate(test: CatalogTest | undefined): boolean {
+  return test?.component === GFR_COMPONENT;
+}
+
 /**
  * The tests found for a filtration rate by a formula LOINC lacks, or of
  * creatinine and cystatin C together (which LOINC's catalog here has no
@@ -838,15 +857,19 @@ const GFR_COMPONENT = 'Glomerular filtration rate';
 function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] | undefined {
   if (!isGfrName(name)) return undefined;
   const said = gfrSaid(name);
-  const formula = said.find(isUnlistedFormula);
+  const formulas = said.filter(isUnlistedFormula);
   const creatinine = said.includes('creatinine');
   const cystatin = said.includes('cystatin');
-  if (!formula && !(creatinine && cystatin)) return undefined;
+  if (formulas.length === 0 && !(creatinine && cystatin)) return undefined;
   const gfr = found
     .filter(({ test }) => test.component === GFR_COMPONENT)
     .reduce<Found | undefined>((best, one) => (!best || one.score > best.score ? one : best), undefined);
   if (!gfr) return undefined;
-  const cystatinOnly = formula === 'capa' || (cystatin && !creatinine && !CREATININE_FORMULAS.has(formula ?? ''));
+  // Read from the formulas named, whatever their order: CAPA alone is of cystatin C, one reading creatinine never
+  const cystatinOnly =
+    !creatinine &&
+    !formulas.some((formula) => CREATININE_FORMULAS.has(formula)) &&
+    (cystatin || (formulas.length > 0 && formulas.every((formula) => formula === 'capa')));
   const fits = (method: string): boolean =>
     cystatinOnly
       ? /^Cystatin C-based formula\b/i.test(method) && !method.includes('(')
@@ -855,7 +878,9 @@ function readEstimate(catalog: Catalog, name: string, found: Found[]): Found[] |
   if (estimates.length !== 1) return undefined;
   const others = found.filter(({ test }) => test !== estimates[0].test);
   const cap = MATCH_SCORE - MATCH_MARGIN;
-  const saysMore = said.some((word) => word !== formula && word !== 'creatinine' && word !== 'cystatin' && !YEAR.test(word));
+  const saysMore = said.some(
+    (word) => !isUnlistedFormula(word) && word !== 'creatinine' && word !== 'cystatin' && !YEAR.test(word)
+  );
   // Asked, the estimate first: the others below it
   const below = saysMore ? cap - MATCH_MARGIN / 2 : cap;
   return [

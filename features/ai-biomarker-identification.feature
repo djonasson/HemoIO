@@ -432,6 +432,14 @@ Feature: Identifying the test of each value
     And I give the second report's value the unit pg/mL
     Then it should still be saved as "Natriuretic peptide.B prohormone N-Terminal [Mass/volume] in Blood by Immunoassay"
 
+  Scenario: A shared choice for a number printed with no unit holds when its unit is given
+    Given I import two reports that both print "Glucosio" 42 with no unit
+    When I choose "Glucose [Mass/volume] in Blood" for it in the first report
+    And I give the second report's value the unit mg/dL
+    Then it should still be saved as "Glucose [Mass/volume] in Blood"
+    When I correct the choice in the first report
+    Then the second report's value should take the corrected test too
+
   Scenario: Choose the test from the keyboard
     Given a value the AI is not sure of
     When I open its test list from the keyboard, type "Hemoglobin" and press Enter

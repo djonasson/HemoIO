@@ -759,7 +759,12 @@ describe('gfrQualifier', () => {
     ['eGFR (Lund-Malmö)', 'lmr'],
     ['eGFR LMR', 'lmr'],
     ['eGFR (BIS1)', 'bis1'],
-    ['eGFR (BIS-2)', '2 bis'],
+    ['eGFR (BIS-2)', 'bis2'],
+    ['eGFR (BIS 1)', 'bis1'],
+    ['eGFRcrcys (CKD-EPI 2021)', '2021 ckd creatinine cystatin epi'],
+    ['eGFRcr (CKD-EPI 2021)', '2021 ckd creatinine epi'],
+    ['eGFR (EKFC) [1]', 'ekfc'],
+    ['eGFR by EKFC', 'ekfc'],
     ['eGFRcys (EKFC)', 'cystatin ekfc'],
     ['eGFR-cys (EKFC)', 'cystatin ekfc'],
     ['eGFR (EKFC creatinina + cistatina C)', 'creatinine cystatin ekfc'],
@@ -1166,7 +1171,18 @@ describe('matchLocally on names of real Italian reports', () => {
     'eGFR (cr-cys)',
     'eGFR (cr_cys)',
     'eGFR (creatinine and cystatin C)',
-    // BIS formulas always read creatinine
+    // Two formulas, whatever their order, and joining words
+    'eGFR (CAPA + LMR)',
+    'eGFR (LMR + CAPA)',
+    'eGFR (CAPA + EKFC)',
+    'eGFR by EKFC',
+    'eGFR (EKFC) in serum',
+    'eGFR (EKFC) (creatinine-based)',
+    'eGFR (EKFC) [1]',
+    'eGFR (BIS-1)',
+    // BIS and Lund-Malmö formulas always read creatinine
+    'eGFR (BIS1) (CysC)',
+    'eGFR (Lund-Malmö) (cistatina C)',
     'eGFR (BIS2) (cistatina C)',
     'eGFR (cistatina C) (BIS2)',
     'eGFR (BIS) (cistatina C)',
@@ -1174,7 +1190,23 @@ describe('matchLocally on names of real Italian reports', () => {
     expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '69405-9' });
   });
 
-  it.each(['eGFR (EKFC) (IDMS)', 'eGFR (EKFC 2021) (IDMS)', 'eGFR (EKFC) (Roche)', 'eGFR (CKD-EPI 2021) (cr-cys)'])(
+  it.each([
+    'eGFR (CAPA)',
+    'eGFR - CAPA',
+    'eGFR cystatin C (CAPA)',
+    'eGFR (Cistatina C) (CAPA)',
+    'eGFR (CAPA) (cystatin C-baserat)',
+    'eGFR (cistatina C) (EKFC)',
+    'eGFR (EKFC) (cistatina C)',
+    'eGFR (cist. C) (EKFC)',
+    'eGFR (Cistat. C) (EKFC)',
+    'eGFR (EKFC) (Cis C)',
+    'eGFR (EKFC) (CysC)',
+  ])('takes %s, of cystatin C alone by a formula LOINC lacks, as the cystatin C estimate', (name) => {
+    expect(matchLocally(generated, { name, unit: 'mL/min/1.73m²' })).toMatchObject({ status: 'match', code: '50210-4' });
+  });
+
+  it.each(['eGFR (EKFC) (IDMS)', 'eGFR (EKFC 2021) (IDMS)', 'eGFR (EKFC) (Roche)', 'eGFR (CKD-EPI 2021) (cr-cys)', 'eGFRcrcys (CKD-EPI 2021)'])(
     'asks about %s, which says more than its formula, the eGFR of no formula first',
     (name) => {
       const result = matchLocally(generated, { name, unit: 'mL/min/1.73m²' });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
@@ -12,7 +12,7 @@ function renderConfirm(props: Partial<Props> = {}) {
   const onReplaced = vi.fn<Props['onReplaced']>();
   const onReplacingChange = vi.fn<Props['onReplacingChange']>();
   const view = render(
-    <MantineProvider env="test">
+    <MantineProvider env="test" theme={{ respectReducedMotion: true }}>
       <ReplaceFolderCopyConfirm<string>
         folder="“Health”"
         warnOtherSetup={false}
@@ -39,6 +39,15 @@ function deferred<T>() {
 }
 
 describe('ReplaceFolderCopyConfirm', () => {
+  // With reduced motion the button's loader starts no transition timer, which could fire after the last test
+  const matchMedia = window.matchMedia;
+  beforeEach(() => {
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      ...matchMedia(query),
+      matches: query.includes('prefers-reduced-motion'),
+    }));
+  });
+
   it('says what replacing does, and puts the focus on Back', async () => {
     renderConfirm();
 
