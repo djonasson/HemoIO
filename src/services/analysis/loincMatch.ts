@@ -733,10 +733,10 @@ function isUnlistedFormula(word: string): boolean {
 const CREATININE_FORMULAS = new Set(['bis', 'bis1', 'bis2', 'lmr']);
 
 /** A filtration rate's name word saying creatinine: "creatinina", "SCr", "Krea", "eGFRcr" */
-const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr)$/u;
+const CREATININE_WORD = /^(?:s?cr|cre|crea|creat\p{L}*|krea\p{L}*|kreat\p{L}*|egfrcr(?:ea|eat\p{L}*)?)$/u;
 
 /** A filtration rate's name word saying cystatin C: "cistatina", "cist.", "Cis C", "CysC", "eGFRcys" */
-const CYSTATIN_WORD = /^(?:cys|cysc|cyst|cystc|cis|cisc|cist|cistat|cistatin\p{L}*|cystatin\p{L}*|egfrcys)$/u;
+const CYSTATIN_WORD = /^(?:cys|cysc|cyst|cystc|cis|cisc|cist|cistat|cistatin\p{L}*|cystatin\p{L}*|egfrcys(?:tatin\p{L}*)?)$/u;
 
 /** A filtration rate's name word saying both: "eGFRcrcys" */
 const BOTH_BASES_WORD = /^egfrcr-?cys$/u;
@@ -794,20 +794,23 @@ const GFR_WORDS = new Set([
  * spelled ("lund" is "lmr"), a basis however spelled ("SCr" is
  * "creatinine"), or the word itself; nothing for one saying only that it is
  * a filtration rate or joining its words ("by", "-based"), for the "C" of
- * cystatin C, and for a number that is no year (a footnote's "[1]")
+ * cystatin C
  */
 function gfrWordSays(word: string, saysCystatin: boolean): string[] {
   if (GFR_WORDS.has(word) || isStopWord(word) || (saysCystatin && word === 'c')) return [];
-  if (/^\d+$/.test(word) && !YEAR.test(word)) return [];
   if (BOTH_BASES_WORD.test(word)) return ['creatinine', 'cystatin'];
   if (CREATININE_WORD.test(word)) return ['creatinine'];
   if (CYSTATIN_WORD.test(word)) return ['cystatin'];
   return [UNLISTED_FORMULAS[word] ?? word];
 }
 
-/** What each word of a filtration rate's name says (see gfrWordSays): "BIS 1" and "BIS-1" are BIS1 */
+/**
+ * What each word of a filtration rate's name says (see gfrWordSays): "BIS 1"
+ * and "BIS-1" are BIS1; a footnote's "[1]" says nothing, while any other
+ * number may name a variant ("MDRD-4" is not "MDRD-6")
+ */
 function gfrSaid(name: string): string[] {
-  const words = wordsIn(name).reduce<string[]>((joined, word) => {
+  const words = wordsIn(name.replace(/\[\d+\]/gu, ' ')).reduce<string[]>((joined, word) => {
     const last = joined.length - 1;
     if (joined[last] === 'bis' && /^[12]$/.test(word)) joined[last] = `bis${word}`;
     else joined.push(word);

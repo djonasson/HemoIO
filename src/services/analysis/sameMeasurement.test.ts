@@ -36,6 +36,15 @@ describe('isSettled', () => {
     expect(settled(values, true)).toBe(true);
   });
 
+  it('keeps two variants of one formula apart: "eGFR (MDRD-4)" and "eGFR (MDRD-6)"', () => {
+    const values = [
+      compared(value('eGFR (MDRD-4)', 61, 'mL/min/{1.73_m2}', '77147-7'), 61),
+      compared(value('eGFR (MDRD-6)', 62, 'mL/min/{1.73_m2}', '77147-7'), 62),
+    ];
+    expect(clusterMeasurements(values, true)).toHaveLength(2);
+    expect(settled(values, true)).toBe(true);
+  });
+
   it('keeps two estimates however printed: "eGFR EKFC" and "eGFR - Schwartz"', () => {
     const values = [
       compared(value('eGFR EKFC', 81, 'mL/min/{1.73_m2}', '69405-9'), 81),

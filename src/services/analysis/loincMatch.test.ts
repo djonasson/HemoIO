@@ -764,6 +764,10 @@ describe('gfrQualifier', () => {
     ['eGFRcrcys (CKD-EPI 2021)', '2021 ckd creatinine cystatin epi'],
     ['eGFRcr (CKD-EPI 2021)', '2021 ckd creatinine epi'],
     ['eGFR (EKFC) [1]', 'ekfc'],
+    ['eGFR (MDRD-4)', '4 mdrd'],
+    ['eGFR (MDRD 6)', '6 mdrd'],
+    ['eGFRcrea (EKFC)', 'creatinine ekfc'],
+    ['eGFRcystatin (EKFC)', 'cystatin ekfc'],
     ['eGFR by EKFC', 'ekfc'],
     ['eGFRcys (EKFC)', 'cystatin ekfc'],
     ['eGFR-cys (EKFC)', 'cystatin ekfc'],
@@ -1179,6 +1183,7 @@ describe('matchLocally on names of real Italian reports', () => {
     'eGFR (EKFC) in serum',
     'eGFR (EKFC) (creatinine-based)',
     'eGFR (EKFC) [1]',
+    'eGFRcrea (EKFC)',
     'eGFR (BIS-1)',
     // BIS and Lund-Malmö formulas always read creatinine
     'eGFR (BIS1) (CysC)',
