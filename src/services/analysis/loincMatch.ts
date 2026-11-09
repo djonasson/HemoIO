@@ -553,10 +553,11 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
           continue;
         }
         told ??= testsToldByBracket(catalog, form, left);
-        bracketsTellApart ||= told.size > 0;
         // The test a bracket tells apart is read by it, a full fit of the whole name: "Fosfatasi alcalina (ossea)" is
         // the bone one
         if (told.has(found.test.code)) {
+          // Only a test of the value's own sample and unit sets the others below it
+          bracketsTellApart = true;
           formTop ??= Math.max(...formFound.map(({ score }) => score));
           keep({ ...found, toldApart: true }, formTop, false);
         } else keep(found, found.score, true);
@@ -588,8 +589,19 @@ const METHOD_READINGS: Readonly<Record<string, string>> = {
   cistatin: 'cystatin',
   derivat: 'derived',
   dirett: 'direct',
-  indirett: 'indirect',
 };
+
+/**
+ * Italian qualifier words in brackets as LOINC's names say them, keyed as
+ * METHOD_READINGS: "Fosfatasi alcalina (ossea)" is the bone phosphatase
+ */
+const QUALIFIER_READINGS: Readonly<Record<string, string>> = {
+  indirett: 'indirect',
+  osse: 'bone',
+};
+
+/** Fewest letters a bracket word's stem needs to tell tests apart by its form alone: "nota" is not "notte" */
+const TELLING_STEM = 4;
 
 /** The words of a text as lookups read them: "Creatinine-based formula (CKD-EPI 2021)" is creatinine, based, formula, ckd, epi, 2021 */
 function wordsIn(text: string): string[] {
@@ -644,10 +656,24 @@ function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
  * phosphatase, "indiretta" of indirect bilirubin
  */
 function testsToldByBracket(catalog: Catalog, rest: string, bracket: string): Set<string> {
-  const words = tellingWords(bracket);
+  const stem = (word: string): string => word.replace(/[aeio]$/, '');
+  const words = tellingWords(bracket).map((word) => ({
+    word,
+    reading: QUALIFIER_READINGS[stem(word)] ?? (isMethodWord(word) ? methodReading(word) : undefined),
+  }));
+  // A word tells by its reading, or by its own form when long enough: "(sera)" is not serum, "(nota)" not "notte"
+  const tells = (test: CatalogTest, { word, reading }: { word: string; reading?: string }): boolean =>
+    !isMethodOf(test, word) &&
+    [test.name, ...test.names].some((testName) =>
+      wordsIn(testName).some(
+        (other) =>
+          other === reading ||
+          (stem(word).length >= TELLING_STEM && stem(other).length >= TELLING_STEM && isNearForm(word, other))
+      )
+    );
   return new Set(
     fullFits(catalog, rest)
-      .filter((test) => words.some((word) => !isMethodOf(test, word) && namesWord(test, word)))
+      .filter((test) => words.some((one) => tells(test, one)))
       .map((test) => test.code)
   );
 }
@@ -1096,6 +1122,13 @@ function sampleInName(name: string): { name: string; systems: string[]; loosely:
     .replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, '')
     .trim();
   return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT || pattern === BLOOD_COUNT_HINT } : undefined;
+}
+
+/** Whether a name fits a test LOINC names salivary of another sample: "Amilasi salivare" (Amylase.salivary in serum) */
+function namesSalivary(catalog: Catalog, name: string): boolean {
+  return catalog
+    .scoredSearch(name)
+    .some(({ test, score }) => score >= MATCH_SCORE - SCORE_EPSILON && /saliva/i.test(test.component) && test.system !== 'Saliva');
 }
 
 function toCandidate(test: CatalogTest, score: number): Candidate {
@@ -1560,7 +1593,9 @@ function matchIn(
   const isLoincName = (): boolean => (knownName ??= catalog.named(whole).length > 0);
   const split = stripPrefix(whole).name !== whole && isLoincName() ? { name: whole } : splitSamplePrefix(whole);
   const namesSample = split.name.search(SAMPLE_WORDS) !== -1;
-  const worded = split.systems || !namesSample || isLoincName() ? undefined : sampleInName(split.name);
+  const read = split.systems || !namesSample || isLoincName() ? undefined : sampleInName(split.name);
+  // A saliva word naming the test, not its sample: "Amilasi salivare" is the salivary amylase of serum
+  const worded = read?.systems.includes('Saliva') && namesSalivary(catalog, split.name) ? undefined : read;
   const unworded = worded?.name ?? split.name;
   // "Absolute" only says the count its unit says: "Neutrophil, Absolute" in K/µL
   const name = properties.includes('NCnc') ? withoutCountWords(unworded) : unworded;

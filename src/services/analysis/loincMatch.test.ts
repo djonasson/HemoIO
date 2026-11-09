@@ -888,6 +888,15 @@ describe('matchLocally in the generated catalog', () => {
     ['Cortisolo (salivare)', 'nmol/L', undefined, '51844-9'],
     ['Cortisolo salivare', 'nmol/L', undefined, '51844-9'],
     ['Cortisol (saliva)', 'nmol/L', undefined, '51844-9'],
+    // ...but a test LOINC names salivary keeps the word: salivary amylase is of serum
+    ['Amilasi salivare', 'U/L', undefined, '1809-3'],
+    ['Amilasi (salivare)', 'U/L', undefined, '1809-3'],
+    // A bracket word telling apart only tests of another sample or unit, or too short to tell by its form, says nothing
+    ['Colesterolo (qualitativo)', 'mg/dL', undefined, '2093-3'],
+    ['Colesterolo (misurato)', 'mg/dL', undefined, '2093-3'],
+    ['Cortisolo (vedi nota)', 'µg/dL', undefined, '2143-6'],
+    ['Insulina (sera)', 'µUI/mL', undefined, '20448-7'],
+    ['Insulina (non coniugato)', 'µUI/mL', undefined, '20448-7'],
     // A synonym of a test in brackets is read, as is the printed name when a rewriting of it fits less
     ['Glucosio (glicemia)', 'mg/dL', undefined, '2345-7'],
     ['eGFR (CKD-EPI)', 'mL/min/1.73m2', undefined, '98979-8'],
