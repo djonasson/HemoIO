@@ -552,7 +552,8 @@ function findByForms(catalog: Catalog, name: string, scope: Scope): Found[] {
           keep(found, found.score, false);
           continue;
         }
-        told ??= testsToldByBracket(catalog, form, left);
+        const plain = formFound.reduce((top, one) => (one.score > top.score ? one : top)).test;
+        told ??= testsToldByBracket(catalog, form, left, plain);
         // The test a bracket tells apart is read by it, a full fit of the whole name: "Fosfatasi alcalina (ossea)" is
         // the bone one
         if (told.has(found.test.code)) {
@@ -650,12 +651,20 @@ function partTellsApart(catalog: Catalog, rest: string, part: string): boolean {
   return fullFits(catalog, rest).some((test) => words.some((word) => namesWord(test, word)));
 }
 
+/** A component's substance, before what narrows it: "Bilirubin" of "Bilirubin.total" and "Bilirubin.non-glucuronidated" */
+function substanceOf(test: CatalogTest): string {
+  return test.component.split(/[.+^]/)[0].trim().toLowerCase();
+}
+
 /**
  * The tests the rest of a name fits that a bracket tells apart by a word
- * other than their method, which readParts reads: "ossea" of the bone
- * phosphatase, "indiretta" of indirect bilirubin
+ * other than their method, which readParts reads: another part of the
+ * plain test's substance ("ossea" of the bone phosphatase, "indiretta" of
+ * indirect bilirubin), never a test that only names it ("Albumina
+ * (diretta)" is not the albumin-bound direct bilirubin) nor the plain one
+ * by a method ("(method)")
  */
-function testsToldByBracket(catalog: Catalog, rest: string, bracket: string): Set<string> {
+function testsToldByBracket(catalog: Catalog, rest: string, bracket: string, plain: CatalogTest): Set<string> {
   const stem = (word: string): string => word.replace(/[aeio]$/, '');
   const words = tellingWords(bracket).map((word) => ({
     word,
@@ -673,6 +682,7 @@ function testsToldByBracket(catalog: Catalog, rest: string, bracket: string): Se
     );
   return new Set(
     fullFits(catalog, rest)
+      .filter((test) => test.component !== plain.component && substanceOf(test) === substanceOf(plain))
       .filter((test) => words.some((one) => tells(test, one)))
       .map((test) => test.code)
   );
@@ -1124,11 +1134,15 @@ function sampleInName(name: string): { name: string; systems: string[]; loosely:
   return rest ? { name: rest, systems, loosely: pattern === BLOOD_HINT || pattern === BLOOD_COUNT_HINT } : undefined;
 }
 
-/** Whether a name fits a test LOINC names salivary of another sample: "Amilasi salivare" (Amylase.salivary in serum) */
+/**
+ * Whether a name fits a substance LOINC calls salivary, of another sample:
+ * "Amilasi salivare" (Amylase.salivary in serum); never a salivary gland
+ * antibody, which "IgG (salivare)" fits too
+ */
 function namesSalivary(catalog: Catalog, name: string): boolean {
   return catalog
     .scoredSearch(name)
-    .some(({ test, score }) => score >= MATCH_SCORE - SCORE_EPSILON && /saliva/i.test(test.component) && test.system !== 'Saliva');
+    .some(({ test, score }) => score >= 1 - SCORE_EPSILON && /\.salivary\b/i.test(test.component) && test.system !== 'Saliva');
 }
 
 function toCandidate(test: CatalogTest, score: number): Candidate {

@@ -897,6 +897,9 @@ describe('matchLocally in the generated catalog', () => {
     ['Cortisolo (vedi nota)', 'µg/dL', undefined, '2143-6'],
     ['Insulina (sera)', 'µUI/mL', undefined, '20448-7'],
     ['Insulina (non coniugato)', 'µUI/mL', undefined, '20448-7'],
+    // A bracket picks out another part of the plain test's substance only: not a test merely naming it, nor a method
+    ['Albumina (diretta)', 'g/dL', undefined, '1751-7'],
+    ['Albumina (method)', 'g/dL', undefined, '1751-7'],
     // A synonym of a test in brackets is read, as is the printed name when a rewriting of it fits less
     ['Glucosio (glicemia)', 'mg/dL', undefined, '2345-7'],
     ['eGFR (CKD-EPI)', 'mL/min/1.73m2', undefined, '98979-8'],
@@ -959,6 +962,8 @@ describe('matchLocally in the generated catalog', () => {
     ['Bilirubina (diretta)', 'mg/dL', '1968-7'],
     ['Bilirubina (indiretta)', 'mg/dL', '1971-1'],
     ['Fosfatasi alcalina (ossea)', 'U/L', '1777-2'],
+    // A saliva word beside a test LOINC has only of serum leaves the sample to the user, never filed as serum
+    ['IgG (salivare)', 'mg/dL', undefined],
     ['Troponina I - hs', 'ng/L', undefined],
     ['Troponina I (hs)', 'ng/L', undefined],
     ['Cortisolo - salivare', 'µg/dL', undefined],
