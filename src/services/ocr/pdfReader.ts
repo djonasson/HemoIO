@@ -1,0 +1,157 @@
+/**
+ * Reading a PDF page by page, each page its own way: its own text when it
+ * has some, OCR of its image when it is a scan.
+ */
+import { canvasToPng, PDFExtractionError, readPage, withPdf, type PdfPage } from './pdfExtractor';
+import { OCRError, recognizeImage, type OCRResult } from './tesseractService';
+
+/** Render scale for OCR: about 300 DPI, which Tesseract reads best (a PDF measures in 1/72 inch) */
+const OCR_SCALE = 300 / 72;
+/** The longest side of a page image for OCR, an A4 page at 300 DPI: an oversized page is not rendered huge */
+const MAX_OCR_SIDE = 3508;
+/** Letters and digits a page's own text needs to be used as is: fewer, and it is a scan with a stray mark or stamp */
+const MIN_PAGE_LETTERS = 50;
+/**
+ * How well a page read, under which it is read again turned, in case it was scanned sideways or upside down. A page
+ * read sideways comes out as letters and marks Tesseract can be fairly sure of (61% on a test scan), but they seldom
+ * make words: the score is the confidence times the share of the text in words (see `readingScore`)
+ */
+const TURN_RETRY_SCORE = 45;
+/** The turns tried, sideways first: a page is more often scanned sideways than upside down */
+const TURNS = [0, 90, 270, 180] as const;
+
+/** How one page of a PDF was read */
+export interface PdfPageReading {
+  pageNumber: number;
+  text: string;
+  /** Its own text, or OCR of its image */
+  method: 'pdf-text' | 'ocr';
+  /** OCR confidence (0-100) */
+  confidence?: number;
+  /** Degrees clockwise the page image was turned to be read */
+  turned?: number;
+}
+
+/** A PDF read page by page */
+export interface PdfReading {
+  /** Every page's text, pages apart by a blank line */
+  text: string;
+  pages: PdfPageReading[];
+  /** Pages that could not be read */
+  errors: string[];
+}
+
+export interface ReadPdfOptions {
+  /** OCR language(s) */
+  language?: string | string[];
+  /** What is being done, and the share of the document done (0-1) */
+  onProgress?: (message: string, done: number) => void;
+}
+
+function letterCount(text: string): number {
+  return text.replace(/[^\p{L}\p{N}]/gu, '').length;
+}
+
+/**
+ * How well an OCR reading reads: its confidence times the share of its marks
+ * in runs of two or more letters or digits. A report, even one of short
+ * names and units ("Hb 14 g/dl"), is mostly such runs; a page read the wrong
+ * way round is mostly single marks ("Tr oO O = © = 9 Q").
+ */
+export function readingScore({ text, confidence }: Pick<OCRResult, 'text' | 'confidence'>): number {
+  const marks = text.replace(/\s/gu, '').length;
+  if (marks === 0) return 0;
+  const inWords = (text.match(/[\p{L}\p{N}]{2,}/gu) ?? []).join('').length;
+  return (confidence * inWords) / marks;
+}
+
+/** A page as an image for OCR, turned `turn` degrees clockwise on top of the page's own rotation */
+async function renderForOcr(page: PdfPage, turn: number): Promise<Blob> {
+  const rotation = ((page.rotate ?? 0) + turn) % 360;
+  const natural = page.getViewport({ scale: 1, rotation });
+  const scale = Math.min(OCR_SCALE, MAX_OCR_SIDE / Math.max(natural.width, natural.height));
+  const viewport = page.getViewport({ scale, rotation });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  try {
+    await page.render({ canvas, viewport }).promise;
+    return await canvasToPng(canvas);
+  } finally {
+    // A page at 300 DPI is tens of megabytes of pixels: let them go before the next
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+}
+
+/**
+ * OCR a page's image. One that reads poorly is read again turned, keeping
+ * the best reading: a page scanned sideways reads as noise.
+ */
+async function ocrPage(
+  page: PdfPage,
+  pageNumber: number,
+  total: number,
+  { language, onProgress }: ReadPdfOptions
+): Promise<PdfPageReading> {
+  let best: { result: OCRResult; turned: number; score: number } | undefined;
+  for (const turn of TURNS) {
+    onProgress?.(`Rendering page ${pageNumber}/${total}`, (pageNumber - 1) / total);
+    const image = await renderForOcr(page, turn);
+    const result = await recognizeImage(image, {
+      language,
+      onProgress: (progress) =>
+        onProgress?.(`OCR: ${progress.status} (page ${pageNumber}/${total})`, (pageNumber - 1 + progress.progress) / total),
+    });
+    const score = readingScore(result);
+    if (!best || score > best.score) best = { result, turned: turn, score };
+    // A blank page reads as nothing whichever way it is turned
+    if (best.score >= TURN_RETRY_SCORE || letterCount(result.text) === 0) break;
+  }
+  const { result, turned } = best!;
+  return { pageNumber, text: result.text.trim(), method: 'ocr', confidence: result.confidence, ...(turned && { turned }) };
+}
+
+/**
+ * Read a PDF page by page: a page with text of its own is read as it is,
+ * laid out in its printed lines; a page that is a scan is rendered at about
+ * 300 DPI and OCR'd, so a report of typed and scanned pages is read whole.
+ * A page that cannot be read is noted and left out; OCR that cannot start
+ * fails the whole reading.
+ */
+export async function readPdf(file: File | ArrayBuffer, options: ReadPdfOptions = {}): Promise<PdfReading> {
+  const { onProgress } = options;
+  try {
+    return await withPdf(file, async (pdf, pdfjsLib) => {
+      const total = pdf.numPages;
+      const pages: PdfPageReading[] = [];
+      const errors: string[] = [];
+      for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
+        try {
+          const own = await readPage(pdf, pdfjsLib, pageNumber);
+          if (letterCount(own.text) >= MIN_PAGE_LETTERS) {
+            pages.push({ pageNumber, text: own.text, method: 'pdf-text' });
+          } else {
+            const read = await ocrPage(await pdf.getPage(pageNumber), pageNumber, total, options);
+            // A page whose few words of its own are all OCR finds keeps them
+            pages.push(letterCount(read.text) >= letterCount(own.text) ? read : { pageNumber, text: own.text, method: 'pdf-text' });
+          }
+          onProgress?.(`Extracting page ${pageNumber}/${total}`, pageNumber / total);
+        } catch (pageError) {
+          if (pageError instanceof OCRError) throw pageError;
+          errors.push(`Error extracting page ${pageNumber}: ${String(pageError)}`);
+        }
+      }
+      const text = pages
+        .map((page) => page.text)
+        .filter(Boolean)
+        .join('\n\n');
+      return { text, pages, errors };
+    });
+  } catch (error) {
+    if (error instanceof OCRError) throw error;
+    throw new PDFExtractionError(
+      `Failed to extract text from PDF: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}

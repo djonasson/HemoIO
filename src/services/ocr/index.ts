@@ -13,3 +13,4 @@
 export * from './pdfExtractor';
 export * from './tesseractService';
 export * from './documentDetector';
+export * from './pdfReader';

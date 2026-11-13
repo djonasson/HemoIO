@@ -33,12 +33,14 @@ function loadPdfjs(): Promise<typeof PdfjsLib> {
 }
 
 type PdfDocument = Awaited<ReturnType<typeof PdfjsLib.getDocument>['promise']>;
+/** A page of an open PDF */
+export type PdfPage = Awaited<ReturnType<PdfDocument['getPage']>>;
 
 /**
  * Open a PDF for `read`, then destroy it: an open document keeps a PDF.js
  * worker running, one per document
  */
-async function withPdf<T>(
+export async function withPdf<T>(
   file: File | ArrayBuffer,
   read: (pdf: PdfDocument, pdfjsLib: typeof PdfjsLib) => Promise<T>
 ): Promise<T> {
@@ -104,7 +106,7 @@ const MIN_TEXT_CHARS_PER_PAGE = 50;
 const TEXT_PAGE_RATIO_THRESHOLD = 0.5;
 
 /** A page's text, laid out in its printed lines, and whether it draws images */
-async function readPage(
+export async function readPage(
   pdf: PdfDocument,
   pdfjsLib: typeof PdfjsLib,
   pageNumber: number
@@ -302,51 +304,7 @@ export class PDFExtractionError extends Error {
   }
 }
 
-/**
- * Options for rendering PDF pages to images
- */
-export interface RenderPdfPagesOptions {
-  /** Render scale; 2 gives OCR enough resolution for typical lab report fonts */
-  scale?: number;
-  /** Maximum number of pages to render */
-  maxPages?: number;
-  /** Progress callback (pages rendered, pages to render) */
-  onProgress?: (current: number, total: number) => void;
-}
-
-/**
- * Render PDF pages to PNG images, e.g. so a scanned PDF can be OCR'd
- *
- * @param file - PDF file to render
- * @param options - Rendering options
- * @returns One PNG image per rendered page
- */
-export async function renderPdfPages(
-  file: File | ArrayBuffer,
-  options: RenderPdfPagesOptions = {}
-): Promise<Blob[]> {
-  const { scale = 2, maxPages, onProgress } = options;
-  return withPdf(file, async (pdf) => {
-    const pagesToRender = maxPages ? Math.min(maxPages, pdf.numPages) : pdf.numPages;
-    const images: Blob[] = [];
-
-    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-
-      await page.render({ canvas, viewport }).promise;
-      images.push(await canvasToPng(canvas));
-      onProgress?.(pageNum, pagesToRender);
-    }
-
-    return images;
-  });
-}
-
-function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
+export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);

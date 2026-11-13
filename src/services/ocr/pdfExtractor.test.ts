@@ -4,112 +4,15 @@ import {
   needsOCR,
   getPageCount,
   extractPageRange,
-  renderPdfPages,
   PDFExtractionError,
 } from './pdfExtractor';
 
-// Mock PDF.js
-vi.mock('pdfjs-dist', () => {
-  const mockTextContent = {
-    items: [
-      { str: 'Patient Name: John Doe' },
-      { str: 'Lab Report' },
-      { str: 'Glucose: 95 mg/dL' },
-      { str: 'Reference Range: 70-100 mg/dL' },
-      { str: 'Hemoglobin: 14.5 g/dL' },
-      { str: 'Reference Range: 12-17 g/dL' },
-    ],
-  };
-
-  const mockEmptyTextContent = {
-    items: [],
-  };
-
-  const mockOperatorList = {
-    fnArray: [],
-  };
-
-  const mockOperatorListWithImages = {
-    fnArray: [85], // OPS.paintImageXObject
-  };
-
-  // Store mock configuration
-  let mockConfig = {
-    numPages: 1,
-    isScanned: false,
-    throwError: false,
-    pageErrors: [] as number[],
-  };
-
-  const createMockPage = () => ({
-    getTextContent: vi.fn().mockResolvedValue(
-      mockConfig.isScanned ? mockEmptyTextContent : mockTextContent
-    ),
-    getOperatorList: vi.fn().mockResolvedValue(
-      mockConfig.isScanned ? mockOperatorListWithImages : mockOperatorList
-    ),
-    getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 100 * scale, height: 150 * scale })),
-    render: vi.fn(() => ({ promise: Promise.resolve() })),
-  });
-
-  // Every document a call opens; each must be destroyed, or its worker leaks
-  const openedDocuments: Array<{ destroy: ReturnType<typeof vi.fn> }> = [];
-
-  const createMockDocument = () => {
-    const doc = {
-    destroy: vi.fn().mockResolvedValue(undefined),
-    numPages: mockConfig.numPages,
-    getPage: vi.fn().mockImplementation((pageNum: number) => {
-      if (mockConfig.pageErrors.includes(pageNum)) {
-        return Promise.reject(new Error(`Page ${pageNum} error`));
-      }
-      return Promise.resolve(createMockPage());
-    }),
-    };
-    openedDocuments.push(doc);
-    return doc;
-  };
-
-  return {
-    GlobalWorkerOptions: { workerSrc: '' },
-    OPS: {
-      paintImageXObject: 85,
-      paintJpegXObject: 86,
-      paintImageMaskXObject: 87,
-    },
-    getDocument: vi.fn().mockImplementation(() => {
-      if (mockConfig.throwError) {
-        return {
-          promise: Promise.reject(new Error('PDF load error')),
-        };
-      }
-      return {
-        promise: Promise.resolve(createMockDocument()),
-      };
-    }),
-    // Expose mock control
-    __openedDocuments: openedDocuments,
-    __setMockConfig: (config: Partial<typeof mockConfig>) => {
-      mockConfig = { ...mockConfig, ...config };
-    },
-    __resetMockConfig: () => {
-      mockConfig = {
-        numPages: 1,
-        isScanned: false,
-        throwError: false,
-        pageErrors: [],
-      };
-    },
-  };
-});
+vi.mock('pdfjs-dist', async () => (await import('@/test/mocks/pdfjs')).createPdfjsMock());
 
 // Get mock control functions
 import * as pdfjsLib from 'pdfjs-dist';
-const { __setMockConfig, __resetMockConfig, __openedDocuments } = pdfjsLib as unknown as {
-  __openedDocuments: Array<{ destroy: ReturnType<typeof vi.fn> }>;
-  __setMockConfig: (config: { numPages?: number; isScanned?: boolean; throwError?: boolean; pageErrors?: number[] }) => void;
-  __resetMockConfig: () => void;
-};
+import type { PdfjsMockControls } from '@/test/mocks/pdfjs';
+const { __setMockConfig, __resetMockConfig, __openedDocuments } = pdfjsLib as unknown as PdfjsMockControls;
 
 describe('PDF Text Extractor', () => {
   beforeEach(() => {
@@ -256,20 +159,12 @@ describe('PDF Text Extractor', () => {
     it('destroys every document it opens, so no PDF worker is left running', async () => {
       __openedDocuments.length = 0;
       const pdf = new ArrayBuffer(8);
-      // jsdom has no canvas implementation
-      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-        {} as CanvasRenderingContext2D
-      );
-      vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback: BlobCallback) =>
-        callback(new Blob(['png'], { type: 'image/png' }))
-      );
 
       await extractTextFromPDF(pdf);
       await getPageCount(pdf);
       await extractPageRange(pdf, 1, 1);
-      await renderPdfPages(pdf);
 
-      expect(__openedDocuments).toHaveLength(4);
+      expect(__openedDocuments).toHaveLength(3);
       for (const doc of __openedDocuments) expect(doc.destroy).toHaveBeenCalled();
     });
   });
@@ -345,45 +240,6 @@ describe('PDF Text Extractor', () => {
 
       expect(error.name).toBe('PDFExtractionError');
       expect(error.message).toBe('Test error');
-    });
-  });
-
-  describe('renderPdfPages', () => {
-    let renderedSizes: string[];
-
-    beforeEach(() => {
-      renderedSizes = [];
-      // jsdom has no canvas implementation
-      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-        {} as CanvasRenderingContext2D
-      );
-      vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
-        this: HTMLCanvasElement,
-        callback: BlobCallback
-      ) {
-        renderedSizes.push(`${this.width}x${this.height}`);
-        callback(new Blob(['png'], { type: 'image/png' }));
-      });
-    });
-
-    it('renders each page to a PNG image at the requested scale', async () => {
-      __setMockConfig({ numPages: 3, isScanned: true });
-
-      const images = await renderPdfPages(new ArrayBuffer(100), { scale: 2 });
-
-      expect(images).toHaveLength(3);
-      expect(images[0].type).toBe('image/png');
-      expect(renderedSizes).toEqual(['200x300', '200x300', '200x300']);
-    });
-
-    it('reports progress per page and honours maxPages', async () => {
-      __setMockConfig({ numPages: 5, isScanned: true });
-      const onProgress = vi.fn();
-
-      const images = await renderPdfPages(new ArrayBuffer(100), { maxPages: 2, onProgress });
-
-      expect(images).toHaveLength(2);
-      expect(onProgress).toHaveBeenLastCalledWith(2, 2);
     });
   });
 });

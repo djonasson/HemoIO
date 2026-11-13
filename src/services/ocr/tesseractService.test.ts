@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   recognizeImage,
-  recognizeImages,
   recognizeDataUrl,
   isWorkerReady,
   terminateWorker,
@@ -311,7 +310,7 @@ describe('Tesseract OCR Service', () => {
       expect(Tesseract.createWorker).toHaveBeenCalled();
     });
 
-    it('detects rotation angle', async () => {
+    it('reports no straightening for an upright page', async () => {
       const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
 
       const result = await recognizeImage(mockFile);
@@ -319,42 +318,19 @@ describe('Tesseract OCR Service', () => {
       expect(result.rotationAngle).toBe(0);
       expect(result.wasRotated).toBe(false);
     });
-  });
 
-  describe('recognizeImages', () => {
-    it('processes multiple images', async () => {
-      const images = [
-        new File(['test1'], 'test1.png', { type: 'image/png' }),
-        new File(['test2'], 'test2.png', { type: 'image/png' }),
-        new File(['test3'], 'test3.png', { type: 'image/png' }),
-      ];
+    it('straightens a page scanned askew, and says by how much', async () => {
+      const worker = await Tesseract.createWorker();
+      vi.mocked(worker.recognize).mockResolvedValueOnce({
+        data: { text: 'Glucose: 95 mg/dL', confidence: 90, words: [], rotateRadians: Math.PI / 90 },
+      } as unknown as Tesseract.RecognizeResult);
+      const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
 
-      const results = await recognizeImages(images);
+      const result = await recognizeImage(mockFile);
 
-      expect(results).toHaveLength(3);
-      results.forEach((result) => {
-        expect(result.text).toContain('Patient Name');
-      });
-    });
-
-    it('reports per-image progress', async () => {
-      const images = [
-        new File(['test1'], 'test1.png', { type: 'image/png' }),
-        new File(['test2'], 'test2.png', { type: 'image/png' }),
-      ];
-      const progressCallback = vi.fn();
-
-      await recognizeImages(images, { onImageProgress: progressCallback });
-
-      expect(progressCallback).toHaveBeenCalledTimes(2);
-      expect(progressCallback).toHaveBeenCalledWith(1, 2, expect.any(Object));
-      expect(progressCallback).toHaveBeenCalledWith(2, 2, expect.any(Object));
-    });
-
-    it('handles empty image array', async () => {
-      const results = await recognizeImages([]);
-
-      expect(results).toEqual([]);
+      expect(worker.recognize).toHaveBeenCalledWith(mockFile, { rotateAuto: true });
+      expect(result.rotationAngle).toBeCloseTo(2);
+      expect(result.wasRotated).toBe(true);
     });
   });
 

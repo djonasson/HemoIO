@@ -32,6 +32,24 @@ Feature: Document Analysis
     Then OCR should be used to extract text
     And the extracted text should be reasonably accurate
 
+  Scenario: A report of typed and scanned pages is read whole
+    Given a PDF lab report whose first page is typed and whose second page is a scan
+    When the document is processed
+    Then the typed page should be read as it is, without OCR
+    And the scanned page should be read with OCR
+    And the AI should receive the text of both pages, in page order
+
+  Scenario: A page scanned sideways is read turned
+    Given a scanned PDF lab report whose page was scanned a quarter turn sideways
+    When the document is processed
+    Then the page should be read turned upright
+    And the AI should receive its text as printed
+
+  Scenario: A scanned page is read at a resolution OCR reads well
+    Given a scanned PDF lab report
+    When the document is processed
+    Then each page should be read from an image of about 300 dots per inch, no larger than an A4 page at that resolution
+
   Scenario: Handle multi-page PDF
     Given I upload a multi-page PDF lab report
     When the document is processed

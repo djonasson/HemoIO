@@ -21,6 +21,7 @@ import { changeTest } from './steps/identification.steps';
 import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
+  createTypedAndScannedPdf,
   createTextImage,
   createPlacedTextPdf,
   createTextPdf,
@@ -385,7 +386,18 @@ test.describe('Document Analysis - AI Processing', () => {
   });
 
   test('should use OCR for scanned PDF', async ({ page }) => {
+    // Scenario: A scanned page is read at a resolution OCR reads well
     test.setTimeout(120000);
+    // The size of every image the page makes from a canvas
+    await page.addInitScript(() => {
+      const sizes: string[] = [];
+      (window as unknown as { __canvasSizes: string[] }).__canvasSizes = sizes;
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (...args: Parameters<HTMLCanvasElement['toBlob']>) {
+        sizes.push(`${this.width}x${this.height}`);
+        return toBlob.apply(this, args);
+      };
+    });
     const ai = await loginWithOllama(page);
     await goToImport(page);
     await uploadFiles(page, track(await createScannedPdf(page, 'scanned.pdf')));
@@ -397,6 +409,43 @@ test.describe('Document Analysis - AI Processing', () => {
     expect(ai.prompts).toHaveLength(1);
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
     await expectStageShown(page, /^OCR: /);
+    // The 1400 × 400 point scan at 300 DPI would be 5833 wide: no wider than A4's 3508
+    expect(await page.evaluate(() => (window as unknown as { __canvasSizes: string[] }).__canvasSizes)).toContain(
+      '3508x1003'
+    );
+  });
+
+  test('reads a report of typed and scanned pages whole', async ({ page }) => {
+    // Scenario: A report of typed and scanned pages is read whole
+    test.setTimeout(120000);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    const typed = ['Test Laboratory - Blood Panel Report', 'Collection date: 15.01.2024', 'Glucose 95 mg/dL reference 70-100'];
+    await uploadFiles(page, track(await createTypedAndScannedPdf(page, 'mixed.pdf', typed, ['Hemoglobin 14.5 g/dL'])));
+    await recordRenderedTexts(page);
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    const prompt = squash(ai.prompts[0]);
+    expect(prompt).toContain('Glucose 95 mg/dL reference 70-100');
+    expect(prompt).toContain('Hemoglobin 14.5 g/dL');
+    expect(prompt.indexOf('Glucose 95')).toBeLessThan(prompt.indexOf('Hemoglobin 14.5'));
+    // Only the scanned page is OCR'd
+    const texts = await renderedTexts(page);
+    expect(texts.some((t) => /^OCR: .*\(page 2\/2\)$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^OCR: .*\(page 1\/2\)$/.test(t))).toBe(false);
+  });
+
+  test('reads a page scanned sideways turned upright', async ({ page }) => {
+    // Scenario: A page scanned sideways is read turned
+    test.setTimeout(180000);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(await createScannedPdf(page, 'sideways.pdf', LAB_REPORT_LINES, { sideways: true })));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
   });
 
   test('should handle multi-page PDF', async ({ page }) => {
