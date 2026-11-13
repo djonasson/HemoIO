@@ -128,3 +128,9 @@ export async function expectTestCatalogError(page: Page): Promise<void> {
   await expect(alert).toBeVisible();
   await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible();
 }
+
+/** Then HemoIO should stay unlocked */
+export async function expectUnlocked(page: Page): Promise<void> {
+  await expect(page.getByRole('button', { name: 'Lock application' })).toBeVisible();
+  await expect(page.getByLabel('Password')).toHaveCount(0);
+}

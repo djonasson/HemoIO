@@ -14,6 +14,7 @@ import {
   VisuallyHidden,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { ErrorBoundary } from 'react-error-boundary';
 import { notifications } from '@mantine/notifications';
 import {
   IconTimeline,
@@ -23,6 +24,7 @@ import {
   IconNotes,
   IconSettings,
   IconLock,
+  IconRefresh,
   IconBook,
   IconCheck,
   IconDownload,
@@ -46,6 +48,7 @@ import {
   useSetAsideRecords,
   useFolderStorageOn,
   useDataReplacedElsewhere,
+  useFolderRefresh,
 } from '@hooks';
 import { announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { ImportWizard, type ReviewedResult } from '@components/import';
@@ -66,7 +69,10 @@ import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { failedStepsMessage, restoreAISettings, restoreBackup, restoreBackupIfUnchanged } from '@services/import';
+import { PageErrorFallback } from '@components/common/PageErrorFallback';
 import { HEADER_HEIGHT } from './headerHeight';
+import { failIfTestAsks } from './testPageFailure';
+import { PullToRefreshStatus } from './PullToRefreshStatus';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -195,6 +201,10 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     syncNow,
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+
+  // Refresh from the folder in place: a reload would lock HemoIO
+  const canRefresh = folderStorageOn && folderRestore.syncAllowed;
+  const { refreshing, refresh: refreshFromFolder } = useFolderRefresh(syncNow);
   const replaceConfirmation = folderSyncReplace.confirmation;
   const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
@@ -413,6 +423,19 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             </Group>
 
             <Group>
+              {canRefresh && (
+                <Tooltip label="Refresh from folder" position="bottom">
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={refreshFromFolder}
+                    loading={refreshing}
+                    aria-label="Refresh from folder"
+                    size="lg"
+                  >
+                    <IconRefresh size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
               <Tooltip label="Export data" position="bottom">
                 <ActionIcon
                   variant="subtle"
@@ -492,6 +515,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
+          <PullToRefreshStatus enabled={canRefresh} refreshing={refreshing} onRefresh={refreshFromFolder} />
           <SetAsideBanner
             total={setAsideRecords.summary.total}
             unsaved={setAsideRecords.summary.unsaved}
@@ -501,6 +525,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             onSnapshot={setAsideRecords.snapshot}
             onDelete={setAsideRecords.remove}
           />
+          {/* A page that fails says so instead of blanking the app; another page, or a new visit, tries anew */}
+          <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
           {children ?? (
             <MainContent
               view={activeView}
@@ -514,6 +540,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               isRestoring={isRestoring}
             />
           )}
+          </ErrorBoundary>
         </MantineAppShell.Main>
       </MantineAppShell>
 
@@ -560,6 +587,7 @@ function MainContent({
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
+  failIfTestAsks(view);
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
   const trendFocus = focus?.view === 'trends' ? focus : null;
   const timelineFocus = focus?.view === 'timeline' ? focus.labResultId : null;
