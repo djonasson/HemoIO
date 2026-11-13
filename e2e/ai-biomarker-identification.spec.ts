@@ -947,6 +947,7 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
     await expect(row.getByText('Not identified')).toBeVisible();
     await expect(page.getByText(/could not be identified/)).toHaveCount(0);
+    await expect(page.getByText('1 value(s) the AI found no test for were saved as "Not a LOINC test"', { exact: false })).toBeVisible();
     await expect(row.getByRole('button', { name: `Change test for ${name}` })).toBeVisible();
   });
 

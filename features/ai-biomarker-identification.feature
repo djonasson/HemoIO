@@ -571,6 +571,7 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the value should be saved as "Not a LOINC test", labelled "Not identified"
     And the analysis notes should not count it among the values whose test I must choose
+    But the analysis notes should say the AI found no test for 1 value, to check
     And I can still choose a test for it
 
   Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series

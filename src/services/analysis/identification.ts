@@ -81,6 +81,13 @@ export function isNoneFound(
   return !identification.loincCode && identification.savedAsUnknown === true && identification.identifiedBy === undefined;
 }
 
+/** Whether a value is "Not a LOINC test" because the AI was sure none of the tests offered fits, nobody else deciding it */
+export function isFoundNoneByAI(
+  identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'identifiedBy' | 'candidates'>
+): boolean {
+  return isNoneFound(identification) && identification.candidates.length > 0;
+}
+
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */
 export function needsChoice(
   identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'candidates'>

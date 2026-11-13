@@ -24,6 +24,7 @@ import {
   identifyValues,
   isFoundWithoutAsking,
   needsTest,
+  isFoundNoneByAI,
   type Identification,
   type LearnedTests,
 } from './identification';
@@ -107,6 +108,14 @@ export type IdentificationFlag = 'ambiguous' | 'no-unit' | 'not-identified';
 /** Notes the values whose test the user must choose */
 export function unidentifiedNote(count: number): string {
   return `${count} value(s) could not be identified: choose their tests in the Saved as column`;
+}
+
+/**
+ * Notes the values saved as "Not a LOINC test" because the AI was sure none
+ * of the tests offered fits: it saw only a short list, so they are worth a look
+ */
+export function noTestFoundNote(count: number): string {
+  return `${count} value(s) the AI found no test for were saved as "Not a LOINC test": check them in the Saved as column`;
 }
 
 /** Notes that the AI could not be asked to choose among the tests that fit */
@@ -437,6 +446,8 @@ export async function analyzeLabReport(
 
     const unidentified = matchedBiomarkers.filter(needsTest).length;
     if (unidentified > 0) warnings.push(unidentifiedNote(unidentified));
+    const foundNone = matchedBiomarkers.filter(isFoundNoneByAI).length;
+    if (foundNone > 0) warnings.push(noTestFoundNote(foundNone));
 
     if (duplicateConflicts.length > 0) {
       warnings.push(

@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { analyzeLabReport, CHOICE_FAILED_NOTE, unidentifiedNote } from './LabReportAnalyzer';
+import { analyzeLabReport, CHOICE_FAILED_NOTE, noTestFoundNote, unidentifiedNote } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
 import * as aiModule from '../ai';
 
@@ -94,6 +94,14 @@ describe('analyzeLabReport: identifying each value', () => {
     // The value with no test to choose from is saved as "Not a LOINC test": nothing is left to the user
     expect(result.matchedBiomarkers.find((b) => b.name === 'Zorb')).toMatchObject({ savedAsUnknown: true });
     expect(result.warnings).toEqual([]);
+  });
+
+  it('notes the values the AI is sure no offered test fits, saved as "Not a LOINC test"', async () => {
+    const { result } = await analyze([extracted('Glucosio', 5, 'mmol/L', 'blood')], async (requests) =>
+      requests.map(({ id }) => ({ id, code: null, confident: true }))
+    );
+    expect(result.matchedBiomarkers[0]).toMatchObject({ savedAsUnknown: true });
+    expect(result.warnings).toEqual([noTestFoundNote(1)]);
   });
 
   it('leaves the candidates to the user when the AI cannot be asked', async () => {

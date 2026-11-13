@@ -153,8 +153,11 @@ export function sameMeasurement(a: ComparableValue, b: ComparableValue, estimate
   const diff = Math.abs(a.comparison - b.comparison);
   const avg = (Math.abs(a.comparison) + Math.abs(b.comparison)) / 2;
   if (avg > 0 && diff / avg <= RELATIVE_TOLERANCE) return true;
-  const differentUnits = !unitsMatch(a.biomarker.unit, b.biomarker.unit);
-  return differentUnits && diff <= a.allowance + b.allowance;
+  if (unitsMatch(a.biomarker.unit, b.biomarker.unit)) return false;
+  // Cutting off only lowers a value, rounding moves it half a digit: the lower printed value may have lost a whole
+  // digit, the higher one be at most half a digit above what was measured
+  const [lower, higher] = a.comparison <= b.comparison ? [a, b] : [b, a];
+  return diff <= lower.allowance + higher.allowance / 2;
 }
 
 /** Values grouped by the test they are (see sameTestKey), in report order */

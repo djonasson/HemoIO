@@ -724,6 +724,17 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test('flags values in two units that cutting off decimals cannot explain', async ({ page }) => {
+    // Scenario: Values in two units that cutting off decimals cannot explain conflict
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinina', value: 1, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinina', value: 80, unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+    ], 1, { testChoice: aiChooses({ 'Creatinina|mg/dL': '2160-0', 'Creatinina|µmol/L': '14682-9' }) });
+
+    await expect(duplicateWarning(page)).toBeVisible();
+  });
+
   test('names the saved value with its comparator when a censored value is set aside', async ({ page }) => {
     // Scenario: A value set aside as the same measurement names the saved value as it reads (import-wizard.feature)
     await openApp(page);
