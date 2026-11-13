@@ -7,7 +7,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#228be6" />
     <title>HemoIO</title>
-    <script type="module" crossorigin src="/HemoIO/assets/index-BQqkfbMo.js"></script>
+    <!-- No pull-to-reload: a reload locks HemoIO; pulling down refreshes from the folder in place -->
+    <style>
+      html,
+      body {
+        overscroll-behavior-y: contain;
+      }
+    </style>
+    <script type="module" crossorigin src="/HemoIO/assets/index-BCz2Hr5H.js"></script>
     <link rel="modulepreload" crossorigin href="/HemoIO/assets/vendor-react-BDvSRYl5.js">
     <link rel="modulepreload" crossorigin href="/HemoIO/assets/vendor-mantine-Dwp1hEIj.js">
     <link rel="modulepreload" crossorigin href="/HemoIO/assets/vendor-ucum-CzrQcLz4.js">
