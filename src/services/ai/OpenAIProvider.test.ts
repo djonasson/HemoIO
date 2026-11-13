@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
 import { choiceAnswerLimit } from './testChoice';
 import { AIAnalysisError, AIConfigurationError } from './types';
+import { ANSWER_CUT_OFF } from './answerCutOff';
+import { openAIOutputCap } from './openaiUtils';
+import { RESPONSE_SCHEMA_NAME, STRICT_RESPONSE_SCHEMA } from './structuredOutput';
 
 // Model IDs come from the user's selection at runtime; tests use a placeholder
 const TEST_MODEL = 'gpt-test-model';
@@ -477,5 +480,148 @@ describe('OpenAIProvider quota', () => {
       expect(error).toBeInstanceOf(AIAnalysisError);
       expect((error as Error).message).not.toContain('sk-test-key');
     });
+  });
+});
+
+describe('OpenAIProvider answer shape and cut-off answers', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const VALUES = JSON.stringify({ biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9 }], warnings: [] });
+  const answer = (content: string, finishReason = 'stop') =>
+    ({ ok: true, json: () => Promise.resolve({ choices: [{ message: { content }, finish_reason: finishReason }] }) }) as Response;
+  const rejected = (status: number, error: object) =>
+    ({ ok: false, status, json: () => Promise.resolve({ error }) }) as unknown as Response;
+  const body = (call: number) => JSON.parse(vi.mocked(fetch).mock.calls[call][1]?.body as string);
+  const limit = (call: number) => body(call).max_completion_tokens ?? body(call).max_tokens;
+
+  it('asks for an answer in the strict analysis schema', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer(VALUES));
+
+    await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4.1' }).analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(body(0).response_format).toEqual({
+      type: 'json_schema',
+      json_schema: { name: RESPONSE_SCHEMA_NAME, schema: STRICT_RESPONSE_SCHEMA, strict: true },
+    });
+  });
+
+  it('asks for any JSON object when the model rejects the schema, and keeps doing so', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        rejected(400, {
+          message: "Invalid parameter: 'response_format' of type 'json_schema' is not supported with this model.",
+          type: 'invalid_request_error',
+          param: 'response_format',
+          code: null,
+        })
+      )
+      .mockResolvedValue(answer(VALUES));
+
+    const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4-turbo' });
+    const result = await provider.analyzeLabReport('Glucose 95 mg/dL');
+    await provider.analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers).toHaveLength(1);
+    expect(body(1).response_format).toEqual({ type: 'json_object' });
+    expect(body(2).response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('keeps another rejection of the request as it is', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      rejected(400, { message: 'This model has a maximum context length of 8192 tokens.', type: 'invalid_request_error', code: 'context_length_exceeded' })
+    );
+
+    const failure = await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4' })
+      .analyzeLabReport('Glucose 95 mg/dL')
+      .catch((e: unknown) => e);
+
+    expect((failure as AIAnalysisError).code).toBe('context_length_exceeded');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again with four times the room when the answer was cut off', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"biomarkers": [', 'length')).mockResolvedValueOnce(answer(VALUES));
+
+    const result = await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4.1' }).analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers).toHaveLength(1);
+    expect(limit(0)).toBe(4096);
+    expect(limit(1)).toBe(16384);
+  });
+
+  it('never asks for more than the model can write', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"biomarkers": [', 'length')).mockResolvedValueOnce(answer(VALUES));
+
+    await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4', maxTokens: 4096 }).analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(limit(1)).toBe(openAIOutputCap('gpt-4'));
+  });
+
+  it('gives a reasoning model its larger room, four times over, when cut off', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('', 'length')).mockResolvedValueOnce(answer(VALUES));
+
+    await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-5-mini' }).analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(body(0).max_completion_tokens).toBe(16384);
+    expect(body(1).max_completion_tokens).toBe(65536);
+  });
+
+  it('fails clearly when the answer is cut off again', async () => {
+    vi.mocked(fetch).mockResolvedValue(answer('{"biomarkers": [', 'length'));
+
+    const failure = await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4.1' })
+      .analyzeLabReport('Glucose 95 mg/dL')
+      .catch((e: unknown) => e);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(failure).toBeInstanceOf(AIAnalysisError);
+    expect((failure as AIAnalysisError).code).toBe(ANSWER_CUT_OFF);
+    expect((failure as AIAnalysisError).message).toBe(
+      "The AI's answer was cut off at HemoIO's limit of 16384 tokens before all values were read. " +
+        'Split the report into smaller files and import them one by one.'
+    );
+  });
+
+  it("says the model's own limit was reached when there is no more room to ask for", async () => {
+    vi.mocked(fetch).mockResolvedValue(answer('{"biomarkers": [', 'length'));
+
+    const failure = await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4', maxTokens: 8192 })
+      .analyzeLabReport('Glucose 95 mg/dL')
+      .catch((e: unknown) => e);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((failure as Error).message).toMatch(/cut off at the model's limit of 8192 tokens/);
+  });
+
+  it('asks which tests values are for any JSON object, not in the analysis schema', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+
+    await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4.1' }).chooseTests([
+      { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },
+    ]);
+
+    expect(body(0).response_format).toEqual({ type: 'json_object' });
+  });
+});
+
+describe('openAIOutputCap', () => {
+  it.each([
+    ['gpt-5', 128000],
+    ['gpt-5-chat-latest', 16384],
+    ['o3-mini', 100000],
+    ['gpt-4.1-mini', 32768],
+    ['gpt-4o', 16384],
+    ['gpt-4-turbo', 4096],
+    ['gpt-4', 8192],
+    ['gpt-3.5-turbo', 4096],
+    ['some-new-model', 16384],
+  ])('%s writes at most %d tokens', (model, cap) => {
+    expect(openAIOutputCap(model)).toBe(cap);
   });
 });

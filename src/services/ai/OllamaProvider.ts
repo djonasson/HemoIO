@@ -11,7 +11,6 @@ import {
   type OllamaConfig,
   type AnalysisOptions,
   type LabReportAnalysisResult,
-  type ExtractedBiomarker,
   type TestChoice,
   type TestChoiceRequest,
   AIAnalysisError,
@@ -31,13 +30,12 @@ import {
   parseOllamaError,
   cleanUnitAndExtractRange,
 } from './ollamaUtils';
-import { rangeUnitOf, withParsedValue } from './withParsedValue';
-import { withSpecimenHint } from './specimenHint';
 import { ollamaContext } from './ollamaContext';
 import { fetchWithRateLimitRetry } from './rateLimitedFetch';
+import { overallConfidence, parseExtraction, type ParsedExtraction } from './parseExtraction';
+import { answerCutOffError, LONGER_ANSWER } from './answerCutOff';
+import { OLLAMA_RESPONSE_SCHEMA, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
 
-/** How many times the usual answer limit a cut-off answer is asked again with */
-const LONGER_ANSWER = 4;
 /** Room left over the prompt and answer estimates: a prompt read as more tokens never pushes the answer out */
 const CONTEXT_SLACK = 1024;
 
@@ -84,6 +82,8 @@ export class OllamaProvider implements AIProvider {
   private timeout: number;
   private temperature: number;
   private maxTokens: number;
+  /** Whether Ollama rejected a schema as format (an older version): later reports ask for plain JSON */
+  private structuredRejected = false;
 
   constructor(config: OllamaConfig = {}) {
     this.baseUrl = config.baseUrl || OLLAMA_DEFAULTS.baseUrl;
@@ -125,7 +125,7 @@ export class OllamaProvider implements AIProvider {
         labDate: parsed.labDate,
         labName: parsed.labName,
         patientName: options.extractPatientInfo ? parsed.patientName : undefined,
-        overallConfidence: this.calculateOverallConfidence(parsed.biomarkers),
+        overallConfidence: overallConfidence(parsed.biomarkers),
         analyzedText: text,
         warnings: parsed.warnings || [],
         modelUsed: modelToUse,
@@ -158,7 +158,7 @@ export class OllamaProvider implements AIProvider {
       ];
       const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
       const { size, answerRoom } = ollamaContext(characters, answerLimit, 0, CONTEXT_SLACK);
-      const response = await this.sendAtKeptSize(messages, modelToUse, options, size, answerRoom);
+      const response = await this.sendAtKeptSize(messages, modelToUse, options, size, answerRoom, false);
       // An empty answer has no choices
       return response.message?.content;
     });
@@ -209,7 +209,7 @@ export class OllamaProvider implements AIProvider {
         labDate: parsed.labDate,
         labName: parsed.labName,
         patientName: options.extractPatientInfo ? parsed.patientName : undefined,
-        overallConfidence: this.calculateOverallConfidence(parsed.biomarkers),
+        overallConfidence: overallConfidence(parsed.biomarkers),
         analyzedText: '[Image analysis - no text extracted]',
         warnings: parsed.warnings || [],
         modelUsed: modelToUse,
@@ -385,14 +385,16 @@ export class OllamaProvider implements AIProvider {
   }
 
   /**
-   * Make a chat request to Ollama's native API
+   * Make a chat request to Ollama's native API, for an answer in the
+   * analysis schema's shape when `structured`, else any JSON
    */
   private async makeChatRequest(
     messages: ChatMessage[],
     model: string,
     { rateLimit, signal }: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
     numCtx: number,
-    numPredict: number
+    numPredict: number,
+    structured: boolean
   ): Promise<ChatResponse> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -414,7 +416,7 @@ export class OllamaProvider implements AIProvider {
           model,
           messages,
           stream: false,
-          format: 'json',
+          format: structured ? OLLAMA_RESPONSE_SCHEMA : 'json',
           options: {
             temperature: this.temperature,
             num_predict: numPredict,
@@ -428,6 +430,10 @@ export class OllamaProvider implements AIProvider {
 
       if (!response.ok) {
         const errorMessage = await parseOllamaError(response);
+        // An Ollama older than structured outputs takes only "json" as format
+        if (structured && response.status === 400 && /format|schema/i.test(errorMessage)) {
+          throw new AIAnalysisError(`Ollama API error: ${errorMessage}`, 'ollama', STRUCTURED_OUTPUT_UNSUPPORTED);
+        }
         // A server error is a request Ollama could not load or run (too
         // large for its free memory); a gateway giving up (502, 504) ran out
         // of time; a 503 is a busy server
@@ -493,7 +499,7 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     model: string,
     options: AnalysisOptions,
     emptyMessage: string
-  ): Promise<ParsedAnswer> {
+  ): Promise<ParsedExtraction> {
     const characters = messages.reduce((sum, m) => sum + m.content.length, 0);
     const images = messages.reduce((sum, m) => sum + (m.images?.length ?? 0), 0);
     // The answer gets the room of the report's own context beside the
@@ -502,11 +508,8 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     // the retry always has more room
     const ask = async (answerTokens: number) => {
       const { size: own, answerRoom: limit } = ollamaContext(characters, answerTokens, images, CONTEXT_SLACK);
-      return { limit, response: await this.sendAtKeptSize(messages, model, options, own, limit) };
+      return { limit, response: await this.sendAtKeptSize(messages, model, options, own, limit, true) };
     };
-    const split = 'Split the report into smaller files and import them one by one.';
-    const cutOffAt = (limit: number) =>
-      `Ollama's answer was cut off at HemoIO's limit of ${limit} tokens before it was complete.`;
 
     const first = await ask(this.maxTokens);
     const answer = this.readAnswer(first.response);
@@ -519,13 +522,10 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
       // Out of memory or time for the larger answer: still the cut-off's advice;
       // anything else (a busy server, a cancel, Ollama not running) says what it is
       if (!isTooLarge(error)) throw error;
-      throw new AIAnalysisError(
-        `${cutOffAt(first.limit)} Asking again with more room failed (${error.message}). ${split}`,
-        'ollama'
-      );
+      throw answerCutOffError('ollama', first.limit, Infinity, `Asking again with more room failed (${error.message}).`);
     }
     const again = this.readAnswer(retried.response);
-    if (again === 'cut-off') throw new AIAnalysisError(`${cutOffAt(retried.limit)} ${split}`, 'ollama');
+    if (again === 'cut-off') throw answerCutOffError('ollama', retried.limit);
     return again ?? this.empty(emptyMessage);
   }
 
@@ -539,15 +539,16 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     model: string,
     options: AnalysisOptions,
     own: number,
-    answerTokens: number
+    answerTokens: number,
+    structured: boolean
   ): Promise<ChatResponse> {
     const kept = this.acceptedContext.get(model) ?? 0;
-    if (kept <= own) return this.chat(messages, model, options, own, answerTokens);
+    if (kept <= own) return this.chat(messages, model, options, own, answerTokens, structured);
     try {
-      return await this.chat(messages, model, options, kept, answerTokens);
+      return await this.chat(messages, model, options, kept, answerTokens, structured);
     } catch (error) {
       if (!isRefused(error)) throw error;
-      return this.chat(messages, model, options, own, answerTokens);
+      return this.chat(messages, model, options, own, answerTokens, structured);
     }
   }
 
@@ -562,13 +563,20 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
     model: string,
     options: AnalysisOptions,
     size: number,
-    answerTokens: number
+    answerTokens: number,
+    structured: boolean
   ): Promise<ChatResponse> {
     try {
-      const response = await this.makeChatRequest(messages, model, options, size, answerTokens);
+      const response = await this.makeChatRequest(
+        messages, model, options, size, answerTokens, structured && !this.structuredRejected
+      );
       this.acceptedContext.set(model, size);
       return response;
     } catch (error) {
+      if (error instanceof AIAnalysisError && error.code === STRUCTURED_OUTPUT_UNSUPPORTED) {
+        this.structuredRejected = true;
+        return this.chat(messages, model, options, size, answerTokens, false);
+      }
       if (isTooLarge(error) && size <= (this.acceptedContext.get(model) ?? 0)) this.acceptedContext.delete(model);
       throw error;
     }
@@ -579,12 +587,12 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
    * limit before it was complete (also while a model was still thinking,
    * with no content yet); undefined for an empty one
    */
-  private readAnswer(response: ChatResponse): ParsedAnswer | 'cut-off' | undefined {
+  private readAnswer(response: ChatResponse): ParsedExtraction | 'cut-off' | undefined {
     const content = response.message?.content;
     const stopped = response.done_reason === 'length';
     if (!content) return stopped ? 'cut-off' : undefined;
     try {
-      return this.parseResponse(content);
+      return parseExtraction(content, 'ollama', { cleanUnit: cleanUnitAndExtractRange });
     } catch (error) {
       if (stopped) return 'cut-off';
       throw error;
@@ -593,103 +601,6 @@ Respond with ONLY a valid JSON object in the OUTPUT FORMAT the system prompt giv
 
   private empty(message: string): never {
     throw new AIAnalysisError(message, 'ollama');
-  }
-
-  /**
-   * Parse the AI response into structured data
-   */
-  private parseResponse(content: string): {
-    biomarkers: ExtractedBiomarker[];
-    labDate?: string;
-    labName?: string;
-    patientName?: string;
-    warnings: string[];
-  } {
-    try {
-      // Remove markdown code block markers if present
-      const cleanedContent = content
-        .replace(/^```(?:json)?\s*\n?/gm, '')
-        .replace(/\n?```\s*$/gm, '')
-        .trim();
-
-      // Try to extract JSON from the response
-      const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON object found in response');
-      }
-
-      let jsonString = jsonMatch[0];
-
-      // Fix unquoted property names (common issue with some models)
-      // This converts { low: 5, high: 10 } to { "low": 5, "high": 10 }
-      jsonString = jsonString.replace(
-        /([{,]\s*)(\w+)(\s*:)/g,
-        '$1"$2"$3'
-      );
-
-      const data = JSON.parse(jsonString);
-
-      // Validate and normalize biomarkers
-      const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
-        (b: Record<string, unknown>) => {
-          // Clean unit field and extract any embedded reference range
-          const rawUnit = String(b.unit || '');
-          const { unit: cleanedUnit, extractedRange } = cleanUnitAndExtractRange(rawUnit);
-
-          // Get reference range from response
-          const responseRange = b.referenceRange as Record<string, unknown> | undefined;
-          const responseLow = typeof responseRange?.low === 'number' ? responseRange.low : undefined;
-          const responseHigh = typeof responseRange?.high === 'number' ? responseRange.high : undefined;
-
-          // Merge reference ranges: prefer response range, fall back to extracted from unit
-          const finalLow = responseLow ?? extractedRange?.low;
-          const finalHigh = responseHigh ?? extractedRange?.high;
-          const hasRange = finalLow !== undefined || finalHigh !== undefined;
-
-          return {
-            name: String(b.name || ''),
-            ...withSpecimenHint(b),
-            ...withParsedValue(b, cleanedUnit),
-            referenceRange: hasRange
-              ? {
-                  low: finalLow,
-                  high: finalHigh,
-                  // Cleaned as the value's unit is ("UL" is U/L)
-                  unit: rangeUnitOf(cleanUnitAndExtractRange(String(responseRange?.unit ?? '')).unit, cleanedUnit),
-                }
-              : undefined,
-            method: b.method ? String(b.method) : undefined,
-            confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
-            notes: b.notes ? String(b.notes) : undefined,
-          };
-        }
-      );
-
-      return {
-        biomarkers,
-        labDate: data.labDate ? String(data.labDate) : undefined,
-        labName: data.labName ? String(data.labName) : undefined,
-        patientName: data.patientName ? String(data.patientName) : undefined,
-        warnings: Array.isArray(data.warnings)
-          ? data.warnings.map((w: unknown) => String(w))
-          : [],
-      };
-    } catch (error) {
-      throw new AIAnalysisError(
-        `Failed to parse Ollama response: ${error instanceof Error ? error.message : String(error)}`,
-        'ollama'
-      );
-    }
-  }
-
-  /**
-   * Calculate overall confidence from individual biomarker confidences
-   */
-  private calculateOverallConfidence(biomarkers: ExtractedBiomarker[]): number {
-    if (biomarkers.length === 0) return 0;
-
-    const sum = biomarkers.reduce((acc, b) => acc + b.confidence, 0);
-    return sum / biomarkers.length;
   }
 }
 
@@ -707,9 +618,6 @@ function isTimeout(error: unknown): error is AIAnalysisError {
 function isTooLarge(error: unknown): error is AIAnalysisError {
   return isRefused(error) || isTimeout(error);
 }
-
-/** The values read from an answer */
-type ParsedAnswer = ReturnType<OllamaProvider['parseResponse']>;
 
 /** A proxy's or tunnel's timeout (Cloudflare's 522 and 524), not Ollama's own answer */
 const GATEWAY_TIMEOUTS = new Set([502, 504, 522, 524]);

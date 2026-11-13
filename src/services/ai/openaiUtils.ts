@@ -58,6 +58,36 @@ const EXCLUDED_PATTERNS = [
 ];
 
 /**
+ * The most output tokens each OpenAI model family can write, most specific
+ * first: OpenAI's model list does not say, and a request asking for more is
+ * rejected
+ */
+const OUTPUT_CAPS: Array<[RegExp, number]> = [
+  [/^gpt-5(\.\d+)?-chat/, 16384],
+  [/^gpt-5/, 128000],
+  [/^o1-mini/, 65536],
+  [/^o[134]/, 100000],
+  [/^gpt-4\.1/, 32768],
+  [/^(gpt-4o|chatgpt-4o|gpt-4\.5)/, 16384],
+  [/^gpt-4-(turbo|\d{4}-preview)/, 4096],
+  [/^gpt-4/, 8192],
+  [/^gpt-3\.5/, 4096],
+];
+
+/** What a model of a family not listed is assumed to write at most */
+const DEFAULT_OUTPUT_CAP = 16384;
+
+/**
+ * The most output tokens an OpenAI model can write
+ *
+ * @param model - The model id, as the user selected it
+ */
+export function openAIOutputCap(model: string): number {
+  const id = model.toLowerCase();
+  return OUTPUT_CAPS.find(([family]) => family.test(id))?.[1] ?? DEFAULT_OUTPUT_CAP;
+}
+
+/**
  * Check if a model is suitable for chat completion / lab report analysis
  */
 function isChatModel(modelId: string): boolean {

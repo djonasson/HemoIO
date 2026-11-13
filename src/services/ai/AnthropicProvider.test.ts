@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AnthropicProvider } from './AnthropicProvider';
 import { choiceAnswerLimit } from './testChoice';
 import { AIAnalysisError, AIConfigurationError } from './types';
+import { ANSWER_CUT_OFF } from './answerCutOff';
+import { STRICT_RESPONSE_SCHEMA } from './structuredOutput';
 
 // Model IDs come from the user's selection at runtime; tests use a placeholder
 const TEST_MODEL = 'claude-test-model';
@@ -256,8 +258,8 @@ describe('AnthropicProvider', () => {
       );
     });
 
-    it('reports a truncated response when max_tokens is reached', async () => {
-      vi.mocked(fetch).mockResolvedValueOnce({
+    it('reports a truncated response when max_tokens is reached also when asked again', async () => {
+      vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () =>
           Promise.resolve({
@@ -578,5 +580,126 @@ describe('AnthropicProvider prompt caching', () => {
       expect(error).toBeInstanceOf(AIAnalysisError);
       expect((error as Error).message).not.toContain('sk-ant-test-key');
     });
+  });
+});
+
+describe('AnthropicProvider answer shape and cut-off answers', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const VALUES = JSON.stringify({ biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9 }], warnings: [] });
+  const answer = (text: string, stopReason = 'end_turn') =>
+    ({ ok: true, json: () => Promise.resolve({ content: [{ type: 'text', text }], stop_reason: stopReason }) }) as Response;
+  const cutOff = () => answer('{"biomarkers": [', 'max_tokens');
+  const modelInfo = (maxTokens: number) =>
+    ({ ok: true, json: () => Promise.resolve({ id: TEST_MODEL, max_tokens: maxTokens }) }) as Response;
+  const rejected = (message: string) =>
+    ({ ok: false, status: 400, json: () => Promise.resolve({ error: { type: 'invalid_request_error', message } }) }) as unknown as Response;
+  const call = (n: number) => vi.mocked(fetch).mock.calls[n];
+  const body = (n: number) => JSON.parse(call(n)[1]?.body as string);
+  const provider = () => new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
+
+  it('asks for an answer in the strict analysis schema, keeping the browser access header', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer(VALUES));
+
+    await provider().analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(body(0).output_config).toEqual({ format: { type: 'json_schema', schema: STRICT_RESPONSE_SCHEMA } });
+    expect((call(0)[1]?.headers as Record<string, string>)['anthropic-dangerous-direct-browser-access']).toBe('true');
+  });
+
+  it('asks without structured output when the model rejects it, and keeps doing so', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(rejected('output_config.format: structured outputs are not supported for this model'))
+      .mockResolvedValue(answer(VALUES));
+
+    const anthropic = provider();
+    const result = await anthropic.analyzeLabReport('Glucose 95 mg/dL');
+    await anthropic.analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers).toHaveLength(1);
+    expect(body(1)).not.toHaveProperty('output_config');
+    expect(body(2)).not.toHaveProperty('output_config');
+  });
+
+  it('keeps another rejection of the request as it is', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(rejected('prompt is too long: 1200000 tokens > 1000000 maximum'));
+
+    await expect(provider().analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow(/prompt is too long/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again with four times the room when cut off, within the model's own limit", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(cutOff())
+      .mockResolvedValueOnce(modelInfo(128000))
+      .mockResolvedValueOnce(answer(VALUES));
+
+    const result = await provider().analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers).toHaveLength(1);
+    expect(String(call(1)[0])).toMatch(new RegExp(`/models/${TEST_MODEL}$`));
+    expect(body(0).max_tokens).toBe(16000);
+    expect(body(2).max_tokens).toBe(64000);
+    expect(body(2).output_config).toBeDefined();
+  });
+
+  it('never asks for more than the model can write', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(cutOff())
+      .mockResolvedValueOnce(modelInfo(32000))
+      .mockResolvedValueOnce(answer(VALUES));
+
+    await provider().analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(body(2).max_tokens).toBe(32000);
+  });
+
+  it('assumes a limit when the model cannot be looked up', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(cutOff())
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(answer(VALUES));
+
+    await provider().analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(body(2).max_tokens).toBe(32000);
+  });
+
+  it('fails clearly when the answer is cut off again', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(cutOff()).mockResolvedValueOnce(modelInfo(128000)).mockResolvedValueOnce(cutOff());
+
+    const failure = await provider().analyzeLabReport('Glucose 95 mg/dL').catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(AIAnalysisError);
+    expect((failure as AIAnalysisError).code).toBe(ANSWER_CUT_OFF);
+    expect((failure as AIAnalysisError).message).toBe(
+      "The AI's answer was cut off at HemoIO's limit of 64000 tokens before all values were read. " +
+        'Split the report into smaller files and import them one by one.'
+    );
+  });
+
+  it('reports a refusal when asked again', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(cutOff())
+      .mockResolvedValueOnce(modelInfo(128000))
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ content: [], stop_reason: 'refusal' }) } as Response);
+
+    await expect(provider().analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow(/declined/);
+  });
+
+  it('asks which tests values are without the analysis schema', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+
+    await provider().chooseTests([
+      { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },
+    ]);
+
+    expect(body(0)).not.toHaveProperty('output_config');
   });
 });

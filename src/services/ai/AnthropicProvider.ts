@@ -10,7 +10,6 @@ import type {
   AIProviderType,
   AnalysisOptions,
   LabReportAnalysisResult,
-  ExtractedBiomarker,
   TestChoice,
   TestChoiceRequest,
 } from './types';
@@ -20,8 +19,9 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
-import { rangeUnitOf, withParsedValue } from './withParsedValue';
-import { withSpecimenHint } from './specimenHint';
+import { overallConfidence, parseExtraction } from './parseExtraction';
+import { answerCutOffError, longerAnswerLimit } from './answerCutOff';
+import { STRICT_RESPONSE_SCHEMA, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
 import { withoutKey } from './withoutKey';
@@ -39,6 +39,22 @@ const DEFAULT_CONFIG = {
   maxTokens: 16000,
   baseUrl: 'https://api.anthropic.com/v1',
 };
+
+/**
+ * The most a model is assumed to write when its own limit cannot be looked
+ * up: what the oldest models still offered can write
+ */
+const FALLBACK_OUTPUT_CAP = 32000;
+
+/** Asks for an answer in the analysis schema's exact shape (JSON outputs) */
+const STRUCTURED_OUTPUT_CONFIG = {
+  format: { type: 'json_schema', schema: STRICT_RESPONSE_SCHEMA },
+};
+
+/** Whether a rejected request was rejected for its structured output, which an older model does not support */
+function rejectsFormat(status: number, message: string | undefined): boolean {
+  return status === 400 && /output_config|output_format|json_schema|schema|structured/i.test(message ?? '');
+}
 
 /**
  * Anthropic API message types
@@ -79,6 +95,10 @@ export class AnthropicProvider implements AIProvider {
   // Sampling parameters (temperature) are not sent: current Claude models
   // reject non-default values with a 400.
   private config: Required<Omit<AIProviderConfig, 'temperature'>>;
+  /** Whether the model rejected structured output: later reports ask without it straight away */
+  private structuredRejected = false;
+  /** The most the model can write, once looked up */
+  private outputCap: number | undefined;
 
   constructor(config: AIProviderConfig) {
     if (!config.apiKey) {
@@ -117,27 +137,7 @@ export class AnthropicProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(
-        messages,
-        LAB_REPORT_SYSTEM_PROMPT,
-        options.rateLimit,
-        options.signal
-      );
-
-      if (response.stop_reason === 'refusal') {
-        throw new AIAnalysisError(
-          'Anthropic declined to analyze this document',
-          'anthropic',
-          'refusal'
-        );
-      }
-      if (response.stop_reason === 'max_tokens') {
-        throw new AIAnalysisError(
-          'Anthropic response was cut off before the results were complete',
-          'anthropic',
-          'max_tokens'
-        );
-      }
+      const response = await this.requestAnswer(messages, options);
 
       // Responses may start with thinking blocks; the answer is in the text block
       const content = response.content.find((block) => block.type === 'text')?.text;
@@ -146,7 +146,7 @@ export class AnthropicProvider implements AIProvider {
         throw new AIAnalysisError('Empty response from Anthropic', 'anthropic');
       }
 
-      const parsed = this.parseResponse(content);
+      const parsed = parseExtraction(content, 'anthropic');
       const processingTime = performance.now() - startTime;
 
       return {
@@ -154,7 +154,7 @@ export class AnthropicProvider implements AIProvider {
         labDate: parsed.labDate,
         labName: parsed.labName,
         patientName: options.extractPatientInfo ? parsed.patientName : undefined,
-        overallConfidence: this.calculateOverallConfidence(parsed.biomarkers),
+        overallConfidence: overallConfidence(parsed.biomarkers),
         analyzedText: text,
         warnings: parsed.warnings || [],
         modelUsed: this.config.model,
@@ -228,6 +228,77 @@ export class AnthropicProvider implements AIProvider {
   }
 
   /**
+   * The analysis answer. One Claude stopped at the answer limit before it
+   * was complete is asked again once with more room, never more than the
+   * model can write.
+   */
+  private async requestAnswer(
+    messages: AnthropicMessage[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>
+  ): Promise<AnthropicResponse> {
+    const first = this.config.maxTokens;
+    const response = await this.requestStructured(messages, options, first);
+    if (response.stop_reason !== 'max_tokens') return response;
+
+    const cap = await this.modelOutputCap(options.signal);
+    const longer = longerAnswerLimit(first, cap);
+    if (longer === undefined) throw answerCutOffError('anthropic', first, cap);
+    const again = await this.requestStructured(messages, options, longer);
+    if (again.stop_reason === 'max_tokens') throw answerCutOffError('anthropic', longer, cap);
+    return again;
+  }
+
+  /**
+   * A request for an answer in the analysis schema's shape; without it when
+   * the model does not support structured output. A refusal is an error.
+   */
+  private async requestStructured(
+    messages: AnthropicMessage[],
+    { rateLimit, signal }: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
+    maxTokens: number
+  ): Promise<AnthropicResponse> {
+    let response: AnthropicResponse | undefined;
+    if (!this.structuredRejected) {
+      try {
+        response = await this.makeRequest(
+          messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens, STRUCTURED_OUTPUT_CONFIG
+        );
+      } catch (error) {
+        if (!(error instanceof AIAnalysisError) || error.code !== STRUCTURED_OUTPUT_UNSUPPORTED) throw error;
+        this.structuredRejected = true;
+      }
+    }
+    response ??= await this.makeRequest(messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens);
+    if (response.stop_reason === 'refusal') {
+      throw new AIAnalysisError('Anthropic declined to analyze this document', 'anthropic', 'refusal');
+    }
+    return response;
+  }
+
+  /**
+   * The most the model can write, as the Models API gives it; an assumed
+   * limit when it cannot be looked up
+   */
+  private async modelOutputCap(signal?: AbortSignal): Promise<number> {
+    if (this.outputCap !== undefined) return this.outputCap;
+    try {
+      const response = await fetch(`${this.config.baseUrl}/models/${encodeURIComponent(this.config.model)}`, {
+        method: 'GET',
+        headers: { 'x-api-key': this.config.apiKey, ...ANTHROPIC_API_HEADERS },
+        signal,
+      });
+      const model = response.ok ? ((await response.json()) as { max_tokens?: unknown }) : undefined;
+      if (typeof model?.max_tokens === 'number' && model.max_tokens > 0) {
+        this.outputCap = model.max_tokens;
+        return model.max_tokens;
+      }
+    } catch {
+      // An assumed limit below
+    }
+    return FALLBACK_OUTPUT_CAP;
+  }
+
+  /**
    * Make a request to the Anthropic API
    */
   private async makeRequest(
@@ -235,7 +306,8 @@ export class AnthropicProvider implements AIProvider {
     systemPrompt: string,
     rateLimit?: RateLimitOptions,
     signal?: AbortSignal,
-    maxTokens: number = this.config.maxTokens
+    maxTokens: number = this.config.maxTokens,
+    outputConfig?: object
   ): Promise<AnthropicResponse> {
     const url = `${this.config.baseUrl}/messages`;
 
@@ -252,6 +324,7 @@ export class AnthropicProvider implements AIProvider {
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages,
         max_tokens: maxTokens,
+        ...(outputConfig ? { output_config: outputConfig } : {}),
       }),
       signal,
     }, rateLimit);
@@ -259,84 +332,14 @@ export class AnthropicProvider implements AIProvider {
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as AnthropicErrorResponse;
       const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+      const formatRejected = outputConfig !== undefined && rejectsFormat(response.status, errorData.error?.message);
       throw new AIAnalysisError(
         `Anthropic API error: ${withoutKey(errorMessage, this.config.apiKey)}`,
         'anthropic',
-        errorData.error?.type
+        formatRejected ? STRUCTURED_OUTPUT_UNSUPPORTED : errorData.error?.type
       );
     }
 
     return response.json() as Promise<AnthropicResponse>;
-  }
-
-  /**
-   * Parse the AI response into structured data
-   */
-  private parseResponse(content: string): {
-    biomarkers: ExtractedBiomarker[];
-    labDate?: string;
-    labName?: string;
-    patientName?: string;
-    warnings: string[];
-  } {
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON object found in response');
-      }
-
-      const data = JSON.parse(jsonMatch[0]);
-
-      // Validate and normalize biomarkers
-      const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
-        (b: Record<string, unknown>) => {
-          return {
-            name: String(b.name || ''),
-            ...withSpecimenHint(b),
-            ...withParsedValue(b, String(b.unit || '')),
-            referenceRange: b.referenceRange
-              ? {
-                  low: typeof (b.referenceRange as Record<string, unknown>).low === 'number'
-                    ? (b.referenceRange as Record<string, unknown>).low as number
-                    : undefined,
-                  high: typeof (b.referenceRange as Record<string, unknown>).high === 'number'
-                    ? (b.referenceRange as Record<string, unknown>).high as number
-                    : undefined,
-                  unit: rangeUnitOf((b.referenceRange as Record<string, unknown>).unit, String(b.unit || '')),
-                }
-              : undefined,
-            method: b.method ? String(b.method) : undefined,
-            confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
-            notes: b.notes ? String(b.notes) : undefined,
-          };
-        }
-      );
-
-      return {
-        biomarkers,
-        labDate: data.labDate ? String(data.labDate) : undefined,
-        labName: data.labName ? String(data.labName) : undefined,
-        patientName: data.patientName ? String(data.patientName) : undefined,
-        warnings: Array.isArray(data.warnings)
-          ? data.warnings.map((w: unknown) => String(w))
-          : [],
-      };
-    } catch (error) {
-      throw new AIAnalysisError(
-        `Failed to parse Anthropic response: ${error instanceof Error ? error.message : String(error)}`,
-        'anthropic'
-      );
-    }
-  }
-
-  /**
-   * Calculate overall confidence from individual biomarker confidences
-   */
-  private calculateOverallConfidence(biomarkers: ExtractedBiomarker[]): number {
-    if (biomarkers.length === 0) return 0;
-
-    const sum = biomarkers.reduce((acc, b) => acc + b.confidence, 0);
-    return sum / biomarkers.length;
   }
 }
