@@ -210,6 +210,31 @@ Feature: Identifying the test of each value
     And the first test to choose from should be "Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation.derived"
     And never "Fibrinogen [Mass/volume] in Platelet poor plasma by Coagulation assay"
 
+  Scenario Outline: A qualifier in brackets is asked about, the test it names first
+    Given a report prints "<name>" in <unit>
+    And the rest of the name alone is the name of "<plain>"
+    When the report is analyzed
+    Then the AI should be asked which test it is
+    And the first test to choose from should be "<test>"
+
+    Examples:
+      | name                       | unit  | plain                                                               | test                                                                     |
+      | Bilirubina (diretta)       | mg/dL | Bilirubin.total [Mass/volume] in Serum or Plasma                    | Bilirubin.direct [Mass/volume] in Serum or Plasma                        |
+      | Bilirubina (indiretta)     | mg/dL | Bilirubin.total [Mass/volume] in Serum or Plasma                    | Bilirubin.indirect [Mass/volume] in Serum or Plasma                      |
+      | Fosfatasi alcalina (ossea) | U/L   | Alkaline phosphatase [Enzymatic activity/volume] in Serum or Plasma | Alkaline phosphatase.bone [Enzymatic activity/volume] in Serum or Plasma |
+
+  Scenario Outline: Saliva named in the name is the sample
+    Given a report prints "<name>" in nmol/L
+    When the report is analyzed
+    Then the value should be saved as "Cortisol [Moles/volume] in Saliva (oral fluid)"
+    And the AI should not be asked which test it is
+
+    Examples:
+      | name                 |
+      | Cortisolo (salivare) |
+      | Cortisolo salivare   |
+      | Cortisol (saliva)    |
+
   Scenario Outline: A part after a dash naming what the catalog cannot read is asked about
     Given a report prints "<name>" in <unit>
     And no test the rest of the name fits names "<part>"
