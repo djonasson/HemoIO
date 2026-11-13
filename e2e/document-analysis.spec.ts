@@ -17,7 +17,7 @@ import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
-import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
+import { changeTest } from './steps/identification.steps';
 import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
@@ -535,14 +535,12 @@ test.describe('Document Analysis - AI Processing', () => {
     // Flagged for review
     const notes = page.getByRole('alert', { name: 'Analysis Notes' });
     await expect(notes).toContainText(
-      '1 value(s) could not be identified: choose their tests in the Saved as column'
+      '1 value(s) the AI could not settle were saved as "Not a LOINC test": check them in the Saved as column'
     );
     const unknown = reviewRow(page, 'Zorblatin');
     await expect(unknown.getByText('Not identified')).toBeVisible();
     await expect(reviewCell(unknown, 'Specimen')).toHaveText('—');
-
-    // The user chooses its test
-    await changeTest(page, unknown, NOT_A_LOINC_TEST);
+    await expect(unknown.getByRole('button', { name: /^Change test for / })).toBeVisible();
 
     await continueToConfirm(page);
     await saveResults(page);

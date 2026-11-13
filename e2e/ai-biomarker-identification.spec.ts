@@ -581,12 +581,15 @@ test.describe('Identifying the test of each value', () => {
     );
   });
 
-  test('offers the tests that fit when the AI is unsure', async ({ page }) => {
-    // Scenario: A value the AI is unsure of shows the tests to choose from
+  test('saves a value the AI is unsure of as not a LOINC test, offering the tests that fit', async ({ page }) => {
+    // Scenario: A value the AI is unsure of is saved as not a LOINC test, with the tests to choose from
     await analyzeReport(page, [GLUCOSIO]);
     const row = rowFor(page, '95');
-    await expect(savedAsCell(row)).toHaveText('No test chosen');
-    await expect(row.getByText('Choose a test')).toBeVisible();
+    await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
+    await expect(row.getByText('Not identified')).toBeVisible();
+    await expect(main(page).getByRole('alert', { name: 'Analysis Notes' })).toContainText(
+      '1 value(s) the AI could not settle were saved as "Not a LOINC test"'
+    );
 
     await row.getByRole('button', { name: /^Change test for / }).click();
     const list = testList(page);
@@ -654,7 +657,7 @@ test.describe('Identifying the test of each value', () => {
     await page.getByRole('button', { name: /lab-report-2\.pdf/ }).click();
     const rows = rowFor(page, '95');
     await expect(rows).toHaveCount(2);
-    await expect(savedAsCell(rows.nth(1))).toHaveText('No test chosen');
+    await expect(savedAsCell(rows.nth(1))).toHaveText(NOT_A_LOINC_TEST);
 
     await changeTest(page, rows.first(), BLOOD_GLUCOSE, { search: false });
 
@@ -693,7 +696,7 @@ test.describe('Identifying the test of each value', () => {
 
   test('blocks Continue until a value has a test', async ({ page }) => {
     // Scenario: A value with no test chosen blocks Continue
-    await analyzeReport(page, [GLUCOSIO]);
+    await analyzeReport(page, [GLUCOSIO], 1, { testChoice: { fails: true } });
     await page.getByRole('button', { name: 'Continue to Confirm' }).click();
     await expect(page.getByText(CHOOSE_TEST_PROBLEM)).toBeVisible();
   });
@@ -897,7 +900,6 @@ test.describe('Identifying the test of each value', () => {
 
     const ai = await analyzeReport(page, [{ ...batteri, specimenHint: 'urine' }]);
     expect(ai.choiceRequests.flat().map((asked) => asked.name)).toEqual(['Batteri']);
-    await expect(savedAsCell(rowFor(page, 'Assenti (0)'))).not.toHaveText(NOT_A_LOINC_TEST);
   });
 
   test('reads a result in words corrected to a number again as a number', async ({ page }) => {
@@ -947,7 +949,7 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
     await expect(row.getByText('Not identified')).toBeVisible();
     await expect(page.getByText(/could not be identified/)).toHaveCount(0);
-    await expect(page.getByText('1 value(s) the AI found no test for were saved as "Not a LOINC test"', { exact: false })).toBeVisible();
+    await expect(page.getByText('1 value(s) the AI could not settle were saved as "Not a LOINC test"', { exact: false })).toBeVisible();
     await expect(row.getByRole('button', { name: `Change test for ${name}` })).toBeVisible();
   });
 
@@ -1015,9 +1017,11 @@ test.describe('Identifying the test of each value', () => {
     await expect(savedAsCell(rowFor(page, '0'))).toHaveText('Nitrite [Presence] in Urine by Test strip');
   });
 
-  test('asks me the test of a value with no unit the AI is not sure of', async ({ page }) => {
-    // Scenario: I choose the test of a value with no unit the AI is not sure of
-    await analyzeReport(page, [{ name: 'Glucosio', value: 6, unit: '', confidence: 0.95 }]);
+  test('asks me the test of a value with no unit the AI could not be asked about', async ({ page }) => {
+    // Scenario: I choose the test of a value with no unit the AI could not be asked about
+    await analyzeReport(page, [{ name: 'Glucosio', value: 6, unit: '', confidence: 0.95 }], 1, {
+      testChoice: { fails: true },
+    });
     const row = rowFor(page, '6');
     await expect(savedAsCell(row)).toHaveText('No test chosen');
     await expect(row.getByText('No unit in report')).toBeVisible();
@@ -1060,7 +1064,7 @@ test.describe('Identifying the test of each value', () => {
     await removeLearnedName(page, 'glucosio (mg/dL)');
     const ai = await analyzeReport(page, [GLUCOSIO]);
     expect(ai.choiceRequests).toHaveLength(1);
-    await expect(savedAsCell(rowFor(page, '95'))).toHaveText('No test chosen');
+    await expect(savedAsCell(rowFor(page, '95'))).toHaveText(NOT_A_LOINC_TEST);
   });
 
   const TWINS: ExtractedBiomarkerFixture[] = [S_ALT, { name: 'S-ALT', value: 0.5, unit: '/100 HPF', confidence: 0.95 }];

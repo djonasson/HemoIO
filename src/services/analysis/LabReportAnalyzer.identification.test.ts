@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fixtureCatalog } from '@/test/loincFixture';
-import { analyzeLabReport, CHOICE_FAILED_NOTE, noTestFoundNote, unidentifiedNote } from './LabReportAnalyzer';
+import { analyzeLabReport, CHOICE_FAILED_NOTE, unsettledNote, unidentifiedNote } from './LabReportAnalyzer';
 import type { ExtractedBiomarker, TestChoice, TestChoiceRequest } from '../ai';
 import * as aiModule from '../ai';
 
@@ -101,7 +101,7 @@ describe('analyzeLabReport: identifying each value', () => {
       requests.map(({ id }) => ({ id, code: null, confident: true }))
     );
     expect(result.matchedBiomarkers[0]).toMatchObject({ savedAsUnknown: true });
-    expect(result.warnings).toEqual([noTestFoundNote(1)]);
+    expect(result.warnings).toEqual([unsettledNote(1)]);
   });
 
   it('leaves the candidates to the user when the AI cannot be asked', async () => {

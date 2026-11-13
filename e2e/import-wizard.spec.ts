@@ -413,7 +413,8 @@ test.describe('Import Wizard', () => {
         unit: 'mg/dL',
         confidence: 0.95,
       }));
-      await loginWithOllama(page, [{ extraction: extraction(misfits) }]);
+      // The AI cannot be asked, so each value is left for me to choose
+      await loginWithOllama(page, [{ extraction: extraction(misfits) }], {}, { fails: true });
       await analyzeToReview(page, track(createTextLabReportPdf()));
 
       await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();

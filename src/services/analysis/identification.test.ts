@@ -153,12 +153,13 @@ describe('identifyValues', () => {
     expect(choose).not.toHaveBeenCalled();
   });
 
-  it('leaves a choice the AI is unsure of to the user, its pick first among the candidates', async () => {
+  it('saves a value the AI is unsure of as "Not a LOINC test", its pick first among the candidates', async () => {
     const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
       choose: async ([request]) => [{ id: request.id, code: '15074-8', confident: false }],
     });
     expect(values[0].loincCode).toBeUndefined();
-    expect(values[0].identificationFlags).toEqual(['ambiguous']);
+    expect(values[0]).toMatchObject({ savedAsUnknown: true, identificationFlags: ['not-identified'] });
+    expect(values[0].identifiedBy).toBeUndefined();
     expect(values[0].candidates.map((c) => c.code)).toEqual(['15074-8', '14749-6']);
     // Marked, so the test list can say it was the AI's guess
     expect(values[0].aiPick).toBe('15074-8');
@@ -177,10 +178,22 @@ describe('identifyValues', () => {
     expect(values[0].analyzed?.identification.savedAsUnknown).toBe(true);
   });
 
-  it('leaves a value the AI is unsure fits no candidate to the user', async () => {
-    const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
-      choose: async ([request]) => [{ id: request.id, code: null, confident: false }],
+  it('saves a value the AI is unsure fits no candidate, or left unanswered, as "Not a LOINC test"', async () => {
+    for (const choose of [
+      async ([request]: TestChoiceRequest[]) => [{ id: request.id, code: null, confident: false }],
+      async () => [],
+    ]) {
+      const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], { choose });
+      expect(values[0]).toMatchObject({ savedAsUnknown: true, identificationFlags: ['not-identified'] });
+      expect(values[0].aiPick).toBeUndefined();
+    }
+  });
+
+  it('leaves the values it did not ask the AI about as they were', async () => {
+    const { values } = await identifyValues(catalog, [extracted('P-Glucosio', 90, 'mg/dL'), extracted('Glucosio', 5, 'mmol/L', 'blood')], {
+      choose: async () => [],
     });
+    expect(values[0]).toMatchObject({ loincCode: '2345-7', identifiedBy: 'local' });
     expect(values[0].savedAsUnknown).toBeUndefined();
   });
 
@@ -202,8 +215,9 @@ describe('identifyValues', () => {
 
 describe('toLearn', () => {
   async function analyzed(name: string, unit: string, aiCode?: string, hint?: string): Promise<MatchedBiomarker> {
+    // With no AI code, no AI to ask: the value stays the user's to decide
     const { values } = await identifyValues(catalog, [extracted(name, 5, unit, hint)], {
-      choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: aiCode !== undefined })),
+      choose: aiCode ? async (requests) => requests.map(({ id }) => ({ id, code: aiCode, confident: true })) : undefined,
     });
     return values[0];
   }

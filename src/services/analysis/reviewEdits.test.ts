@@ -20,8 +20,9 @@ const ABSENT = { text: 'Assente', kind: 'boolean', value: 0 } as const;
 /** A value as the analyzer gives it, the AI choosing `aiCode` when asked */
 async function analyzed(name: string, unit: string, aiCode?: string, specimenHint?: string): Promise<MatchedBiomarker> {
   const value = { name, value: 5, unit, confidence: 0.9, ...(specimenHint && { specimenHint }) };
+  // With no AI code, no AI to ask: the value stays the user's to decide
   const { values } = await identifyValues(catalog, [value], {
-    choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: aiCode !== undefined })),
+    choose: aiCode ? async (requests) => requests.map(({ id }) => ({ id, code: aiCode, confident: true })) : undefined,
   });
   return values[0];
 }

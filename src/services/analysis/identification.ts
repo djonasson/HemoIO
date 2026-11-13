@@ -81,8 +81,8 @@ export function isNoneFound(
   return !identification.loincCode && identification.savedAsUnknown === true && identification.identifiedBy === undefined;
 }
 
-/** Whether a value is "Not a LOINC test" because the AI was sure none of the tests offered fits, nobody else deciding it */
-export function isFoundNoneByAI(
+/** Whether a value is "Not a LOINC test" because the AI could not settle its test, nobody else deciding it */
+export function isUnsettledByAI(
   identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'identifiedBy' | 'candidates'>
 ): boolean {
   return isNoneFound(identification) && identification.candidates.length > 0;
@@ -96,28 +96,26 @@ export function needsChoice(
 }
 
 /**
- * The AI's choice applied: a confident one is the value's test, an unsure one goes first among the candidates. One
- * the AI is sure no candidate fits ("Reticolociti grado di maturazione alto", which LOINC lacks) is "Not a LOINC
- * test", as a value with none to choose from: still labelled, changeable in review, and never learned
+ * The AI's answer for a value it was asked about: a confident choice is the value's test. Anything else (unsure of
+ * its pick, unsure or sure no candidate fits, or no answer) is "Not a LOINC test", so it never blocks the import: the
+ * AI's guess goes first among the candidates, the value is labelled "Not identified", is changeable in review, and is
+ * never learned. "Reticolociti grado di maturazione alto", which LOINC lacks, is one.
  */
 function withChoice(value: MatchedBiomarker, choice: TestChoice | undefined): MatchedBiomarker {
-  if (!choice) return value;
-  if (choice.code === null) {
-    if (!choice.confident) return value;
-    const identificationFlags = (value.identificationFlags ?? []).map((flag) => (flag === 'ambiguous' ? 'not-identified' : flag));
-    return { ...value, savedAsUnknown: true, identificationFlags };
-  }
-  if (choice.confident) {
+  if (choice?.code && choice.confident) {
     return { ...value, loincCode: choice.code, identifiedBy: 'ai', identificationFlags: [] };
   }
-  const picked = value.candidates.find((candidate) => candidate.code === choice.code);
-  return picked
-    ? {
-        ...value,
-        candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)],
-        aiPick: picked.code,
-      }
-    : value;
+  const picked = choice?.code ? value.candidates.find((candidate) => candidate.code === choice.code) : undefined;
+  const identificationFlags = (value.identificationFlags ?? []).map((flag) => (flag === 'ambiguous' ? 'not-identified' : flag));
+  return {
+    ...value,
+    savedAsUnknown: true,
+    identificationFlags,
+    ...(picked && {
+      candidates: [picked, ...value.candidates.filter((candidate) => candidate !== picked)],
+      aiPick: picked.code,
+    }),
+  };
 }
 
 /** The values identified, and whether the AI could not be asked */
@@ -164,6 +162,7 @@ export async function identifyValues(
   const byId = new Map(choices.map((choice) => [choice.id, choice]));
   return {
     values: values.map((value, index) => {
+      if (!needsChoice(value)) return value;
       const chosen = withChoice(value, byId.get(String(index)));
       // Editing back to the printed name and unit restores the AI's choice too
       return chosen === value

@@ -402,18 +402,20 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the AI should be asked once, about "Glucosio" only
 
-  Scenario: A value the AI is unsure of shows the tests to choose from
+  Scenario: A value the AI is unsure of is saved as not a LOINC test, with the tests to choose from
     Given a report prints "Glucosio" in mg/dL
     And the AI is not sure which test it is
     When the report is analyzed
-    Then the row should say "No test chosen", labelled "Choose a test"
+    Then the value should be saved as "Not a LOINC test", labelled "Not identified"
+    And the analysis notes should count it among the values the AI could not settle
+    And it should not stop me from continuing
     And its test list should offer the tests that fit, each with its LOINC name and code
     When I choose "Glucose [Mass/volume] in Blood"
     Then the value should be saved as "Glucose [Mass/volume] in Blood"
     And it should carry no label that asks for a check
 
   Scenario: A value with no test chosen blocks Continue
-    Given the AI is not sure which test "Glucosio" in mg/dL is
+    Given the AI could not be asked which test "Glucosio" in mg/dL is
     When I try to continue from review
     Then I should be told that Glucosio needs a test: choose one or "Not a LOINC test"
 
@@ -606,9 +608,9 @@ Feature: Identifying the test of each value
     When the report is analyzed
     Then the value should be saved as "Nitrite [Presence] in Urine by Test strip"
 
-  Scenario: I choose the test of a value with no unit the AI is not sure of
+  Scenario: I choose the test of a value with no unit the AI could not be asked about
     Given a report prints "Glucosio" without a unit, which no test without a unit fits
-    And the AI is not sure which test it is
+    And the AI could not be asked which test it is
     When the report is analyzed
     Then the value should show "No test chosen", labelled "No unit in report"
     And I should not be able to continue until I choose its test or "Not a LOINC test"
