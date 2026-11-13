@@ -112,6 +112,14 @@ export async function pageText(page: PdfPage): Promise<string> {
   return layoutPageText(textContent.items.filter((item) => 'str' in item));
 }
 
+/** Whether a page draws an image, as a scan does */
+export async function drawsImages(page: PdfPage, pdfjsLib: typeof PdfjsLib): Promise<boolean> {
+  const operators = await page.getOperatorList();
+  return operators.fnArray.some(
+    (fn) => fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageMaskXObject
+  );
+}
+
 /** A page's text, and whether it draws images */
 async function readPage(
   pdf: PdfDocument,
@@ -120,10 +128,7 @@ async function readPage(
 ): Promise<PageExtractionResult> {
   const page = await pdf.getPage(pageNumber);
   const text = await pageText(page);
-  const operators = await page.getOperatorList();
-  const hasImages = operators.fnArray.some(
-    (fn) => fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageMaskXObject
-  );
+  const hasImages = await drawsImages(page, pdfjsLib);
   return { pageNumber, text, hasText: text.length >= MIN_TEXT_CHARS_PER_PAGE, hasImages };
 }
 
@@ -210,16 +215,6 @@ export async function extractTextFromPDF(
       `Failed to extract text from PDF: ${error instanceof Error ? error.message : String(error)}`
     );
   }
-}
-
-/**
- * Get page count from a PDF without full extraction
- *
- * @param file - PDF file to check
- * @returns Number of pages in the PDF
- */
-export async function getPageCount(file: File | ArrayBuffer): Promise<number> {
-  return withPdf(file, async (pdf) => pdf.numPages);
 }
 
 /**

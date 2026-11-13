@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   extractTextFromPDF,
-  getPageCount,
   PDFExtractionError,
 } from './pdfExtractor';
 
@@ -140,34 +139,9 @@ describe('PDF Text Extractor', () => {
       const pdf = new ArrayBuffer(8);
 
       await extractTextFromPDF(pdf);
-      await getPageCount(pdf);
 
-      expect(__openedDocuments).toHaveLength(2);
+      expect(__openedDocuments).toHaveLength(1);
       for (const doc of __openedDocuments) expect(doc.destroy).toHaveBeenCalled();
-    });
-  });
-
-  describe('getPageCount', () => {
-    it('returns page count without full extraction', async () => {
-      __setMockConfig({ numPages: 15 });
-      const mockFile = new ArrayBuffer(100);
-
-      const count = await getPageCount(mockFile);
-
-      expect(count).toBe(15);
-    });
-
-    it('handles File input', async () => {
-      __setMockConfig({ numPages: 5 });
-      const buffer = new ArrayBuffer(100);
-      const mockFile = new File([buffer], 'test.pdf');
-      // Add arrayBuffer method since jsdom may not fully support it
-      (mockFile as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer = () =>
-        Promise.resolve(buffer);
-
-      const count = await getPageCount(mockFile);
-
-      expect(count).toBe(5);
     });
   });
 

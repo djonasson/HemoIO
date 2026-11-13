@@ -2,7 +2,8 @@
  * Reading a PDF page by page, each page its own way: its own text when it
  * has some, OCR of its image when it is a scan.
  */
-import { canvasToPng, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
+import { canvasToPng, drawsImages, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
+import type * as PdfjsLib from 'pdfjs-dist';
 import { OCRError, recognizeImage, type OCRResult } from './tesseractService';
 
 /** Render scale for OCR: about 300 DPI, which Tesseract reads best (a PDF measures in 1/72 inch) */
@@ -54,14 +55,15 @@ function letterCount(text: string): number {
 
 /**
  * How well an OCR reading reads: its confidence times the share of its marks
- * in runs of two or more letters or digits. A report, even one of short
- * names and units ("Hb 14 g/dl"), is mostly such runs; a page read the wrong
- * way round is mostly single marks ("Tr oO O = © = 9 Q").
+ * in words, that is runs of two or more letters or digits, or decimals. A
+ * report, even one of short names, units and values ("Hb 14 g/dl", "5.4"),
+ * is mostly words; a page read the wrong way round is mostly single marks
+ * ("Tr oO O = © = 9 Q").
  */
 export function readingScore({ text, confidence }: Pick<OCRResult, 'text' | 'confidence'>): number {
   const marks = text.replace(/\s/gu, '').length;
   if (marks === 0) return 0;
-  const inWords = (text.match(/[\p{L}\p{N}]{2,}/gu) ?? []).join('').length;
+  const inWords = (text.match(/\p{N}+[.,]\p{N}+|[\p{L}\p{N}]{2,}/gu) ?? []).join('').length;
   return (confidence * inWords) / marks;
 }
 
@@ -95,13 +97,14 @@ async function ocrPage(
   { language, onProgress }: ReadPdfOptions
 ): Promise<PdfPageReading> {
   let best: { result: OCRResult; turned: number; score: number } | undefined;
-  for (const turn of TURNS) {
-    onProgress?.(`Rendering page ${pageNumber}/${total}`, (pageNumber - 1) / total);
+  for (const [index, turn] of TURNS.entries()) {
+    // Each turn has its share of the page, so progress never goes back for a page read again
+    const done = (share: number) => (pageNumber - 1 + (index + share) / TURNS.length) / total;
+    onProgress?.(`Rendering page ${pageNumber}/${total}`, done(0));
     const image = await renderForOcr(page, turn);
     const result = await recognizeImage(image, {
       language,
-      onProgress: (progress) =>
-        onProgress?.(`OCR: ${progress.status} (page ${pageNumber}/${total})`, (pageNumber - 1 + progress.progress) / total),
+      onProgress: (progress) => onProgress?.(`OCR: ${progress.status} (page ${pageNumber}/${total})`, done(progress.progress)),
     });
     const score = readingScore(result);
     if (!best || score > best.score) best = { result, turned: turn, score };
@@ -112,18 +115,29 @@ async function ocrPage(
   return { pageNumber, text: result.text.trim(), method: 'ocr', confidence: result.confidence, ...(turned && { turned }) };
 }
 
-/** A page's own text when it has some, else OCR of its image, unless OCR finds less than its few words */
+/**
+ * A page's own text when it has some. A page with little or none that draws
+ * an image is a scan, read by OCR, unless OCR finds no more than its own few
+ * words; one that draws no image (a blank or signature page) is not OCR'd.
+ */
 async function readOnePage(
   page: PdfPage,
+  pdfjsLib: typeof PdfjsLib,
   pageNumber: number,
   total: number,
   options: ReadPdfOptions
 ): Promise<PdfPageReading> {
   const own: PdfPageReading = { pageNumber, text: await pageText(page), method: 'pdf-text' };
   const ownLetters = letterCount(own.text);
-  if (ownLetters >= MIN_PAGE_LETTERS) return own;
-  const read = await ocrPage(page, pageNumber, total, options);
-  return letterCount(read.text) >= ownLetters ? read : own;
+  if (ownLetters >= MIN_PAGE_LETTERS || !(await drawsImages(page, pdfjsLib))) return own;
+  try {
+    const read = await ocrPage(page, pageNumber, total, options);
+    return letterCount(read.text) > ownLetters ? read : own;
+  } catch (error) {
+    // A page image that cannot be drawn keeps the page's own words
+    if (error instanceof OCRError || ownLetters === 0) throw error;
+    return own;
+  }
 }
 
 /**
@@ -136,13 +150,19 @@ async function readOnePage(
 export async function readPdf(file: File | ArrayBuffer, options: ReadPdfOptions = {}): Promise<PdfReading> {
   const { onProgress } = options;
   try {
-    return await withPdf(file, async (pdf) => {
+    return await withPdf(file, async (pdf, pdfjsLib) => {
       const total = pdf.numPages;
       const pages: PdfPageReading[] = [];
       const errors: string[] = [];
       for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
         try {
-          pages.push(await readOnePage(await pdf.getPage(pageNumber), pageNumber, total, options));
+          const page = await pdf.getPage(pageNumber);
+          try {
+            pages.push(await readOnePage(page, pdfjsLib, pageNumber, total, options));
+          } finally {
+            // Frees the page's decoded images: a long scan would otherwise hold every page at 300 DPI
+            page.cleanup();
+          }
           onProgress?.(`Extracting page ${pageNumber}/${total}`, pageNumber / total);
         } catch (pageError) {
           if (pageError instanceof OCRError) throw pageError;

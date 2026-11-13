@@ -32,6 +32,21 @@ describe('layoutPageText', () => {
     expect(layoutPageText(pieces)).toBe('WBC\t6.9\t103/µL');
   });
 
+  it('keeps small lines printed beside a large title apart', () => {
+    const pieces = [
+      at('LAB REPORT', 50, 700, 24),
+      at('Patient: X', 300, 715, 9),
+      at('Date: 2024-03-01', 300, 704, 9),
+      at('ID: 123', 300, 693, 9),
+    ];
+    expect(layoutPageText(pieces)).toBe('Patient: X\nLAB REPORT\tDate: 2024-03-01\nID: 123');
+  });
+
+  it('lays out text a maker drew with the page flipped top to bottom', () => {
+    const flipped = (str: string, x: number, y: number): PdfTextPiece => ({ str, transform: [10, 0, 0, -10, x, y], width: str.length * 5 });
+    expect(layoutPageText([flipped('95', 200, 700), flipped('Glucose', 50, 700)])).toBe('Glucose\t95');
+  });
+
   it('keeps close lines apart', () => {
     expect(layoutPageText([at('Glucose 95', 50, 700), at('Urea 30', 50, 689)])).toBe('Glucose 95\nUrea 30');
   });

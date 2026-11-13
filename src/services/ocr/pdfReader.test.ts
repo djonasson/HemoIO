@@ -133,6 +133,42 @@ describe('PDF reader', () => {
       expect(reading.text).toBe('');
     });
 
+    it('does not OCR a blank or signature page of a typed report', async () => {
+      __setMockConfig({ numPages: 2, blankPages: [2] });
+
+      const reading = await readPdf(new ArrayBuffer(100));
+
+      expect(recognizeImage).not.toHaveBeenCalled();
+      expect(reading.pages.map((page) => page.method)).toEqual(['pdf-text', 'pdf-text']);
+    });
+
+    it('keeps a scan as its own text when OCR finds nothing more', async () => {
+      __setMockConfig({ numPages: 1, isScanned: true });
+      vi.mocked(recognizeImage).mockResolvedValueOnce(ocr('', 0));
+
+      const reading = await readPdf(new ArrayBuffer(100));
+
+      expect(reading.pages).toEqual([{ pageNumber: 1, text: '', method: 'pdf-text' }]);
+    });
+
+    it('keeps the few words of its own of a page whose image cannot be drawn', async () => {
+      __setMockConfig({ numPages: 1, stampedPages: [1] });
+      vi.mocked(HTMLCanvasElement.prototype.toBlob).mockImplementation((callback: BlobCallback) => callback(null));
+
+      const reading = await readPdf(new ArrayBuffer(100));
+
+      expect(reading.pages).toEqual([{ pageNumber: 1, text: 'Page 1', method: 'pdf-text' }]);
+      expect(reading.errors).toEqual([]);
+    });
+
+    it('OCRs a scan with a page number stamped on, keeping the OCR text', async () => {
+      __setMockConfig({ numPages: 1, stampedPages: [1] });
+
+      const reading = await readPdf(new ArrayBuffer(100));
+
+      expect(reading.pages[0]).toMatchObject({ method: 'ocr', text: 'Glucose 95 mg/dL read from the scan' });
+    });
+
     it('fails when OCR cannot start, rather than leaving pages out', async () => {
       __setMockConfig({ numPages: 2, isScanned: true });
       vi.mocked(recognizeImage).mockRejectedValueOnce(new OCRError('OCR could not load'));
@@ -164,6 +200,20 @@ describe('PDF reader', () => {
       expect(onProgress).toHaveBeenCalledWith('Extracting page 1/2', 0.5);
       expect(onProgress).toHaveBeenCalledWith('Rendering page 2/2', 0.5);
       expect(onProgress).toHaveBeenLastCalledWith('Extracting page 2/2', 1);
+    });
+
+    it('never moves progress back while a page is read again turned', async () => {
+      __setMockConfig({ numPages: 1, isScanned: true });
+      vi.mocked(recognizeImage).mockImplementation(async (_image, options) => {
+        options?.onProgress?.({ status: 'recognizing text', progress: 1 });
+        return ocr('noise', 10);
+      });
+      const onProgress = vi.fn();
+
+      await readPdf(new ArrayBuffer(100), { onProgress });
+
+      const shares = onProgress.mock.calls.map(([, share]) => share as number);
+      expect(shares).toEqual([...shares].sort((a, b) => a - b));
     });
   });
 

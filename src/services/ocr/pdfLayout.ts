@@ -23,48 +23,69 @@ interface PlacedPiece {
 }
 
 interface Line {
-  bottom: number;
-  top: number;
+  /** The baseline and text height of the tallest piece on the line */
+  y: number;
+  height: number;
   pieces: PlacedPiece[];
 }
 
-/** Rows overlap this share of the shorter one's height to be one line: a raised power joins its line, the next line does not */
-const SAME_LINE_OVERLAP = 0.5;
+/** Baselines up to this share of the taller text's height apart can be one line: a raised power ("10³") joins its line */
+const SAME_LINE_SHIFT = 0.45;
+/** Pieces overlapping by more than this share of the smaller text height sit on different lines */
+const SAME_PLACE = 0.1;
 /** A gap up to this share of the text height is no gap: one word printed in pieces */
 const WORD_GAP = 0.15;
 /** A gap over this share of the text height is between columns */
 const COLUMN_GAP = 1.2;
 
-/** Upright text, the only kind laid out in lines: rotated text runs along a margin */
+/** Text running left to right, the only kind laid out in lines: rotated text runs along a margin */
 function isUpright(transform: number[]): boolean {
-  return Math.abs(transform[1]) < 1e-3 && Math.abs(transform[2]) < 1e-3 && transform[0] > 0 && transform[3] > 0;
+  // Some makers draw with the page flipped top to bottom: the text still runs left to right
+  return Math.abs(transform[1]) < 1e-3 && Math.abs(transform[2]) < 1e-3 && transform[0] > 0 && transform[3] !== 0;
 }
 
 function placed(piece: PdfTextPiece): PlacedPiece | undefined {
   const { transform } = piece;
   if (!transform || transform.length < 6 || !isUpright(transform)) return undefined;
-  const height = transform[3] || piece.height || 0;
+  const height = Math.abs(transform[3]) || piece.height || 0;
   if (height <= 0) return undefined;
   return { text: piece.str, x: transform[4], y: transform[5], width: piece.width ?? 0, height };
 }
 
-function overlap(line: Line, piece: PlacedPiece): number {
-  return Math.min(line.top, piece.y + piece.height) - Math.max(line.bottom, piece.y);
+function overlapsAcross(a: PlacedPiece, b: PlacedPiece): boolean {
+  const overlap = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  return overlap > Math.min(a.height, b.height) * SAME_PLACE;
+}
+
+/**
+ * Whether a piece is on a line: close to its baseline, and not on top of a
+ * piece already there, so small lines printed beside a large title, each
+ * below the other, stay lines of their own
+ */
+function sameLine(line: Line, piece: PlacedPiece): boolean {
+  return (
+    Math.abs(line.y - piece.y) <= Math.max(line.height, piece.height) * SAME_LINE_SHIFT &&
+    !line.pieces.some((other) => overlapsAcross(other, piece))
+  );
 }
 
 function lineText(line: Line): string {
   const pieces = [...line.pieces].sort((a, b) => a.x - b.x);
-  // The line's own text height: a raised power's small size must not count every gap as a column
-  const height = Math.max(...pieces.map((piece) => piece.height));
   let text = '';
-  let end: number | undefined;
+  let previous: PlacedPiece | undefined;
+  let end = -Infinity;
   for (const piece of pieces) {
-    if (end !== undefined) {
+    if (previous) {
+      // A gap is measured by the text either side: small text by a title keeps its spaces, and a raised power's
+      // small size does not make the next gap a column
       const gap = piece.x - end;
-      text += gap > height * COLUMN_GAP ? '\t' : gap > height * WORD_GAP ? ' ' : '';
+      const larger = Math.max(previous.height, piece.height);
+      const smaller = Math.min(previous.height, piece.height);
+      text += gap > larger * COLUMN_GAP ? '\t' : gap > smaller * WORD_GAP ? ' ' : '';
     }
     text += piece.text;
-    end = Math.max(end ?? -Infinity, piece.x + piece.width);
+    end = Math.max(end, piece.x + piece.width);
+    previous = piece;
   }
   return text.replace(/ {2,}/g, ' ').replace(/ *\t */g, '\t').trim();
 }
@@ -75,29 +96,24 @@ function lineText(line: Line): string {
  * or has no position, follows the lines in stored order.
  */
 export function layoutPageText(pieces: readonly PdfTextPiece[]): string {
-  const lines: Line[] = [];
+  const placedPieces: PlacedPiece[] = [];
   const unplaced: string[] = [];
   for (const piece of pieces) {
     if (piece.str.trim() === '') continue;
     const at = placed(piece);
-    if (!at) {
-      unplaced.push(piece.str.trim());
-      continue;
-    }
-    const line = lines.find(
-      (candidate) => overlap(candidate, at) >= Math.min(candidate.top - candidate.bottom, at.height) * SAME_LINE_OVERLAP
-    );
-    if (line) {
-      line.pieces.push(at);
-      line.bottom = Math.min(line.bottom, at.y);
-      line.top = Math.max(line.top, at.y + at.height);
-    } else {
-      lines.push({ bottom: at.y, top: at.y + at.height, pieces: [at] });
-    }
+    if (at) placedPieces.push(at);
+    else unplaced.push(piece.str.trim());
+  }
+  // The tallest text sets the lines, so a raised power or a small note finds the line of the text it belongs to
+  const lines: Line[] = [];
+  for (const at of placedPieces.sort((a, b) => b.height - a.height)) {
+    const line = lines.find((candidate) => sameLine(candidate, at));
+    if (line) line.pieces.push(at);
+    else lines.push({ y: at.y, height: at.height, pieces: [at] });
   }
   // PDF pages count up from the bottom
   const text = lines
-    .sort((a, b) => b.top - a.top)
+    .sort((a, b) => b.y - a.y)
     .map(lineText)
     .filter((line) => line !== '');
   if (unplaced.length > 0) text.push(unplaced.join(' '));

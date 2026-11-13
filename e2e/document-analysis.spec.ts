@@ -362,7 +362,7 @@ test.describe('Document Analysis - AI Processing', () => {
 
   test('keeps words printed close together one word or phrase', async ({ page }) => {
     // Scenario: Words printed close together stay one word or phrase
-    // Helvetica 12: "Glu" is 18.672 wide, "10" 13.344; Helvetica 7: "3" is 3.892
+    // Helvetica 12: "Glu" is 18.672 wide, "10" 13.344; Helvetica 7: "³" is 2.331
     const prompt = await promptForPlacedText(page, [
       { text: 'Test Laboratory - Blood Panel Report, collected 15.01.2024', x: 50, y: 750 },
       { text: 'Glu', x: 50, y: 700 },
@@ -370,7 +370,7 @@ test.describe('Document Analysis - AI Processing', () => {
       { text: '95', x: 250, y: 700 },
       { text: '10', x: 350, y: 700 },
       { text: '³', x: 363.344, y: 705, size: 7 },
-      { text: '/µL', x: 367.236, y: 700 },
+      { text: '/µL', x: 365.675, y: 700 },
     ]);
     // PDF.js gives the micro sign as the Greek mu
     expect(prompt).toMatch(/Glucose\t95\t10³\/[µμ]L/);

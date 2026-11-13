@@ -36,22 +36,30 @@ export function createPdfjsMock(): Record<string, unknown> {
     pageErrors: [] as number[],
     /** Pages that are scans, when only some are */
     scannedPages: [] as number[],
+    /** Pages with nothing on them */
+    blankPages: [] as number[],
+    /** Scans with a few words of text of their own, as a page number stamped on */
+    stampedPages: [] as number[],
     pageSize: [100, 150] as [number, number],
   };
 
   const createMockPage = (pageNum: number) => {
     const scanned = mockConfig.isScanned || mockConfig.scannedPages.includes(pageNum);
+    const blank = mockConfig.blankPages.includes(pageNum);
+    const stamped = mockConfig.stampedPages.includes(pageNum);
     const [width, height] = mockConfig.pageSize;
+    const fullText = { items: mockTextContent.items.map((item) => ({ str: `${item.str} (page ${pageNum})` })) };
     return {
       rotate: 0,
-      getTextContent: vi.fn().mockResolvedValue(
-        scanned ? mockEmptyTextContent : { items: mockTextContent.items.map((item) => ({ str: `${item.str} (page ${pageNum})` })) }
-      ),
-      getOperatorList: vi.fn().mockResolvedValue(scanned ? mockOperatorListWithImages : mockOperatorList),
+      getTextContent: vi
+        .fn()
+        .mockResolvedValue(stamped ? { items: [{ str: `Page ${pageNum}` }] } : scanned || blank ? mockEmptyTextContent : fullText),
+      getOperatorList: vi.fn().mockResolvedValue(scanned || stamped ? mockOperatorListWithImages : mockOperatorList),
       getViewport: vi.fn(({ scale, rotation = 0 }: { scale: number; rotation?: number }) =>
         rotation % 180 === 0 ? { width: width * scale, height: height * scale } : { width: height * scale, height: width * scale }
       ),
       render: vi.fn(() => ({ promise: Promise.resolve() })),
+      cleanup: vi.fn(),
     };
   };
 
@@ -102,6 +110,8 @@ export function createPdfjsMock(): Record<string, unknown> {
         throwError: false,
         pageErrors: [],
         scannedPages: [],
+        blankPages: [],
+        stampedPages: [],
         pageSize: [100, 150],
       };
     },
@@ -117,6 +127,8 @@ export interface PdfjsMockControls {
     throwError?: boolean;
     pageErrors?: number[];
     scannedPages?: number[];
+    blankPages?: number[];
+    stampedPages?: number[];
     pageSize?: [number, number];
   }) => void;
   __resetMockConfig: () => void;

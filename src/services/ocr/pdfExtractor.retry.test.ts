@@ -19,9 +19,9 @@ vi.mock('pdfjs-dist', () => {
 
 describe('PDF.js loading after a failure', () => {
   it('tries again on the next PDF', async () => {
-    const { getPageCount } = await import('./pdfExtractor');
+    const { extractTextFromPDF } = await import('./pdfExtractor');
 
-    await expect(getPageCount(new ArrayBuffer(8))).rejects.toThrow();
-    await expect(getPageCount(new ArrayBuffer(8))).resolves.toBe(2);
+    await expect(extractTextFromPDF(new ArrayBuffer(8))).rejects.toThrow();
+    await expect(extractTextFromPDF(new ArrayBuffer(8))).resolves.toMatchObject({ totalPages: 2 });
   });
 });
