@@ -12,7 +12,7 @@
  * runs; the AI mock records the text it receives.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
@@ -21,8 +21,11 @@ import { changeTest } from './steps/identification.steps';
 import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
+  createTypedAndScannedPdf,
   createTextImage,
+  createPlacedTextPdf,
   createTextPdf,
+  type PlacedText,
   expectStageShown,
   extraction,
   LAB_REPORT_LINES,
@@ -330,8 +333,71 @@ test.describe('Document Analysis - AI Processing', () => {
     expect((await renderedTexts(page)).filter((t) => t.startsWith('OCR:'))).toEqual([]);
   });
 
+  /** Analyze a one-page PDF of placed text; gives the text the AI received */
+  async function promptForPlacedText(page: Page, pieces: PlacedText[]): Promise<string> {
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(createPlacedTextPdf('table.pdf', pieces)));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+    return ai.prompts[0];
+  }
+
+  const TABLE = [
+    ['Test', 'Result', 'Unit', 'Reference'],
+    ['Glucose', '95', 'mg/dL', '70-100'],
+    ['Hemoglobin', '14.5', 'g/dL', '13.5-17.5'],
+  ];
+  const TABLE_COLUMNS = [50, 250, 350, 450];
+  /** The table, stored column by column */
+  const TABLE_PIECES: PlacedText[] = TABLE_COLUMNS.flatMap((x, column) =>
+    TABLE.map((row, i) => ({ text: row[column], x, y: 700 - i * 16 }))
+  );
+
+  test('reads a table in a text PDF row by row', async ({ page }) => {
+    // Scenario: A table in a text PDF is read row by row
+    const prompt = await promptForPlacedText(page, TABLE_PIECES);
+    expect(prompt).toContain(TABLE.map((row) => row.join('\t')).join('\n'));
+  });
+
+  test('keeps words printed close together one word or phrase', async ({ page }) => {
+    // Scenario: Words printed close together stay one word or phrase
+    // Helvetica 12: "Glu" is 18.672 wide, "10" 13.344; Helvetica 7: "³" is 2.331
+    const prompt = await promptForPlacedText(page, [
+      { text: 'Test Laboratory - Blood Panel Report, collected 15.01.2024', x: 50, y: 750 },
+      { text: 'Glu', x: 50, y: 700 },
+      { text: 'cose', x: 68.672, y: 700 },
+      { text: '95', x: 250, y: 700 },
+      { text: '10', x: 350, y: 700 },
+      { text: '³', x: 363.344, y: 705, size: 7 },
+      { text: '/µL', x: 365.675, y: 700 },
+    ]);
+    // PDF.js gives the micro sign as the Greek mu
+    expect(prompt).toMatch(/Glucose\t95\t10³\/[µμ]L/);
+  });
+
+  test('keeps text printed sideways in the margin apart from the table', async ({ page }) => {
+    // Scenario: Text printed sideways in the margin is kept apart from the table
+    const note = 'Printed by LabSystem on 15.01.2024';
+    const prompt = await promptForPlacedText(page, [{ text: note, x: 590, y: 300, size: 8, sideways: true }, ...TABLE_PIECES]);
+    const rows = TABLE.map((row) => row.join('\t')).join('\n');
+    expect(prompt).toContain(rows);
+    expect(prompt.indexOf(note)).toBeGreaterThan(prompt.indexOf(rows));
+  });
+
   test('should use OCR for scanned PDF', async ({ page }) => {
+    // Scenario: A scanned page is read at a resolution OCR reads well
     test.setTimeout(120000);
+    // The size of every image the page makes from a canvas
+    await page.addInitScript(() => {
+      const sizes: string[] = [];
+      (window as unknown as { __canvasSizes: string[] }).__canvasSizes = sizes;
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (...args: Parameters<HTMLCanvasElement['toBlob']>) {
+        sizes.push(`${this.width}x${this.height}`);
+        return toBlob.apply(this, args);
+      };
+    });
     const ai = await loginWithOllama(page);
     await goToImport(page);
     await uploadFiles(page, track(await createScannedPdf(page, 'scanned.pdf')));
@@ -343,6 +409,43 @@ test.describe('Document Analysis - AI Processing', () => {
     expect(ai.prompts).toHaveLength(1);
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
     await expectStageShown(page, /^OCR: /);
+    // The 1400 × 400 point scan at 300 DPI would be 5833 wide: no wider than A4's 3508
+    expect(await page.evaluate(() => (window as unknown as { __canvasSizes: string[] }).__canvasSizes)).toContain(
+      '3508x1003'
+    );
+  });
+
+  test('reads a report of typed and scanned pages whole', async ({ page }) => {
+    // Scenario: A report of typed and scanned pages is read whole
+    test.setTimeout(120000);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    const typed = ['Test Laboratory - Blood Panel Report', 'Collection date: 15.01.2024', 'Glucose 95 mg/dL reference 70-100'];
+    await uploadFiles(page, track(await createTypedAndScannedPdf(page, 'mixed.pdf', typed, ['Hemoglobin 14.5 g/dL'])));
+    await recordRenderedTexts(page);
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    const prompt = squash(ai.prompts[0]);
+    expect(prompt).toContain('Glucose 95 mg/dL reference 70-100');
+    expect(prompt).toContain('Hemoglobin 14.5 g/dL');
+    expect(prompt.indexOf('Glucose 95')).toBeLessThan(prompt.indexOf('Hemoglobin 14.5'));
+    // Only the scanned page is OCR'd
+    const texts = await renderedTexts(page);
+    expect(texts.some((t) => /^OCR: .*\(page 2\/2\)$/.test(t))).toBe(true);
+    expect(texts.some((t) => /^OCR: .*\(page 1\/2\)$/.test(t))).toBe(false);
+  });
+
+  test('reads a page scanned sideways turned upright', async ({ page }) => {
+    // Scenario: A page scanned sideways is read turned
+    test.setTimeout(180000);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(await createScannedPdf(page, 'sideways.pdf', LAB_REPORT_LINES, { sideways: true })));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
   });
 
   test('should handle multi-page PDF', async ({ page }) => {

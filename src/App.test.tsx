@@ -11,7 +11,7 @@ vi.mock('./services/ocr', () => ({
     png: 'image/png',
   },
   detectDocumentType: vi.fn(),
-  extractTextFromPDF: vi.fn(),
+  readPdf: vi.fn(),
   recognizeImage: vi.fn(),
 }));
 

@@ -5,6 +5,7 @@
  * Handles both text-based PDFs and detects scanned PDFs that need OCR.
  */
 
+import { layoutPageText } from './pdfLayout';
 import type * as PdfjsLib from 'pdfjs-dist';
 
 let pdfjsPromise: Promise<typeof PdfjsLib> | null = null;
@@ -32,12 +33,14 @@ function loadPdfjs(): Promise<typeof PdfjsLib> {
 }
 
 type PdfDocument = Awaited<ReturnType<typeof PdfjsLib.getDocument>['promise']>;
+/** A page of an open PDF */
+export type PdfPage = Awaited<ReturnType<PdfDocument['getPage']>>;
 
 /**
  * Open a PDF for `read`, then destroy it: an open document keeps a PDF.js
  * worker running, one per document
  */
-async function withPdf<T>(
+export async function withPdf<T>(
   file: File | ArrayBuffer,
   read: (pdf: PdfDocument, pdfjsLib: typeof PdfjsLib) => Promise<T>
 ): Promise<T> {
@@ -102,6 +105,33 @@ const MIN_TEXT_CHARS_PER_PAGE = 50;
  */
 const TEXT_PAGE_RATIO_THRESHOLD = 0.5;
 
+/** A page's own text, laid out in its printed lines */
+export async function pageText(page: PdfPage): Promise<string> {
+  const textContent = await page.getTextContent();
+  // Marked-content markers carry no text
+  return layoutPageText(textContent.items.filter((item) => 'str' in item));
+}
+
+/** Whether a page draws an image, as a scan does */
+export async function drawsImages(page: PdfPage, pdfjsLib: typeof PdfjsLib): Promise<boolean> {
+  const operators = await page.getOperatorList();
+  return operators.fnArray.some(
+    (fn) => fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageMaskXObject
+  );
+}
+
+/** A page's text, and whether it draws images */
+async function readPage(
+  pdf: PdfDocument,
+  pdfjsLib: typeof PdfjsLib,
+  pageNumber: number
+): Promise<PageExtractionResult> {
+  const page = await pdf.getPage(pageNumber);
+  const text = await pageText(page);
+  const hasImages = await drawsImages(page, pdfjsLib);
+  return { pageNumber, text, hasText: text.length >= MIN_TEXT_CHARS_PER_PAGE, hasImages };
+}
+
 /**
  * Extract text content from a PDF file
  *
@@ -126,30 +156,7 @@ export async function extractTextFromPDF(
       // Extract text from each page
       for (let pageNum = 1; pageNum <= pagesToProcess; pageNum++) {
         try {
-          const page = await pdf.getPage(pageNum);
-          const textContent = await page.getTextContent();
-
-          // Combine text items, preserving some structure
-          const textItems = textContent.items
-            .filter((item) => 'str' in item && typeof item.str === 'string')
-            .map((item) => (item as { str: string }).str);
-
-          const pageText = textItems.join(' ').trim();
-
-          // Check for images (operators that draw images)
-          const operators = await page.getOperatorList();
-          const hasImages = operators.fnArray.some(
-            (fn) =>
-              fn === pdfjsLib.OPS.paintImageXObject ||
-              fn === pdfjsLib.OPS.paintImageMaskXObject
-          );
-
-          pages.push({
-            pageNumber: pageNum,
-            text: pageText,
-            hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-            hasImages,
-          });
+          pages.push(await readPage(pdf, pdfjsLib, pageNum));
 
           if (onProgress) {
             onProgress(pageNum, totalPages);
@@ -211,114 +218,6 @@ export async function extractTextFromPDF(
 }
 
 /**
- * Quick check to determine if a PDF needs OCR
- *
- * @param file - PDF file to check
- * @returns true if the PDF likely needs OCR processing
- */
-export async function needsOCR(file: File | ArrayBuffer): Promise<boolean> {
-  const result = await extractTextFromPDF(file, {
-    quickScan: true,
-    maxPages: 5,
-  });
-  return result.isScanned;
-}
-
-/**
- * Get page count from a PDF without full extraction
- *
- * @param file - PDF file to check
- * @returns Number of pages in the PDF
- */
-export async function getPageCount(file: File | ArrayBuffer): Promise<number> {
-  return withPdf(file, async (pdf) => pdf.numPages);
-}
-
-/**
- * Extract text from a specific page range
- *
- * @param file - PDF file to extract from
- * @param startPage - First page (1-indexed)
- * @param endPage - Last page (1-indexed)
- * @param onProgress - Optional progress callback
- * @returns Extraction result for the specified pages
- */
-export async function extractPageRange(
-  file: File | ArrayBuffer,
-  startPage: number,
-  endPage: number,
-  onProgress?: (current: number, total: number) => void
-): Promise<PDFExtractionResult> {
-  return withPdf(file, async (pdf, pdfjsLib) => {
-    const totalPages = pdf.numPages;
-    const actualStart = Math.max(1, startPage);
-    const actualEnd = Math.min(totalPages, endPage);
-    const pages: PageExtractionResult[] = [];
-    const errors: string[] = [];
-
-    for (let pageNum = actualStart; pageNum <= actualEnd; pageNum++) {
-      try {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-
-        const textItems = textContent.items
-          .filter((item) => 'str' in item && typeof item.str === 'string')
-          .map((item) => (item as { str: string }).str);
-
-        const pageText = textItems.join(' ').trim();
-
-        const operators = await page.getOperatorList();
-        const hasImages = operators.fnArray.some(
-          (fn) =>
-            fn === pdfjsLib.OPS.paintImageXObject ||
-            fn === pdfjsLib.OPS.paintImageMaskXObject
-        );
-
-        pages.push({
-          pageNumber: pageNum,
-          text: pageText,
-          hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-          hasImages,
-        });
-
-        if (onProgress) {
-          onProgress(pageNum - actualStart + 1, actualEnd - actualStart + 1);
-        }
-      } catch (pageError) {
-        errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
-        pages.push({
-          pageNumber: pageNum,
-          text: '',
-          hasText: false,
-          hasImages: false,
-        });
-      }
-    }
-
-    const fullText = pages.map((p) => p.text).join('\n\n');
-    const pagesWithText = pages.filter((p) => p.hasText).length;
-    const pagesWithImages = pages.filter((p) => p.hasImages).length;
-    const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
-
-    const isScanned =
-      textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
-      pagesWithImages > 0 &&
-      fullText.length < pages.length * MIN_TEXT_CHARS_PER_PAGE;
-
-    const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
-
-    return {
-      totalPages,
-      fullText,
-      pages,
-      isScanned,
-      textConfidence,
-      errors,
-    };
-  });
-}
-
-/**
  * Error thrown when PDF extraction fails
  */
 export class PDFExtractionError extends Error {
@@ -328,51 +227,7 @@ export class PDFExtractionError extends Error {
   }
 }
 
-/**
- * Options for rendering PDF pages to images
- */
-export interface RenderPdfPagesOptions {
-  /** Render scale; 2 gives OCR enough resolution for typical lab report fonts */
-  scale?: number;
-  /** Maximum number of pages to render */
-  maxPages?: number;
-  /** Progress callback (pages rendered, pages to render) */
-  onProgress?: (current: number, total: number) => void;
-}
-
-/**
- * Render PDF pages to PNG images, e.g. so a scanned PDF can be OCR'd
- *
- * @param file - PDF file to render
- * @param options - Rendering options
- * @returns One PNG image per rendered page
- */
-export async function renderPdfPages(
-  file: File | ArrayBuffer,
-  options: RenderPdfPagesOptions = {}
-): Promise<Blob[]> {
-  const { scale = 2, maxPages, onProgress } = options;
-  return withPdf(file, async (pdf) => {
-    const pagesToRender = maxPages ? Math.min(maxPages, pdf.numPages) : pdf.numPages;
-    const images: Blob[] = [];
-
-    for (let pageNum = 1; pageNum <= pagesToRender; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-
-      await page.render({ canvas, viewport }).promise;
-      images.push(await canvasToPng(canvas));
-      onProgress?.(pageNum, pagesToRender);
-    }
-
-    return images;
-  });
-}
-
-function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
+export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);

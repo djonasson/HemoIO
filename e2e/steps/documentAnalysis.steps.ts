@@ -199,35 +199,92 @@ function streamObject(dict: string, data: Buffer): Buffer {
   ]);
 }
 
+/** A PDF page: its size in points, its content stream, and a JPEG it can draw as /Im1 */
+interface PdfPageSpec {
+  width: number;
+  height: number;
+  content: string;
+  image?: { data: Buffer; width: number; height: number };
+}
+
+/** Write a PDF of `pages`, with Helvetica as /F1 */
+function buildPdf(filename: string, pages: PdfPageSpec[]): string {
+  // 1: catalog, 2: page tree, 3: font, then each page, its content and its image
+  const objects: Buffer[] = [Buffer.alloc(0), Buffer.alloc(0)];
+  // WinAnsi, so "³" and "µ" print as themselves
+  objects.push(Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'latin1'));
+  const pageIds: number[] = [];
+  for (const { width, height, content, image } of pages) {
+    const pageId = objects.length + 1;
+    const imageId = pageId + 2;
+    pageIds.push(pageId);
+    const xObject = image ? ` /XObject << /Im1 ${imageId} 0 R >>` : '';
+    objects.push(
+      Buffer.from(
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents ${pageId + 1} 0 R /Resources << /Font << /F1 3 0 R >>${xObject} >> >>`,
+        'latin1'
+      )
+    );
+    objects.push(streamObject('', Buffer.from(content, 'latin1')));
+    if (image) {
+      objects.push(
+        streamObject(
+          `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode`,
+          image.data
+        )
+      );
+    }
+  }
+  objects[0] = Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1');
+  objects[1] = Buffer.from(
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
+    'latin1'
+  );
+  return writeTempFile(filename, assemblePdf(objects));
+}
+
+/** A letter-size page of lines of text */
+function textPage(lines: string[]): PdfPageSpec {
+  const content = ['BT', '/F1 12 Tf', '14 TL', '50 750 Td', ...lines.map((l) => `(${l}) '`), 'ET'];
+  return { width: 612, height: 792, content: content.join('\n') };
+}
+
+/** A page that is only a scan: an image of the lines, the page its size */
+async function scannedPage(page: Page, lines: string[], options: { sideways?: boolean } = {}): Promise<PdfPageSpec> {
+  const image = await renderTextImage(page, lines, 'image/jpeg', options);
+  const { width, height } = image;
+  return { width, height, content: `q ${width} 0 0 ${height} 0 0 cm /Im1 Do Q`, image };
+}
+
 /**
  * Create a text PDF with one page per entry of `pages` (each a list of lines).
  * A page with no lines is blank: a valid document with no readable text.
  */
 export function createTextPdf(filename: string, pages: string[][]): string {
-  // 1: catalog, 2: page tree, 3: font, then a page + content stream per page
-  const pageIds = pages.map((_, i) => 4 + i * 2);
-  const objects: Buffer[] = [
-    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1'),
-    Buffer.from(
-      `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
-      'latin1'
-    ),
-    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', 'latin1'),
-  ];
+  return buildPdf(filename, pages.map(textPage));
+}
 
-  pages.forEach((lines, i) => {
-    const contentId = pageIds[i] + 1;
-    objects.push(
-      Buffer.from(
-        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${contentId} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
-        'latin1'
-      )
-    );
-    const content = ['BT', '/F1 12 Tf', '14 TL', '50 750 Td', ...lines.map((l) => `(${l}) '`), 'ET'];
-    objects.push(streamObject('', Buffer.from(content.join('\n'), 'latin1')));
+/** A piece of text placed on the page: at (x, y) from the bottom left, in points */
+export interface PlacedText {
+  text: string;
+  x: number;
+  y: number;
+  /** Font size, 12 by default */
+  size?: number;
+  /** Printed upwards along the page, as a note in a margin */
+  sideways?: boolean;
+}
+
+/**
+ * Create a one-page text PDF that stores its pieces of text in the order
+ * given, wherever each is placed, as a PDF made from a table often does
+ */
+export function createPlacedTextPdf(filename: string, pieces: PlacedText[]): string {
+  const content = pieces.map(({ text, x, y, size = 12, sideways }) => {
+    const matrix = sideways ? [0, 1, -1, 0, x, y] : [1, 0, 0, 1, x, y];
+    return `BT /F1 ${size} Tf ${matrix.join(' ')} Tm (${text}) Tj ET`;
   });
-
-  return writeTempFile(filename, assemblePdf(objects));
+  return buildPdf(filename, [{ width: 612, height: 792, content: content.join('\n') }]);
 }
 
 /**
@@ -237,16 +294,24 @@ export function createTextPdf(filename: string, pages: string[][]): string {
 export async function renderTextImage(
   page: Page,
   lines: string[],
-  mimeType: 'image/png' | 'image/jpeg'
+  mimeType: 'image/png' | 'image/jpeg',
+  { sideways = false }: { sideways?: boolean } = {}
 ): Promise<{ data: Buffer; width: number; height: number }> {
   const result = await page.evaluate(
-    ({ lines, mimeType }) => {
+    ({ lines, mimeType, sideways }) => {
+      const width = 1400;
+      const height = 120 + lines.length * 70;
       const canvas = document.createElement('canvas');
-      canvas.width = 1400;
-      canvas.height = 120 + lines.length * 70;
+      // Sideways: the report turned a quarter clockwise, as a page fed into a scanner the wrong way
+      canvas.width = sideways ? height : width;
+      canvas.height = sideways ? width : height;
       const ctx = canvas.getContext('2d')!;
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (sideways) {
+        ctx.translate(height, 0);
+        ctx.rotate(Math.PI / 2);
+      }
       ctx.fillStyle = '#000000';
       ctx.font = '40px Arial, Helvetica, sans-serif';
       lines.forEach((line, i) => ctx.fillText(line, 60, 100 + i * 70));
@@ -256,7 +321,7 @@ export async function renderTextImage(
         height: canvas.height,
       };
     },
-    { lines, mimeType }
+    { lines, mimeType, sideways }
   );
 
   return {
@@ -286,26 +351,20 @@ export async function createTextImage(
 export async function createScannedPdf(
   page: Page,
   filename: string,
-  lines: string[] = LAB_REPORT_LINES
+  lines: string[] = LAB_REPORT_LINES,
+  options: { sideways?: boolean } = {}
 ): Promise<string> {
-  const image = await renderTextImage(page, lines, 'image/jpeg');
-  const { width, height } = image;
+  return buildPdf(filename, [await scannedPage(page, lines, options)]);
+}
 
-  const objects: Buffer[] = [
-    Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1'),
-    Buffer.from('<< /Type /Pages /Kids [3 0 R] /Count 1 >>', 'latin1'),
-    Buffer.from(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>`,
-      'latin1'
-    ),
-    streamObject('', Buffer.from(`q ${width} 0 0 ${height} 0 0 cm /Im1 Do Q`, 'latin1')),
-    streamObject(
-      `/Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode`,
-      image.data
-    ),
-  ];
-
-  return writeTempFile(filename, assemblePdf(objects));
+/** Create a PDF of a typed page, then a scanned one */
+export async function createTypedAndScannedPdf(
+  page: Page,
+  filename: string,
+  typedLines: string[],
+  scannedLines: string[]
+): Promise<string> {
+  return buildPdf(filename, [textPage(typedLines), await scannedPage(page, scannedLines)]);
 }
 
 /**

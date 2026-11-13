@@ -17,10 +17,10 @@ vi.mock('pdfjs-dist', () => {
 
 describe('PDF.js loading', () => {
   it('loads PDF.js only when a PDF is first read', async () => {
-    const { getPageCount } = await import('./pdfExtractor');
+    const { extractTextFromPDF } = await import('./pdfExtractor');
     expect(loaded.pdfjs).toBe(false);
 
-    await expect(getPageCount(new ArrayBuffer(8))).resolves.toBe(3);
+    await expect(extractTextFromPDF(new ArrayBuffer(8))).resolves.toMatchObject({ totalPages: 3 });
     expect(loaded.pdfjs).toBe(true);
   });
 });

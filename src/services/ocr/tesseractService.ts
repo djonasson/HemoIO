@@ -20,9 +20,9 @@ export interface OCRResult {
   text: string;
   /** Confidence score (0-100) */
   confidence: number;
-  /** Whether the image was rotated for better recognition */
+  /** Whether the image was straightened before it was read */
   wasRotated: boolean;
-  /** Detected rotation angle in degrees */
+  /** How far the image was straightened, in degrees */
   rotationAngle: number;
   /** Processing time in milliseconds */
   processingTime: number;
@@ -55,7 +55,7 @@ export interface OCROptions {
   language?: string | string[];
   /** Callback for progress updates */
   onProgress?: (progress: OCRProgress) => void;
-  /** Whether to attempt rotation correction */
+  /** Whether to straighten a page scanned askew before reading it */
   autoRotate?: boolean;
   /** PSM (Page Segmentation Mode) - affects how Tesseract analyzes the image */
   pageSegmentationMode?: PageSegmentationMode;
@@ -276,7 +276,8 @@ export async function recognizeImage(
     });
     currentLogger = progressHandler ?? null;
     try {
-      return await worker.recognize(image);
+      // Straightens a page scanned a little askew before reading it
+      return await worker.recognize(image, { rotateAuto: autoRotate });
     } finally {
       currentLogger = null;
     }
@@ -289,7 +290,7 @@ export async function recognizeImage(
     text: string;
     confidence: number;
     words?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>;
-    osd?: { rotate?: number };
+    rotateRadians?: number | null;
   };
 
   const words: OCRWord[] = (resultData.words || []).map((word) => ({
@@ -298,9 +299,9 @@ export async function recognizeImage(
     bbox: word.bbox,
   }));
 
-  // Detect rotation (Tesseract provides this in data)
-  const rotationAngle = resultData.osd?.rotate || 0;
-  const wasRotated = autoRotate && Math.abs(rotationAngle) > 5;
+  // How far the page was straightened, in degrees
+  const rotationAngle = ((resultData.rotateRadians ?? 0) * 180) / Math.PI;
+  const wasRotated = autoRotate && Math.abs(rotationAngle) > 0.1;
 
   return {
     text: resultData.text,
@@ -310,34 +311,6 @@ export async function recognizeImage(
     processingTime,
     words,
   };
-}
-
-/**
- * Perform OCR on multiple images in batch
- *
- * @param images - Array of images to process
- * @param options - OCR options
- * @returns Array of OCR results
- */
-export async function recognizeImages(
-  images: Array<File | Blob | string>,
-  options: OCROptions & {
-    onImageProgress?: (index: number, total: number, result?: OCRResult) => void;
-  } = {}
-): Promise<OCRResult[]> {
-  const { onImageProgress, ...ocrOptions } = options;
-  const results: OCRResult[] = [];
-
-  for (let i = 0; i < images.length; i++) {
-    const result = await recognizeImage(images[i], ocrOptions);
-    results.push(result);
-
-    if (onImageProgress) {
-      onImageProgress(i + 1, images.length, result);
-    }
-  }
-
-  return results;
 }
 
 /**

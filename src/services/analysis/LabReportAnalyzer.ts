@@ -8,15 +8,8 @@
  * 4. Identifying each value's LOINC test: learned, local match, then the AI
  */
 
-import {
-  OCRError,
-  detectDocumentType,
-  extractTextFromPDF,
-  recognizeImage,
-  recognizeImages,
-  renderPdfPages,
-} from '../ocr';
-import type { DocumentDetectionResult, OCRResult, PDFExtractionResult } from '../ocr';
+import { OCRError, detectDocumentType, readPdf, recognizeImage } from '../ocr';
+import type { DocumentDetectionResult, OCRResult } from '../ocr';
 import { getAIProvider, AIAnalysisError, extractedInterval, heldQualitative } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
 import {
@@ -116,6 +109,11 @@ export function unidentifiedNote(count: number): string {
  */
 export function unsettledNote(count: number): string {
   return `${count} value(s) the AI could not settle were saved as "Not a LOINC test": check them in the Saved as column`;
+}
+
+/** A warning when OCR read the text with under 70% confidence: none otherwise */
+function lowOcrConfidenceWarning(confidence: number): string[] {
+  return confidence < 70 ? [`Low OCR confidence (${Math.round(confidence)}%). Results may be inaccurate.`] : [];
 }
 
 /** Notes that the AI could not be asked to choose among the tests that fit */
@@ -264,87 +262,32 @@ export async function analyzeLabReport(
   try {
     startStage(extractionStage);
 
-    if (documentType === 'text-pdf') {
-      // Extract text directly from PDF
-      const pdfResult: PDFExtractionResult = await extractTextFromPDF(file, {
-        onProgress: (current, total) => {
-          options.onProgress?.(
-            `Extracting page ${current}/${total}`,
-            0.3 + (current / total) * 0.2
-          );
-        },
+    if (documentType === 'text-pdf' || documentType === 'scanned-pdf') {
+      // Each page as it is, its own text or OCR of its image
+      const reading = await readPdf(file, {
+        language: options.language,
+        onProgress: (message, done) => options.onProgress?.(message, 0.3 + done * 0.2),
       });
-      extractedText = pdfResult.fullText;
-      extractionMethod = 'pdf-text';
-
-      if (pdfResult.errors.length > 0) {
-        warnings.push(...pdfResult.errors);
+      extractedText = reading.text;
+      warnings.push(...reading.errors);
+      const ocrPages = reading.pages.filter((page) => page.method === 'ocr');
+      extractionMethod = ocrPages.length > 0 ? 'ocr' : 'pdf-text';
+      if (ocrPages.length > 0) {
+        const averageConfidence = ocrPages.reduce((sum, page) => sum + (page.confidence ?? 0), 0) / ocrPages.length;
+        warnings.push(...lowOcrConfidenceWarning(averageConfidence));
       }
     } else {
-      // Use OCR for scanned PDFs and images
-      if (documentType === 'scanned-pdf') {
-        // Use any embedded text layer if there is a meaningful amount of it:
-        // letters and digits, not page breaks and stray marks
-        const pdfResult = await extractTextFromPDF(file);
-        if (pdfResult.fullText.replace(/[^\p{L}\p{N}]/gu, '').length > 100) {
-          // Some text was found, use it
-          extractedText = pdfResult.fullText;
-          extractionMethod = 'pdf-text';
-          warnings.push(
-            'This appears to be a scanned PDF. Some text may be missing or inaccurate.'
-          );
-        } else {
-          // Render each page to an image and OCR it
-          const pageImages = await renderPdfPages(file, {
-            onProgress: (current, total) => {
-              options.onProgress?.(`Rendering page ${current}/${total}`, 0.3 + (current / total) * 0.05);
-            },
-          });
-          let pagesDone = 0;
-          const ocrResults = await recognizeImages(pageImages, {
-            language: options.language,
-            onProgress: (progress) => {
-              const total = pageImages.length;
-              options.onProgress?.(
-                `OCR: ${progress.status} (page ${pagesDone + 1}/${total})`,
-                0.35 + ((pagesDone + progress.progress) / total) * 0.15
-              );
-            },
-            onImageProgress: (done) => {
-              pagesDone = done;
-            },
-          });
-          extractedText = ocrResults.map((r) => r.text.trim()).filter(Boolean).join('\n\n');
-          extractionMethod = 'ocr';
+      // Image file - use OCR
+      const ocrResult: OCRResult = await recognizeImage(file, {
+        language: options.language,
+        onProgress: (progress) => {
+          options.onProgress?.(`OCR: ${progress.status}`, 0.3 + progress.progress * 0.2);
+        },
+      });
+      extractedText = ocrResult.text;
+      extractionMethod = 'ocr';
 
-          const averageConfidence =
-            ocrResults.reduce((sum, r) => sum + r.confidence, 0) / Math.max(ocrResults.length, 1);
-          if (averageConfidence < 70) {
-            warnings.push(
-              `Low OCR confidence (${Math.round(averageConfidence)}%). Results may be inaccurate.`
-            );
-          }
-        }
-      } else {
-        // Image file - use OCR
-        const ocrResult: OCRResult = await recognizeImage(file, {
-          language: options.language,
-          onProgress: (progress) => {
-            options.onProgress?.(
-              `OCR: ${progress.status}`,
-              0.3 + progress.progress * 0.2
-            );
-          },
-        });
-        extractedText = ocrResult.text;
-        extractionMethod = 'ocr';
-
-        if (ocrResult.confidence < 70) {
-          warnings.push(
-            `Low OCR confidence (${Math.round(ocrResult.confidence)}%). Results may be inaccurate.`
-          );
-        }
-      }
+      warnings.push(...lowOcrConfidenceWarning(ocrResult.confidence));
     }
 
     if (!extractedText || extractedText.trim().length < 20) {

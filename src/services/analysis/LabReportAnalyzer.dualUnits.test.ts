@@ -21,12 +21,9 @@ vi.mock('../ocr', () => ({
     confidence: 0.95,
     metadata: { isValid: true },
   }),
-  extractTextFromPDF: vi.fn().mockResolvedValue({
-    fullText: 'Referto di laboratorio con abbastanza testo per l’analisi',
-    totalPages: 1,
-    pages: [],
-    isScanned: false,
-    textConfidence: 0.9,
+  readPdf: vi.fn().mockResolvedValue({
+    text: 'Referto di laboratorio con abbastanza testo per l’analisi',
+    pages: [{ pageNumber: 1, text: 'Referto di laboratorio con abbastanza testo per l’analisi', method: 'pdf-text' }],
     errors: [],
   }),
 }));
