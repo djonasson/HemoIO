@@ -24,7 +24,7 @@ import {
   identifyValues,
   isFoundWithoutAsking,
   needsTest,
-  isFoundNoneByAI,
+  isUnsettledByAI,
   type Identification,
   type LearnedTests,
 } from './identification';
@@ -111,11 +111,11 @@ export function unidentifiedNote(count: number): string {
 }
 
 /**
- * Notes the values saved as "Not a LOINC test" because the AI was sure none
- * of the tests offered fits: it saw only a short list, so they are worth a look
+ * Notes the values saved as "Not a LOINC test" because the AI could not
+ * settle their test: unsure, or none of the short list it saw fits
  */
-export function noTestFoundNote(count: number): string {
-  return `${count} value(s) the AI found no test for were saved as "Not a LOINC test": check them in the Saved as column`;
+export function unsettledNote(count: number): string {
+  return `${count} value(s) the AI could not settle were saved as "Not a LOINC test": check them in the Saved as column`;
 }
 
 /** Notes that the AI could not be asked to choose among the tests that fit */
@@ -446,8 +446,8 @@ export async function analyzeLabReport(
 
     const unidentified = matchedBiomarkers.filter(needsTest).length;
     if (unidentified > 0) warnings.push(unidentifiedNote(unidentified));
-    const foundNone = matchedBiomarkers.filter(isFoundNoneByAI).length;
-    if (foundNone > 0) warnings.push(noTestFoundNote(foundNone));
+    const unsettled = matchedBiomarkers.filter(isUnsettledByAI).length;
+    if (unsettled > 0) warnings.push(unsettledNote(unsettled));
 
     if (duplicateConflicts.length > 0) {
       warnings.push(

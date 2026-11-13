@@ -164,8 +164,8 @@ Feature: Document Analysis
   Scenario: Handle unknown biomarkers
     Given the AI extracts a name no LOINC test fits, in a unit with common tests to choose from
     Then it should be labelled "Not identified" for user review
-    And the analysis notes should count it among the values whose test I must choose
-    And the user should be able to choose its test, or "Not a LOINC test"
+    And it should be saved as "Not a LOINC test", counted in the analysis notes as one the AI could not settle
+    And the user should be able to change its test
 
   # Unit Handling
   Scenario: Normalize extracted units

@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { openFromMenu, setupOrUnlock } from './app.steps';
-import { configureOllamaProvider, mockOllama, DEFAULT_EXTRACTION } from './ai.steps';
+import { configureOllamaProvider, mockOllama, DEFAULT_EXTRACTION, type TestChoiceMock } from './ai.steps';
 import {
   scriptOllamaChat,
   type ChatReply,
@@ -19,14 +19,15 @@ import {
 /**
  * Given I am logged into HemoIO with a (mocked) local Ollama provider, which
  * needs no API key, so the import wizard is available. Analysis requests
- * are answered by `replies`.
+ * are answered by `replies`, test choice requests by `testChoice`.
  */
 export async function loginWithOllama(
   page: Page,
   replies: ChatReply[] = [{ extraction: DEFAULT_EXTRACTION }],
-  options: OllamaChatOptions = {}
+  options: OllamaChatOptions = {},
+  testChoice: TestChoiceMock = {}
 ): Promise<OllamaChatScript> {
-  await mockOllama(page);
+  await mockOllama(page, DEFAULT_EXTRACTION, testChoice);
   const script = await scriptOllamaChat(page, replies, options);
   await page.goto('/');
   await setupOrUnlock(page);

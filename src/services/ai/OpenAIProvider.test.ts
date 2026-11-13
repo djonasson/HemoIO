@@ -440,7 +440,7 @@ describe('OpenAIProvider quota', () => {
       const many = Array.from({ length: 300 }, (_, i) => ({ ...requests[1], id: `v${i}` }));
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ choices: [{ message: { content: '{"choices":[]}' }, finish_reason: 'stop' }] }),
+        json: () => Promise.resolve({ choices: [{ message: { content: '{"choices":[{"id":"v0","code":null}]}' }, finish_reason: 'stop' }] }),
       } as Response);
 
       await new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL }).chooseTests(many);
@@ -455,16 +455,14 @@ describe('OpenAIProvider quota', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('gives no choice for an answer it cannot read', async () => {
+    it('fails an answer it cannot read, so its values are left to the user', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ choices: [{ message: { content: "not json" }, finish_reason: 'stop' }] }),
       } as Response);
 
       const provider = new OpenAIProvider({ apiKey: 'sk-test-key', model: TEST_MODEL });
-      const result = await provider.chooseTests(requests);
-
-      expect(result.map((c) => c.code)).toEqual([null, null]);
+      await expect(provider.chooseTests(requests)).rejects.toThrow('no choice to read');
     });
 
     it('reports an API error without the key', async () => {
@@ -600,7 +598,7 @@ describe('OpenAIProvider answer shape and cut-off answers', () => {
   });
 
   it('asks which tests values are for any JSON object, not in the analysis schema', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[{"id":"0","code":null}]}'));
 
     await new OpenAIProvider({ apiKey: 'sk-test-key', model: 'gpt-4.1' }).chooseTests([
       { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },
