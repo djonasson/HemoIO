@@ -709,6 +709,21 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test('merges a value given in two units when the lab cut off the decimals of one', async ({ page }) => {
+    // Scenario: Merge a value given in two units when the lab cut off the decimals of one
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Urea', value: 2.59, unit: 'mmol/L', confidence: 0.95 },
+      { name: 'Urea', value: 15, unit: 'mg/dL', confidence: 0.95 },
+    ], 1, { testChoice: aiChooses({ 'Urea|mmol/L': '22664-7', 'Urea|mg/dL': '3091-6' }) });
+
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.getByRole('cell', { name: '15', exact: true })).toBeVisible();
+    await expect(rows.getByRole('cell', { name: 'mg/dL', exact: true })).toBeVisible();
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
   test('names the saved value with its comparator when a censored value is set aside', async ({ page }) => {
     // Scenario: A value set aside as the same measurement names the saved value as it reads (import-wizard.feature)
     await openApp(page);

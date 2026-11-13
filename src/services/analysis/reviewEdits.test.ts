@@ -21,7 +21,7 @@ const ABSENT = { text: 'Assente', kind: 'boolean', value: 0 } as const;
 async function analyzed(name: string, unit: string, aiCode?: string, specimenHint?: string): Promise<MatchedBiomarker> {
   const value = { name, value: 5, unit, confidence: 0.9, ...(specimenHint && { specimenHint }) };
   const { values } = await identifyValues(catalog, [value], {
-    choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: true })),
+    choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: aiCode !== undefined })),
   });
   return values[0];
 }

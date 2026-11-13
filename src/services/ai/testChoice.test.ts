@@ -72,6 +72,14 @@ describe('parseTestChoices', () => {
     expect(result[1]).toEqual({ id: 'b', code: null, confident: false });
   });
 
+  it('keeps whether the model is sure none of the candidates fits', () => {
+    const raw = { choices: [{ id: 'a', code: null, confident: true }, { id: 'b', code: null, confident: false }] };
+    expect(parseTestChoices(raw, requests)).toEqual([
+      { id: 'a', code: null, confident: true },
+      { id: 'b', code: null, confident: false },
+    ]);
+  });
+
   it('is not confident unless the model said so with a boolean', () => {
     const raw = { choices: [{ id: 'a', code: '2345-7', confident: 'yes' }] };
     expect(parseTestChoices(raw, requests)[0]).toEqual({ id: 'a', code: '2345-7', confident: false });

@@ -565,6 +565,14 @@ Feature: Identifying the test of each value
     And the analysis notes should not count it among the values whose test I must choose
     And I can still choose a test for it
 
+  Scenario: A value the AI is sure no offered test fits is saved as "Not a LOINC test" without asking
+    Given a report prints "Reticolociti grado di maturazione alto" in %, a fraction LOINC has no test for
+    And the AI is sure none of the tests offered for it fits
+    When the report is analyzed
+    Then the value should be saved as "Not a LOINC test", labelled "Not identified"
+    And the analysis notes should not count it among the values whose test I must choose
+    And I can still choose a test for it
+
   Scenario: A renamed "Not a LOINC test" and later reports of its wording form one series
     Given a report prints "Zorblatina" in mg/dL, which no LOINC test fits
     When I rename it "Zorb", choose "Not a LOINC test" for it and save the import

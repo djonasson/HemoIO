@@ -54,6 +54,8 @@ describe('the test choice prompt', () => {
   it('tells the model to choose only from the listed codes, or null, and when to doubt', () => {
     expect(TEST_CHOICE_SYSTEM_PROMPT).toMatch(/ONLY a code from/);
     expect(TEST_CHOICE_SYSTEM_PROMPT).toContain('null');
+    // A null is sure (no candidate fits: saved as not a LOINC test) or unsure (left to the user)
+    expect(TEST_CHOICE_SYSTEM_PROMPT).toMatch(/null.*"confident" true when you are sure none of the candidates fits/);
     expect(TEST_CHOICE_SYSTEM_PROMPT).toMatch(/"confident" to false when two or more candidates fit/);
   });
 

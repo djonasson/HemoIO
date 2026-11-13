@@ -165,6 +165,25 @@ describe('identifyValues', () => {
     expect(values[0].analyzed?.identification.aiPick).toBe('15074-8');
   });
 
+  it('saves a value the AI is sure none of the candidates fits as "Not a LOINC test", still labelled and changeable', async () => {
+    const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
+      choose: async ([request]) => [{ id: request.id, code: null, confident: true }],
+    });
+    expect(values[0]).toMatchObject({ savedAsUnknown: true, identificationFlags: ['not-identified'] });
+    expect(values[0].loincCode).toBeUndefined();
+    // Nobody decided it: never learned
+    expect(values[0].identifiedBy).toBeUndefined();
+    expect(values[0].candidates).toHaveLength(2);
+    expect(values[0].analyzed?.identification.savedAsUnknown).toBe(true);
+  });
+
+  it('leaves a value the AI is unsure fits no candidate to the user', async () => {
+    const { values } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {
+      choose: async ([request]) => [{ id: request.id, code: null, confident: false }],
+    });
+    expect(values[0].savedAsUnknown).toBeUndefined();
+  });
+
   it('leaves the candidates for the user with no AI to ask', async () => {
     const { values, choiceFailed } = await identifyValues(catalog, [extracted('Glucosio', 5, 'mmol/L', 'blood')], {});
     expect(choiceFailed).toBe(false);
@@ -184,7 +203,7 @@ describe('identifyValues', () => {
 describe('toLearn', () => {
   async function analyzed(name: string, unit: string, aiCode?: string, hint?: string): Promise<MatchedBiomarker> {
     const { values } = await identifyValues(catalog, [extracted(name, 5, unit, hint)], {
-      choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: true })),
+      choose: async (requests) => requests.map(({ id }) => ({ id, code: aiCode ?? null, confident: aiCode !== undefined })),
     });
     return values[0];
   }

@@ -23,14 +23,16 @@ import type { MatchedBiomarker } from './LabReportAnalyzer';
 const RELATIVE_TOLERANCE = 0.02;
 
 /**
- * Half the last reported digit: how far rounding can have moved a value. A
- * small whole value counts as printed with one decimal (an HbA1c "6.0 %"
- * reaches the analyzer as 6): labs print small values with decimals.
+ * The last reported digit: how far printing can have moved a value, as labs
+ * round some values and cut the decimals off others (urea 2.59 mmol/L,
+ * 15.56 mg/dL, printed as 15). A small whole value counts as printed with
+ * one decimal (an HbA1c "6.0 %" reaches the analyzer as 6): labs print
+ * small values with decimals.
  */
-function roundingAllowance(value: number): number {
+function printingAllowance(value: number): number {
   const decimals = (String(value).split('.')[1] ?? '').length;
   const printed = decimals === 0 && Math.abs(value) < 10 ? 1 : decimals;
-  return 0.5 * 10 ** -printed;
+  return 10 ** -printed;
 }
 
 /**
@@ -63,7 +65,7 @@ export interface ComparableValue {
   comparison?: number;
   /** Rounded value in the group's unit, shown in conflict messages */
   converted?: number;
-  /** How far the lab's rounding can have moved the value, in the group's unit */
+  /** How far the lab's printing (rounding or cutting off) can have moved the value, in the group's unit */
   allowance: number;
 }
 
@@ -105,7 +107,7 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
       biomarker,
       comparison: biomarker.value,
       converted: biomarker.value,
-      allowance: roundingAllowance(biomarker.value),
+      allowance: printingAllowance(biomarker.value),
     };
   }
   if (!substance || !canConvert(substance, biomarker.unit, unit)) return { biomarker, allowance: 0 };
@@ -113,7 +115,7 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
     const convert = (value: number, precision?: number): number =>
       convertValue(substance, value, biomarker.unit, unit, precision).convertedValue;
     const comparison = convert(biomarker.value, COMPARISON_PRECISION);
-    const step = roundingAllowance(biomarker.value);
+    const step = printingAllowance(biomarker.value);
     return {
       biomarker,
       comparison,
@@ -132,7 +134,8 @@ export function comparable(biomarker: MatchedBiomarker, { substance, unit }: Gro
  * The tolerance is relative: an absolute allowance would treat small values
  * that differ substantially (e.g. creatinine 0.76 vs 1.5 mg/dL) as the same.
  * Values reported in different units may also differ by the rounding of each
- * (urea 3.06 mmol/L is 18.4 mg/dL, reported as 18). Anything outside is
+ * or its cutting off (urea 3.06 mmol/L is 18.4 mg/dL, reported as 18; 2.59 mmol/L is
+ * 15.56 mg/dL, reported as 15). Anything outside is
  * flagged for review rather than merged: a borderline difference costs a
  * review, not data.
  */
