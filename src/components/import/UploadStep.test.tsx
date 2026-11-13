@@ -95,4 +95,21 @@ describe('UploadStep', () => {
 
     expect(screen.getByText(/Maximum file size: 50MB/i)).toBeInTheDocument();
   });
+
+  it('lists the files chosen before, passing them on as they were', () => {
+    const chosen = {
+      file: new File(['x'], 'kept.pdf', { type: 'application/pdf' }),
+      id: 'upload_kept',
+      formattedSize: '1 B',
+    };
+    render(
+      <TestWrapper>
+        <UploadStep {...defaultProps} initialFiles={[chosen]} />
+      </TestWrapper>
+    );
+
+    expect(screen.getByText('kept.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze (1)' }));
+    expect(defaultProps.onComplete).toHaveBeenCalledWith([chosen]);
+  });
 });

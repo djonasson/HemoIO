@@ -217,6 +217,104 @@ test.describe('Import Wizard', () => {
       await expect(main(page).getByRole('button', { name: /report-b\.pdf/ })).toBeVisible();
       await expect(main(page).getByText('report-a.pdf')).toBeHidden();
     });
+
+    /** A lab report whose text, and so its prompt, names the lab `lab` */
+    function labReport(fileName: string, lab: string): string {
+      return track(createTextPdf(fileName, [[`${lab} - Blood Panel Report`, ...LAB_REPORT_LINES.slice(1)]]));
+    }
+
+    const reviewResultsButton = (page: Page) => main(page).getByRole('button', { name: /^Review Results/ });
+    const backButton = (page: Page) => main(page).getByRole('button', { name: 'Back', exact: true });
+    const labNames = (page: Page) => main(page).getByRole('textbox', { name: 'Lab Name' });
+
+    test('retries a failed file on its own, keeping the review edits of the other', async ({ page }) => {
+      const ai = await loginWithOllama(page, [
+        { status: 500, error: 'model crashed' },
+        { extraction: DEFAULT_EXTRACTION },
+      ]);
+      await goToImport(page);
+      await uploadFiles(page, [labReport('report-a.pdf', 'Alpha Lab'), labReport('report-b.pdf', 'Beta Lab')]);
+      await startAnalysis(page);
+      await expectAnalysisFinished(page);
+
+      // Only the failed file can be retried
+      await expect(page.getByRole('alert', { name: 'Some Files Failed' })).toContainText(
+        'You can retry a failed file, or continue with the successful files.'
+      );
+      await expect(main(page).getByRole('button', { name: 'Retry report-b.pdf' })).toHaveCount(0);
+      const retry = main(page).getByRole('button', { name: 'Retry report-a.pdf' });
+      await expect(retry).toBeVisible();
+
+      // Review the file that was analysed, and edit it
+      await reviewResultsButton(page).click();
+      await labNames(page).fill('Beta Lab, Ward 2');
+
+      // Back on the analysis, retry the failed file: only it goes to the AI again
+      await backButton(page).click();
+      await expect(main(page).getByText('Processing complete')).toBeVisible();
+      await retry.click();
+      await expectAnalysisFinished(page);
+      expect(ai.prompts).toHaveLength(3);
+      expect(ai.prompts[2]).toContain('Alpha Lab');
+      await expect(analysisItem(page, 'report-a.pdf')).not.toContainText('model crashed');
+      await expect(page.getByRole('alert', { name: 'Some Files Failed' })).toBeHidden();
+      await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText('from 2 file(s)');
+
+      // Both are reviewed, in upload order, the edit kept
+      await reviewResultsButton(page).click();
+      await expect(main(page).getByText('4 biomarker(s) from 2 file(s)')).toBeVisible();
+      const files = main(page).getByRole('button', { name: /report-[ab]\.pdf/ });
+      await expect(files.nth(0)).toContainText('report-a.pdf');
+      await expect(files.nth(1)).toContainText('report-b.pdf');
+      await files.nth(1).click();
+      await expect(labNames(page).nth(1)).toHaveValue('Beta Lab, Ward 2');
+    });
+
+    test('going back from review shows the finished analysis and keeps the review edits', async ({ page }) => {
+      const ai = await loginWithOllama(page);
+      await analyzeToReview(page, track(createTextLabReportPdf()));
+      await labNames(page).fill('City Hospital Lab');
+
+      await backButton(page).click();
+      await expect(main(page).getByText('Processing complete')).toBeVisible();
+      await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText(
+        'Successfully extracted 2 biomarker values from 1 file(s).'
+      );
+      await expect(main(page).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+
+      await reviewResultsButton(page).click();
+      await expect(labNames(page)).toHaveValue('City Hospital Lab');
+      expect(ai.prompts).toHaveLength(1);
+    });
+
+    test('analyses only the files added, and drops the files removed', async ({ page }) => {
+      const ai = await loginWithOllama(page);
+      await goToImport(page);
+      await uploadFiles(page, labReport('report-a.pdf', 'Alpha Lab'));
+      await startAnalysis(page);
+      await expectAnalysisFinished(page);
+
+      // The files chosen are still there; only the added one is analysed
+      await backButton(page).click();
+      await expect(main(page).getByText('report-a.pdf')).toBeVisible();
+      await uploadFiles(page, labReport('report-b.pdf', 'Beta Lab'));
+      await startAnalysis(page);
+      await expectAnalysisFinished(page);
+      expect(ai.prompts).toHaveLength(2);
+      expect(ai.prompts[1]).toContain('Beta Lab');
+      await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText('from 2 file(s)');
+
+      // A removed file is no longer analysed or reviewed
+      await backButton(page).click();
+      await main(page).getByRole('button', { name: 'Remove report-a.pdf' }).click();
+      await startAnalysis(page);
+      await expectAnalysisFinished(page);
+      await expect(analysisItem(page, 'report-a.pdf')).toHaveCount(0);
+      await expect(analysisItem(page, 'report-b.pdf')).toBeVisible();
+      await reviewResultsButton(page).click();
+      await expect(main(page).getByText('2 biomarker(s) from 1 file(s)')).toBeVisible();
+      expect(ai.prompts).toHaveLength(2);
+    });
   });
 
   test.describe('Review Step', () => {

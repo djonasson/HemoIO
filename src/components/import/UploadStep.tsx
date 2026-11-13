@@ -48,6 +48,8 @@ export interface UploadedFile {
  * Props for UploadStep
  */
 export interface UploadStepProps {
+  /** Files chosen before, listed again when the user comes back to this step */
+  initialFiles?: UploadedFile[];
   /** Callback when files are ready to analyze */
   onComplete: (files: UploadedFile[]) => void;
   /** Callback when upload is cancelled */
@@ -86,8 +88,12 @@ function getFileIcon(file: File) {
 /**
  * Upload Step - file selection and upload
  */
-export function UploadStep({ onComplete, onCancel }: UploadStepProps): React.JSX.Element {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+export function UploadStep({
+  initialFiles = [],
+  onComplete,
+  onCancel,
+}: UploadStepProps): React.JSX.Element {
+  const [files, setFiles] = useState<UploadedFile[]>(initialFiles);
   const [error, setError] = useState<string | null>(null);
 
   // Handle file drop
