@@ -160,14 +160,14 @@ export async function identifyValues(
     return { values, choiceFailed: true };
   }
   const byId = new Map(choices.map((choice) => [choice.id, choice]));
+  const asked = new Set(requests.map(({ id }) => id));
   return {
     values: values.map((value, index) => {
-      if (!needsChoice(value)) return value;
-      const chosen = withChoice(value, byId.get(String(index)));
+      const id = String(index);
+      if (!asked.has(id)) return value;
+      const chosen = withChoice(value, byId.get(id));
       // Editing back to the printed name and unit restores the AI's choice too
-      return chosen === value
-        ? value
-        : { ...chosen, analyzed: { name: value.name, unit: value.unit, identification: identificationOf(chosen) } };
+      return { ...chosen, analyzed: { name: value.name, unit: value.unit, identification: identificationOf(chosen) } };
     }),
     choiceFailed: false,
   };
