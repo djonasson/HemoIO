@@ -34,7 +34,7 @@ test.describe('A page that fails', () => {
   });
 
   test('tries the failed page anew', async ({ page }) => {
-    // Scenario: Opening the failed page again tries it anew
+    // Scenario: "Try again" tries the failed page anew
     await makeFail(page, 'trends');
     await openFromMenu(page, 'Trends');
     await expect(failure(page)).toBeVisible();

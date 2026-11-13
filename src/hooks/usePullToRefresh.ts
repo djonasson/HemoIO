@@ -7,6 +7,20 @@ export const PULL_DISTANCE = 80;
 export type PullState = 'idle' | 'pulling' | 'ready';
 
 /**
+ * Whether a touch began where dragging down scrolls something else, not the
+ * page: in a dialog, while the page is locked for one (a drawer, a modal),
+ * or in an area scrolled down from its own top
+ */
+function startsInOtherScroller(target: EventTarget | null): boolean {
+  if (document.body.hasAttribute('data-scroll-locked')) return true;
+  for (let node = target instanceof Element ? target : null; node; node = node.parentElement) {
+    if (node.matches('[role="dialog"], [aria-modal="true"]')) return true;
+    if (node !== document.documentElement && node !== document.body && node.scrollTop > 0) return true;
+  }
+  return false;
+}
+
+/**
  * Pull the page down from its top on a touch screen to refresh: `onRefresh`
  * (kept stable by the caller) runs on release once the pull went
  * PULL_DISTANCE down. The browser's own pull-to-reload is turned off in
@@ -28,7 +42,9 @@ export function usePullToRefresh(onRefresh: () => void, enabled: boolean): PullS
     };
     const onStart = (event: TouchEvent): void => {
       // Only a pull that starts at the top of the page, with one finger
-      if (window.scrollY <= 0 && event.touches.length === 1) startY = event.touches[0].clientY;
+      if (window.scrollY <= 0 && event.touches.length === 1 && !startsInOtherScroller(event.target)) {
+        startY = event.touches[0].clientY;
+      }
     };
     const onMove = (event: TouchEvent): void => {
       if (startY === undefined) return;
@@ -46,6 +62,8 @@ export function usePullToRefresh(onRefresh: () => void, enabled: boolean): PullS
     window.addEventListener('touchend', onEnd);
     window.addEventListener('touchcancel', stop);
     return () => {
+      // Turned off mid-pull: no pull is under way any more
+      setState('idle');
       window.removeEventListener('touchstart', onStart);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);

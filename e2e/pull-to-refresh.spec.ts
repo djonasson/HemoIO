@@ -31,6 +31,21 @@ async function pullDown(page: Page, distance: number): Promise<void> {
   }, distance);
 }
 
+/** How many times HemoIO has said it is refreshing from the folder, counted from now */
+async function watchRefreshes(page: Page): Promise<() => Promise<number>> {
+  await page.evaluate(() => {
+    const win = window as unknown as { __refreshes: number };
+    win.__refreshes = 0;
+    let saying = false;
+    new MutationObserver(() => {
+      const now = document.body.innerText.includes('Refreshing from the folder…');
+      if (now && !saying) win.__refreshes += 1;
+      saying = now;
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
+  return () => page.evaluate(() => (window as unknown as { __refreshes: number }).__refreshes);
+}
+
 test.describe('Pulling down', () => {
   test('never reloads the page', async ({ page }) => {
     // Scenario: Pulling down never reloads the page
@@ -78,26 +93,18 @@ test.describe('Pulling down with a folder copy', () => {
       ancestors: await ancestryOfFolderCopy(page, TEST_PASSWORD),
     });
     const before = await syncAttempts(page);
+    const refreshes = await watchRefreshes(page);
     await pullDown(page, 200);
+    // Told it is refreshing from the folder
+    await expect.poll(refreshes).toBe(1);
     await expect.poll(() => syncAttempts(page)).toBeGreaterThan(before);
     await expect(page.getByText('Other Device Clinic')).toBeVisible();
     await expectUnlocked(page);
   });
 
   test('a short pull does nothing', async ({ page }) => {
-    // Scenario: A short pull, or one from further down the page, does nothing
-    // Every time HemoIO says it is refreshing
-    await page.evaluate(() => {
-      const win = window as unknown as { __refreshes: number };
-      win.__refreshes = 0;
-      let saying = false;
-      new MutationObserver(() => {
-        const now = document.body.innerText.includes('Refreshing from the folder…');
-        if (now && !saying) win.__refreshes += 1;
-        saying = now;
-      }).observe(document.body, { subtree: true, childList: true, characterData: true });
-    });
-    const refreshes = () => page.evaluate(() => (window as unknown as { __refreshes: number }).__refreshes);
+    // Scenario: A short pull does nothing
+    const refreshes = await watchRefreshes(page);
     await pullDown(page, 40);
     // Then a full pull: its refresh is the only one
     await pullDown(page, 200);

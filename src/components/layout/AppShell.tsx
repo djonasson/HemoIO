@@ -515,8 +515,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
-          {/* A page that fails says so instead of blanking the app; another page, or a new visit, tries anew */}
-          <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
           <PullToRefreshStatus enabled={canRefresh} refreshing={refreshing} onRefresh={refreshFromFolder} />
           <SetAsideBanner
             total={setAsideRecords.summary.total}
@@ -527,6 +525,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             onSnapshot={setAsideRecords.snapshot}
             onDelete={setAsideRecords.remove}
           />
+          {/* A page that fails says so instead of blanking the app; another page, or a new visit, tries anew */}
+          <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
           {children ?? (
             <MainContent
               view={activeView}

@@ -20,7 +20,7 @@ Feature: Refresh from the folder without reloading
     And the lab result from the other device should be shown
     And HemoIO should stay unlocked
 
-  Scenario: A short pull, or one from further down the page, does nothing
+  Scenario: A short pull does nothing
     Given HemoIO keeps a copy of my data in a folder
     When I pull the page down only a little
     Then HemoIO should not refresh from the folder

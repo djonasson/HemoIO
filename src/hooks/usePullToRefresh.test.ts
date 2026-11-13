@@ -2,16 +2,16 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { PULL_DISTANCE, usePullToRefresh } from './usePullToRefresh';
 
-function touch(type: string, clientY?: number): void {
-  const event = new Event(type) as Event & { touches: { clientY: number }[] };
+function touch(type: string, clientY?: number, target: EventTarget = window): void {
+  const event = new Event(type, { bubbles: true }) as Event & { touches: { clientY: number }[] };
   Object.defineProperty(event, 'touches', { value: clientY === undefined ? [] : [{ clientY }] });
   act(() => {
-    window.dispatchEvent(event);
+    target.dispatchEvent(event);
   });
 }
 
-function pull(from: number, to: number): void {
-  touch('touchstart', from);
+function pull(from: number, to: number, target?: EventTarget): void {
+  touch('touchstart', from, target);
   touch('touchmove', to);
   touch('touchend');
 }
@@ -67,6 +67,34 @@ describe('usePullToRefresh', () => {
     const { result } = renderHook(() => usePullToRefresh(onRefresh, false));
     pull(100, 100 + PULL_DISTANCE * 2);
     expect(onRefresh).not.toHaveBeenCalled();
+    expect(result.current).toBe('idle');
+  });
+
+  it('does not refresh on a pull in a dialog, on a locked page, or in an area scrolled down', () => {
+    const onRefresh = vi.fn();
+    renderHook(() => usePullToRefresh(onRefresh, true));
+    const dialog = document.body.appendChild(document.createElement('div'));
+    dialog.setAttribute('role', 'dialog');
+    pull(100, 100 + PULL_DISTANCE * 2, dialog.appendChild(document.createElement('p')));
+    const list = document.body.appendChild(document.createElement('div'));
+    list.scrollTop = 50;
+    Object.defineProperty(list, 'scrollTop', { value: 50 });
+    pull(100, 100 + PULL_DISTANCE * 2, list.appendChild(document.createElement('p')));
+    document.body.setAttribute('data-scroll-locked', '1');
+    pull(100, 100 + PULL_DISTANCE * 2);
+    document.body.removeAttribute('data-scroll-locked');
+    expect(onRefresh).not.toHaveBeenCalled();
+    dialog.remove();
+    list.remove();
+  });
+
+  it('forgets a pull under way when turned off', () => {
+    const onRefresh = vi.fn();
+    const { result, rerender } = renderHook(({ on }) => usePullToRefresh(onRefresh, on), { initialProps: { on: true } });
+    touch('touchstart', 100);
+    touch('touchmove', 100 + PULL_DISTANCE);
+    rerender({ on: false });
+    rerender({ on: true });
     expect(result.current).toBe('idle');
   });
 });

@@ -15,7 +15,7 @@ Feature: A page that fails says what went wrong
     When I open the Timeline from the menu
     Then the Timeline should be shown
 
-  Scenario: Opening the failed page again tries it anew
+  Scenario: "Try again" tries the failed page anew
     Given the Trends page fails while it is shown
     And I opened Trends from the menu and saw that it could not be shown
     When the Trends page no longer fails
