@@ -12,7 +12,7 @@
  * runs; the AI mock records the text it receives.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { DEFAULT_EXTRACTION } from './steps/ai.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
@@ -22,7 +22,9 @@ import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
   createTextImage,
+  createPlacedTextPdf,
   createTextPdf,
+  type PlacedText,
   expectStageShown,
   extraction,
   LAB_REPORT_LINES,
@@ -328,6 +330,58 @@ test.describe('Document Analysis - AI Processing', () => {
 
     // Embedded text is used directly: no OCR
     expect((await renderedTexts(page)).filter((t) => t.startsWith('OCR:'))).toEqual([]);
+  });
+
+  /** Analyze a one-page PDF of placed text; gives the text the AI received */
+  async function promptForPlacedText(page: Page, pieces: PlacedText[]): Promise<string> {
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(createPlacedTextPdf('table.pdf', pieces)));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+    return ai.prompts[0];
+  }
+
+  const TABLE = [
+    ['Test', 'Result', 'Unit', 'Reference'],
+    ['Glucose', '95', 'mg/dL', '70-100'],
+    ['Hemoglobin', '14.5', 'g/dL', '13.5-17.5'],
+  ];
+  const TABLE_COLUMNS = [50, 250, 350, 450];
+  /** The table, stored column by column */
+  const TABLE_PIECES: PlacedText[] = TABLE_COLUMNS.flatMap((x, column) =>
+    TABLE.map((row, i) => ({ text: row[column], x, y: 700 - i * 16 }))
+  );
+
+  test('reads a table in a text PDF row by row', async ({ page }) => {
+    // Scenario: A table in a text PDF is read row by row
+    const prompt = await promptForPlacedText(page, TABLE_PIECES);
+    expect(prompt).toContain(TABLE.map((row) => row.join('\t')).join('\n'));
+  });
+
+  test('keeps words printed close together one word or phrase', async ({ page }) => {
+    // Scenario: Words printed close together stay one word or phrase
+    // Helvetica 12: "Glu" is 18.672 wide, "10" 13.344; Helvetica 7: "3" is 3.892
+    const prompt = await promptForPlacedText(page, [
+      { text: 'Test Laboratory - Blood Panel Report, collected 15.01.2024', x: 50, y: 750 },
+      { text: 'Glu', x: 50, y: 700 },
+      { text: 'cose', x: 68.672, y: 700 },
+      { text: '95', x: 250, y: 700 },
+      { text: '10', x: 350, y: 700 },
+      { text: '³', x: 363.344, y: 705, size: 7 },
+      { text: '/µL', x: 367.236, y: 700 },
+    ]);
+    // PDF.js gives the micro sign as the Greek mu
+    expect(prompt).toMatch(/Glucose\t95\t10³\/[µμ]L/);
+  });
+
+  test('keeps text printed sideways in the margin apart from the table', async ({ page }) => {
+    // Scenario: Text printed sideways in the margin is kept apart from the table
+    const note = 'Printed by LabSystem on 15.01.2024';
+    const prompt = await promptForPlacedText(page, [{ text: note, x: 590, y: 300, size: 8, sideways: true }, ...TABLE_PIECES]);
+    const rows = TABLE.map((row) => row.join('\t')).join('\n');
+    expect(prompt).toContain(rows);
+    expect(prompt.indexOf(note)).toBeGreaterThan(prompt.indexOf(rows));
   });
 
   test('should use OCR for scanned PDF', async ({ page }) => {

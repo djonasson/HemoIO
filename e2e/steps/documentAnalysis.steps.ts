@@ -199,23 +199,21 @@ function streamObject(dict: string, data: Buffer): Buffer {
   ]);
 }
 
-/**
- * Create a text PDF with one page per entry of `pages` (each a list of lines).
- * A page with no lines is blank: a valid document with no readable text.
- */
-export function createTextPdf(filename: string, pages: string[][]): string {
+/** A PDF of one page per content stream (its operators, one per entry), all in Helvetica as /F1 */
+function createPdf(filename: string, contents: string[][]): string {
   // 1: catalog, 2: page tree, 3: font, then a page + content stream per page
-  const pageIds = pages.map((_, i) => 4 + i * 2);
+  const pageIds = contents.map((_, i) => 4 + i * 2);
   const objects: Buffer[] = [
     Buffer.from('<< /Type /Catalog /Pages 2 0 R >>', 'latin1'),
     Buffer.from(
-      `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
+      `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${contents.length} >>`,
       'latin1'
     ),
-    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', 'latin1'),
+    // WinAnsi, so "³" and "µ" print as themselves
+    Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 'latin1'),
   ];
 
-  pages.forEach((lines, i) => {
+  contents.forEach((content, i) => {
     const contentId = pageIds[i] + 1;
     objects.push(
       Buffer.from(
@@ -223,11 +221,45 @@ export function createTextPdf(filename: string, pages: string[][]): string {
         'latin1'
       )
     );
-    const content = ['BT', '/F1 12 Tf', '14 TL', '50 750 Td', ...lines.map((l) => `(${l}) '`), 'ET'];
     objects.push(streamObject('', Buffer.from(content.join('\n'), 'latin1')));
   });
 
   return writeTempFile(filename, assemblePdf(objects));
+}
+
+/**
+ * Create a text PDF with one page per entry of `pages` (each a list of lines).
+ * A page with no lines is blank: a valid document with no readable text.
+ */
+export function createTextPdf(filename: string, pages: string[][]): string {
+  return createPdf(
+    filename,
+    pages.map((lines) => ['BT', '/F1 12 Tf', '14 TL', '50 750 Td', ...lines.map((l) => `(${l}) '`), 'ET'])
+  );
+}
+
+/** A piece of text placed on the page: at (x, y) from the bottom left, in points */
+export interface PlacedText {
+  text: string;
+  x: number;
+  y: number;
+  /** Font size, 12 by default */
+  size?: number;
+  /** Printed upwards along the page, as a note in a margin */
+  sideways?: boolean;
+}
+
+/**
+ * Create a one-page text PDF that stores its pieces of text in the order
+ * given, wherever each is placed, as a PDF made from a table often does
+ */
+export function createPlacedTextPdf(filename: string, pieces: PlacedText[]): string {
+  return createPdf(filename, [
+    pieces.map(({ text, x, y, size = 12, sideways }) => {
+      const matrix = sideways ? [0, 1, -1, 0, x, y] : [1, 0, 0, 1, x, y];
+      return `BT /F1 ${size} Tf ${matrix.join(' ')} Tm (${text}) Tj ET`;
+    }),
+  ]);
 }
 
 /**

@@ -10,6 +10,22 @@ Feature: Document Analysis
     Then the text should be extracted accurately
     And the text should preserve the document structure
 
+  Scenario: A table in a text PDF is read row by row
+    Given a text PDF lab report whose table the PDF stores column by column
+    When the document is processed
+    Then the AI should receive each test on one line with its value, unit and reference range, in their printed order
+    And the cells of a row should be set apart by a tab
+
+  Scenario: Words printed close together stay one word or phrase
+    Given a text PDF that prints a name in pieces, such as "Glu" and "cose", and a value with a small raised power, such as "10³/µL"
+    When the document is processed
+    Then the AI should receive "Glucose" as one word and "10³/µL" on the row of its value
+
+  Scenario: Text printed sideways in the margin is kept apart from the table
+    Given a text PDF with a note printed sideways along its margin
+    When the document is processed
+    Then the note should reach the AI after the rows of the page, never mixed into them
+
   Scenario: Extract text from a scanned PDF
     Given I upload a scanned PDF lab report
     When the document is processed

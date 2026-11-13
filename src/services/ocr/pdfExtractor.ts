@@ -5,6 +5,7 @@
  * Handles both text-based PDFs and detects scanned PDFs that need OCR.
  */
 
+import { layoutPageText } from './pdfLayout';
 import type * as PdfjsLib from 'pdfjs-dist';
 
 let pdfjsPromise: Promise<typeof PdfjsLib> | null = null;
@@ -102,6 +103,23 @@ const MIN_TEXT_CHARS_PER_PAGE = 50;
  */
 const TEXT_PAGE_RATIO_THRESHOLD = 0.5;
 
+/** A page's text, laid out in its printed lines, and whether it draws images */
+async function readPage(
+  pdf: PdfDocument,
+  pdfjsLib: typeof PdfjsLib,
+  pageNumber: number
+): Promise<PageExtractionResult> {
+  const page = await pdf.getPage(pageNumber);
+  const textContent = await page.getTextContent();
+  // Marked-content markers carry no text
+  const text = layoutPageText(textContent.items.filter((item) => 'str' in item));
+  const operators = await page.getOperatorList();
+  const hasImages = operators.fnArray.some(
+    (fn) => fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageMaskXObject
+  );
+  return { pageNumber, text, hasText: text.length >= MIN_TEXT_CHARS_PER_PAGE, hasImages };
+}
+
 /**
  * Extract text content from a PDF file
  *
@@ -126,30 +144,7 @@ export async function extractTextFromPDF(
       // Extract text from each page
       for (let pageNum = 1; pageNum <= pagesToProcess; pageNum++) {
         try {
-          const page = await pdf.getPage(pageNum);
-          const textContent = await page.getTextContent();
-
-          // Combine text items, preserving some structure
-          const textItems = textContent.items
-            .filter((item) => 'str' in item && typeof item.str === 'string')
-            .map((item) => (item as { str: string }).str);
-
-          const pageText = textItems.join(' ').trim();
-
-          // Check for images (operators that draw images)
-          const operators = await page.getOperatorList();
-          const hasImages = operators.fnArray.some(
-            (fn) =>
-              fn === pdfjsLib.OPS.paintImageXObject ||
-              fn === pdfjsLib.OPS.paintImageMaskXObject
-          );
-
-          pages.push({
-            pageNumber: pageNum,
-            text: pageText,
-            hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-            hasImages,
-          });
+          pages.push(await readPage(pdf, pdfjsLib, pageNum));
 
           if (onProgress) {
             onProgress(pageNum, totalPages);
@@ -258,28 +253,7 @@ export async function extractPageRange(
 
     for (let pageNum = actualStart; pageNum <= actualEnd; pageNum++) {
       try {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-
-        const textItems = textContent.items
-          .filter((item) => 'str' in item && typeof item.str === 'string')
-          .map((item) => (item as { str: string }).str);
-
-        const pageText = textItems.join(' ').trim();
-
-        const operators = await page.getOperatorList();
-        const hasImages = operators.fnArray.some(
-          (fn) =>
-            fn === pdfjsLib.OPS.paintImageXObject ||
-            fn === pdfjsLib.OPS.paintImageMaskXObject
-        );
-
-        pages.push({
-          pageNumber: pageNum,
-          text: pageText,
-          hasText: pageText.length >= MIN_TEXT_CHARS_PER_PAGE,
-          hasImages,
-        });
+        pages.push(await readPage(pdf, pdfjsLib, pageNum));
 
         if (onProgress) {
           onProgress(pageNum - actualStart + 1, actualEnd - actualStart + 1);
