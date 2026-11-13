@@ -18,6 +18,8 @@ const OLLAMA_CHAT_URL = '**/localhost:11434/api/chat';
  */
 export type ChatReply =
   | { extraction: object }
+  /** An answer as the AI wrote it, whatever its shape */
+  | { content: string }
   /** An answer Ollama stopped at the length limit: `content` is all it sent */
   | { cutOff: string }
   | { status: number; error: string; headers?: Record<string, string> }
@@ -32,6 +34,8 @@ export interface OllamaChatScript {
   answerLimits: number[];
   /** Each request's context size (num_ctx), in request order */
   contexts: number[];
+  /** The answer shape each request asked for (format): "json" or a JSON schema, in request order */
+  formats: unknown[];
   /** Highest number of analysis requests in flight at the same time */
   maxInFlight: number;
   /** Let held requests (and all later ones) be answered */
@@ -72,6 +76,7 @@ export async function scriptOllamaChat(
     systemPrompts: [],
     answerLimits: [],
     contexts: [],
+    formats: [],
     maxInFlight: 0,
     release: () => releaseHeld(),
   };
@@ -81,6 +86,7 @@ export async function scriptOllamaChat(
     const body = route.request().postDataJSON() as {
       messages: { role: string; content: string }[];
       options?: { num_predict?: number; num_ctx?: number };
+      format?: unknown;
     };
     // Which test values are is asked apart from the report: mockOllama answers it
     if (isTestChoiceRequest(body)) {
@@ -91,6 +97,7 @@ export async function scriptOllamaChat(
     script.systemPrompts.push(body.messages.find((m) => m.role === 'system')?.content ?? '');
     script.answerLimits.push(body.options?.num_predict ?? 0);
     script.contexts.push(body.options?.num_ctx ?? 0);
+    script.formats.push(body.format);
 
     inFlight++;
     script.maxInFlight = Math.max(script.maxInFlight, inFlight);
@@ -111,6 +118,7 @@ export async function scriptOllamaChat(
         });
       } else {
         const cutOff = 'cutOff' in reply;
+        const content = cutOff ? reply.cutOff : 'content' in reply ? reply.content : JSON.stringify(reply.extraction);
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -118,7 +126,7 @@ export async function scriptOllamaChat(
             model: MOCK_OLLAMA_MODELS[0],
             message: {
               role: 'assistant',
-              content: cutOff ? reply.cutOff : JSON.stringify(reply.extraction),
+              content,
             },
             done: true,
             done_reason: cutOff ? 'length' : 'stop',

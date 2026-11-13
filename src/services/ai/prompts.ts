@@ -155,7 +155,9 @@ Respond with ONLY a valid JSON object, no additional text or explanation.`;
 }
 
 /**
- * Expected JSON schema for AI response
+ * The JSON schema of an analysis answer. parseExtraction checks answers
+ * against it; structuredOutput derives from it the forms each provider's
+ * structured output takes.
  */
 export const RESPONSE_SCHEMA = {
   type: 'object',
@@ -167,7 +169,9 @@ export const RESPONSE_SCHEMA = {
         properties: {
           name: { type: 'string' },
           specimenHint: { type: ['string', 'null'] },
-          value: { oneOf: [{ type: 'number' }, { type: 'string' }] }, // Can be number or range string like "5-10"
+          // A number, or a string: an interval "5-10", a censored "< 10". anyOf, not oneOf: every
+          // provider's structured output accepts it
+          value: { anyOf: [{ type: 'number' }, { type: 'string' }] },
           unit: { type: 'string' },
           qualitativeValue: { type: 'string' },
           referenceRange: {

@@ -6,6 +6,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from './OllamaProvider';
 import { ollamaContext, promptTokens } from './ollamaContext';
 import { AIAnalysisError } from './types';
+import { OLLAMA_RESPONSE_SCHEMA } from './structuredOutput';
+import { ANSWER_CUT_OFF } from './answerCutOff';
+import { droppedValuesNote } from './parseExtraction';
 
 // Mock the ollamaUtils module
 vi.mock('./ollamaUtils', async () => {
@@ -882,7 +885,8 @@ describe('OllamaProvider native chat API', () => {
     const [url, init] = vi.mocked(fetch).mock.calls.at(-1)!;
     expect(String(url)).toMatch(/\/api\/chat$/);
     const body = JSON.parse(String((init as RequestInit).body));
-    expect(body).toMatchObject({ stream: false, format: 'json' });
+    // The answer's shape, as a schema Ollama turns into a grammar
+    expect(body).toMatchObject({ stream: false, format: OLLAMA_RESPONSE_SCHEMA });
     expect(body.options.num_ctx).toBeGreaterThan(10_000);
   });
 
@@ -1095,5 +1099,84 @@ describe('OllamaProvider native chat API', () => {
 
       expect(error).toBeInstanceOf(AIAnalysisError);
     });
+  });
+});
+
+describe('OllamaProvider answer shape and cut-off answers', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    vi.mocked(isOllamaRunning).mockResolvedValue(true);
+    vi.mocked(getModelNames).mockResolvedValue(['llama3.2:8b']);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  const answer = (content: string, doneReason = 'stop') =>
+    ({ ok: true, json: () => Promise.resolve({ message: { content }, done_reason: doneReason }) }) as Response;
+  const format = (call: number) => JSON.parse(vi.mocked(fetch).mock.calls[call][1]?.body as string).format;
+  const VALUES = JSON.stringify({ biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9 }], warnings: [] });
+
+  it('asks for plain JSON when this Ollama rejects a schema as format, and keeps doing so', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: 'invalid format: expected "json" or a JSON schema' }),
+      } as unknown as Response)
+      .mockResolvedValue(answer(VALUES));
+
+    const provider = new OllamaProvider();
+    const result = await provider.analyzeLabReport('Glucose 95 mg/dL');
+    await provider.analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers).toHaveLength(1);
+    expect(format(0)).toEqual(OLLAMA_RESPONSE_SCHEMA);
+    expect(format(1)).toBe('json');
+    expect(format(2)).toBe('json');
+  });
+
+  it('keeps another rejection of the request as it is', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: 'model is required' }),
+    } as unknown as Response);
+
+    await expect(new OllamaProvider().analyzeLabReport('Glucose 95 mg/dL')).rejects.toThrow(/model is required/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks which tests values are for plain JSON, not in the analysis shape', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+
+    await new OllamaProvider().chooseTests([
+      { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },
+    ]);
+
+    expect(format(0)).toBe('json');
+  });
+
+  it('fails an answer cut off again with the shared cut-off code', async () => {
+    vi.mocked(fetch).mockResolvedValue(answer('{"biomarkers": [', 'length'));
+
+    const failure = await new OllamaProvider().analyzeLabReport('Glucose 95 mg/dL').catch((e: unknown) => e);
+
+    expect(failure).toBeInstanceOf(AIAnalysisError);
+    expect((failure as AIAnalysisError).code).toBe(ANSWER_CUT_OFF);
+    expect((failure as AIAnalysisError).message).toMatch(/cut off .*before all values were read/);
+  });
+
+  it('leaves out malformed values with a note', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      answer(JSON.stringify({ biomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL' }, { value: 3 }], warnings: [] }))
+    );
+
+    const result = await new OllamaProvider().analyzeLabReport('Glucose 95 mg/dL');
+
+    expect(result.biomarkers.map((b) => b.name)).toEqual(['Glucose']);
+    expect(result.warnings).toEqual([droppedValuesNote(1)]);
   });
 });

@@ -83,3 +83,6 @@ export type { ParsedValue } from './parseIntervalValue';
 export { heldQualitative, parseExtractedValue } from './parseQualitativeValue';
 
 export { RATE_LIMIT_MESSAGE, type RateLimitOptions } from './rateLimitedFetch';
+
+// The code of the error for an AI answer still cut off when asked again with more room
+export { ANSWER_CUT_OFF } from './answerCutOff';
