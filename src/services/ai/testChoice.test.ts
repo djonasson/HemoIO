@@ -46,15 +46,21 @@ describe('parseTestChoices', () => {
     ]);
   });
 
-  it('treats malformed JSON as no choice for every request', () => {
-    const none = [
-      { id: 'a', code: null, confident: false },
-      { id: 'b', code: null, confident: false },
-    ];
-    expect(parseTestChoices('{"choices": [{"id": "a", "co', requests)).toEqual(none);
-    expect(parseTestChoices('not json', requests)).toEqual(none);
-    expect(parseTestChoices(undefined, requests)).toEqual(none);
-    expect(parseTestChoices({ choices: 'x' }, requests)).toEqual(none);
+  it('fails an answer with no choice to read, so its values are left to the user', () => {
+    for (const raw of [
+      '{"choices": [{"id": "a", "co',
+      'not json',
+      undefined,
+      { choices: 'x' },
+      { choices: [] },
+      { choices: [{ id: 'zzz', code: '2345-7', confident: true }] },
+    ]) {
+      expect(() => parseTestChoices(raw, requests)).toThrow('no choice to read');
+    }
+  });
+
+  it('reads no choice for no request', () => {
+    expect(parseTestChoices(undefined, [])).toEqual([]);
   });
 
   it('keeps the complete choices of an answer cut off, the rest no choice', () => {

@@ -663,7 +663,7 @@ Feature: Identifying the test of each value
   # substance get different codes, and a learned "Not a LOINC test" wins
   # over the local match
   Scenario: The AI cannot be asked which test a value is
-    Given the AI answers the extraction but fails when asked to choose tests
+    Given the AI answers the extraction but fails when asked to choose tests, or gives an answer with no choice to read
     When the report is analyzed
     Then the values it would decide should offer their tests to choose from
     And the analysis notes should say the tests could not be chosen automatically

@@ -1075,16 +1075,14 @@ describe('OllamaProvider native chat API', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('gives no choice for an answer it cannot read', async () => {
+    it('fails an answer it cannot read, so its values are left to the user', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ message: { content: "not json" }, done_reason: 'stop' }),
       } as Response);
 
       const provider = new OllamaProvider();
-      const result = await provider.chooseTests(requests);
-
-      expect(result.map((c) => c.code)).toEqual([null, null]);
+      await expect(provider.chooseTests(requests)).rejects.toThrow('no choice to read');
     });
 
     it('reports an API error as an analysis error', async () => {
@@ -1150,7 +1148,7 @@ describe('OllamaProvider answer shape and cut-off answers', () => {
   });
 
   it('asks which tests values are for plain JSON, not in the analysis shape', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[{"id":"0","code":null}]}'));
 
     await new OllamaProvider().chooseTests([
       { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },

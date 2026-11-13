@@ -516,7 +516,7 @@ describe('AnthropicProvider prompt caching', () => {
       const many = Array.from({ length: 600 }, (_, i) => ({ ...requests[1], id: `v${i}` }));
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve({ content: [{ type: 'text', text: '{"choices":[]}' }], stop_reason: 'end_turn' }),
+        json: () => Promise.resolve({ content: [{ type: 'text', text: '{"choices":[{"id":"v0","code":null}]}' }], stop_reason: 'end_turn' }),
       } as Response);
 
       await new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL }).chooseTests(many);
@@ -555,16 +555,14 @@ describe('AnthropicProvider prompt caching', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('gives no choice for an answer it cannot read', async () => {
+    it('fails an answer it cannot read, so its values are left to the user', async () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ content: [{ type: 'text', text: "not json" }], stop_reason: 'end_turn' }),
       } as Response);
 
       const provider = new AnthropicProvider({ apiKey: 'sk-ant-test-key', model: TEST_MODEL });
-      const result = await provider.chooseTests(requests);
-
-      expect(result.map((c) => c.code)).toEqual([null, null]);
+      await expect(provider.chooseTests(requests)).rejects.toThrow('no choice to read');
     });
 
     it('reports an API error without the key', async () => {
@@ -694,7 +692,7 @@ describe('AnthropicProvider answer shape and cut-off answers', () => {
   });
 
   it('asks which tests values are without the analysis schema', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[]}'));
+    vi.mocked(fetch).mockResolvedValueOnce(answer('{"choices":[{"id":"0","code":null}]}'));
 
     await provider().chooseTests([
       { id: '0', name: 'Glucose', unit: 'mg/dL', candidates: [{ code: '2345-7', name: 'Glucose' }] },

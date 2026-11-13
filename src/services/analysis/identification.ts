@@ -1,7 +1,8 @@
 /**
  * Giving each extracted value its LOINC code: a test learned for the
  * wording, the local match, then one AI call for the values several tests
- * fit; what is left is the user's to choose in review.
+ * fit. What the AI cannot settle is "Not a LOINC test"; only when it cannot
+ * be asked are the values left for the user to choose in review.
  */
 import type { SavedValue } from '@data/loinc/learnedTests';
 import { isUnknownKey, unknownBiomarkerKey } from '@data/loinc/keys';

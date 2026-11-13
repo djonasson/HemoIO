@@ -47,7 +47,7 @@ export async function chooseTestsWith(
   }
 }
 
-/** No choice: the value stays undecided and goes to the user */
+/** No usable choice for a value: it is saved as "Not a LOINC test", changeable in review */
 function noChoice(id: string): TestChoice {
   return { id, code: null, confident: false };
 }
@@ -79,7 +79,8 @@ function parseJsonObject(raw: string): unknown {
 /**
  * One choice per request, in request order. Choices for ids not asked about
  * are dropped; a missing or malformed choice, or a code that is not one of
- * the request's candidates, becomes "no choice".
+ * the request's candidates, becomes "no choice". An answer with no choice to
+ * read at all is a failed request, so its values are left to the user.
  *
  * @param raw - The parsed answer `{ choices: [{ id, code, confident }] }`, or the model's text
  */
@@ -96,10 +97,10 @@ export function parseTestChoices(raw: unknown, requests: TestChoiceRequest[]): T
       if (typeof id === 'string' && !answered.has(id)) answered.set(id, entry);
     }
   }
+  if (requests.length > 0 && !requests.some(({ id }) => answered.has(id))) throw new Error('the answer held no choice to read');
 
   return requests.map((request) => {
     const entry = answered.get(request.id);
-    // Null with confident true: the model is sure none of the candidates fits
     if (entry?.code === null) return { id: request.id, code: null, confident: entry.confident === true };
     if (!entry || typeof entry.code !== 'string') return noChoice(request.id);
     const code = entry.code.trim();
