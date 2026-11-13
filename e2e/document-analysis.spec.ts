@@ -610,7 +610,7 @@ test.describe('Document Analysis - Error Handling', () => {
 
     await expect(analysisItem(page, 'corrupt.pdf')).toContainText(/Failed to parse PDF/);
     await expect(page.getByRole('alert', { name: 'Analysis Failed' })).toContainText(
-      'Check your files and try again'
+      'No files could be processed. Retry them, choose other files, or type the values in yourself.'
     );
     await expect(main(page).getByRole('button', { name: /^Review Results/ })).toBeDisabled();
 
