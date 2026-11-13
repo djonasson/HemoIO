@@ -14,6 +14,7 @@ import {
   VisuallyHidden,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { ErrorBoundary } from 'react-error-boundary';
 import { notifications } from '@mantine/notifications';
 import {
   IconTimeline,
@@ -66,7 +67,9 @@ import { modelForProvider } from '@services/ai';
 import type { SavePlan } from '@services/analysis/reviewedSave';
 import { notifySaveFailed } from '@components/common/notifySaveFailed';
 import { failedStepsMessage, restoreAISettings, restoreBackup, restoreBackupIfUnchanged } from '@services/import';
+import { PageErrorFallback } from '@components/common/PageErrorFallback';
 import { HEADER_HEIGHT } from './headerHeight';
+import { failIfTestAsks } from './testPageFailure';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -502,6 +505,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             onDelete={setAsideRecords.remove}
           />
           {children ?? (
+            // A page that fails says so instead of blanking the app; another page, or a new visit, tries anew
+            <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
             <MainContent
               view={activeView}
               onImportComplete={handleImportComplete}
@@ -513,6 +518,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onRestore={handleSettingsRestore}
               isRestoring={isRestoring}
             />
+            </ErrorBoundary>
           )}
         </MantineAppShell.Main>
       </MantineAppShell>
@@ -560,6 +566,7 @@ function MainContent({
   onRestore,
   isRestoring,
 }: MainContentProps): React.ReactNode {
+  failIfTestAsks(view);
   const viewInfo = NAV_ITEMS.find((item) => item.view === view);
   const trendFocus = focus?.view === 'trends' ? focus : null;
   const timelineFocus = focus?.view === 'timeline' ? focus.labResultId : null;

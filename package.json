@@ -38,6 +38,7 @@
     "pdfjs-dist": "^5.4.530",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-error-boundary": "^6.1.6",
     "recharts": "^3.7.0",
     "tesseract.js": "^7.0.0"
   },
