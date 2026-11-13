@@ -23,7 +23,7 @@ IMPORTANT GUIDELINES:
 OUTPUT FORMAT:
 Respond with a JSON object containing:
 - biomarkers: Array of extracted biomarker objects
-- labDate: Date of the lab test (ISO format if possible, otherwise as found)
+- labDate: Date of the lab test, as YYYY-MM-DD when the printed date's order is certain (a month name, the year first, or a day above 12); otherwise copy it exactly as printed ("03/04/2024"), never guessing whether the day or the month comes first
 - labName: Name of the laboratory or healthcare facility
 - patientName: Patient name (only if explicitly requested)
 - warnings: Array of any issues or ambiguities found

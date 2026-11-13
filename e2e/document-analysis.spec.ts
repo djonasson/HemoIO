@@ -18,6 +18,7 @@ import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
+import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
   createTextImage,
@@ -447,6 +448,36 @@ test.describe('Document Analysis - AI Processing', () => {
     await saveResults(page);
     await goToTimeline(page);
     await expect(labResultCard(page, '2024-01-15')).toBeVisible();
+  });
+
+  test('reads a lab date either order fits in the order I write dates', async ({ page }) => {
+    // Scenario: A lab date either order fits is read in the order I write dates
+    await loginWithOllama(page, [
+      { extraction: extraction(DEFAULT_EXTRACTION.biomarkers, { labDate: '03/04/2024' }) },
+    ]);
+    await openSettingsTab(page, 'Display');
+    await page.getByRole('textbox', { name: 'Select date format' }).click();
+    await page.getByRole('option', { name: 'DD/MM/YYYY (European)' }).click();
+    await expect(page.getByText('Preferences saved')).toBeVisible();
+
+    await analyzeToReview(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
+    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('2024-04-03');
+  });
+
+  test('asks for a lab date either order fits when I write dates year first', async ({ page }) => {
+    // Scenario: A lab date either order fits is asked when my date format is year first
+    await loginWithOllama(page, [
+      { extraction: extraction(DEFAULT_EXTRACTION.biomarkers, { labDate: '03/04/2024' }) },
+    ]);
+    await openSettingsTab(page, 'Display');
+    await page.getByRole('textbox', { name: 'Select date format' }).click();
+    await page.getByRole('option', { name: 'YYYY-MM-DD (ISO)' }).click();
+    await expect(page.getByText('Preferences saved')).toBeVisible();
+
+    await analyzeToReview(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
+    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('');
+    await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(main(page).getByText('Enter the lab date for "report.pdf"')).toBeVisible();
   });
 
   test('should extract lab name from document', async ({ page }) => {

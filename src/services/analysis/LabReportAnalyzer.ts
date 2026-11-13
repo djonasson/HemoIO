@@ -37,6 +37,7 @@ import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
+import { normalizeLabDate, type DayOrder } from '@/utils/labDate';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -180,6 +181,8 @@ export interface AnalyzerOptions {
   catalog: Catalog;
   /** The user's learned tests, as they are when the report is matched */
   learnedTests?: LearnedTests;
+  /** How the user writes day and month, which reads a report date like "03/04/2024" */
+  dayOrder?: DayOrder;
 }
 
 /**
@@ -462,7 +465,8 @@ export async function analyzeLabReport(
     extractedText,
     aiAnalysis,
     matchedBiomarkers,
-    labDate: aiAnalysis.labDate,
+    // Read once here, in the user's order of day and month, so review, confirm and saving see one day
+    labDate: (aiAnalysis.labDate && normalizeLabDate(aiAnalysis.labDate, options.dayOrder)) || aiAnalysis.labDate,
     labName: aiAnalysis.labName,
     overallConfidence: calculateOverallConfidence(matchedBiomarkers, aiAnalysis),
     warnings,

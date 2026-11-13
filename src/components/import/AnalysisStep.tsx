@@ -32,6 +32,7 @@ import { analyzeLabReport, AnalysisError } from '../../services/analysis';
 import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
 import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
 import { processWithConcurrency } from '../../utils/concurrency';
+import { dayOrderOf } from '@/utils/labDate';
 import { manualEntryResult } from './manualEntry';
 import { PreferencesContext } from '@hooks/usePreferences';
 import { useCatalog } from '@contexts/useCatalog';
@@ -107,11 +108,15 @@ export function AnalysisStep({
 }: AnalysisStepProps) {
   const catalog = useCatalog();
   // The user's learned tests, as they are when each file is matched
-  const learnedTests = useContext(PreferencesContext)?.learnedTests;
+  const preferences = useContext(PreferencesContext);
+  const learnedTests = preferences?.learnedTests;
+  const dayOrder = dayOrderOf(preferences?.dateFormat);
   const learnedTestsRef = useRef(learnedTests);
+  const dayOrderRef = useRef(dayOrder);
   useEffect(() => {
     learnedTestsRef.current = learnedTests;
-  }, [learnedTests]);
+    dayOrderRef.current = dayOrder;
+  }, [learnedTests, dayOrder]);
   const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(true);
@@ -208,6 +213,7 @@ export function AnalysisStep({
                 signal: controller.signal,
                 catalog,
                 learnedTests: learnedTestsRef.current,
+                dayOrder: dayOrderRef.current,
                 onProgress: (stage, progress) => {
                   if (!cancelled) {
                     updateFileStatus(uploadedFile.id, {

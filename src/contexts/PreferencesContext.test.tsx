@@ -50,6 +50,14 @@ describe('PreferencesProvider', () => {
     expect(result.current.personalTargets).toEqual({ glucose: { high: 90 } });
   });
 
+  it('gives the stored date format, and a changed one once reloaded', async () => {
+    const { result } = await renderLoaded();
+    expect(result.current.dateFormat).toBe('MM/DD/YYYY');
+    stored = { ...stored, dateFormat: 'DD/MM/YYYY' };
+    await act(() => result.current.reload());
+    expect(result.current.dateFormat).toBe('DD/MM/YYYY');
+  });
+
   it('saves a preferred unit without touching other preferences', async () => {
     const { result } = await renderLoaded();
     await act(() => result.current.setPreferredUnit('hemoglobin', 'g/L'));

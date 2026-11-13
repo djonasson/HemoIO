@@ -131,6 +131,18 @@ Feature: Document Analysis
     Then the lab date should be extracted
     And the date format should be normalized
 
+  Scenario: A lab date either order fits is read in the order I write dates
+    Given my date format is DD/MM/YYYY
+    And the report's lab date is printed "03/04/2024"
+    When the report is analyzed
+    Then the lab date should be 3 April 2024
+
+  Scenario: A lab date either order fits is asked when my date format is year first
+    Given my date format is YYYY-MM-DD
+    And the report's lab date is printed "03/04/2024"
+    When the report is analyzed
+    Then I should be asked to enter the lab date
+
   Scenario: AI detects lab name
     Given the document contains a lab/hospital name
     When the AI analyzes the text
