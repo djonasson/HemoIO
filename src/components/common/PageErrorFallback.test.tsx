@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
+import { reloadPage } from '@/utils/reloadPage';
 import { PageErrorFallback } from './PageErrorFallback';
+
+vi.mock('@/utils/reloadPage', () => ({ reloadPage: vi.fn() }));
 
 describe('PageErrorFallback', () => {
   function renderFallback(resetErrorBoundary = vi.fn()) {
@@ -28,8 +31,9 @@ describe('PageErrorFallback', () => {
     expect(reset).toHaveBeenCalledOnce();
   });
 
-  it('offers to reload HemoIO', () => {
+  it('reloads HemoIO', async () => {
     renderFallback();
-    expect(screen.getByRole('button', { name: 'Reload HemoIO' })).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Reload HemoIO' }));
+    expect(reloadPage).toHaveBeenCalledOnce();
   });
 });

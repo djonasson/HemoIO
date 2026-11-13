@@ -44,3 +44,4 @@ export { useSetAsideRecords, type UseSetAsideRecordsResult, type SealedDownload 
 export { useExistingBrowserData, type UseExistingBrowserDataResult } from './useExistingBrowserData';
 export { useNavigation, type UseNavigationResult, type AppView, type ViewFocus, type Destination } from './useNavigation';
 export { usePullToRefresh, PULL_DISTANCE, type PullState } from './usePullToRefresh';
+export { useFolderRefresh, type FolderRefresh } from './useFolderRefresh';

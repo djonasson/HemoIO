@@ -51,7 +51,8 @@ describe('usePullToRefresh', () => {
   });
 
   it('says whether the pull is far enough while pulling', () => {
-    const { result } = renderHook(() => usePullToRefresh(vi.fn(), true));
+    const onRefresh = vi.fn();
+    const { result } = renderHook(() => usePullToRefresh(onRefresh, true));
     touch('touchstart', 100);
     touch('touchmove', 120);
     expect(result.current).toBe('pulling');

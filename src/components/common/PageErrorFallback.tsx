@@ -1,6 +1,8 @@
 import { Alert, Button, Group, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { errorText } from '@/utils/errorText';
+import { reloadPage } from '@/utils/reloadPage';
+import { RELOAD_LOCKS_NOTE } from './errorFallbackText';
 import type { FallbackProps } from 'react-error-boundary';
 
 /**
@@ -24,10 +26,10 @@ export function PageErrorFallback({ error, resetErrorBoundary }: FallbackProps):
         <Text size="sm" ff="monospace" style={{ overflowWrap: 'anywhere' }}>
           {errorText(error)}
         </Text>
-        <Text size="sm">Reloading locks HemoIO until you enter your password again.</Text>
+        <Text size="sm">{RELOAD_LOCKS_NOTE}</Text>
         <Group gap="sm">
           <Button onClick={resetErrorBoundary}>Try again</Button>
-          <Button variant="default" onClick={() => window.location.reload()}>
+          <Button variant="default" onClick={reloadPage}>
             Reload HemoIO
           </Button>
         </Group>

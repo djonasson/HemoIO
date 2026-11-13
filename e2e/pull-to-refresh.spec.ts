@@ -5,7 +5,7 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { TEST_PASSWORD, openFromMenu, setupOrUnlock } from './steps/app.steps';
+import { TEST_PASSWORD, expectUnlocked, openFromMenu, setupOrUnlock } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import { FOLDER_COPY, TEST_FOLDER_NAME, TestFolder, storeDataInFolder, syncAttempts, useTestFolder } from './steps/folderSync.steps';
 import { ancestryOfFolderCopy, saveCopyAsAnotherComputer } from './steps/otherComputer.steps';
@@ -29,12 +29,6 @@ async function pullDown(page: Page, distance: number): Promise<void> {
     window.dispatchEvent(new TouchEvent('touchmove', { touches: [point(100 + pulled)] }));
     window.dispatchEvent(new TouchEvent('touchend', { touches: [] }));
   }, distance);
-}
-
-/** Then HemoIO should stay unlocked */
-async function expectUnlocked(page: Page): Promise<void> {
-  await expect(page.getByRole('button', { name: 'Lock application' })).toBeVisible();
-  await expect(page.getByLabel('Password')).toHaveCount(0);
 }
 
 test.describe('Pulling down', () => {

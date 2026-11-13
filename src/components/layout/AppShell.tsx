@@ -48,7 +48,7 @@ import {
   useSetAsideRecords,
   useFolderStorageOn,
   useDataReplacedElsewhere,
-  usePullToRefresh,
+  useFolderRefresh,
 } from '@hooks';
 import { announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { ImportWizard, type ReviewedResult } from '@components/import';
@@ -72,6 +72,7 @@ import { failedStepsMessage, restoreAISettings, restoreBackup, restoreBackupIfUn
 import { PageErrorFallback } from '@components/common/PageErrorFallback';
 import { HEADER_HEIGHT } from './headerHeight';
 import { failIfTestAsks } from './testPageFailure';
+import { PullToRefreshStatus } from './PullToRefreshStatus';
 import { logFailure } from '@/utils/logFailure';
 import type { ParsedBackupData, RestoreSummary } from '@services/import';
 import type { RestoreOptions } from '@components/settings';
@@ -201,16 +202,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
 
-  // Refresh from the folder in place: a reload would lock HemoIO. A failed sync is told by the folder notice
+  // Refresh from the folder in place: a reload would lock HemoIO
   const canRefresh = folderStorageOn && folderRestore.syncAllowed;
-  const [refreshing, setRefreshing] = useState(false);
-  const refreshFromFolder = useCallback(() => {
-    setRefreshing(true);
-    void syncNow()
-      .catch(() => undefined)
-      .finally(() => setRefreshing(false));
-  }, [syncNow]);
-  const pull = usePullToRefresh(refreshFromFolder, canRefresh && !refreshing);
+  const { refreshing, refresh: refreshFromFolder } = useFolderRefresh(syncNow);
   const replaceConfirmation = folderSyncReplace.confirmation;
   const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
@@ -521,15 +515,9 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
-          <Text role="status" ta="center" size="sm" c="dimmed" mb={refreshing || pull !== 'idle' ? 'xs' : 0}>
-            {refreshing
-              ? 'Refreshing from the folder…'
-              : pull === 'ready'
-                ? 'Release to refresh from the folder'
-                : pull === 'pulling'
-                  ? 'Pull down to refresh from the folder'
-                  : ''}
-          </Text>
+          {/* A page that fails says so instead of blanking the app; another page, or a new visit, tries anew */}
+          <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
+          <PullToRefreshStatus enabled={canRefresh} refreshing={refreshing} onRefresh={refreshFromFolder} />
           <SetAsideBanner
             total={setAsideRecords.summary.total}
             unsaved={setAsideRecords.summary.unsaved}
@@ -540,8 +528,6 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             onDelete={setAsideRecords.remove}
           />
           {children ?? (
-            // A page that fails says so instead of blanking the app; another page, or a new visit, tries anew
-            <ErrorBoundary FallbackComponent={PageErrorFallback} resetKeys={[activeView, visit]}>
             <MainContent
               view={activeView}
               onImportComplete={handleImportComplete}
@@ -553,8 +539,8 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
               onRestore={handleSettingsRestore}
               isRestoring={isRestoring}
             />
-            </ErrorBoundary>
           )}
+          </ErrorBoundary>
         </MantineAppShell.Main>
       </MantineAppShell>
 
