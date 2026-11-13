@@ -111,6 +111,11 @@ export function unsettledNote(count: number): string {
   return `${count} value(s) the AI could not settle were saved as "Not a LOINC test": check them in the Saved as column`;
 }
 
+/** A warning when OCR read the text with under 70% confidence: none otherwise */
+function lowOcrConfidenceWarning(confidence: number): string[] {
+  return confidence < 70 ? [`Low OCR confidence (${Math.round(confidence)}%). Results may be inaccurate.`] : [];
+}
+
 /** Notes that the AI could not be asked to choose among the tests that fit */
 export const CHOICE_FAILED_NOTE =
   'The AI could not choose the tests of values several tests fit: choose them in the Saved as column.';
@@ -269,9 +274,7 @@ export async function analyzeLabReport(
       extractionMethod = ocrPages.length > 0 ? 'ocr' : 'pdf-text';
       if (ocrPages.length > 0) {
         const averageConfidence = ocrPages.reduce((sum, page) => sum + (page.confidence ?? 0), 0) / ocrPages.length;
-        if (averageConfidence < 70) {
-          warnings.push(`Low OCR confidence (${Math.round(averageConfidence)}%). Results may be inaccurate.`);
-        }
+        warnings.push(...lowOcrConfidenceWarning(averageConfidence));
       }
     } else {
       // Image file - use OCR
@@ -284,9 +287,7 @@ export async function analyzeLabReport(
       extractedText = ocrResult.text;
       extractionMethod = 'ocr';
 
-      if (ocrResult.confidence < 70) {
-        warnings.push(`Low OCR confidence (${Math.round(ocrResult.confidence)}%). Results may be inaccurate.`);
-      }
+      warnings.push(...lowOcrConfidenceWarning(ocrResult.confidence));
     }
 
     if (!extractedText || extractedText.trim().length < 20) {

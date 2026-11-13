@@ -105,16 +105,21 @@ const MIN_TEXT_CHARS_PER_PAGE = 50;
  */
 const TEXT_PAGE_RATIO_THRESHOLD = 0.5;
 
-/** A page's text, laid out in its printed lines, and whether it draws images */
-export async function readPage(
+/** A page's own text, laid out in its printed lines */
+export async function pageText(page: PdfPage): Promise<string> {
+  const textContent = await page.getTextContent();
+  // Marked-content markers carry no text
+  return layoutPageText(textContent.items.filter((item) => 'str' in item));
+}
+
+/** A page's text, and whether it draws images */
+async function readPage(
   pdf: PdfDocument,
   pdfjsLib: typeof PdfjsLib,
   pageNumber: number
 ): Promise<PageExtractionResult> {
   const page = await pdf.getPage(pageNumber);
-  const textContent = await page.getTextContent();
-  // Marked-content markers carry no text
-  const text = layoutPageText(textContent.items.filter((item) => 'str' in item));
+  const text = await pageText(page);
   const operators = await page.getOperatorList();
   const hasImages = operators.fnArray.some(
     (fn) => fn === pdfjsLib.OPS.paintImageXObject || fn === pdfjsLib.OPS.paintImageMaskXObject
@@ -208,20 +213,6 @@ export async function extractTextFromPDF(
 }
 
 /**
- * Quick check to determine if a PDF needs OCR
- *
- * @param file - PDF file to check
- * @returns true if the PDF likely needs OCR processing
- */
-export async function needsOCR(file: File | ArrayBuffer): Promise<boolean> {
-  const result = await extractTextFromPDF(file, {
-    quickScan: true,
-    maxPages: 5,
-  });
-  return result.isScanned;
-}
-
-/**
  * Get page count from a PDF without full extraction
  *
  * @param file - PDF file to check
@@ -229,69 +220,6 @@ export async function needsOCR(file: File | ArrayBuffer): Promise<boolean> {
  */
 export async function getPageCount(file: File | ArrayBuffer): Promise<number> {
   return withPdf(file, async (pdf) => pdf.numPages);
-}
-
-/**
- * Extract text from a specific page range
- *
- * @param file - PDF file to extract from
- * @param startPage - First page (1-indexed)
- * @param endPage - Last page (1-indexed)
- * @param onProgress - Optional progress callback
- * @returns Extraction result for the specified pages
- */
-export async function extractPageRange(
-  file: File | ArrayBuffer,
-  startPage: number,
-  endPage: number,
-  onProgress?: (current: number, total: number) => void
-): Promise<PDFExtractionResult> {
-  return withPdf(file, async (pdf, pdfjsLib) => {
-    const totalPages = pdf.numPages;
-    const actualStart = Math.max(1, startPage);
-    const actualEnd = Math.min(totalPages, endPage);
-    const pages: PageExtractionResult[] = [];
-    const errors: string[] = [];
-
-    for (let pageNum = actualStart; pageNum <= actualEnd; pageNum++) {
-      try {
-        pages.push(await readPage(pdf, pdfjsLib, pageNum));
-
-        if (onProgress) {
-          onProgress(pageNum - actualStart + 1, actualEnd - actualStart + 1);
-        }
-      } catch (pageError) {
-        errors.push(`Error extracting page ${pageNum}: ${String(pageError)}`);
-        pages.push({
-          pageNumber: pageNum,
-          text: '',
-          hasText: false,
-          hasImages: false,
-        });
-      }
-    }
-
-    const fullText = pages.map((p) => p.text).join('\n\n');
-    const pagesWithText = pages.filter((p) => p.hasText).length;
-    const pagesWithImages = pages.filter((p) => p.hasImages).length;
-    const textPageRatio = pages.length > 0 ? pagesWithText / pages.length : 0;
-
-    const isScanned =
-      textPageRatio < TEXT_PAGE_RATIO_THRESHOLD &&
-      pagesWithImages > 0 &&
-      fullText.length < pages.length * MIN_TEXT_CHARS_PER_PAGE;
-
-    const textConfidence = Math.min(1, textPageRatio + (fullText.length > 500 ? 0.2 : 0));
-
-    return {
-      totalPages,
-      fullText,
-      pages,
-      isScanned,
-      textConfidence,
-      errors,
-    };
-  });
 }
 
 /**

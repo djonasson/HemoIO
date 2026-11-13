@@ -2,7 +2,7 @@
  * Reading a PDF page by page, each page its own way: its own text when it
  * has some, OCR of its image when it is a scan.
  */
-import { canvasToPng, PDFExtractionError, readPage, withPdf, type PdfPage } from './pdfExtractor';
+import { canvasToPng, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
 import { OCRError, recognizeImage, type OCRResult } from './tesseractService';
 
 /** Render scale for OCR: about 300 DPI, which Tesseract reads best (a PDF measures in 1/72 inch) */
@@ -112,6 +112,20 @@ async function ocrPage(
   return { pageNumber, text: result.text.trim(), method: 'ocr', confidence: result.confidence, ...(turned && { turned }) };
 }
 
+/** A page's own text when it has some, else OCR of its image, unless OCR finds less than its few words */
+async function readOnePage(
+  page: PdfPage,
+  pageNumber: number,
+  total: number,
+  options: ReadPdfOptions
+): Promise<PdfPageReading> {
+  const own: PdfPageReading = { pageNumber, text: await pageText(page), method: 'pdf-text' };
+  const ownLetters = letterCount(own.text);
+  if (ownLetters >= MIN_PAGE_LETTERS) return own;
+  const read = await ocrPage(page, pageNumber, total, options);
+  return letterCount(read.text) >= ownLetters ? read : own;
+}
+
 /**
  * Read a PDF page by page: a page with text of its own is read as it is,
  * laid out in its printed lines; a page that is a scan is rendered at about
@@ -122,20 +136,13 @@ async function ocrPage(
 export async function readPdf(file: File | ArrayBuffer, options: ReadPdfOptions = {}): Promise<PdfReading> {
   const { onProgress } = options;
   try {
-    return await withPdf(file, async (pdf, pdfjsLib) => {
+    return await withPdf(file, async (pdf) => {
       const total = pdf.numPages;
       const pages: PdfPageReading[] = [];
       const errors: string[] = [];
       for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
         try {
-          const own = await readPage(pdf, pdfjsLib, pageNumber);
-          if (letterCount(own.text) >= MIN_PAGE_LETTERS) {
-            pages.push({ pageNumber, text: own.text, method: 'pdf-text' });
-          } else {
-            const read = await ocrPage(await pdf.getPage(pageNumber), pageNumber, total, options);
-            // A page whose few words of its own are all OCR finds keeps them
-            pages.push(letterCount(read.text) >= letterCount(own.text) ? read : { pageNumber, text: own.text, method: 'pdf-text' });
-          }
+          pages.push(await readOnePage(await pdf.getPage(pageNumber), pageNumber, total, options));
           onProgress?.(`Extracting page ${pageNumber}/${total}`, pageNumber / total);
         } catch (pageError) {
           if (pageError instanceof OCRError) throw pageError;

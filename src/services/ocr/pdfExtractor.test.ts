@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   extractTextFromPDF,
-  needsOCR,
   getPageCount,
-  extractPageRange,
   PDFExtractionError,
 } from './pdfExtractor';
 
@@ -136,25 +134,6 @@ describe('PDF Text Extractor', () => {
     });
   });
 
-  describe('needsOCR', () => {
-    it('returns false for text-based PDF', async () => {
-      const mockFile = new ArrayBuffer(100);
-
-      const result = await needsOCR(mockFile);
-
-      expect(result).toBe(false);
-    });
-
-    it('returns true for scanned PDF', async () => {
-      __setMockConfig({ numPages: 3, isScanned: true });
-      const mockFile = new ArrayBuffer(100);
-
-      const result = await needsOCR(mockFile);
-
-      expect(result).toBe(true);
-    });
-  });
-
   describe('releasing documents', () => {
     it('destroys every document it opens, so no PDF worker is left running', async () => {
       __openedDocuments.length = 0;
@@ -162,9 +141,8 @@ describe('PDF Text Extractor', () => {
 
       await extractTextFromPDF(pdf);
       await getPageCount(pdf);
-      await extractPageRange(pdf, 1, 1);
 
-      expect(__openedDocuments).toHaveLength(3);
+      expect(__openedDocuments).toHaveLength(2);
       for (const doc of __openedDocuments) expect(doc.destroy).toHaveBeenCalled();
     });
   });
@@ -190,47 +168,6 @@ describe('PDF Text Extractor', () => {
       const count = await getPageCount(mockFile);
 
       expect(count).toBe(5);
-    });
-  });
-
-  describe('extractPageRange', () => {
-    it('extracts text from specified page range', async () => {
-      __setMockConfig({ numPages: 10 });
-      const mockFile = new ArrayBuffer(100);
-
-      const result = await extractPageRange(mockFile, 3, 5);
-
-      expect(result.totalPages).toBe(10);
-      expect(result.pages).toHaveLength(3);
-      expect(result.pages[0].pageNumber).toBe(3);
-      expect(result.pages[2].pageNumber).toBe(5);
-    });
-
-    it('clamps page range to document bounds', async () => {
-      __setMockConfig({ numPages: 5 });
-      const mockFile = new ArrayBuffer(100);
-
-      const result = await extractPageRange(mockFile, 0, 10);
-
-      expect(result.pages).toHaveLength(5);
-      expect(result.pages[0].pageNumber).toBe(1);
-      expect(result.pages[4].pageNumber).toBe(5);
-    });
-
-    it('provides progress callback for page range', async () => {
-      __setMockConfig({ numPages: 10 });
-      const mockFile = new ArrayBuffer(100);
-      const progressCalls: [number, number][] = [];
-
-      await extractPageRange(mockFile, 3, 5, (current, total) => {
-        progressCalls.push([current, total]);
-      });
-
-      expect(progressCalls).toEqual([
-        [1, 3],
-        [2, 3],
-        [3, 3],
-      ]);
     });
   });
 
