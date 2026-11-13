@@ -53,7 +53,7 @@ describe('PreferencesProvider', () => {
   it('gives the stored date format, and a changed one once reloaded', async () => {
     const { result } = await renderLoaded();
     expect(result.current.dateFormat).toBe('MM/DD/YYYY');
-    stored = { ...stored, dateFormat: 'DD/MM/YYYY' };
+    stored = { ...base, ...stored, dateFormat: 'DD/MM/YYYY' };
     await act(() => result.current.reload());
     expect(result.current.dateFormat).toBe('DD/MM/YYYY');
   });
