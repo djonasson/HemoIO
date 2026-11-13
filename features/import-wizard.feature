@@ -62,6 +62,47 @@ Feature: Import Wizard
     And I should be able to skip that file
     And I should be able to proceed with successfully analyzed files
 
+  Scenario: A failed file is analysed again on its own
+    Given one of two files could not be analysed
+    Then the failed file offers "Retry" with its name
+    And the file that was analysed offers no retry
+    And I am told I can retry the failed files or continue without them
+    When I retry the failed file
+    Then only that file is sent to the AI again
+    And once it succeeds both files can be reviewed
+
+  Scenario: Going back to the analysis keeps the finished analysis
+    Given the analysis has completed
+    And I am on the review step
+    When I go back to the analysis step
+    Then I see each file's analysis as it finished
+    And no file is sent to the AI again
+
+  Scenario: Review edits survive going back to the analysis
+    Given I edited a value on the review step
+    When I go back to the analysis step
+    And I continue to the review step again
+    Then my edit is still there
+
+  Scenario: A file retried after reviewing is added to the review
+    Given I continued to the review with one of two files, the other having failed
+    And I edited a value of the analysed file
+    When I go back and retry the failed file successfully
+    And I continue to the review step again
+    Then my edit is still there
+    And the retried file is reviewed too, in the order the files were uploaded
+
+  Scenario: Changing the files keeps the analysis of the files still there
+    Given the analysis has completed
+    When I go back to the upload step
+    Then the files I chose are still listed
+    When I add another file and analyse again
+    Then only the added file is sent to the AI
+    When I go back to the upload step and remove a file
+    And I analyse again
+    Then the removed file is no longer analysed or reviewed
+    And no file is sent to the AI again
+
   # Review Step
   Scenario: User reviews extracted values
     Given the analysis has completed

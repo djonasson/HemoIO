@@ -1,10 +1,10 @@
 /**
  * Analysis Step Component
  *
- * Shows progress while documents are being processed and analyzed.
+ * Shows each file's analysis: its progress while it runs, and its outcome.
  */
 
-import { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useCallback } from 'react';
 import {
   Box,
   Stack,
@@ -25,17 +25,12 @@ import {
   IconAlertCircle,
   IconArrowLeft,
   IconFileAnalytics,
+  IconRefresh,
 } from '@tabler/icons-react';
 import { FileName } from './FileName';
-import type { UploadedFile } from './UploadStep';
-import { analyzeLabReport, AnalysisError } from '../../services/analysis';
-import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
-import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
-import { processWithConcurrency } from '../../utils/concurrency';
-import { dayOrderOf } from '@/utils/labDate';
 import { manualEntryResult } from './manualEntry';
-import { PreferencesContext } from '@hooks/usePreferences';
-import { useCatalog } from '@contexts/useCatalog';
+import type { MatchedBiomarker, DuplicateConflict } from '../../services/analysis/LabReportAnalyzer';
+import type { FileAnalysisState } from '@hooks/useFileAnalysis';
 
 /**
  * Analysis result for a single file
@@ -66,29 +61,19 @@ export interface AnalysisResult {
 }
 
 /**
- * File processing status
- */
-interface FileStatus {
-  id: string;
-  name: string;
-  status: 'pending' | 'processing' | 'success' | 'error';
-  progress: number;
-  stage?: string;
-  error?: string;
-}
-
-/**
  * Props for AnalysisStep
  */
 export interface AnalysisStepProps {
-  /** Files to analyze */
-  files: UploadedFile[];
-  /** AI provider type */
-  aiProvider: 'openai' | 'anthropic' | 'ollama';
-  /** Function to get decrypted API key (not required for Ollama) */
-  getApiKey: () => Promise<string | null>;
-  /** AI model to use (provider-specific) */
-  aiModel?: string;
+  /** Every file's analysis, in upload order */
+  fileStates: FileAnalysisState[];
+  /** The finished analyses, in upload order */
+  results: AnalysisResult[];
+  /** Whether a file is still waiting for or in its analysis */
+  isProcessing: boolean;
+  /** 0 to 100, over all files */
+  overallProgress: number;
+  /** Analyse a failed file again */
+  onRetry: (fileId: string) => void;
   /** Callback when analysis is complete */
   onComplete: (results: AnalysisResult[]) => void;
   /** Callback to go back */
@@ -96,204 +81,20 @@ export interface AnalysisStepProps {
 }
 
 /**
- * Analysis Step - document processing with progress
+ * Analysis Step - the progress and outcome of each file's analysis
  */
 export function AnalysisStep({
-  files,
-  aiProvider,
-  getApiKey,
-  aiModel,
+  fileStates,
+  results,
+  isProcessing,
+  overallProgress,
+  onRetry,
   onComplete,
   onBack,
-}: AnalysisStepProps) {
-  const catalog = useCatalog();
-  // The user's learned tests, as they are when each file is matched
-  const preferences = useContext(PreferencesContext);
-  const learnedTests = preferences?.learnedTests;
-  const dayOrder = dayOrderOf(preferences?.dateFormat);
-  const learnedTestsRef = useRef(learnedTests);
-  const dayOrderRef = useRef(dayOrder);
-  useEffect(() => {
-    learnedTestsRef.current = learnedTests;
-    dayOrderRef.current = dayOrder;
-  }, [learnedTests, dayOrder]);
-  const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
-  const [results, setResults] = useState<AnalysisResult[]>([]);
-  const [isProcessing, setIsProcessing] = useState(true);
-  const [overallProgress, setOverallProgress] = useState(0);
-
-  // Initialize file statuses
-  useEffect(() => {
-    setFileStatuses(
-      files.map((f) => ({
-        id: f.id,
-        name: f.file.name,
-        status: 'pending',
-        progress: 0,
-      }))
-    );
-  }, [files]);
-
-  // Update status for a file
-  const updateFileStatus = useCallback(
-    (id: string, updates: Partial<FileStatus>) => {
-      setFileStatuses((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, ...updates } : f))
-      );
-    },
-    []
-  );
-
-  // Process all files
-  useEffect(() => {
-    if (fileStatuses.length === 0) return;
-
-    let cancelled = false;
-    // Leaving the step stops AI requests and rate-limit waits still in progress
-    const controller = new AbortController();
-
-    async function processFiles() {
-      // Pre-allocate array to maintain order despite parallel completion
-      const analysisResults: AnalysisResult[] = new Array(files.length);
-
-      // Get decrypted API key (not needed for Ollama)
-      let apiKey: string | null = null;
-      if (aiProvider !== 'ollama') {
-        apiKey = await getApiKey();
-        if (!apiKey && !cancelled) {
-          // Handle missing API key
-          for (const file of files) {
-            analysisResults.push({
-              fileId: file.id,
-              fileName: file.file.name,
-              success: false,
-              error: 'API key not available',
-              biomarkers: [],
-              confidence: 0,
-              warnings: [],
-            });
-            updateFileStatus(file.id, {
-              status: 'error',
-              progress: 100,
-              error: 'API key not available',
-            });
-          }
-          setResults(analysisResults);
-          setIsProcessing(false);
-          setOverallProgress(100);
-          return;
-        }
-      }
-
-      // Determine concurrency based on provider
-      // Cloud providers can handle parallel requests, Ollama should stay sequential
-      const concurrency = aiProvider === 'ollama' ? 1 : 3;
-      let completedCount = 0;
-
-      await processWithConcurrency(
-        files,
-        async (uploadedFile, index) => {
-          if (cancelled) return;
-
-          updateFileStatus(uploadedFile.id, {
-            status: 'processing',
-            progress: 0,
-            stage: 'Starting...',
-          });
-
-          try {
-            const result: ServiceAnalysisResult = await analyzeLabReport(
-              uploadedFile.file,
-              {
-                aiProvider,
-                aiConfig: {
-                  apiKey: apiKey || '',
-                  model: aiModel,
-                },
-                signal: controller.signal,
-                catalog,
-                learnedTests: learnedTestsRef.current,
-                dayOrder: dayOrderRef.current,
-                onProgress: (stage, progress) => {
-                  if (!cancelled) {
-                    updateFileStatus(uploadedFile.id, {
-                      progress: progress * 100,
-                      stage,
-                    });
-
-                    // Update overall progress based on completed files + current file progress
-                    const completedProgress = (completedCount / files.length) * 100;
-                    const currentFileProgress = (progress / files.length) * 100;
-                    setOverallProgress(Math.min(completedProgress + currentFileProgress, 99));
-                  }
-                },
-              }
-            );
-
-            analysisResults[index] = {
-              fileId: uploadedFile.id,
-              fileName: uploadedFile.file.name,
-              success: true,
-              biomarkers: result.matchedBiomarkers,
-              labDate: result.labDate,
-              labName: result.labName,
-              confidence: result.overallConfidence,
-              warnings: result.warnings,
-              duplicateConflicts: result.duplicateConflicts,
-            };
-
-            updateFileStatus(uploadedFile.id, {
-              status: 'success',
-              progress: 100,
-              stage: 'Complete',
-            });
-          } catch (error) {
-            const errorMessage =
-              error instanceof AnalysisError
-                ? error.message
-                : error instanceof Error
-                  ? error.message
-                  : 'Unknown error';
-
-            analysisResults[index] = {
-              fileId: uploadedFile.id,
-              fileName: uploadedFile.file.name,
-              success: false,
-              error: errorMessage,
-              biomarkers: [],
-              confidence: 0,
-              warnings: [],
-            };
-
-            updateFileStatus(uploadedFile.id, {
-              status: 'error',
-              progress: 100,
-              error: errorMessage,
-            });
-          }
-
-          completedCount++;
-          if (!cancelled) {
-            setOverallProgress((completedCount / files.length) * 100);
-          }
-        },
-        concurrency
-      );
-
-      if (!cancelled) {
-        setResults(analysisResults);
-        setIsProcessing(false);
-        setOverallProgress(100);
-      }
-    }
-
-    processFiles();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [files, aiProvider, getApiKey, aiModel, fileStatuses.length, updateFileStatus, catalog]);
+}: AnalysisStepProps): React.JSX.Element {
+  const unfinishedCount = fileStates.filter(
+    (f) => f.status === 'pending' || f.status === 'processing'
+  ).length;
 
   // Calculate summary statistics
   const successCount = results.filter((r) => r.success).length;
@@ -313,15 +114,15 @@ export function AnalysisStep({
 
   // Files without values: the user types those values in on the review step
   const hasNoValues = (r: AnalysisResult) => !r.success || r.biomarkers.length === 0;
-  const filesWithoutValues = results.filter((r) => r && hasNoValues(r));
+  const filesWithoutValues = results.filter(hasNoValues);
   const enterManually = useCallback(() => {
     onComplete(
-      results.filter(Boolean).map((r) => (hasNoValues(r) ? manualEntryResult(r) : r))
+      results.map((r) => (hasNoValues(r) ? manualEntryResult(r) : r))
     );
   }, [results, onComplete]);
 
   // Get status icon
-  const getStatusIcon = (status: FileStatus['status']) => {
+  const getStatusIcon = (status: FileAnalysisState['status']) => {
     switch (status) {
       case 'success':
         return (
@@ -361,14 +162,14 @@ export function AnalysisStep({
         />
         <Text size="sm" c="dimmed" mt="xs">
           {isProcessing
-            ? `Processing ${files.length} file(s)...`
+            ? `Processing ${unfinishedCount} file(s)...`
             : 'Processing complete'}
         </Text>
       </Paper>
 
       {/* File list with status */}
       <List spacing="sm" size="sm" center>
-        {fileStatuses.map((file) => (
+        {fileStates.map((file) => (
           <List.Item key={file.id} icon={getStatusIcon(file.status)}>
             <Group justify="space-between" wrap="nowrap">
               <Box miw={0}>
@@ -384,8 +185,18 @@ export function AnalysisStep({
                     {file.error}
                   </Text>
                 )}
-
               </Box>
+              {file.status === 'error' && !isProcessing && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconRefresh size={14} />}
+                  onClick={() => onRetry(file.id)}
+                  aria-label={`Retry ${file.name}`}
+                >
+                  Retry
+                </Button>
+              )}
               {file.status === 'processing' && (
                 <Progress
                   value={file.progress}
@@ -419,8 +230,8 @@ export function AnalysisStep({
               title="Some Files Failed"
               color="orange"
             >
-              {errorCount} file(s) could not be processed. You can continue with
-              the successful files or go back to try again.
+              {errorCount} file(s) could not be processed. You can retry a failed
+              file, or continue with the successful files.
             </Alert>
           )}
 
@@ -430,8 +241,8 @@ export function AnalysisStep({
               title="Analysis Failed"
               color="red"
             >
-              No files could be processed. Check your files and try again, or type the
-              values in yourself.
+              No files could be processed. Retry them, choose other files, or type
+              the values in yourself.
             </Alert>
           )}
         </>

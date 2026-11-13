@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 
 // Mock the services to avoid loading pdf.js
@@ -23,6 +24,8 @@ vi.mock('../../services/analysis', () => ({
 import { CatalogContext } from '@contexts/useCatalog';
 import { fixtureCatalog } from '@/test/loincFixture';
 import { ImportWizard } from './ImportWizard';
+import { analyzeLabReport } from '../../services/analysis';
+import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
 
 const catalog = fixtureCatalog();
 
@@ -100,5 +103,70 @@ describe('ImportWizard', () => {
     expect(
       screen.getByText(/Upload your lab report documents/i)
     ).toBeInTheDocument();
+  });
+
+  describe('Going back', () => {
+    const analysed = {
+      matchedBiomarkers: [{ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9 }],
+      labDate: '2024-01-15',
+      labName: 'Analysed Lab',
+      overallConfidence: 0.9,
+      warnings: [],
+      duplicateConflicts: [],
+    } as unknown as ServiceAnalysisResult;
+
+    beforeEach(() => {
+      vi.mocked(analyzeLabReport).mockReset();
+    });
+
+    async function analyse(names: string[]): Promise<void> {
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+      await userEvent.upload(input, names.map((name) => new File(['x'], name, { type: 'application/pdf' })));
+      await userEvent.click(screen.getByRole('button', { name: /^Analyze \(\d+\)$/ }));
+      await screen.findByText('Processing complete');
+    }
+
+    async function back(): Promise<void> {
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    }
+
+    it('keeps the analysis and the review edits, analysing nothing again', async () => {
+      vi.mocked(analyzeLabReport).mockResolvedValue(analysed);
+      render(
+        <TestWrapper>
+          <ImportWizard {...defaultProps} />
+        </TestWrapper>
+      );
+      await analyse(['report.pdf']);
+      await userEvent.click(screen.getByRole('button', { name: /^Review Results/ }));
+      const labName = await screen.findByLabelText('Lab Name');
+      await userEvent.type(labName, ', Ward 2');
+      expect(labName).toHaveValue('Analysed Lab, Ward 2');
+
+      await back();
+      expect(screen.getByText('Processing complete')).toBeInTheDocument();
+      expect(screen.getByRole('alert', { name: 'Analysis Complete' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /^Review Results/ }));
+
+      expect(await screen.findByLabelText('Lab Name')).toHaveValue('Analysed Lab, Ward 2');
+      expect(analyzeLabReport).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the files chosen, analysing only an added one', async () => {
+      vi.mocked(analyzeLabReport).mockResolvedValue(analysed);
+      render(
+        <TestWrapper>
+          <ImportWizard {...defaultProps} />
+        </TestWrapper>
+      );
+      await analyse(['first.pdf']);
+
+      await back();
+      expect(screen.getByText('first.pdf')).toBeInTheDocument();
+      await analyse(['second.pdf']);
+
+      expect(vi.mocked(analyzeLabReport).mock.calls.map(([file]) => file.name)).toEqual(['first.pdf', 'second.pdf']);
+      expect(screen.getByRole('alert', { name: 'Analysis Complete' })).toHaveTextContent('from 2 file(s)');
+    });
   });
 });

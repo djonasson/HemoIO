@@ -1,212 +1,168 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { CatalogContext } from '@contexts/useCatalog';
-import { PreferencesContext, type PreferencesState } from '@hooks/usePreferences';
-import { fixtureCatalog } from '@/test/loincFixture';
-import { AnalysisStep } from './AnalysisStep';
-import { analyzeLabReport } from '../../services/analysis';
-import type { AnalysisResult as ServiceAnalysisResult } from '../../services/analysis';
-import type { UploadedFile } from './UploadStep';
+import { AnalysisStep, type AnalysisResult, type AnalysisStepProps } from './AnalysisStep';
+import type { FileAnalysisState } from '@hooks/useFileAnalysis';
 
-// Mock the analysis service
-vi.mock('../../services/analysis', () => ({
-  analyzeLabReport: vi.fn(),
-  AnalysisError: class AnalysisError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'AnalysisError';
-    }
-  },
-}));
-
-// Mock concurrency utility
-vi.mock('../../utils/concurrency', () => ({
-  processWithConcurrency: vi.fn(async (items, processor) => {
-    for (let index = 0; index < items.length; index++) {
-      await processor(items[index], index);
-    }
-  }),
-}));
-
-const mockFile = new File(['test content'], 'test-report.pdf', { type: 'application/pdf' });
-
-const mockUploadedFile: UploadedFile = {
-  file: mockFile,
-  id: 'file1',
-  formattedSize: '1.5 KB',
-};
-
-const defaultProps = {
-  files: [mockUploadedFile],
-  aiProvider: 'openai' as const,
-  getApiKey: vi.fn().mockResolvedValue('sk-test-key'),
-  aiModel: 'gpt-4',
-  onComplete: vi.fn(),
-  onBack: vi.fn(),
-};
-
-const catalog = fixtureCatalog();
-const LEARNED = { 'zorb|mg/dL': '2339-0' };
-
-function renderAnalysisStep(props: Partial<typeof defaultProps> = {}) {
-  return render(
-    <MantineProvider env="test">
-      <CatalogContext.Provider value={catalog}>
-        <PreferencesContext.Provider value={{ learnedTests: LEARNED } as unknown as PreferencesState}>
-          <AnalysisStep {...defaultProps} {...props} />
-        </PreferencesContext.Provider>
-      </CatalogContext.Provider>
-    </MantineProvider>
-  );
+function state(name: string, status: FileAnalysisState['status'], extra: Partial<FileAnalysisState> = {}): FileAnalysisState {
+  const finished = status === 'success' || status === 'error';
+  return { id: name, name, status, progress: finished ? 100 : 0, ...extra };
 }
 
-/**
- * Analysis starts on mount; wait until it finishes (the Back button only
- * appears then) so its state updates don't land after the test has ended.
- */
-async function waitForAnalysisToFinish(): Promise<void> {
-  await screen.findByRole('button', { name: /Back/i });
+function succeeded(name: string, values = 1): AnalysisResult {
+  return {
+    fileId: name,
+    fileName: name,
+    success: true,
+    biomarkers: Array.from({ length: values }, () => ({ name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9 })) as AnalysisResult['biomarkers'],
+    labDate: '2024-01-15',
+    confidence: 0.9,
+    warnings: [],
+  };
+}
+
+function failed(name: string, error = 'AI analysis failed: down'): AnalysisResult {
+  return { fileId: name, fileName: name, success: false, error, biomarkers: [], confidence: 0, warnings: [] };
+}
+
+function renderAnalysisStep(props: Partial<AnalysisStepProps> = {}) {
+  const all: AnalysisStepProps = {
+    fileStates: [state('test-report.pdf', 'success')],
+    results: [succeeded('test-report.pdf')],
+    isProcessing: false,
+    overallProgress: 100,
+    onRetry: vi.fn(),
+    onComplete: vi.fn(),
+    onBack: vi.fn(),
+    ...props,
+  };
+  render(
+    <MantineProvider env="test">
+      <AnalysisStep {...all} />
+    </MantineProvider>
+  );
+  return all;
 }
 
 describe('AnalysisStep', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  describe('Initial rendering', () => {
-    it('renders overall progress section', async () => {
-      renderAnalysisStep();
+  describe('While files are analysed', () => {
+    it('shows the overall progress and how many files are still being analysed', () => {
+      renderAnalysisStep({
+        fileStates: [state('a.pdf', 'success'), state('b.pdf', 'processing'), state('c.pdf', 'pending')],
+        results: [succeeded('a.pdf')],
+        isProcessing: true,
+        overallProgress: 40,
+      });
 
       expect(screen.getByText('Overall Progress')).toBeInTheDocument();
-
-      await waitForAnalysisToFinish();
+      expect(screen.getByText('Processing 2 file(s)...')).toBeInTheDocument();
+      expect(screen.getAllByRole('progressbar')[0]).toHaveAttribute('aria-valuenow', '40');
+      expect(screen.getAllByRole('listitem')).toHaveLength(3);
     });
 
-    it('displays processing message initially', async () => {
-      renderAnalysisStep();
-
-      expect(screen.getByText(/Processing.*file/)).toBeInTheDocument();
-
-      await waitForAnalysisToFinish();
-    });
-
-    it('displays file names in list', async () => {
-      renderAnalysisStep();
-
-      expect(screen.getByText('test-report.pdf')).toBeInTheDocument();
-
-      await waitForAnalysisToFinish();
-    });
-
-    it('displays multiple files', async () => {
-      const secondFile: UploadedFile = {
-        file: new File(['content'], 'second-report.pdf', { type: 'application/pdf' }),
-        id: 'file2',
-        formattedSize: '2.0 KB',
-      };
-
-      renderAnalysisStep({ files: [mockUploadedFile, secondFile] });
-
-      expect(screen.getByText('test-report.pdf')).toBeInTheDocument();
-      expect(screen.getByText('second-report.pdf')).toBeInTheDocument();
-
-      await waitForAnalysisToFinish();
-    });
-  });
-
-  describe('Progress display', () => {
-    it('shows progress bar', async () => {
-      renderAnalysisStep();
-
-      // Progress bar should be present
-      const progressBar = document.querySelector('.mantine-Progress-root');
-      expect(progressBar).toBeInTheDocument();
-
-      await waitForAnalysisToFinish();
-    });
-  });
-
-  describe('Back button', () => {
-    it('displays back button', async () => {
-      renderAnalysisStep();
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Back/i })).toBeInTheDocument();
-      }, { timeout: 3000 });
-    });
-  });
-
-  describe('API key handling', () => {
-    it('calls getApiKey for non-ollama providers', async () => {
-      const getApiKey = vi.fn().mockResolvedValue('sk-test-key');
-      renderAnalysisStep({ getApiKey, aiProvider: 'openai' });
-
-      await waitFor(() => {
-        expect(getApiKey).toHaveBeenCalled();
+    it('announces the stage of a file being processed', () => {
+      renderAnalysisStep({
+        fileStates: [state('a.pdf', 'processing', { stage: 'Waiting for the AI provider (rate limited)', progress: 60 })],
+        results: [],
+        isProcessing: true,
       });
+
+      const stage = screen.getByText('Waiting for the AI provider (rate limited)');
+      expect(stage).toHaveAttribute('aria-live', 'polite');
+    });
+
+    it('cannot go back, continue or retry yet', () => {
+      renderAnalysisStep({
+        fileStates: [state('a.pdf', 'error', { error: 'down' }), state('b.pdf', 'processing')],
+        results: [failed('a.pdf')],
+        isProcessing: true,
+      });
+
+      expect(screen.getByRole('button', { name: /Back/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Review Results/ })).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /^Retry/ })).not.toBeInTheDocument();
     });
   });
 
-  describe('File list rendering', () => {
-    it('shows file status icons', async () => {
-      renderAnalysisStep();
+  describe('Once analysed', () => {
+    it('summarises the values found', () => {
+      renderAnalysisStep({ results: [succeeded('test-report.pdf', 2)] });
 
-      // Initial state should show pending icons
-      const listItems = document.querySelectorAll('.mantine-List-item');
-      expect(listItems.length).toBe(1);
-
-      await waitForAnalysisToFinish();
+      expect(screen.getByText('Processing complete')).toBeInTheDocument();
+      expect(screen.getByRole('alert', { name: 'Analysis Complete' })).toHaveTextContent(
+        'Successfully extracted 2 biomarker values from 1 file(s).'
+      );
     });
 
-    it('displays correct file count in progress message', async () => {
-      const files = [
-        mockUploadedFile,
-        { ...mockUploadedFile, id: 'file2', file: new File([''], 'file2.pdf') },
-        { ...mockUploadedFile, id: 'file3', file: new File([''], 'file3.pdf') },
-      ];
+    it('continues with the files that succeeded', async () => {
+      const props = renderAnalysisStep({
+        fileStates: [state('good.pdf', 'success'), state('bad.pdf', 'error', { error: 'down' })],
+        results: [succeeded('good.pdf'), failed('bad.pdf')],
+      });
 
-      renderAnalysisStep({ files });
+      await userEvent.click(screen.getByRole('button', { name: /Review Results/ }));
 
-      expect(screen.getByText(/Processing 3 file/)).toBeInTheDocument();
+      expect(props.onComplete).toHaveBeenCalledWith([props.results[0]]);
+    });
 
-      await waitForAnalysisToFinish();
+    it('goes back', async () => {
+      const props = renderAnalysisStep();
+      await userEvent.click(screen.getByRole('button', { name: /Back/ }));
+      expect(props.onBack).toHaveBeenCalled();
+    });
+  });
+
+  describe('A failed file', () => {
+    it("shows the file's error and offers to retry that file alone", async () => {
+      const props = renderAnalysisStep({
+        fileStates: [state('good.pdf', 'success'), state('bad.pdf', 'error', { error: 'AI analysis failed: down' })],
+        results: [succeeded('good.pdf'), failed('bad.pdf')],
+      });
+
+      expect(screen.getByText('AI analysis failed: down')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry good.pdf' })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Retry bad.pdf' }));
+
+      expect(props.onRetry).toHaveBeenCalledWith('bad.pdf');
+    });
+
+    it('tells the user they can retry it or continue without it', () => {
+      renderAnalysisStep({
+        fileStates: [state('good.pdf', 'success'), state('bad.pdf', 'error')],
+        results: [succeeded('good.pdf'), failed('bad.pdf')],
+      });
+
+      const alert = screen.getByRole('alert', { name: 'Some Files Failed' });
+      expect(alert).toHaveTextContent(
+        '1 file(s) could not be processed. You can retry a failed file, or continue with the successful files.'
+      );
+      expect(alert).not.toHaveTextContent('go back');
+    });
+
+    it('cannot be reviewed when every file failed', () => {
+      renderAnalysisStep({
+        fileStates: [state('bad.pdf', 'error')],
+        results: [failed('bad.pdf')],
+      });
+
+      expect(screen.getByRole('alert', { name: 'Analysis Failed' })).toHaveTextContent(
+        'No files could be processed. Retry them, choose other files, or type the values in yourself.'
+      );
+      expect(screen.getByRole('button', { name: /Review Results/ })).toBeDisabled();
     });
   });
 
   describe('Manual entry', () => {
-    function uploaded(name: string): UploadedFile {
-      return {
-        file: new File(['x'], name, { type: 'application/pdf' }),
-        id: name,
-        formattedSize: '1 KB',
-      };
-    }
-
-    function successfulAnalysis(): ServiceAnalysisResult {
-      return {
-        matchedBiomarkers: [
-          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.9},
-        ],
-        labDate: '2024-01-15',
-        labName: 'Lab',
-        overallConfidence: 0.9,
-        warnings: [],
-        duplicateConflicts: [],
-      } as unknown as ServiceAnalysisResult;
-    }
-
     it('offers manual entry for a file that could not be analyzed', async () => {
-      vi.mocked(analyzeLabReport).mockRejectedValueOnce(
-        new Error('No readable text found in document')
-      );
-      const onComplete = vi.fn();
-      renderAnalysisStep({ files: [uploaded('blank.pdf')], onComplete });
+      const props = renderAnalysisStep({
+        fileStates: [state('blank.pdf', 'error')],
+        results: [failed('blank.pdf', 'No readable text found in document')],
+      });
 
-      await userEvent.click(await screen.findByRole('button', { name: 'Enter values manually' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Enter values manually' }));
 
-      expect(onComplete).toHaveBeenCalledWith([
+      expect(props.onComplete).toHaveBeenCalledWith([
         expect.objectContaining({
           fileName: 'blank.pdf',
           success: true,
@@ -217,89 +173,44 @@ describe('AnalysisStep', () => {
     });
 
     it('keeps the files that succeeded when entering another one manually', async () => {
-      vi.mocked(analyzeLabReport)
-        .mockResolvedValueOnce(successfulAnalysis())
-        .mockRejectedValueOnce(new Error('AI analysis failed: down'));
-      const onComplete = vi.fn();
-      renderAnalysisStep({ files: [uploaded('good.pdf'), uploaded('bad.pdf')], onComplete });
+      const props = renderAnalysisStep({
+        fileStates: [state('good.pdf', 'success'), state('bad.pdf', 'error')],
+        results: [succeeded('good.pdf'), failed('bad.pdf')],
+      });
 
-      await userEvent.click(await screen.findByRole('button', { name: 'Enter values manually' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Enter values manually' }));
 
-      const passed = onComplete.mock.calls[0][0] as Array<{ fileName: string; manualEntry?: boolean }>;
+      const passed = vi.mocked(props.onComplete).mock.calls[0][0];
       expect(passed.map((r) => [r.fileName, r.manualEntry ?? false])).toEqual([
         ['good.pdf', false],
         ['bad.pdf', true],
       ]);
+      // The file that succeeded is passed on as it was analysed
+      expect(passed[0]).toBe(props.results[0]);
     });
 
-    it('offers manual entry when the analysis found no values', async () => {
-      vi.mocked(analyzeLabReport).mockResolvedValueOnce({
-        ...successfulAnalysis(),
-        matchedBiomarkers: [],
+    it('offers manual entry when the analysis found no values', () => {
+      renderAnalysisStep({ results: [succeeded('empty.pdf', 0)] });
+      expect(screen.getByRole('button', { name: 'Enter values manually' })).toBeInTheDocument();
+      expect(screen.getByText('empty.pdf has no values yet')).toBeInTheDocument();
+    });
+
+    it('enters every file without values manually, in one step', async () => {
+      const props = renderAnalysisStep({
+        fileStates: [state('a.pdf', 'error'), state('b.pdf', 'error')],
+        results: [failed('a.pdf'), failed('b.pdf', 'No readable text found in document')],
       });
-      renderAnalysisStep({ files: [uploaded('empty.pdf')] });
-      expect(await screen.findByRole('button', { name: 'Enter values manually' })).toBeInTheDocument();
+
+      const buttons = screen.getAllByRole('button', { name: 'Enter values manually' });
+      expect(buttons).toHaveLength(1);
+      expect(screen.getByText('2 files have no values yet')).toBeInTheDocument();
+      await userEvent.click(buttons[0]);
+
+      const passed = vi.mocked(props.onComplete).mock.calls[0][0];
+      expect(passed.map((r) => [r.fileName, r.manualEntry])).toEqual([
+        ['a.pdf', true],
+        ['b.pdf', true],
+      ]);
     });
-  });
-
-  it('announces the stage of a file being processed', async () => {
-    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, options) => {
-      options.onProgress?.('Waiting for the AI provider (rate limited)', 0.6);
-      return new Promise(() => {});
-    });
-    renderAnalysisStep({ files: [mockUploadedFile] });
-
-    const stage = await screen.findByText('Waiting for the AI provider (rate limited)');
-    expect(stage).toHaveAttribute('aria-live', 'polite');
-  });
-
-  it('matches in the LOINC catalog with the learned tests', async () => {
-    let options: Parameters<typeof analyzeLabReport>[1] | undefined;
-    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, given) => {
-      options = given;
-      return new Promise(() => {});
-    });
-    renderAnalysisStep({ files: [mockUploadedFile] });
-    await waitFor(() => expect(options).toBeDefined());
-    expect(options?.catalog).toBe(catalog);
-    expect(options?.learnedTests).toEqual(LEARNED);
-  });
-
-  it('aborts the analysis when the step is left', async () => {
-    let signal: AbortSignal | undefined;
-    vi.mocked(analyzeLabReport).mockImplementationOnce(async (_file, options) => {
-      signal = options.signal;
-      return new Promise(() => {});
-    });
-    const { unmount } = renderAnalysisStep({ files: [mockUploadedFile] });
-    await waitFor(() => expect(signal).toBeDefined());
-
-    unmount();
-
-    expect(signal?.aborted).toBe(true);
-  });
-
-  it('enters every file without values manually, in one step', async () => {
-    vi.mocked(analyzeLabReport)
-      .mockRejectedValueOnce(new Error('AI analysis failed: down'))
-      .mockRejectedValueOnce(new Error('No readable text found in document'));
-    const onComplete = vi.fn();
-    renderAnalysisStep({
-      files: [
-        { file: new File(['x'], 'a.pdf'), id: 'a', formattedSize: '1 KB' },
-        { file: new File(['x'], 'b.pdf'), id: 'b', formattedSize: '1 KB' },
-      ],
-      onComplete,
-    });
-
-    const buttons = await screen.findAllByRole('button', { name: 'Enter values manually' });
-    expect(buttons).toHaveLength(1);
-    await userEvent.click(buttons[0]);
-
-    const passed = onComplete.mock.calls[0][0] as Array<{ fileName: string; manualEntry?: boolean }>;
-    expect(passed.map((r) => [r.fileName, r.manualEntry])).toEqual([
-      ['a.pdf', true],
-      ['b.pdf', true],
-    ]);
   });
 });
