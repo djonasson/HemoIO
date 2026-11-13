@@ -24,6 +24,7 @@ import {
   IconNotes,
   IconSettings,
   IconLock,
+  IconRefresh,
   IconBook,
   IconCheck,
   IconDownload,
@@ -47,6 +48,7 @@ import {
   useSetAsideRecords,
   useFolderStorageOn,
   useDataReplacedElsewhere,
+  usePullToRefresh,
 } from '@hooks';
 import { announceDataReplaced } from '@data/db/dataReplacedEvents';
 import { ImportWizard, type ReviewedResult } from '@components/import';
@@ -198,6 +200,17 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     syncNow,
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+
+  // Refresh from the folder in place: a reload would lock HemoIO. A failed sync is told by the folder notice
+  const canRefresh = folderStorageOn && folderRestore.syncAllowed;
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshFromFolder = useCallback(() => {
+    setRefreshing(true);
+    void syncNow()
+      .catch(() => undefined)
+      .finally(() => setRefreshing(false));
+  }, [syncNow]);
+  const pull = usePullToRefresh(refreshFromFolder, canRefresh && !refreshing);
   const replaceConfirmation = folderSyncReplace.confirmation;
   const folderSyncHeld = folderRestore.syncHeld || folderConflictHeld;
 
@@ -416,6 +429,19 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
             </Group>
 
             <Group>
+              {canRefresh && (
+                <Tooltip label="Refresh from folder" position="bottom">
+                  <ActionIcon
+                    variant="subtle"
+                    onClick={refreshFromFolder}
+                    loading={refreshing}
+                    aria-label="Refresh from folder"
+                    size="lg"
+                  >
+                    <IconRefresh size={20} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
               <Tooltip label="Export data" position="bottom">
                 <ActionIcon
                   variant="subtle"
@@ -495,6 +521,15 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
         </MantineAppShell.Navbar>
 
         <MantineAppShell.Main>
+          <Text role="status" ta="center" size="sm" c="dimmed" mb={refreshing || pull !== 'idle' ? 'xs' : 0}>
+            {refreshing
+              ? 'Refreshing from the folder…'
+              : pull === 'ready'
+                ? 'Release to refresh from the folder'
+                : pull === 'pulling'
+                  ? 'Pull down to refresh from the folder'
+                  : ''}
+          </Text>
           <SetAsideBanner
             total={setAsideRecords.summary.total}
             unsaved={setAsideRecords.summary.unsaved}

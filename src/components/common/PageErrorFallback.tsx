@@ -1,15 +1,7 @@
 import { Alert, Button, Group, Stack, Text } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
+import { errorText } from '@/utils/errorText';
 import type { FallbackProps } from 'react-error-boundary';
-
-/**
- * What a failed error says: its name and message, never its stack. It is
- * shown on screen only, so the user can tell what went wrong.
- */
-export function errorText(error: unknown): string {
-  if (error instanceof Error) return error.message ? `${error.name}: ${error.message}` : error.name;
-  return String(error);
-}
 
 /**
  * Shown in place of a page that failed while it was drawn: what went wrong,

@@ -11,5 +11,5 @@ export { PasswordStrengthMeter, type PasswordStrengthMeterProps } from './Passwo
 export { SaveFailedAlert, type SaveFailedAlertProps } from './SaveFailedAlert';
 export { ScrollBox, type ScrollBoxProps } from './ScrollBox';
 export { LabFlagMark, type LabFlagMarkProps } from './LabFlagMark';
-export { PageErrorFallback, errorText } from './PageErrorFallback';
+export { PageErrorFallback } from './PageErrorFallback';
 export { AppErrorFallback } from './AppErrorFallback';

@@ -2,19 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
-import { PageErrorFallback, errorText } from './PageErrorFallback';
-
-describe('errorText', () => {
-  it("gives an error's name and message, never its stack", () => {
-    const error = new TypeError('x is undefined');
-    expect(errorText(error)).toBe('TypeError: x is undefined');
-  });
-
-  it('gives the name alone of an error with no message, and anything else as text', () => {
-    expect(errorText(new RangeError())).toBe('RangeError');
-    expect(errorText('boom')).toBe('boom');
-  });
-});
+import { PageErrorFallback } from './PageErrorFallback';
 
 describe('PageErrorFallback', () => {
   function renderFallback(resetErrorBoundary = vi.fn()) {

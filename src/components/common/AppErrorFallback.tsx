@@ -1,5 +1,5 @@
 import type { FallbackProps } from 'react-error-boundary';
-import { errorText } from './PageErrorFallback';
+import { errorText } from '@/utils/errorText';
 
 /**
  * Shown when HemoIO itself failed, outside any page: plain HTML, as it sits
