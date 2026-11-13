@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from './OllamaProvider';
 import { ollamaContext, promptTokens } from './ollamaContext';
 import { AIAnalysisError } from './types';
-import { OLLAMA_RESPONSE_SCHEMA } from './structuredOutput';
+import { RESPONSE_SCHEMA } from './prompts';
 import { ANSWER_CUT_OFF } from './answerCutOff';
 import { droppedValuesNote } from './parseExtraction';
 
@@ -886,7 +886,7 @@ describe('OllamaProvider native chat API', () => {
     expect(String(url)).toMatch(/\/api\/chat$/);
     const body = JSON.parse(String((init as RequestInit).body));
     // The answer's shape, as a schema Ollama turns into a grammar
-    expect(body).toMatchObject({ stream: false, format: OLLAMA_RESPONSE_SCHEMA });
+    expect(body).toMatchObject({ stream: false, format: RESPONSE_SCHEMA });
     expect(body.options.num_ctx).toBeGreaterThan(10_000);
   });
 
@@ -1133,7 +1133,7 @@ describe('OllamaProvider answer shape and cut-off answers', () => {
     await provider.analyzeLabReport('Glucose 95 mg/dL');
 
     expect(result.biomarkers).toHaveLength(1);
-    expect(format(0)).toEqual(OLLAMA_RESPONSE_SCHEMA);
+    expect(format(0)).toEqual(RESPONSE_SCHEMA);
     expect(format(1)).toBe('json');
     expect(format(2)).toBe('json');
   });

@@ -96,15 +96,13 @@ export function useFileAnalysis({
   aiModel,
 }: UseFileAnalysisOptions): UseFileAnalysisResult {
   const catalog = useCatalog();
-  // The user's learned tests, as they are when each file is matched
+  // The user's learned tests and date order, as they are when each file is matched
   const preferences = useContext(PreferencesContext);
   const learnedTests = preferences?.learnedTests;
   const dayOrder = dayOrderOf(preferences?.dateFormat);
-  const learnedTestsRef = useRef(learnedTests);
-  const dayOrderRef = useRef(dayOrder);
+  const latest = useRef({ learnedTests, dayOrder });
   useEffect(() => {
-    learnedTestsRef.current = learnedTests;
-    dayOrderRef.current = dayOrder;
+    latest.current = { learnedTests, dayOrder };
   }, [learnedTests, dayOrder]);
 
   const [entries, setEntries] = useState<Record<string, Entry>>({});
@@ -147,8 +145,7 @@ export function useFileAnalysis({
               aiConfig: { apiKey, model: aiModel },
               signal,
               catalog,
-              learnedTests: learnedTestsRef.current,
-              dayOrder: dayOrderRef.current,
+              ...latest.current,
               onProgress: (stage, progress) => {
                 setEntry(file.id, { status: 'processing', progress: progress * 100, stage });
               },

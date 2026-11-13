@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { OLLAMA_RESPONSE_SCHEMA, STRICT_RESPONSE_SCHEMA, strictSchema, type JsonSchema } from './structuredOutput';
+import { STRICT_RESPONSE_SCHEMA, strictSchema, type JsonSchema } from './structuredOutput';
 import { RESPONSE_SCHEMA } from './prompts';
 
 /** Every object schema within a schema */
@@ -61,11 +61,5 @@ describe('strictSchema', () => {
     const before = JSON.stringify(RESPONSE_SCHEMA);
     strictSchema(RESPONSE_SCHEMA);
     expect(JSON.stringify(RESPONSE_SCHEMA)).toBe(before);
-  });
-});
-
-describe('OLLAMA_RESPONSE_SCHEMA', () => {
-  it('is the answer schema, optional properties left optional', () => {
-    expect(OLLAMA_RESPONSE_SCHEMA).toBe(RESPONSE_SCHEMA);
   });
 });

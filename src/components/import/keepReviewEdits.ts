@@ -1,6 +1,7 @@
 /**
  * Review edits kept across going back to the analysis step
  */
+import { analysisSource } from './manualEntry';
 import type { AnalysisResult } from './AnalysisStep';
 import type { ReviewedResult } from './ReviewStep';
 
@@ -22,8 +23,8 @@ export function keepReviewEdits(
   return results.map((result) => {
     const before = previous.find((p) => p.fileId === result.fileId);
     const kept = reviewed.find((r) => r.fileId === result.fileId);
-    // Manual entry makes a new result each time; its values are all the user's own
-    const unchanged = before === result || (before?.manualEntry && result.manualEntry);
+    // Manual entry makes a new result each time, from the same analysis result
+    const unchanged = before !== undefined && analysisSource(before) === analysisSource(result);
     if (kept && unchanged) return kept;
     return { ...result, editedBiomarkers: [...result.biomarkers] };
   });

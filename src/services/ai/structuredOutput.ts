@@ -3,6 +3,7 @@
  * output takes, so the model answers in the shape parseExtraction reads
  */
 import { RESPONSE_SCHEMA } from './prompts';
+import { AIAnalysisError } from './types';
 
 /** A JSON schema, or a part of one */
 export type JsonSchema = { [key: string]: unknown };
@@ -74,7 +75,22 @@ export function strictSchema(schema: JsonSchema): JsonSchema {
 export const STRICT_RESPONSE_SCHEMA: JsonSchema = strictSchema(RESPONSE_SCHEMA);
 
 /**
- * The answer's schema for Ollama's `format`, which turns it into a grammar:
- * the schema as it is, optional properties left optional
+ * Asks for structured output until the provider rejects it
+ * (STRUCTURED_OUTPUT_UNSUPPORTED), then asks without it, at once and from
+ * then on
  */
-export const OLLAMA_RESPONSE_SCHEMA: JsonSchema = RESPONSE_SCHEMA;
+export class StructuredOutputFallback {
+  private rejected = false;
+
+  async request<R>(structured: () => Promise<R>, plain: () => Promise<R>): Promise<R> {
+    if (!this.rejected) {
+      try {
+        return await structured();
+      } catch (error) {
+        if (!(error instanceof AIAnalysisError) || error.code !== STRUCTURED_OUTPUT_UNSUPPORTED) throw error;
+        this.rejected = true;
+      }
+    }
+    return plain();
+  }
+}

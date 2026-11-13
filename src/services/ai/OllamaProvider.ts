@@ -17,6 +17,7 @@ import {
 } from './types';
 import {
   LAB_REPORT_SYSTEM_PROMPT,
+  RESPONSE_SCHEMA,
   createAnalysisPrompt,
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
@@ -34,7 +35,7 @@ import { ollamaContext } from './ollamaContext';
 import { fetchWithRateLimitRetry } from './rateLimitedFetch';
 import { overallConfidence, parseExtraction, type ParsedExtraction } from './parseExtraction';
 import { answerCutOffError, LONGER_ANSWER } from './answerCutOff';
-import { OLLAMA_RESPONSE_SCHEMA, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
+import { STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
 
 /** Room left over the prompt and answer estimates: a prompt read as more tokens never pushes the answer out */
 const CONTEXT_SLACK = 1024;
@@ -416,7 +417,7 @@ export class OllamaProvider implements AIProvider {
           model,
           messages,
           stream: false,
-          format: structured ? OLLAMA_RESPONSE_SCHEMA : 'json',
+          format: structured ? RESPONSE_SCHEMA : 'json',
           options: {
             temperature: this.temperature,
             num_predict: numPredict,

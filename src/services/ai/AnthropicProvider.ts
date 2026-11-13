@@ -20,8 +20,8 @@ import {
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
 import { overallConfidence, parseExtraction } from './parseExtraction';
-import { answerCutOffError, longerAnswerLimit } from './answerCutOff';
-import { STRICT_RESPONSE_SCHEMA, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
+import { askWithLongerRetry } from './answerCutOff';
+import { STRICT_RESPONSE_SCHEMA, StructuredOutputFallback, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { ANTHROPIC_API_HEADERS } from './anthropicUtils';
 import { withoutKey } from './withoutKey';
@@ -95,8 +95,8 @@ export class AnthropicProvider implements AIProvider {
   // Sampling parameters (temperature) are not sent: current Claude models
   // reject non-default values with a 400.
   private config: Required<Omit<AIProviderConfig, 'temperature'>>;
-  /** Whether the model rejected structured output: later reports ask without it straight away */
-  private structuredRejected = false;
+  /** Once the model rejects structured output, later reports ask without it straight away */
+  private structuredOutput = new StructuredOutputFallback();
   /** The most the model can write, once looked up */
   private outputCap: number | undefined;
 
@@ -236,16 +236,13 @@ export class AnthropicProvider implements AIProvider {
     messages: AnthropicMessage[],
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>
   ): Promise<AnthropicResponse> {
-    const first = this.config.maxTokens;
-    const response = await this.requestStructured(messages, options, first);
-    if (response.stop_reason !== 'max_tokens') return response;
-
-    const cap = await this.modelOutputCap(options.signal);
-    const longer = longerAnswerLimit(first, cap);
-    if (longer === undefined) throw answerCutOffError('anthropic', first, cap);
-    const again = await this.requestStructured(messages, options, longer);
-    if (again.stop_reason === 'max_tokens') throw answerCutOffError('anthropic', longer, cap);
-    return again;
+    return askWithLongerRetry(
+      'anthropic',
+      this.config.maxTokens,
+      () => this.modelOutputCap(options.signal),
+      (maxTokens) => this.requestStructured(messages, options, maxTokens),
+      (response) => response.stop_reason === 'max_tokens'
+    );
   }
 
   /**
@@ -257,18 +254,10 @@ export class AnthropicProvider implements AIProvider {
     { rateLimit, signal }: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
     maxTokens: number
   ): Promise<AnthropicResponse> {
-    let response: AnthropicResponse | undefined;
-    if (!this.structuredRejected) {
-      try {
-        response = await this.makeRequest(
-          messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens, STRUCTURED_OUTPUT_CONFIG
-        );
-      } catch (error) {
-        if (!(error instanceof AIAnalysisError) || error.code !== STRUCTURED_OUTPUT_UNSUPPORTED) throw error;
-        this.structuredRejected = true;
-      }
-    }
-    response ??= await this.makeRequest(messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens);
+    const response = await this.structuredOutput.request(
+      () => this.makeRequest(messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens, STRUCTURED_OUTPUT_CONFIG),
+      () => this.makeRequest(messages, LAB_REPORT_SYSTEM_PROMPT, rateLimit, signal, maxTokens)
+    );
     if (response.stop_reason === 'refusal') {
       throw new AIAnalysisError('Anthropic declined to analyze this document', 'anthropic', 'refusal');
     }

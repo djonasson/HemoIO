@@ -70,4 +70,24 @@ describe('keepReviewEdits', () => {
     expect(kept[0].manualEntry).toBeUndefined();
     expect(kept[0].editedBiomarkers).toEqual(analysed.biomarkers);
   });
+
+  it('keeps the values typed in when a file with no values is reviewed instead of entered manually', () => {
+    const empty = { ...result('a'), biomarkers: [] };
+    const before = manualEntryResult(empty);
+    const reviewed = { ...before, editedBiomarkers: result('a').biomarkers };
+    expect(keepReviewEdits([reviewed], [before], [empty])[0]).toBe(reviewed);
+  });
+
+  it('keeps the values typed in when a file with no values is entered manually instead of reviewed', () => {
+    const empty = { ...result('a'), biomarkers: [] };
+    const reviewed = { ...empty, editedBiomarkers: result('a').biomarkers };
+    expect(keepReviewEdits([reviewed], [empty], [manualEntryResult(empty)])[0]).toBe(reviewed);
+  });
+
+  it('starts a manual entry afresh once its file is analysed again', () => {
+    const before = manualEntryResult(result('a', false));
+    const again = manualEntryResult(result('a', false));
+    const kept = keepReviewEdits([{ ...before, editedBiomarkers: result('a').biomarkers }], [before], [again]);
+    expect(kept[0].editedBiomarkers).toEqual([]);
+  });
 });

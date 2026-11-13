@@ -21,8 +21,8 @@ import {
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
 import { overallConfidence, parseExtraction } from './parseExtraction';
-import { answerCutOffError, longerAnswerLimit } from './answerCutOff';
-import { RESPONSE_SCHEMA_NAME, STRICT_RESPONSE_SCHEMA, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
+import { askWithLongerRetry } from './answerCutOff';
+import { RESPONSE_SCHEMA_NAME, STRICT_RESPONSE_SCHEMA, StructuredOutputFallback, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
 import { openAIOutputCap } from './openaiUtils';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { withoutKey } from './withoutKey';
@@ -108,8 +108,8 @@ export class OpenAIProvider implements AIProvider {
   readonly name = 'OpenAI';
 
   private config: Required<AIProviderConfig>;
-  /** Whether the model rejected the schema format: later reports ask for plain JSON straight away */
-  private structuredRejected = false;
+  /** Once the model rejects the schema format, later reports ask for plain JSON straight away */
+  private structuredOutput = new StructuredOutputFallback();
 
   constructor(config: AIProviderConfig) {
     if (!config.apiKey) {
@@ -290,15 +290,13 @@ export class OpenAIProvider implements AIProvider {
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>
   ): Promise<OpenAIResponse> {
     const cap = openAIOutputCap(this.config.model);
-    const first = Math.min(this.answerLimit(this.config.maxTokens), cap);
-    const response = await this.requestStructured(messages, options, first);
-    if (!isCutOff(response)) return response;
-
-    const longer = longerAnswerLimit(first, cap);
-    if (longer === undefined) throw answerCutOffError('openai', first, cap);
-    const again = await this.requestStructured(messages, options, longer);
-    if (isCutOff(again)) throw answerCutOffError('openai', longer, cap);
-    return again;
+    return askWithLongerRetry(
+      'openai',
+      Math.min(this.answerLimit(this.config.maxTokens), cap),
+      () => cap,
+      (maxTokens) => this.requestStructured(messages, options, maxTokens),
+      isCutOff
+    );
   }
 
   /**
@@ -310,15 +308,10 @@ export class OpenAIProvider implements AIProvider {
     options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
     maxTokens: number
   ): Promise<OpenAIResponse> {
-    if (!this.structuredRejected) {
-      try {
-        return await this.makeRequest(messages, { ...options, maxTokens, responseFormat: STRUCTURED_FORMAT });
-      } catch (error) {
-        if (!(error instanceof AIAnalysisError) || error.code !== STRUCTURED_OUTPUT_UNSUPPORTED) throw error;
-        this.structuredRejected = true;
-      }
-    }
-    return this.makeRequest(messages, { ...options, maxTokens });
+    return this.structuredOutput.request(
+      () => this.makeRequest(messages, { ...options, maxTokens, responseFormat: STRUCTURED_FORMAT }),
+      () => this.makeRequest(messages, { ...options, maxTokens })
+    );
   }
 
   /** The answer limit for `limit`: reasoning models spend tokens thinking, so they get a higher one */

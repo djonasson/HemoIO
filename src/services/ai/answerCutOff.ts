@@ -42,3 +42,27 @@ export function answerCutOffError(
     ANSWER_CUT_OFF
   );
 }
+
+/**
+ * The answer asked for with `limit` tokens; one cut off is asked again once
+ * with a longer limit, never above the model's cap (looked up only then).
+ * One still cut off, or with no more room to give, fails with the cut-off
+ * error.
+ */
+export async function askWithLongerRetry<R>(
+  provider: AIProviderType,
+  limit: number,
+  modelCap: () => number | Promise<number>,
+  ask: (limit: number) => Promise<R>,
+  isCutOff: (answer: R) => boolean
+): Promise<R> {
+  const answer = await ask(limit);
+  if (!isCutOff(answer)) return answer;
+
+  const cap = await modelCap();
+  const longer = longerAnswerLimit(limit, cap);
+  if (longer === undefined) throw answerCutOffError(provider, limit, cap);
+  const again = await ask(longer);
+  if (isCutOff(again)) throw answerCutOffError(provider, longer, cap);
+  return again;
+}

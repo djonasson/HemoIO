@@ -178,6 +178,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           // Clean up localStorage after migration
           localStorage.removeItem('hemoio_date_format');
           localStorage.removeItem('hemoio_theme');
+          await reloadPreferences();
         }
       } catch (err) {
         console.error('Failed to load display settings:', err);
@@ -185,7 +186,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     }
 
     loadDisplaySettings();
-  }, [db, isReady]);
+  }, [db, isReady, reloadPreferences]);
 
   // Handle API key change (async because of encryption)
   const handleApiKeyChange = useCallback(
