@@ -135,6 +135,18 @@ Feature: Unit Conversion
     And only one value of each should be kept
     And no duplicate conflict warning should be shown
 
+  Scenario: Merge a value given in two units when the lab cut off the decimals of one
+    Given a lab report gives urea as 2.59 mmol/L and as 15 mg/dL, though 2.59 mmol/L is 15.56 mg/dL
+    When the values are analyzed
+    Then they should be recognized as one measurement in two units
+    And only the value in mg/dL should be kept
+    And no duplicate conflict warning should be shown
+
+  Scenario: Values in two units that cutting off decimals cannot explain conflict
+    Given a lab report gives creatinine as 1 mg/dL and as 80 µmol/L, which is 0.90 mg/dL
+    When the values are analyzed
+    Then a duplicate conflict warning should be shown for creatinine
+
   Scenario: Keep the comparator and the lab's mark of a value given in two units
     Given a lab report gives creatinine as 0.50 mg/dL and as "< 44" µmol/L
     And glucose as 7.2 mmol/L marked "H" by the lab and as 130 mg/dL

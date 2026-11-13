@@ -935,6 +935,22 @@ test.describe('Identifying the test of each value', () => {
     await expect(row.getByRole('button', { name: 'Change test for Conduttività' })).toBeVisible();
   });
 
+  test('saves a value the AI is sure no offered test fits as "Not a LOINC test" without asking', async ({ page }) => {
+    // Scenario: A value the AI is sure no offered test fits is saved as "Not a LOINC test" without asking
+    const name = 'Reticolociti grado di maturazione alto';
+    const ai = await analyzeReport(page, [{ name, value: 4.2, unit: '%', confidence: 0.95 }], 1, {
+      testChoice: { choices: { [name]: { code: null, confident: true } } },
+    });
+    // Offered tests to choose from, so the AI was asked
+    expect(ai.choiceRequests.flat().map((asked) => asked.name)).toEqual([name]);
+    const row = rowFor(page, '4.2');
+    await expect(savedAsCell(row)).toHaveText(NOT_A_LOINC_TEST);
+    await expect(row.getByText('Not identified')).toBeVisible();
+    await expect(page.getByText(/could not be identified/)).toHaveCount(0);
+    await expect(page.getByText('1 value(s) the AI found no test for were saved as "Not a LOINC test"', { exact: false })).toBeVisible();
+    await expect(row.getByRole('button', { name: `Change test for ${name}` })).toBeVisible();
+  });
+
   test('saves a renamed "Not a LOINC test" and later reports of its wording as one series', async ({ page }) => {
     // Two imports, each analyzed
     test.slow();

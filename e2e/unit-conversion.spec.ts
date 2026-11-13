@@ -709,6 +709,32 @@ test.describe('Unit Conversion - Duplicate Detection', () => {
     await expect(duplicateWarning(page)).toHaveCount(0);
   });
 
+  test('merges a value given in two units when the lab cut off the decimals of one', async ({ page }) => {
+    // Scenario: Merge a value given in two units when the lab cut off the decimals of one
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Urea', value: 2.59, unit: 'mmol/L', confidence: 0.95 },
+      { name: 'Urea', value: 15, unit: 'mg/dL', confidence: 0.95 },
+    ], 1, { testChoice: aiChooses({ 'Urea|mmol/L': '22664-7', 'Urea|mg/dL': '3091-6' }) });
+
+    const rows = reviewRows(page);
+    await expect(rows).toHaveCount(1);
+    await expect(rows.getByRole('cell', { name: '15', exact: true })).toBeVisible();
+    await expect(rows.getByRole('cell', { name: 'mg/dL', exact: true })).toBeVisible();
+    await expect(duplicateWarning(page)).toHaveCount(0);
+  });
+
+  test('flags values in two units that cutting off decimals cannot explain', async ({ page }) => {
+    // Scenario: Values in two units that cutting off decimals cannot explain conflict
+    await openApp(page);
+    await analyzeReport(page, [
+      { name: 'Creatinina', value: 1, unit: 'mg/dL', confidence: 0.95, specimenHint: 'blood' },
+      { name: 'Creatinina', value: 80, unit: 'µmol/L', confidence: 0.95, specimenHint: 'blood' },
+    ], 1, { testChoice: aiChooses({ 'Creatinina|mg/dL': '2160-0', 'Creatinina|µmol/L': '14682-9' }) });
+
+    await expect(duplicateWarning(page)).toBeVisible();
+  });
+
   test('names the saved value with its comparator when a censored value is set aside', async ({ page }) => {
     // Scenario: A value set aside as the same measurement names the saved value as it reads (import-wizard.feature)
     await openApp(page);

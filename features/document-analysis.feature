@@ -131,6 +131,18 @@ Feature: Document Analysis
     Then the lab date should be extracted
     And the date format should be normalized
 
+  Scenario: A lab date either order fits is read in the order I write dates
+    Given my date format is DD/MM/YYYY
+    And the report's lab date is printed "03/04/2024"
+    When the report is analyzed
+    Then the lab date should be 3 April 2024
+
+  Scenario: A lab date either order fits is asked when my date format is year first
+    Given my date format is YYYY-MM-DD
+    And the report's lab date is printed "03/04/2024"
+    When the report is analyzed
+    Then I should be asked to enter the lab date
+
   Scenario: AI detects lab name
     Given the document contains a lab/hospital name
     When the AI analyzes the text
@@ -212,8 +224,52 @@ Feature: Document Analysis
   Scenario: The AI's answer is cut off also with the larger limit
     Given the local AI stops its answer at HemoIO's length limit also when asked again
     When the report is analyzed
-    Then the analysis should fail, saying the answer was cut off at HemoIO's limit
+    Then the analysis should fail, saying the AI's answer was cut off at HemoIO's limit before all values were read
     And suggest splitting the report into smaller files
+
+  Scenario: Every AI service asks again with a larger limit when its answer is cut off
+    Given the AI service is OpenAI, Anthropic or the local AI
+    And it stops its answer at the length limit before it is complete
+    When the report is analyzed
+    Then the AI should be asked again once, with four times the limit
+    But never with more than the chosen model can write
+    And the values of its complete answer should be shown for review
+
+  Scenario: An answer cut off also with the larger limit fails the same way for every AI service
+    Given the AI service is OpenAI, Anthropic or the local AI
+    And it stops its answer at the length limit also when asked again
+    When the report is analyzed
+    Then the file should fail, saying the AI's answer was cut off before all values were read
+    And say whether HemoIO's limit or the model's own limit was reached
+    And suggest splitting the report into smaller files
+
+  Scenario: The AI is asked to answer in the exact shape HemoIO reads
+    When a report is analyzed
+    Then the AI should be asked to answer in the shape of the values HemoIO reads:
+      | each value has | a name, a number or text as value, a unit and a confidence |
+      | it may have    | a sample, a reference range, a method, notes and the lab's mark |
+    And a value may be a number or text, such as an interval "5-10" or a censored "< 10"
+
+  Scenario: An AI service that cannot answer in that shape is asked for plain JSON
+    Given the chosen model or local AI does not support answering in a given shape
+    When a report is analyzed
+    Then the AI should be asked again for any JSON answer
+    And the values of its answer should be shown for review
+    And later reports should be asked for plain JSON straight away
+
+  Scenario: Values the AI gave in the wrong form are left out with a note
+    Given the AI's answer has a well-formed value
+    And a value with no name
+    And a value whose value is neither a number nor text
+    When the report is analyzed
+    Then only the well-formed value should be shown for review
+    And the analysis notes should say that 2 values were not in the expected form and were left out
+    And the note should not repeat any of their content
+
+  Scenario: An answer without a list of values fails clearly
+    Given the AI answers with a JSON object that has no list of values
+    When the report is analyzed
+    Then the file should fail, saying the AI's answer has no list of values
 
   Scenario: Asking again with a larger limit finds the local AI busy
     Given the local AI stops its answer at HemoIO's length limit

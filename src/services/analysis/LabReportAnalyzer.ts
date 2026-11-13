@@ -24,6 +24,7 @@ import {
   identifyValues,
   isFoundWithoutAsking,
   needsTest,
+  isFoundNoneByAI,
   type Identification,
   type LearnedTests,
 } from './identification';
@@ -37,6 +38,7 @@ import type { Catalog } from '@data/loinc/catalog';
 import type { Candidate } from './loincMatch';
 import { groupBySameTest, settleGroup } from './sameMeasurement';
 import { formatReviewedValue } from '@/utils/formatReviewedValue';
+import { normalizeLabDate, type DayOrder } from '@/utils/labDate';
 
 /**
  * Information about a duplicate biomarker conflict
@@ -106,6 +108,14 @@ export type IdentificationFlag = 'ambiguous' | 'no-unit' | 'not-identified';
 /** Notes the values whose test the user must choose */
 export function unidentifiedNote(count: number): string {
   return `${count} value(s) could not be identified: choose their tests in the Saved as column`;
+}
+
+/**
+ * Notes the values saved as "Not a LOINC test" because the AI was sure none
+ * of the tests offered fits: it saw only a short list, so they are worth a look
+ */
+export function noTestFoundNote(count: number): string {
+  return `${count} value(s) the AI found no test for were saved as "Not a LOINC test": check them in the Saved as column`;
 }
 
 /** Notes that the AI could not be asked to choose among the tests that fit */
@@ -180,6 +190,8 @@ export interface AnalyzerOptions {
   catalog: Catalog;
   /** The user's learned tests, as they are when the report is matched */
   learnedTests?: LearnedTests;
+  /** How the user writes day and month, which reads a report date like "03/04/2024" */
+  dayOrder?: DayOrder;
 }
 
 /**
@@ -434,6 +446,8 @@ export async function analyzeLabReport(
 
     const unidentified = matchedBiomarkers.filter(needsTest).length;
     if (unidentified > 0) warnings.push(unidentifiedNote(unidentified));
+    const foundNone = matchedBiomarkers.filter(isFoundNoneByAI).length;
+    if (foundNone > 0) warnings.push(noTestFoundNote(foundNone));
 
     if (duplicateConflicts.length > 0) {
       warnings.push(
@@ -462,7 +476,8 @@ export async function analyzeLabReport(
     extractedText,
     aiAnalysis,
     matchedBiomarkers,
-    labDate: aiAnalysis.labDate,
+    // Read once here, in the user's order of day and month, so review, confirm and saving see one day
+    labDate: (aiAnalysis.labDate && normalizeLabDate(aiAnalysis.labDate, options.dayOrder)) || aiAnalysis.labDate,
     labName: aiAnalysis.labName,
     overallConfidence: calculateOverallConfidence(matchedBiomarkers, aiAnalysis),
     warnings,

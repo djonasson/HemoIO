@@ -18,6 +18,7 @@ import {
 } from '@tabler/icons-react';
 import { planSave, type SavePlan } from '@services/analysis/reviewedSave';
 import { useCatalog } from '@contexts/useCatalog';
+import { useFileAnalysis } from '@hooks/useFileAnalysis';
 import { UploadStep } from './UploadStep';
 import type { UploadedFile } from './UploadStep';
 import { AnalysisStep } from './AnalysisStep';
@@ -25,6 +26,7 @@ import type { AnalysisResult } from './AnalysisStep';
 import { ReviewStep } from './ReviewStep';
 import type { ReviewedResult } from './ReviewStep';
 import { ConfirmStep } from './ConfirmStep';
+import { keepReviewEdits } from './keepReviewEdits';
 
 /**
  * Props for ImportWizard
@@ -56,6 +58,7 @@ const STEPS = [
   { label: 'Confirm', description: 'Save results', icon: IconCheck },
 ];
 
+const ANALYSIS_STEP = 1;
 const CONFIRM_STEP = 3;
 const NOTHING_PLANNED: SavePlan<ReviewedResult> = { toSave: [], notSaved: [] };
 
@@ -75,6 +78,14 @@ export function ImportWizard({
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const [reviewedResults, setReviewedResults] = useState<ReviewedResult[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  // Held here, not by the analysis step, so going back to it never analyses a file again
+  const analysis = useFileAnalysis({
+    files: uploadedFiles,
+    active: activeStep === ANALYSIS_STEP,
+    aiProvider,
+    getApiKey,
+    aiModel,
+  });
 
   // Step navigation
   const nextStep = useCallback(() => {
@@ -94,15 +105,10 @@ export function ImportWizard({
   // Handler for analysis completion
   const handleAnalysisComplete = useCallback((results: AnalysisResult[]) => {
     setAnalysisResults(results);
-    // Initialize reviewed results from analysis
-    setReviewedResults(
-      results.map((r) => ({
-        ...r,
-        editedBiomarkers: [...r.biomarkers],
-      }))
-    );
+    // Coming back from review keeps the edits of files whose results did not change
+    setReviewedResults((reviewed) => keepReviewEdits(reviewed, analysisResults, results));
     nextStep();
-  }, [nextStep]);
+  }, [nextStep, analysisResults]);
 
   // What the import saves, shown and saved by the confirm step. Review
   // works out its own plan for its checks; this one is made only once the
@@ -128,17 +134,20 @@ export function ImportWizard({
       case 0:
         return (
           <UploadStep
+            // Going back keeps the files chosen, so their analyses are kept too
+            initialFiles={uploadedFiles}
             onComplete={handleUploadComplete}
             onCancel={onCancel}
           />
         );
-      case 1:
+      case ANALYSIS_STEP:
         return (
           <AnalysisStep
-            files={uploadedFiles}
-            aiProvider={aiProvider}
-            getApiKey={getApiKey}
-            aiModel={aiModel}
+            fileStates={analysis.fileStates}
+            results={analysis.results}
+            isProcessing={analysis.isProcessing}
+            overallProgress={analysis.overallProgress}
+            onRetry={analysis.retry}
             onComplete={handleAnalysisComplete}
             onBack={prevStep}
           />

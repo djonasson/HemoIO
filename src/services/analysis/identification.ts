@@ -81,6 +81,13 @@ export function isNoneFound(
   return !identification.loincCode && identification.savedAsUnknown === true && identification.identifiedBy === undefined;
 }
 
+/** Whether a value is "Not a LOINC test" because the AI was sure none of the tests offered fits, nobody else deciding it */
+export function isFoundNoneByAI(
+  identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'identifiedBy' | 'candidates'>
+): boolean {
+  return isNoneFound(identification) && identification.candidates.length > 0;
+}
+
 /** Whether a value is still undecided among candidates: the AI, then the user, chooses */
 export function needsChoice(
   identification: Pick<Identification, 'loincCode' | 'savedAsUnknown' | 'candidates'>
@@ -88,9 +95,18 @@ export function needsChoice(
   return needsTest(identification) && identification.candidates.length > 0;
 }
 
-/** The AI's choice applied: a confident one is the value's test, an unsure one goes first among the candidates */
+/**
+ * The AI's choice applied: a confident one is the value's test, an unsure one goes first among the candidates. One
+ * the AI is sure no candidate fits ("Reticolociti grado di maturazione alto", which LOINC lacks) is "Not a LOINC
+ * test", as a value with none to choose from: still labelled, changeable in review, and never learned
+ */
 function withChoice(value: MatchedBiomarker, choice: TestChoice | undefined): MatchedBiomarker {
-  if (!choice?.code) return value;
+  if (!choice) return value;
+  if (choice.code === null) {
+    if (!choice.confident) return value;
+    const identificationFlags = (value.identificationFlags ?? []).map((flag) => (flag === 'ambiguous' ? 'not-identified' : flag));
+    return { ...value, savedAsUnknown: true, identificationFlags };
+  }
   if (choice.confident) {
     return { ...value, loincCode: choice.code, identifiedBy: 'ai', identificationFlags: [] };
   }

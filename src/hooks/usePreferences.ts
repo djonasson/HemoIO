@@ -4,6 +4,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { SavedValue } from '@data/loinc/learnedTests';
+import type { UserPreferences } from '@/types';
 
 export type { SavedValue };
 
@@ -28,7 +29,9 @@ export interface PreferencesState {
   learnTests(values: ReadonlyArray<SavedValue>): Promise<void>;
   /** Forget what was learned for a learned key */
   removeLearnedTest(key: string): Promise<void>;
-  /** Re-read the stored preferences, e.g. after a backup restore */
+  /** How the user writes dates, which reads a report's date like "03/04/2024"; none until they set it */
+  dateFormat?: UserPreferences['dateFormat'];
+  /** Re-read the stored preferences, e.g. after a backup restore or a changed date format */
   reload(): Promise<void>;
 }
 

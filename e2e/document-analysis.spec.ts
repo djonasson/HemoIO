@@ -18,6 +18,7 @@ import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import { expandLabResult, goToTimeline, labResultCard } from './steps/timeline.steps';
 import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { changeTest, NOT_A_LOINC_TEST } from './steps/identification.steps';
+import { openSettingsTab } from './steps/app.steps';
 import {
   createScannedPdf,
   createTextImage,
@@ -449,6 +450,36 @@ test.describe('Document Analysis - AI Processing', () => {
     await expect(labResultCard(page, '2024-01-15')).toBeVisible();
   });
 
+  test('reads a lab date either order fits in the order I write dates', async ({ page }) => {
+    // Scenario: A lab date either order fits is read in the order I write dates
+    await loginWithOllama(page, [
+      { extraction: extraction(DEFAULT_EXTRACTION.biomarkers, { labDate: '03/04/2024' }) },
+    ]);
+    await openSettingsTab(page, 'Display');
+    await page.getByRole('textbox', { name: 'Select date format' }).click();
+    await page.getByRole('option', { name: 'DD/MM/YYYY (European)' }).click();
+    await expect(page.getByText('Preferences saved')).toBeVisible();
+
+    await analyzeToReview(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
+    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('2024-04-03');
+  });
+
+  test('asks for a lab date either order fits when I write dates year first', async ({ page }) => {
+    // Scenario: A lab date either order fits is asked when my date format is year first
+    await loginWithOllama(page, [
+      { extraction: extraction(DEFAULT_EXTRACTION.biomarkers, { labDate: '03/04/2024' }) },
+    ]);
+    await openSettingsTab(page, 'Display');
+    await page.getByRole('textbox', { name: 'Select date format' }).click();
+    await page.getByRole('option', { name: 'YYYY-MM-DD (ISO)' }).click();
+    await expect(page.getByText('Preferences saved')).toBeVisible();
+
+    await analyzeToReview(page, track(createTextPdf('report.pdf', [LAB_REPORT_LINES])));
+    await expect(main(page).getByRole('textbox', { name: 'Lab Date' })).toHaveValue('');
+    await main(page).getByRole('button', { name: 'Continue to Confirm' }).click();
+    await expect(main(page).getByText('Enter the lab date for "report.pdf"')).toBeVisible();
+  });
+
   test('should extract lab name from document', async ({ page }) => {
     await loginWithOllama(page, [
       {
@@ -579,7 +610,7 @@ test.describe('Document Analysis - Error Handling', () => {
 
     await expect(analysisItem(page, 'corrupt.pdf')).toContainText(/Failed to parse PDF/);
     await expect(page.getByRole('alert', { name: 'Analysis Failed' })).toContainText(
-      'Check your files and try again'
+      'No files could be processed. Retry them, choose other files, or type the values in yourself.'
     );
     await expect(main(page).getByRole('button', { name: /^Review Results/ })).toBeDisabled();
 
@@ -641,7 +672,83 @@ test.describe('Document Analysis - Error Handling', () => {
     await expectAnalysisFinished(page);
 
     await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
-      /cut off at HemoIO's limit of \d+ tokens.*smaller files/
+      /The AI's answer was cut off at HemoIO's limit of \d+ tokens before all values were read.*smaller files/
+    );
+  });
+
+  // Scenarios "Every AI service asks again with a larger limit when its answer
+  // is cut off" and "An answer cut off also with the larger limit fails the
+  // same way for every AI service": OpenAI and Anthropic are covered by their
+  // providers' unit tests; the local AI by the two tests above.
+
+  test('asks the AI to answer in the shape of the values HemoIO reads', async ({ page }) => {
+    // Scenario: The AI is asked to answer in the exact shape HemoIO reads
+    const ai = await loginWithOllama(page);
+    await analyzeToReview(page, track(createTextLabReportPdf()));
+
+    const schema = ai.formats[0] as {
+      required: string[];
+      properties: { biomarkers: { items: { required: string[]; properties: Record<string, unknown> } } };
+    };
+    expect(schema.required).toContain('biomarkers');
+    const value = schema.properties.biomarkers.items;
+    expect(value.required).toEqual(['name', 'value', 'unit', 'confidence']);
+    expect(value.properties.value).toEqual({ anyOf: [{ type: 'number' }, { type: 'string' }] });
+    expect(Object.keys(value.properties)).toEqual(
+      expect.arrayContaining(['specimenHint', 'referenceRange', 'method', 'notes', 'flag'])
+    );
+  });
+
+  test('asks for plain JSON when the local AI cannot answer in a given shape', async ({ page }) => {
+    // Scenario: An AI service that cannot answer in that shape is asked for plain JSON
+    const ai = await loginWithOllama(page, [
+      { status: 400, error: 'invalid format: expected "json" or a JSON schema' },
+      { extraction: DEFAULT_EXTRACTION },
+    ]);
+    await goToImport(page);
+    await uploadFiles(page, [
+      track(createTextPdf('first-report.pdf', [LAB_REPORT_LINES])),
+      track(createTextPdf('second-report.pdf', [LAB_REPORT_LINES])),
+    ]);
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(page.getByRole('alert', { name: 'Analysis Complete' })).toContainText('from 2 file(s)');
+    expect(typeof ai.formats[0]).toBe('object');
+    // Asked again for plain JSON, and the next report straight away
+    expect(ai.formats.slice(1)).toEqual(['json', 'json']);
+  });
+
+  test('leaves out values in the wrong form, with a note saying how many', async ({ page }) => {
+    // Scenario: Values the AI gave in the wrong form are left out with a note
+    await loginWithOllama(page, [
+      {
+        extraction: extraction([
+          { name: 'Glucose', value: 95, unit: 'mg/dL', confidence: 0.95 },
+          { value: 14.5, unit: 'g/dL', confidence: 0.9 },
+          { name: 'Ferritin', value: { amount: 80 }, unit: 'ng/mL', confidence: 0.9 },
+        ]),
+      },
+    ]);
+    await analyzeToReview(page, track(createTextLabReportPdf()));
+
+    await expect(reviewRow(page, 'Glucose')).toBeVisible();
+    await expect(reviewRow(page, 'Ferritin')).toHaveCount(0);
+    const notes = main(page).getByRole('alert').filter({ hasText: 'Analysis Notes' });
+    await expect(notes).toContainText("2 values in the AI's answer were not in the expected form and were left out.");
+    await expect(notes).not.toContainText('Ferritin');
+  });
+
+  test('fails clearly when the answer has no list of values', async ({ page }) => {
+    // Scenario: An answer without a list of values fails clearly
+    await loginWithOllama(page, [{ content: '{"results": "Glucose 95 mg/dL"}' }]);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextLabReportPdf()));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    await expect(analysisItem(page, 'lab-report.pdf')).toContainText(
+      "Failed to parse Ollama response: the answer has no list of values"
     );
   });
 

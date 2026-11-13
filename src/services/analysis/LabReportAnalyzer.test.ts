@@ -136,6 +136,21 @@ describe('LabReportAnalyzer', () => {
       expect(result.labName).toBe('City Medical Lab');
     });
 
+    it.each([
+      ['day-first', '2024-04-03'],
+      ['month-first', '2024-03-04'],
+      [undefined, '03/04/2024'],
+    ] as const)('reads a report date "03/04/2024" in the order the user writes dates (%s)', async (dayOrder, labDate) => {
+      const provider = vi.mocked(aiModule.getAIProvider)('openai', { apiKey: 'sk-test-key' });
+      const answer = await provider.analyzeLabReport('', {} as AnalysisOptions);
+      vi.mocked(provider.analyzeLabReport).mockResolvedValueOnce({ ...answer, labDate: '03/04/2024' });
+
+      const result = await analyzeLabReport(createMockFile('report.pdf', 'application/pdf'), { ...defaultOptions, dayOrder });
+
+      // With no order known the printed date stays, for review to ask about
+      expect(result.labDate).toBe(labDate);
+    });
+
     it('identifies each value in the LOINC catalog', async () => {
       const file = createMockFile('report.pdf', 'application/pdf');
 

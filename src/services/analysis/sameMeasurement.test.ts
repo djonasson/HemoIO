@@ -118,6 +118,24 @@ describe('isSettled', () => {
 });
 
 describe('settleGroup', () => {
+  it('merges a value printed in two units whose second printing the lab cut off rather than rounded', () => {
+    // 2.59 mmol/L is 15.56 mg/dL; the lab prints 15, not 16
+    const mmol = value('Urea', 2.59, 'mmol/L', '22664-7');
+    const mgdl = value('Urea', 15, 'mg/dL', '3091-6');
+    expect(settleGroup([mmol, mgdl], catalog)).toMatchObject({ settled: true, kept: [mgdl] });
+  });
+
+  it('flags two values in two units that cutting off cannot explain', () => {
+    // 80 µmol/L is 0.90 mg/dL: cutting off only lowers a value, and "1" is 1.0 rounded at most
+    const group = [value('Creatinina', 1, 'mg/dL', '2160-0'), value('Creatinina', 80, 'µmol/L', '14682-9')];
+    expect(settleGroup(group, catalog).settled).toBe(false);
+  });
+
+  it('still flags two values in two units further apart than the last printed digit', () => {
+    const group = [value('Urea', 2.59, 'mmol/L', '22664-7'), value('Urea', 14, 'mg/dL', '3091-6')];
+    expect(settleGroup(group, catalog).settled).toBe(false);
+  });
+
   it('flags two vitamin D3 values of one code even beside a value in another unit', () => {
     const group = [
       value('Vitamina D3', 32.6, 'ng/mL', '1989-3'),

@@ -10,7 +10,6 @@ import {
   type AIProviderType,
   type AnalysisOptions,
   type LabReportAnalysisResult,
-  type ExtractedBiomarker,
   type TestChoice,
   type TestChoiceRequest,
   AIAnalysisError,
@@ -21,8 +20,10 @@ import {
   createAnalysisPrompt,
 } from './prompts';
 import { chooseTestsWith } from './testChoice';
-import { rangeUnitOf, withParsedValue } from './withParsedValue';
-import { withSpecimenHint } from './specimenHint';
+import { overallConfidence, parseExtraction } from './parseExtraction';
+import { askWithLongerRetry } from './answerCutOff';
+import { RESPONSE_SCHEMA_NAME, STRICT_RESPONSE_SCHEMA, StructuredOutputFallback, STRUCTURED_OUTPUT_UNSUPPORTED } from './structuredOutput';
+import { openAIOutputCap } from './openaiUtils';
 import { fetchWithRateLimitRetry, type RateLimitOptions } from './rateLimitedFetch';
 import { withoutKey } from './withoutKey';
 
@@ -74,7 +75,23 @@ interface OpenAIErrorResponse {
     message: string;
     type: string;
     code: string;
+    param?: string | null;
   };
+}
+
+/** Asks for an answer in the analysis schema's exact shape */
+const STRUCTURED_FORMAT = {
+  type: 'json_schema',
+  json_schema: { name: RESPONSE_SCHEMA_NAME, schema: STRICT_RESPONSE_SCHEMA, strict: true },
+};
+
+/** Asks for any JSON object: for a model that rejects the schema */
+const JSON_FORMAT = { type: 'json_object' };
+
+/** Whether a rejected request was rejected for its response format, which an older model does not support */
+function rejectsFormat(status: number, error: OpenAIErrorResponse['error'] | undefined): boolean {
+  if (status !== 400 || !error) return false;
+  return error.param === 'response_format' || /response_format|json_schema/i.test(error.message ?? '');
 }
 
 /** OpenAI answers 429 with code insufficient_quota when the account is out of credit */
@@ -91,6 +108,8 @@ export class OpenAIProvider implements AIProvider {
   readonly name = 'OpenAI';
 
   private config: Required<AIProviderConfig>;
+  /** Once the model rejects the schema format, later reports ask for plain JSON straight away */
+  private structuredOutput = new StructuredOutputFallback();
 
   constructor(config: AIProviderConfig) {
     if (!config.apiKey) {
@@ -131,17 +150,14 @@ export class OpenAIProvider implements AIProvider {
     ];
 
     try {
-      const response = await this.makeRequest(messages, {
-        rateLimit: options.rateLimit,
-        signal: options.signal,
-      });
+      const response = await this.requestAnswer(messages, options);
       const content = response.choices[0]?.message?.content;
 
       if (!content) {
         throw new AIAnalysisError('Empty response from OpenAI', 'openai');
       }
 
-      const parsed = this.parseResponse(content);
+      const parsed = parseExtraction(content, 'openai');
       const processingTime = performance.now() - startTime;
 
       return {
@@ -149,7 +165,7 @@ export class OpenAIProvider implements AIProvider {
         labDate: parsed.labDate,
         labName: parsed.labName,
         patientName: options.extractPatientInfo ? parsed.patientName : undefined,
-        overallConfidence: this.calculateOverallConfidence(parsed.biomarkers),
+        overallConfidence: overallConfidence(parsed.biomarkers),
         analyzedText: text,
         warnings: parsed.warnings || [],
         modelUsed: this.config.model,
@@ -265,23 +281,66 @@ export class OpenAIProvider implements AIProvider {
   }
 
   /**
-   * Make a request to the OpenAI API
+   * The analysis answer. One OpenAI stopped at the answer limit before it
+   * was complete is asked again once with more room, never more than the
+   * model can write.
+   */
+  private async requestAnswer(
+    messages: OpenAIMessage[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>
+  ): Promise<OpenAIResponse> {
+    const cap = openAIOutputCap(this.config.model);
+    return askWithLongerRetry(
+      'openai',
+      Math.min(this.answerLimit(this.config.maxTokens), cap),
+      () => cap,
+      (maxTokens) => this.requestStructured(messages, options, maxTokens),
+      isCutOff
+    );
+  }
+
+  /**
+   * A request for an answer in the analysis schema's shape; asking for any
+   * JSON object instead when the model does not support the schema
+   */
+  private async requestStructured(
+    messages: OpenAIMessage[],
+    options: Pick<AnalysisOptions, 'rateLimit' | 'signal'>,
+    maxTokens: number
+  ): Promise<OpenAIResponse> {
+    return this.structuredOutput.request(
+      () => this.makeRequest(messages, { ...options, maxTokens, responseFormat: STRUCTURED_FORMAT }),
+      () => this.makeRequest(messages, { ...options, maxTokens })
+    );
+  }
+
+  /** The answer limit for `limit`: reasoning models spend tokens thinking, so they get a higher one */
+  private answerLimit(limit: number): number {
+    return this.isReasoningModel() ? Math.max(REASONING_MODEL_MAX_TOKENS, limit) : limit;
+  }
+
+  /**
+   * Make a request to the OpenAI API, for a JSON object unless another
+   * response format is given
    */
   private async makeRequest(
     messages: OpenAIMessage[],
-    options: { rateLimit?: RateLimitOptions; signal?: AbortSignal; maxTokens?: number } = {}
+    options: {
+      rateLimit?: RateLimitOptions;
+      signal?: AbortSignal;
+      maxTokens?: number;
+      responseFormat?: object;
+    } = {}
   ): Promise<OpenAIResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
-
-    // Reasoning models spend tokens thinking, so they get a higher limit
-    const limit = options.maxTokens ?? this.config.maxTokens;
-    const tokenLimit = this.isReasoningModel() ? Math.max(REASONING_MODEL_MAX_TOKENS, limit) : limit;
+    const tokenLimit = this.answerLimit(options.maxTokens ?? this.config.maxTokens);
+    const responseFormat = options.responseFormat ?? JSON_FORMAT;
 
     // Build request body with correct parameters for model
     const requestBody: Record<string, unknown> = {
       model: this.config.model,
       messages,
-      response_format: { type: 'json_object' },
+      response_format: responseFormat,
     };
 
     // Only include temperature for models that support it
@@ -316,84 +375,19 @@ export class OpenAIProvider implements AIProvider {
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as OpenAIErrorResponse;
       const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+      const formatRejected = responseFormat !== JSON_FORMAT && rejectsFormat(response.status, errorData.error);
       throw new AIAnalysisError(
         `OpenAI API error: ${withoutKey(errorMessage, this.config.apiKey)}`,
         'openai',
-        errorData.error?.code
+        formatRejected ? STRUCTURED_OUTPUT_UNSUPPORTED : errorData.error?.code
       );
     }
 
     return response.json() as Promise<OpenAIResponse>;
   }
+}
 
-  /**
-   * Parse the AI response into structured data
-   */
-  private parseResponse(content: string): {
-    biomarkers: ExtractedBiomarker[];
-    labDate?: string;
-    labName?: string;
-    patientName?: string;
-    warnings: string[];
-  } {
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON object found in response');
-      }
-
-      const data = JSON.parse(jsonMatch[0]);
-
-      // Validate and normalize biomarkers
-      const biomarkers: ExtractedBiomarker[] = (data.biomarkers || []).map(
-        (b: Record<string, unknown>) => {
-          return {
-            name: String(b.name || ''),
-            ...withSpecimenHint(b),
-            ...withParsedValue(b, String(b.unit || '')),
-            referenceRange: b.referenceRange
-              ? {
-                  low: typeof (b.referenceRange as Record<string, unknown>).low === 'number'
-                    ? (b.referenceRange as Record<string, unknown>).low as number
-                    : undefined,
-                  high: typeof (b.referenceRange as Record<string, unknown>).high === 'number'
-                    ? (b.referenceRange as Record<string, unknown>).high as number
-                    : undefined,
-                  unit: rangeUnitOf((b.referenceRange as Record<string, unknown>).unit, String(b.unit || '')),
-                }
-              : undefined,
-            method: b.method ? String(b.method) : undefined,
-            confidence: Math.max(0, Math.min(1, Number(b.confidence) || 0.5)),
-            notes: b.notes ? String(b.notes) : undefined,
-          };
-        }
-      );
-
-      return {
-        biomarkers,
-        labDate: data.labDate ? String(data.labDate) : undefined,
-        labName: data.labName ? String(data.labName) : undefined,
-        patientName: data.patientName ? String(data.patientName) : undefined,
-        warnings: Array.isArray(data.warnings)
-          ? data.warnings.map((w: unknown) => String(w))
-          : [],
-      };
-    } catch (error) {
-      throw new AIAnalysisError(
-        `Failed to parse OpenAI response: ${error instanceof Error ? error.message : String(error)}`,
-        'openai'
-      );
-    }
-  }
-
-  /**
-   * Calculate overall confidence from individual biomarker confidences
-   */
-  private calculateOverallConfidence(biomarkers: ExtractedBiomarker[]): number {
-    if (biomarkers.length === 0) return 0;
-
-    const sum = biomarkers.reduce((acc, b) => acc + b.confidence, 0);
-    return sum / biomarkers.length;
-  }
+/** Whether OpenAI stopped the answer at the answer limit before it was complete */
+function isCutOff(response: OpenAIResponse): boolean {
+  return response.choices[0]?.finish_reason === 'length';
 }

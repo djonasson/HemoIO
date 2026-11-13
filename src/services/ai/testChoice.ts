@@ -99,6 +99,8 @@ export function parseTestChoices(raw: unknown, requests: TestChoiceRequest[]): T
 
   return requests.map((request) => {
     const entry = answered.get(request.id);
+    // Null with confident true: the model is sure none of the candidates fits
+    if (entry?.code === null) return { id: request.id, code: null, confident: entry.confident === true };
     if (!entry || typeof entry.code !== 'string') return noChoice(request.id);
     const code = entry.code.trim();
     if (!request.candidates.some((candidate) => candidate.code === code)) return noChoice(request.id);

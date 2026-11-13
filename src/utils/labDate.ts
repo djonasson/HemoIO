@@ -1,12 +1,24 @@
 /**
- * Lab dates are calendar days, written YYYY-MM-DD. The AI usually returns
- * that form, but may copy the report's own: "15.01.2024" or "15/01/2024".
- * Those are read when their order is certain; anything else (including
- * "03/04/2024", which could be either day first or month first) is treated
- * as "no date", so the user is asked for it instead of a wrong day being saved.
+ * Lab dates are calendar days, written YYYY-MM-DD. The AI returns that form
+ * when the report's order is certain, else copies the report's own:
+ * "15.01.2024", "03/04/2024" or "03-04-2024". Those are read when their order
+ * is certain, or by the order the user writes dates in (their date format
+ * setting); anything else is treated as "no date", so the user is asked for
+ * it instead of a wrong day being saved.
  */
 
 import { toLocalDayString } from './localDate';
+import type { UserPreferences } from '@/types';
+
+/** The order of day and month in a date written with numbers only */
+export type DayOrder = 'day-first' | 'month-first';
+
+/** The order a date format setting writes day and month in; none for a year-first one */
+export function dayOrderOf(dateFormat: UserPreferences['dateFormat'] | undefined): DayOrder | undefined {
+  if (dateFormat === 'DD/MM/YYYY') return 'day-first';
+  if (dateFormat === 'MM/DD/YYYY') return 'month-first';
+  return undefined;
+}
 
 function isoDay(year: number, month: number, day: number): string | null {
   const date = new Date(year, month - 1, day);
@@ -14,7 +26,7 @@ function isoDay(year: number, month: number, day: number): string | null {
   return real ? toLocalDayString(date) : null;
 }
 
-export function normalizeLabDate(value: string | null | undefined): string | null {
+export function normalizeLabDate(value: string | null | undefined, order?: DayOrder): string | null {
   const text = value?.trim() ?? '';
 
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
@@ -28,12 +40,14 @@ export function normalizeLabDate(value: string | null | undefined): string | nul
   const dotted = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(text);
   if (dotted) return isoDay(Number(dotted[3]), Number(dotted[2]), Number(dotted[1]));
 
-  // Slashes are written either way: only a part above 12 settles the order
-  const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  // Slashes and dashes are written either way: a part above 12 settles the order, else the user's own order
+  const slashed = /^(\d{1,2})([/-])(\d{1,2})\2(\d{4})$/.exec(text);
   if (slashed) {
-    const [first, second, year] = [Number(slashed[1]), Number(slashed[2]), Number(slashed[3])];
+    const [first, second, year] = [Number(slashed[1]), Number(slashed[3]), Number(slashed[4])];
     if (first > 12) return isoDay(year, second, first);
     if (second > 12) return isoDay(year, first, second);
+    if (order === 'day-first') return isoDay(year, second, first);
+    if (order === 'month-first') return isoDay(year, first, second);
   }
 
   return null;

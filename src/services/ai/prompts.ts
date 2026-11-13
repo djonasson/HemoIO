@@ -23,7 +23,7 @@ IMPORTANT GUIDELINES:
 OUTPUT FORMAT:
 Respond with a JSON object containing:
 - biomarkers: Array of extracted biomarker objects
-- labDate: Date of the lab test (ISO format if possible, otherwise as found)
+- labDate: Date of the lab test, as YYYY-MM-DD when the printed date's order is certain (a month name, the year first, or a day above 12); otherwise copy it exactly as printed ("03/04/2024"), never guessing whether the day or the month comes first
 - labName: Name of the laboratory or healthcare facility
 - patientName: Patient name (only if explicitly requested)
 - warnings: Array of any issues or ambiguities found
@@ -155,7 +155,9 @@ Respond with ONLY a valid JSON object, no additional text or explanation.`;
 }
 
 /**
- * Expected JSON schema for AI response
+ * The JSON schema of an analysis answer. parseExtraction checks answers
+ * against it; structuredOutput derives from it the forms each provider's
+ * structured output takes.
  */
 export const RESPONSE_SCHEMA = {
   type: 'object',
@@ -167,7 +169,9 @@ export const RESPONSE_SCHEMA = {
         properties: {
           name: { type: 'string' },
           specimenHint: { type: ['string', 'null'] },
-          value: { oneOf: [{ type: 'number' }, { type: 'string' }] }, // Can be number or range string like "5-10"
+          // A number, or a string: an interval "5-10", a censored "< 10". anyOf, not oneOf: every
+          // provider's structured output accepts it
+          value: { anyOf: [{ type: 'number' }, { type: 'string' }] },
           unit: { type: 'string' },
           qualitativeValue: { type: 'string' },
           referenceRange: {
@@ -207,7 +211,7 @@ For each value you get the printed name, its unit, the sample the report names (
 RULES:
 1. Choose ONLY a code from that value's own candidate list, or null when none fits. Never invent a code and never use a code from another value's list.
 2. Judge by the printed name, the unit and the sample together: a concentration (per litre) differs from an amount per day, and a count from a percentage; urine differs from blood. An empty unit means a result with no unit: a unitless or ordinal one (pH, specific gravity, negative/positive, 1+).
-3. Set "confident" to false when two or more candidates fit equally well, or when you are unsure. Set it to true only when one candidate clearly fits.
+3. Set "confident" to false when two or more candidates fit equally well, or when you are unsure. Set it to true only when one candidate clearly fits. For a null code, set "confident" true when you are sure none of the candidates fits (the value is a test none of them is), false when unsure.
 4. Answer every value, using the same "id" it was given.
 
 OUTPUT FORMAT:

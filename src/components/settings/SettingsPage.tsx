@@ -136,7 +136,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
 
   // Personal Targets state
   const catalog = useCatalog();
-  const { personalTargets: targetMap, setPersonalTarget } = usePreferences();
+  const { personalTargets: targetMap, setPersonalTarget, reload: reloadPreferences } = usePreferences();
   // The tests HemoIO describes, and any other test the user set a target for
   const personalTargets = useMemo<PersonalTarget[]>(() => {
     // Targets are kept under test keys: a LOINC group, or a code alone in none
@@ -178,6 +178,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
           // Clean up localStorage after migration
           localStorage.removeItem('hemoio_date_format');
           localStorage.removeItem('hemoio_theme');
+          await reloadPreferences();
         }
       } catch (err) {
         console.error('Failed to load display settings:', err);
@@ -185,7 +186,7 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
     }
 
     loadDisplaySettings();
-  }, [db, isReady]);
+  }, [db, isReady, reloadPreferences]);
 
   // Handle API key change (async because of encryption)
   const handleApiKeyChange = useCallback(
@@ -269,9 +270,12 @@ export function SettingsPage({ onRestore, isRestoring = false }: SettingsPagePro
   );
 
   const handleDateFormatChange = useCallback(
-    (newFormat: DateFormatOption) =>
-      saveDisplaySetting('Date format', 'dateFormat', newFormat, setDateFormat),
-    [saveDisplaySetting]
+    async (newFormat: DateFormatOption) => {
+      await saveDisplaySetting('Date format', 'dateFormat', newFormat, setDateFormat);
+      // An import reads report dates in this order: it must see the change at once
+      await reloadPreferences();
+    },
+    [saveDisplaySetting, reloadPreferences]
   );
 
   const saveTarget = useCallback(

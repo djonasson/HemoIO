@@ -49,6 +49,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
     learnedTests: {},
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [dateFormat, setDateFormat] = useState<UserPreferences['dateFormat']>();
   // The maps as stored: a failed save puts back the stored entry, as the one
   // shown before it may not have been saved either
   const storedRef = useRef<Maps>(maps);
@@ -61,6 +62,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
         if (cancelled) return;
         storedRef.current = fromStored(prefs);
         setMaps(storedRef.current);
+        setDateFormat(prefs?.dateFormat);
         setIsLoaded(true);
       })
       .catch(() => logFailure('Failed to load preferences'));
@@ -71,8 +73,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
 
   const reload = useCallback(async () => {
     if (!db || !isReady) return;
-    storedRef.current = fromStored(await db.getPreferences());
+    const prefs = await db.getPreferences();
+    storedRef.current = fromStored(prefs);
     setMaps(storedRef.current);
+    setDateFormat(prefs?.dateFormat);
     setIsLoaded(true);
   }, [db, isReady]);
 
@@ -148,6 +152,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
   const value = useMemo<PreferencesState>(
     () => ({
       ...maps,
+      dateFormat,
       isLoaded,
       setPreferredUnit,
       setPersonalTarget,
@@ -155,7 +160,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }): Reac
       removeLearnedTest,
       reload,
     }),
-    [maps, isLoaded, setPreferredUnit, setPersonalTarget, learnTests, removeLearnedTest, reload]
+    [maps, dateFormat, isLoaded, setPreferredUnit, setPersonalTarget, learnTests, removeLearnedTest, reload]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
