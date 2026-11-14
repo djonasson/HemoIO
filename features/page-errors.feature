@@ -27,3 +27,17 @@ Feature: A page that fails says what went wrong
     When I open Trends from the menu
     Then I should be offered to reload HemoIO
     And I should be told that reloading locks HemoIO until I enter my password
+
+  Scenario: A failed page gives details I can copy to report the problem
+    Given the Trends page fails while it is shown
+    When I open Trends from the menu
+    Then I should be able to open the technical details
+    And they should give the error's message, where in HemoIO's code it failed, and my browser
+    When I choose "Copy details"
+    Then the details should be copied, ready to paste in a message
+    And I should be told they were copied
+
+  Scenario: The details hold nothing but the message, code locations and my browser
+    Given a page failed while it was shown
+    Then the technical details should hold only the error's message, code locations and my browser
+    And no other line of the error, which could hold values from my data

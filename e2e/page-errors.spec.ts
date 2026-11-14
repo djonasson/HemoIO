@@ -51,4 +51,36 @@ test.describe('A page that fails', () => {
     await expect(failure(page).getByRole('button', { name: 'Reload HemoIO' })).toBeVisible();
     await expect(failure(page)).toContainText('Reloading locks HemoIO until you enter your password again.');
   });
+
+  test('gives details I can copy to report the problem', async ({ page }) => {
+    // Scenario: A failed page gives details I can copy to report the problem
+    // Scenario: The details hold nothing but the message, code locations and my browser
+    await page.evaluate(() => {
+      const copied = window as unknown as { __copied: string[] };
+      copied.__copied = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: async (text: string) => void copied.__copied.push(text) },
+        configurable: true,
+      });
+    });
+    await makeFail(page, 'trends');
+    await openFromMenu(page, 'Trends');
+    await failure(page).getByText('Technical details').click();
+    const details = failure(page).getByRole('region', { name: 'Technical details' });
+    await expect(details).toBeVisible();
+    await expect(details).toContainText('Error: The trends page was made to fail by a test');
+    // Where in the code: a script address with its line and column
+    await expect(details).toContainText(/Where:\n.*:\d+:\d+/);
+    await expect(details).toContainText(`Browser: ${await page.evaluate(() => navigator.userAgent)}`);
+    // Nothing else: the message, then code locations only, then the browser
+    const [message, where, ...rest] = ((await details.textContent()) ?? '').split('\n');
+    expect([message, where]).toEqual(['Error: The trends page was made to fail by a test', 'Where:']);
+    expect(rest.at(-1)).toMatch(/^Browser: /);
+    for (const line of rest.slice(0, -1)) expect(line).toMatch(/^(at |\S*@).*:\d+:\d+\)?$/);
+
+    await failure(page).getByRole('button', { name: 'Copy details' }).click();
+    await expect(failure(page).getByRole('status')).toHaveText('Details copied');
+    const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
+    expect(copied).toEqual([await details.textContent()]);
+  });
 });
