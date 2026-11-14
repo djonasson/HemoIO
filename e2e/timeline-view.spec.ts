@@ -223,6 +223,31 @@ test.describe('Timeline with Data', () => {
     await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
   });
 
+  test('draws no test values in closed cards, so a long timeline opens quickly', async ({ page }) => {
+    // Scenario: Closed cards draw no test values, so a long timeline opens quickly
+    const results = Array.from({ length: 27 }, (_, i) =>
+      labResult(i + 1, `20${String(i).padStart(2, '0')}-05-10`, 'Quest Diagnostics')
+    );
+    const values = results.flatMap((result, i) =>
+      testValues(result, Array.from({ length: 40 }, (_, j) => ({ biomarker: BIOMARKERS.HEMOGLOBIN, value: j })), i * 40 + 1)
+    );
+    await seedLabData(page, { labResults: results, testValues: values });
+    await goToTimeline(page);
+    await expect(labResultCards(page)).toHaveCount(27);
+    // No card draws its values while closed
+    const drawnTables = labResultCards(page).locator('table');
+    await expect(drawnTables).toHaveCount(0);
+
+    const card = await expandLabResult(page, '2026-05-10');
+    await expect(card.getByRole('table', { name: 'Test values' }).getByRole('row')).toHaveCount(41);
+    await expect(drawnTables).toHaveCount(1);
+
+    await expandButton(card).click();
+    await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
+    await expect(card.getByRole('table', { name: 'Test values', includeHidden: true })).toBeAttached();
+    await expect(drawnTables).toHaveCount(1);
+  });
+
   test('should expand card to show test values', async ({ page }) => {
     const result = labResult(1, '2024-01-15', 'Quest Diagnostics');
     await seedLabData(page, {

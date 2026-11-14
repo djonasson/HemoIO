@@ -140,6 +140,19 @@ describe('LabResultCard', () => {
     });
   });
 
+  it('draws its test values only once first expanded, and keeps them after, to close smoothly', async () => {
+    renderWithProviders(<LabResultCard result={createMockResult()} onDelete={() => {}} />);
+    // Closed: not drawn at all, not even hidden
+    expect(screen.queryByRole('table', { hidden: true })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /expand/i }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /collapse/i }));
+    await waitFor(() => expect(screen.queryByRole('table')).not.toBeInTheDocument());
+    expect(screen.getByRole('table', { hidden: true })).toBeInTheDocument();
+  });
+
   it('should collapse when expanded header is clicked', async () => {
     const result = createMockResult();
     renderWithProviders(
