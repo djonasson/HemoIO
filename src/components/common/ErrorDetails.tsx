@@ -7,8 +7,9 @@ interface ErrorDetailsProps {
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
-const COPY_LABEL: Record<CopyState, string> = {
-  idle: 'Copy details',
+/** Said once copying ends, in a status a screen reader reads out */
+const COPY_RESULT: Record<CopyState, string> = {
+  idle: '',
   copied: 'Details copied',
   failed: 'Could not copy: select the details instead',
 };
@@ -34,14 +35,16 @@ export function ErrorDetails({ error }: ErrorDetailsProps): React.ReactNode {
     <details>
       <summary style={{ cursor: 'pointer' }}>Technical details</summary>
       <pre
+        role="region"
         aria-label="Technical details"
         style={{ fontSize: 12, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text' }}
       >
         {details}
       </pre>
       <button type="button" onClick={() => void copyDetails()} style={{ fontSize: 14, padding: '6px 12px' }}>
-        {COPY_LABEL[copy]}
-      </button>
+        Copy details
+      </button>{' '}
+      <span role="status">{COPY_RESULT[copy]}</span>
     </details>
   );
 }

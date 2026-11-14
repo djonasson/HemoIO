@@ -35,7 +35,9 @@ Feature: A page that fails says what went wrong
     And they should give the error's message, where in HemoIO's code it failed, and my browser
     When I choose "Copy details"
     Then the details should be copied, ready to paste in a message
+    And I should be told they were copied
 
-  Scenario: The details never hold my health data
+  Scenario: The details hold nothing but the message, code locations and my browser
     Given a page failed while it was shown
     Then the technical details should hold only the error's message, code locations and my browser
+    And no other line of the error, which could hold values from my data

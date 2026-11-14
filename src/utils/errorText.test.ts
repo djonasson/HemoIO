@@ -35,15 +35,33 @@ describe('errorDetails', () => {
     );
   });
 
-  it('reads a Firefox or Safari stack', () => {
-    const error = failed('Ab@https://example.org/HemoIO/assets/index-2udo5Teb.js:12:3456\n@https://example.org/a.js:1:2');
-    expect(errorDetails(error)).toContain(
-      'Where:\nAb@https://example.org/HemoIO/assets/index-2udo5Teb.js:12:3456\n@https://example.org/a.js:1:2\n'
+  it('reads a Firefox or Safari stack, async and top-level frames included', () => {
+    const frames = [
+      'Ab@https://example.org/HemoIO/assets/index-2udo5Teb.js:12:3456',
+      'async*Cd@https://example.org/a.js:3:4',
+      'global code@https://example.org/a.js:5:6',
+      '@https://example.org/a.js:1:2',
+    ];
+    expect(errorDetails(failed(frames.join('\n')))).toContain(`Where:\n${frames.join('\n')}\n`);
+  });
+
+  it('reads Chrome frames of async, constructed, aliased and worker code', () => {
+    const frames = [
+      'at async Ab (https://example.org/a.js:1:2)',
+      'at new Foo (https://example.org/a.js:3:4)',
+      'at Object.d [as fn] (https://example.org/a.js:5:6)',
+      'at w (blob:https://example.org/0b8e-41c2:7:8)',
+    ];
+    expect(errorDetails(failed(frames.map((frame) => `    ${frame}`).join('\n')))).toContain(
+      `Where:\n${frames.join('\n')}\n`
     );
   });
 
   it('keeps only code locations: a message line with values in it stays out', () => {
-    const error = failed('TypeError: Glucose 95 at 12:30:45 mg/dL\n    at Ab (https://example.org/a.js:1:2)\nGlucose 95');
+    const error = failed(
+      'TypeError: Glucose 95 at 12:30:45 mg/dL\n    at Ab (https://example.org/a.js:1:2)\nGlucose 95\n' +
+        'at 12:30 Glucose 95 (https://lab.example/r:1:2)\nGlucose 95@https://lab.example/r:1:2'
+    );
     expect(errorDetails(error).split('\n').slice(1, 3)).toEqual(['Where:', 'at Ab (https://example.org/a.js:1:2)']);
     expect(errorDetails(error)).not.toContain('Glucose');
   });

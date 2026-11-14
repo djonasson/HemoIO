@@ -17,7 +17,7 @@ describe('ErrorDetails', () => {
   it('folds away the message, the code locations and the browser', async () => {
     render(<ErrorDetails error={failed()} />);
     await userEvent.click(screen.getByText('Technical details'));
-    const details = screen.getByLabelText('Technical details');
+    const details = screen.getByRole('region', { name: 'Technical details' });
     expect(details).toBeVisible();
     expect(details).toHaveTextContent('TypeError: d is not a function Where: at Ab (https://example.org/assets/index.js:1:2)');
     expect(details).toHaveTextContent(`Browser: ${navigator.userAgent}`);
@@ -30,7 +30,7 @@ describe('ErrorDetails', () => {
     await user.click(screen.getByText('Technical details'));
     await user.click(screen.getByRole('button', { name: 'Copy details' }));
     expect(writeText).toHaveBeenCalledWith(screen.getByLabelText('Technical details').textContent);
-    expect(screen.getByRole('button', { name: 'Details copied' })).toBeVisible();
+    expect(screen.getByRole('status')).toHaveTextContent('Details copied');
   });
 
   it('says when the details could not be copied', async () => {
@@ -39,6 +39,6 @@ describe('ErrorDetails', () => {
     render(<ErrorDetails error={failed()} />);
     await user.click(screen.getByText('Technical details'));
     await user.click(screen.getByRole('button', { name: 'Copy details' }));
-    expect(await screen.findByRole('button', { name: 'Could not copy: select the details instead' })).toBeVisible();
+    expect(await screen.findByRole('status')).toHaveTextContent('Could not copy: select the details instead');
   });
 });

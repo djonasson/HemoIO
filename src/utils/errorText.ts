@@ -8,16 +8,21 @@ export function errorText(error: unknown): string {
 }
 
 /**
- * A stack line naming a place in a script: "at name (url:line:column)" in
- * Chrome, "name@url:line:column" in Firefox and Safari. Anything else in a
- * stack, the message above all, may hold values from the user's data.
+ * A stack line naming a place in a script: "at name (url:line:column)" or
+ * "at url:line:column" in Chrome, "name@url:line:column" in Firefox and
+ * Safari. Names are code names only, so nothing else in a stack, the message
+ * above all, which may hold values from the user's data, gets through.
  */
-const CODE_LOCATION = /^(?:at .*|[\w$.<>/]*@)(?:https?|blob|file):\/\/\S+:\d+:\d+\)?$/;
+const SCRIPT = String.raw`(?:https?:|blob:https?:|file:)\/\/\S+:\d+:\d+`;
+const CODE_LOCATION = new RegExp(
+  String.raw`^(?:at (?:[\w$.<>\[\] ]+ \()?${SCRIPT}\)?|(?:async\*)?[\w$.<>/]*(?: code)?@${SCRIPT})$`
+);
 
 /**
  * What the user can copy to report a failure: the message, where in the code
- * it failed and the browser. A built script's line and column lead back to
- * the source through the source map of the same build.
+ * it failed and the browser. A built script's name carries its build's hash,
+ * and its line and column lead back to the source through the source map of
+ * a rebuild of that commit (builds are reproducible).
  */
 export function errorDetails(error: unknown): string {
   const stack = error instanceof Error ? (error.stack ?? '') : '';
