@@ -5,7 +5,7 @@
  */
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { openFromMenu, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, pageFailure as failure, setupOrUnlock } from './steps/app.steps';
 
 /** Given the page of `view` fails while it is shown */
 async function makeFail(page: Page, view: string | undefined): Promise<void> {
@@ -13,8 +13,6 @@ async function makeFail(page: Page, view: string | undefined): Promise<void> {
     window.__hemoioFailingView = failing;
   }, view);
 }
-
-const failure = (page: Page) => page.getByRole('alert').filter({ hasText: 'This page could not be shown' });
 
 test.describe('A page that fails', () => {
   test.beforeEach(async ({ page }) => {
