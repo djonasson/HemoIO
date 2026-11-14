@@ -51,4 +51,31 @@ test.describe('A page that fails', () => {
     await expect(failure(page).getByRole('button', { name: 'Reload HemoIO' })).toBeVisible();
     await expect(failure(page)).toContainText('Reloading locks HemoIO until you enter your password again.');
   });
+
+  test('gives details I can copy to report the problem', async ({ page }) => {
+    // Scenario: A failed page gives details I can copy to report the problem
+    // Scenario: The details never hold my health data
+    await page.evaluate(() => {
+      const copied = window as unknown as { __copied: string[] };
+      copied.__copied = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: async (text: string) => void copied.__copied.push(text) },
+        configurable: true,
+      });
+    });
+    await makeFail(page, 'trends');
+    await openFromMenu(page, 'Trends');
+    await failure(page).getByText('Technical details').click();
+    const details = failure(page).getByLabel('Technical details');
+    await expect(details).toBeVisible();
+    await expect(details).toContainText('Error: The trends page was made to fail by a test');
+    // Where in the code: a script address with its line and column
+    await expect(details).toContainText(/Where:\n.*:\d+:\d+/);
+    await expect(details).toContainText(`Browser: ${await page.evaluate(() => navigator.userAgent)}`);
+
+    await failure(page).getByRole('button', { name: 'Copy details' }).click();
+    await expect(failure(page).getByRole('button', { name: 'Details copied' })).toBeVisible();
+    const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied);
+    expect(copied).toEqual([await details.textContent()]);
+  });
 });

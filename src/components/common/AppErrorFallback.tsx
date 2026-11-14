@@ -1,6 +1,7 @@
 import type { FallbackProps } from 'react-error-boundary';
 import { errorText } from '@/utils/errorText';
 import { reloadPage } from '@/utils/reloadPage';
+import { ErrorDetails } from './ErrorDetails';
 import { RELOAD_LOCKS_NOTE } from './errorFallbackText';
 
 /**
@@ -13,6 +14,7 @@ export function AppErrorFallback({ error }: FallbackProps): React.ReactNode {
       <h1 style={{ fontSize: 22 }}>HemoIO could not be shown</h1>
       <p>Something went wrong. {RELOAD_LOCKS_NOTE}</p>
       <p style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}>{errorText(error)}</p>
+      <ErrorDetails error={error} />
       <button type="button" onClick={reloadPage} style={{ fontSize: 16, padding: '8px 16px' }}>
         Reload HemoIO
       </button>
