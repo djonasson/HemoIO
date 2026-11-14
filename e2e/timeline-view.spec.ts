@@ -229,7 +229,7 @@ test.describe('Timeline with Data', () => {
       labResult(i + 1, `20${String(i).padStart(2, '0')}-05-10`, 'Quest Diagnostics')
     );
     const values = results.flatMap((result, i) =>
-      Array.from({ length: 40 }, (_, j) => panelValues(result, 1, i * 40 + j + 1)[0])
+      testValues(result, Array.from({ length: 40 }, (_, j) => ({ biomarker: BIOMARKERS.HEMOGLOBIN, value: j })), i * 40 + 1)
     );
     await seedLabData(page, { labResults: results, testValues: values });
     await goToTimeline(page);
