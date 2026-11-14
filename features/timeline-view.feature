@@ -124,6 +124,13 @@ Feature: Timeline View
     And the value that is not a LOINC test should be named as the report prints it
     And hovering a LOINC test's name should show its LOINC code and long name
 
+  Scenario: The timeline opens quickly however many results it lists
+    Given I have 27 lab results of 40 test values each
+    When I navigate to the Timeline view
+    Then the lab result cards should be shown without drawing their test values
+    And a card should draw its test values when I first expand it
+    And they should stay ready when I collapse it again, so it closes smoothly
+
   # Filtering
   Scenario: Choosing Timeline in the menu shows the timeline fresh
     Given I have expanded a lab result card

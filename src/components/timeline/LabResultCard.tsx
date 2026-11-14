@@ -100,6 +100,9 @@ export function LabResultCard({
   toggleRef,
 }: LabResultCardProps): React.ReactNode {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // A closed card draws no values: a timeline of many results would draw
+  // thousands of rows on every visit. Once drawn they stay, so it closes smoothly.
+  const [drawn, setDrawn] = useState(defaultExpanded);
   const cardRef = useRef<HTMLDivElement>(null);
   const isUndated = Number.isNaN(result.date.getTime());
 
@@ -145,6 +148,7 @@ export function LabResultCard({
 
   const handleToggle = useCallback(() => {
     setExpanded((prev) => !prev);
+    setDrawn(true);
   }, []);
 
   const handleDeleteClick = useCallback(
@@ -269,15 +273,17 @@ export function LabResultCard({
           {/* Expandable content */}
           <Collapse in={expanded}>
             <div id={`lab-result-${result.id}-content`}>
-              <TestValuesList
-                testValues={result.testValues}
-                onOpenTrend={
-                  // An undated value is on no trend: nothing to open it at
-                  onOpenTrend && !Number.isNaN(result.date.getTime())
-                    ? (biomarkerKey, testValueId) => onOpenTrend(biomarkerKey, result.date, testValueId)
-                    : undefined
-                }
-              />
+              {drawn && (
+                <TestValuesList
+                  testValues={result.testValues}
+                  onOpenTrend={
+                    // An undated value is on no trend: nothing to open it at
+                    onOpenTrend && !Number.isNaN(result.date.getTime())
+                      ? (biomarkerKey, testValueId) => onOpenTrend(biomarkerKey, result.date, testValueId)
+                      : undefined
+                  }
+                />
+              )}
 
               {/* Notes section: mounted with the open card, as a collapse that
                   opens inside a closed one measures no height and stays shut */}
