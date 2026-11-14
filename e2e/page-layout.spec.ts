@@ -302,3 +302,21 @@ test.describe('Page Layout', () => {
     }
   });
 });
+
+test('pages open on browsers whose scrolling answers when it is done', async ({ page }) => {
+  // Scenario: Pages open on browsers whose scrolling answers when it is done
+  await page.addInitScript(() => {
+    const scrollTo = window.scrollTo.bind(window);
+    window.scrollTo = ((...args: Parameters<typeof window.scrollTo>) => {
+      scrollTo(...args);
+      return Promise.resolve();
+    }) as typeof window.scrollTo;
+  });
+  await page.goto('/');
+  await setupOrUnlock(page);
+  for (const name of ['Import', 'Trends', 'Alerts', 'Notes', 'Biomarkers', 'Settings', 'Timeline']) {
+    await openFromMenu(page, name);
+    await expect(page.getByRole('main')).not.toBeEmpty();
+    await expect(page.getByText(/could not be shown/)).toHaveCount(0);
+  }
+});

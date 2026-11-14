@@ -103,3 +103,8 @@ Feature: Page Layout
       | 320   |
       | 390   |
       | 1920  |
+
+  Scenario: Pages open on browsers whose scrolling answers when it is done
+    Given my browser's scrolling gives back a promise, as newer Chrome on Android does
+    When I open each page from the menu in turn
+    Then each page should be shown, none saying it could not be shown

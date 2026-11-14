@@ -71,8 +71,11 @@ export interface UseNavigationResult {
 export function useNavigation(): UseNavigationResult {
   const [{ to, visit }, setNav] = useState<NavState>({ to: 'timeline', visit: 0 });
 
-  // A visit opens at the top, not at the last view's scroll
-  useLayoutEffect(() => window.scrollTo(0, 0), [visit]);
+  // A visit opens at the top, not at the last view's scroll. In braces: newer
+  // Chrome's scrollTo gives back a promise, which React would call as cleanup.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [visit]);
 
   const go = useCallback(
     (destination: Destination) =>
