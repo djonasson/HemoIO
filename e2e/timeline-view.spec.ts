@@ -223,8 +223,8 @@ test.describe('Timeline with Data', () => {
     await expect(expandButton(card)).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('opens quickly however many results it lists: a card draws its values once expanded', async ({ page }) => {
-    // Scenario: The timeline opens quickly however many results it lists
+  test('draws no test values in closed cards, so a long timeline opens quickly', async ({ page }) => {
+    // Scenario: Closed cards draw no test values, so a long timeline opens quickly
     const results = Array.from({ length: 27 }, (_, i) =>
       labResult(i + 1, `20${String(i).padStart(2, '0')}-05-10`, 'Quest Diagnostics')
     );
@@ -235,7 +235,7 @@ test.describe('Timeline with Data', () => {
     await goToTimeline(page);
     await expect(labResultCards(page)).toHaveCount(27);
     // No card draws its values while closed
-    const drawnTables = page.locator('table');
+    const drawnTables = labResultCards(page).locator('table');
     await expect(drawnTables).toHaveCount(0);
 
     const card = await expandLabResult(page, '2026-05-10');

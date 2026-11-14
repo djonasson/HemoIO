@@ -103,6 +103,7 @@ export function LabResultCard({
   // A closed card draws no values: a timeline of many results would draw
   // thousands of rows on every visit. Once drawn they stay, so it closes smoothly.
   const [drawn, setDrawn] = useState(defaultExpanded);
+  if (expanded && !drawn) setDrawn(true);
   const cardRef = useRef<HTMLDivElement>(null);
   const isUndated = Number.isNaN(result.date.getTime());
 
@@ -148,7 +149,6 @@ export function LabResultCard({
 
   const handleToggle = useCallback(() => {
     setExpanded((prev) => !prev);
-    setDrawn(true);
   }, []);
 
   const handleDeleteClick = useCallback(
