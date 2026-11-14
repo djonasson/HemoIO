@@ -44,6 +44,16 @@ describe('useNavigation', () => {
     expect(result.current.focus).toBeNull();
   });
 
+  it('gives React no cleanup where scrolling answers with a promise, as newer Chrome does', () => {
+    scrollTo.mockReturnValue(Promise.resolve());
+    const { result, unmount } = renderHook(() => useNavigation());
+    // React calls what an effect gives back as its cleanup: a promise is no function
+    act(() => result.current.go('settings'));
+    act(() => result.current.go('trends'));
+    expect(() => unmount()).not.toThrow();
+    expect(scrollTo).toHaveBeenCalledTimes(3);
+  });
+
   it('opens every view it moves to at the top', () => {
     const { result } = renderHook(() => useNavigation());
     scrollTo.mockClear();

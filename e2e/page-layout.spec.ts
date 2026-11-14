@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { openFromMenu, openSettingsTab, setupOrUnlock } from './steps/app.steps';
+import { openFromMenu, openSettingsTab, pageFailure, setupOrUnlock } from './steps/app.steps';
 import { seedLabData } from './steps/data.steps';
 import { createTextLabReportPdf } from './steps/aiModelSelection.steps';
 import {
@@ -299,6 +299,24 @@ test.describe('Page Layout', () => {
 
         await expect(page.getByText('Enter your password to unlock your lab data')).toBeVisible();
       });
+    }
+  });
+
+  test('pages open on browsers whose scrolling answers when it is done', async ({ page }) => {
+    // Scenario: Pages open on browsers whose scrolling answers when it is done
+    await page.addInitScript(() => {
+      const scrollTo = window.scrollTo.bind(window);
+      window.scrollTo = ((...args: Parameters<typeof window.scrollTo>) => {
+        scrollTo(...args);
+        return Promise.resolve();
+      }) as typeof window.scrollTo;
+    });
+    await page.goto('/');
+    await setupOrUnlock(page);
+    for (const name of MENU_PAGES) {
+      await openFromMenu(page, name);
+      await expect(page.getByRole('main')).not.toBeEmpty();
+      await expect(pageFailure(page)).toHaveCount(0);
     }
   });
 });

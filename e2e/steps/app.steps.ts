@@ -5,7 +5,7 @@
  * fresh browser profile, or unlocks an existing one.
  */
 
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, type Locator, type Page, type Route } from '@playwright/test';
 
 export const TEST_PASSWORD = 'TestPassword123!';
 
@@ -99,6 +99,11 @@ export async function openFromMenu(page: Page, name: string): Promise<void> {
  * When I open the given tab of Settings — through the menu, so it works on a
  * phone too — and waits until that tab is selected
  */
+/** The message a page that failed shows in place of its content */
+export function pageFailure(page: Page): Locator {
+  return page.getByRole('alert').filter({ hasText: 'This page could not be shown' });
+}
+
 export async function openSettingsTab(page: Page, tab: string | RegExp): Promise<void> {
   await openFromMenu(page, 'Settings');
   const tabButton = page.getByRole('tab', { name: tab, exact: true });
