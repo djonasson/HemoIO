@@ -37,18 +37,17 @@ export function FolderAccessNoticeBody({
   const [asking, setAsking] = useState(false);
 
   // Asked straight from the click: the browser asks only then
-  const grant = useCallback(() => {
+  const grant = useCallback(async () => {
     setNotGiven(false);
     setAsking(true);
-    grantFolderAccess()
-      .then(
-        (state) => {
-          if (state === 'granted') onGranted();
-          else setNotGiven(true);
-        },
-        () => setNotGiven(true)
-      )
-      .finally(() => setAsking(false));
+    try {
+      if ((await grantFolderAccess()) === 'granted') onGranted();
+      else setNotGiven(true);
+    } catch {
+      setNotGiven(true);
+    } finally {
+      setAsking(false);
+    }
   }, [onGranted]);
 
   return (

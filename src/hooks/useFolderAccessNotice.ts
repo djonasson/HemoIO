@@ -31,31 +31,30 @@ async function folderAccessProblem(): Promise<FolderAccessProblem | null> {
  */
 export function useFolderAccessNotice(onGranted: () => void): void {
   const [problem, setProblem] = useState<FolderAccessProblem | null>(null);
-  const [looks, setLooks] = useState(0);
-  const lookAgain = useCallback(() => setLooks((n) => n + 1), []);
+  // Set while unlocked: the notice's buttons look again with it
+  const lookRef = useRef<() => void>(() => {});
+  const lookAgain = useCallback(() => lookRef.current(), []);
 
   useEffect(() => {
     let latest = 0;
     let closed = false;
     const look = (): void => {
       const asked = ++latest;
-      folderAccessProblem().then(
-        (next) => {
-          if (!closed && asked === latest) setProblem(next);
-        },
+      folderAccessProblem()
         // The folder cannot be looked at: no question to ask about it
-        () => {
-          if (!closed && asked === latest) setProblem(null);
-        }
-      );
+        .catch(() => null)
+        .then((next) => {
+          if (!closed && asked === latest) setProblem(next);
+        });
     };
+    lookRef.current = look;
     look();
     const stop = onFolderAccessChanged(look);
     return () => {
       closed = true;
       stop();
     };
-  }, [looks]);
+  }, []);
 
   // Each notice shown gets a body of its own, so a refusal shown in the last does not carry over
   const shownRef = useRef(0);
