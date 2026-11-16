@@ -130,6 +130,15 @@ export function UploadStep({
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
 
+  // Some desktops now and then hand the browser a drop without its files: the
+  // dropzone ignores a drop that brings no files, so it would pass unnoticed
+  const handleEmptyDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    const { files, items } = event.dataTransfer;
+    if (files.length === 0 && items.length === 0) {
+      setError('Nothing arrived from that drop: drag the file again, or click to choose it.');
+    }
+  }, []);
+
   // Handle file rejection (from Dropzone)
   const handleReject = useCallback(() => {
     setError('Some files were rejected. Please upload only PDF or image files.');
@@ -159,6 +168,7 @@ export function UploadStep({
       <Dropzone
         onDrop={handleDrop}
         onReject={handleReject}
+        onDropCapture={handleEmptyDrop}
         maxSize={50 * 1024 * 1024} // 50MB
         accept={[
           MIME_TYPES.pdf,

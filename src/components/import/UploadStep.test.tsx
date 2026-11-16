@@ -112,4 +112,22 @@ describe('UploadStep', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analyze (1)' }));
     expect(defaultProps.onComplete).toHaveBeenCalledWith([chosen]);
   });
+
+  it('says so when a drop brings no files, keeping the list', () => {
+    const chosen = { file: new File(['x'], 'kept.pdf', { type: 'application/pdf' }), id: 'upload_kept', formattedSize: '1 B' };
+    render(
+      <TestWrapper>
+        <UploadStep {...defaultProps} initialFiles={[chosen]} />
+      </TestWrapper>
+    );
+
+    fireEvent.drop(screen.getByText('Drag files here or click to select'), {
+      dataTransfer: { files: [], items: [], types: [] },
+    });
+
+    expect(screen.getByRole('alert', { name: 'Upload Error' })).toHaveTextContent(
+      'Nothing arrived from that drop: drag the file again, or click to choose it.'
+    );
+    expect(screen.getByRole('button', { name: 'Analyze (1)' })).toBeInTheDocument();
+  });
 });

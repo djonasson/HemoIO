@@ -34,6 +34,12 @@ Feature: Import Wizard
     Then I should see an error message about unsupported file type
     And the file should not be added to the upload list
 
+  Scenario: A drop that brings no files says so
+    # Some desktops now and then hand the browser a drop without its files
+    When I drop something onto the upload area and no files arrive with it
+    Then I should be told nothing arrived, and to drag the file again or click to choose it
+    And the upload list should stay as it was
+
   Scenario: User removes a file from upload list
     Given I have uploaded a file
     When I click the remove button on the file

@@ -161,6 +161,18 @@ test.describe('Import Wizard', () => {
       await expect(main(page).getByText(/^Selected Files/)).toBeHidden();
       await expect(main(page).getByRole('button', { name: 'Analyze', exact: true })).toBeDisabled();
     });
+
+    test('says so when a drop brings no files', async ({ page }) => {
+      // Scenario: A drop that brings no files says so
+      await uploadFiles(page, track(createTextLabReportPdf()));
+      const zone = main(page).getByText('Drag files here or click to select');
+      // As some desktops hand it over: a drop with no files and no types
+      await zone.dispatchEvent('drop', { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
+
+      const error = page.getByRole('alert', { name: 'Upload Error' });
+      await expect(error).toContainText('Nothing arrived from that drop: drag the file again, or click to choose it.');
+      await expect(analyzeButton(page)).toHaveText('Analyze (1)');
+    });
   });
 
   test.describe('Analysis Step', () => {
