@@ -56,8 +56,11 @@ describe('FolderAccessNoticeBody', () => {
     expect(screen.getByRole('button', { name: 'Grant access' })).toBeEnabled();
   });
 
-  it('looks at access again when the browser did not give it, as it may now block it', async () => {
-    vi.mocked(grantFolderAccess).mockResolvedValue('denied');
+  it.each([
+    ['answers denied', () => vi.mocked(grantFolderAccess).mockResolvedValue('denied')],
+    ['fails to ask', () => vi.mocked(grantFolderAccess).mockRejectedValue(new Error('No directory selected'))],
+  ])('looks at access again when the browser %s, as it may now block it', async (_, arrange) => {
+    arrange();
     const { onLookAgain } = renderBody(false);
 
     await userEvent.click(screen.getByRole('button', { name: 'Grant access' }));

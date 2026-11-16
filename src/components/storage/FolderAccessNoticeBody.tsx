@@ -43,13 +43,13 @@ export function FolderAccessNoticeBody({
     setAsking(true);
     try {
       if ((await grantFolderAccess()) === 'granted') return;
-      setNotGiven(true);
-      onLookAgain();
     } catch {
-      setNotGiven(true);
+      // Not given either
     } finally {
       setAsking(false);
     }
+    setNotGiven(true);
+    onLookAgain();
   }, [onLookAgain]);
 
   return (
