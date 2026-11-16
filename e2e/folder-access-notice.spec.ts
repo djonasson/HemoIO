@@ -10,7 +10,9 @@ import { setupOrUnlock, unlockApp } from './steps/app.steps';
 import { SEED_LAB_RESULTS, seedLabData } from './steps/data.steps';
 import {
   FolderRestoreDialog,
+  allowFolderInSiteSettings,
   blockFolderAccess,
+  blockFolderWhenAsked,
   folderCopyHash,
   forgetFolderPermission,
   grantFolderAccess,
@@ -104,6 +106,33 @@ test.describe('Folder access notice', () => {
       "Your browser blocks HemoIO from your folder. Allow it in the browser's site settings, or choose another folder."
     );
     await expect(notice.getByRole('button', { name: 'Choose another folder' })).toBeVisible();
+  });
+
+  test('says how to unblock the folder once it was blocked when the browser asked', async ({ page }) => {
+    // Scenario: Blocking the folder when the browser asks
+    await dataInFolder(page);
+    await reopenNeedingAccess(page);
+    await unlockApp(page);
+    await blockFolderWhenAsked(page);
+
+    await accessNeeded(page).getByRole('button', { name: 'Grant access' }).click();
+    await expect(accessBlocked(page)).toContainText("Allow it in the browser's site settings, or choose another folder.");
+    await expect(accessNeeded(page)).toHaveCount(0);
+  });
+
+  test('offers to grant access again once the folder is allowed in site settings', async ({ page }) => {
+    // Scenario: Allowing the folder again in the browser's site settings
+    await dataInFolder(page);
+    await blockFolderAccess(page);
+    await page.reload();
+    await unlockApp(page);
+    await expect(accessBlocked(page)).toBeVisible();
+
+    await allowFolderInSiteSettings(page);
+    // Coming back to HemoIO from the browser's settings
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(accessNeeded(page).getByRole('button', { name: 'Grant access' })).toBeVisible();
+    await expect(accessBlocked(page)).toHaveCount(0);
   });
 
   test('goes away when access is granted in Settings', async ({ page }) => {

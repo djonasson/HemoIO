@@ -43,6 +43,18 @@ Feature: Folder Access Notice
     Then I should be told to allow the folder in the browser's site settings, or to choose another folder
     And I should be offered to choose another folder right there
 
+  Scenario: Blocking the folder when the browser asks
+    Given my browser needs my permission to use the folder again
+    And I have unlocked HemoIO
+    When I grant access from the notice, but tell the browser to block the folder
+    Then I should be told to allow the folder in the browser's site settings, or to choose another folder
+
+  Scenario: Allowing the folder again in the browser's site settings
+    Given my browser blocks HemoIO from using the folder
+    And I have unlocked HemoIO
+    When I allow the folder again in the browser's site settings and come back to HemoIO
+    Then I should be offered to grant access from the notice
+
   Scenario: Granting access in Settings takes the notice away
     Given my browser needs my permission to use the folder again
     And I have unlocked HemoIO

@@ -47,7 +47,10 @@ export async function installFolderPicker(page: Page): Promise<void> {
       };
       proto.requestPermission = async () => {
         // As when the user closes the browser's question, or it is blocked
-        if (localStorage.getItem(refuseKey) !== null) return localStorage.getItem(permissionKey) ?? 'prompt';
+        const refusal = localStorage.getItem(refuseKey);
+        // The user tells the browser to block the folder when it asks
+        if (refusal === 'block') localStorage.setItem(permissionKey, 'denied');
+        if (refusal !== null) return localStorage.getItem(permissionKey) ?? 'prompt';
         localStorage.removeItem(permissionKey);
         return 'granted';
       };
@@ -115,6 +118,22 @@ export async function blockFolderAccess(page: Page): Promise<void> {
 /** And the browser answers a request for folder access without giving it */
 export async function refuseFolderAccess(page: Page): Promise<void> {
   await page.evaluate((key) => localStorage.setItem(key, 'on'), REFUSE_KEY);
+}
+
+/** When asked for folder access, the user tells the browser to block the folder */
+export async function blockFolderWhenAsked(page: Page): Promise<void> {
+  await page.evaluate((key) => localStorage.setItem(key, 'block'), REFUSE_KEY);
+}
+
+/** And the folder is allowed again in the browser's site settings: the browser asks again */
+export async function allowFolderInSiteSettings(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ permissionKey, refuseKey }) => {
+      localStorage.setItem(permissionKey, 'prompt');
+      localStorage.removeItem(refuseKey);
+    },
+    { permissionKey: PERMISSION_KEY, refuseKey: REFUSE_KEY }
+  );
 }
 
 async function openDataSettings(page: Page): Promise<void> {

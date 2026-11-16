@@ -24,14 +24,16 @@ async function folderAccessProblem(): Promise<FolderAccessProblem | null> {
 }
 
 /**
- * Looks when HemoIO is unlocked, and again whenever folder access changes
- * (granted here or in Settings, another folder chosen, folder storage
- * switched): the notice stays until access is given, or is dismissed.
- * `onGranted`: access was given from the notice, so the folder is used at once.
+ * Looks when HemoIO is unlocked, whenever folder access changes (granted
+ * here or in Settings, another folder chosen, folder storage switched), and
+ * when HemoIO is looked at again, as after allowing the folder in the
+ * browser's site settings: the notice stays until access is given, or is
+ * dismissed. Access given, the restore check and the sync start over at
+ * once, as they do on every change of folder access.
  */
-export function useFolderAccessNotice(onGranted: () => void): void {
+export function useFolderAccessNotice(): void {
   const [problem, setProblem] = useState<FolderAccessProblem | null>(null);
-  // Set while unlocked: the notice's buttons look again with it
+  // Set while unlocked: the notice looks again with it after its buttons
   const lookRef = useRef<() => void>(() => {});
   const lookAgain = useCallback(() => lookRef.current(), []);
 
@@ -50,9 +52,16 @@ export function useFolderAccessNotice(onGranted: () => void): void {
     lookRef.current = look;
     look();
     const stop = onFolderAccessChanged(look);
+    const lookWhenShown = (): void => {
+      if (document.visibilityState === 'visible') look();
+    };
+    window.addEventListener('focus', look);
+    document.addEventListener('visibilitychange', lookWhenShown);
     return () => {
       closed = true;
       stop();
+      window.removeEventListener('focus', look);
+      document.removeEventListener('visibilitychange', lookWhenShown);
     };
   }, []);
 
@@ -67,13 +76,12 @@ export function useFolderAccessNotice(onGranted: () => void): void {
       message: createElement(FolderAccessNoticeBody, {
         key: `${problem}-${shownRef.current}`,
         blocked: problem === 'blocked',
-        onGranted,
-        onFolderStorageOff: lookAgain,
+        onLookAgain: lookAgain,
       }),
       color: 'yellow',
     });
     return () => {
       notifications.hide(FOLDER_ACCESS_NOTICE_ID);
     };
-  }, [problem, onGranted, lookAgain]);
+  }, [problem, lookAgain]);
 }

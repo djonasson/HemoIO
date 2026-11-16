@@ -22,7 +22,6 @@ vi.mock('@data/storage/folderAccessEvents', () => ({
 }));
 
 const getPermissionState = vi.fn();
-const onGranted = (): void => {};
 
 function shown() {
   const calls = vi.mocked(notifications.show).mock.calls;
@@ -45,7 +44,7 @@ describe('useFolderAccessNotice', () => {
 
   it('tells when the browser asks for folder access again, until it is given', async () => {
     getPermissionState.mockResolvedValue('prompt');
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
 
     await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
     const { notice, body } = shown();
@@ -53,16 +52,37 @@ describe('useFolderAccessNotice', () => {
     expect(notice.title).toBe('Folder access needed');
     expect(notice.autoClose).toBe(false);
     expect(body.blocked).toBe(false);
-    expect(body.onGranted).toBe(onGranted);
 
     getPermissionState.mockResolvedValue('granted');
     accessChanged();
     await waitFor(() => expect(notifications.hide).toHaveBeenCalledWith(FOLDER_ACCESS_NOTICE_ID));
   });
 
+  it('looks again when HemoIO is looked at again, as after allowing the folder in site settings', async () => {
+    getPermissionState.mockResolvedValue('denied');
+    renderHook(() => useFolderAccessNotice());
+    await waitFor(() => expect(shown().notice.title).toBe('Folder access blocked'));
+
+    getPermissionState.mockResolvedValue('prompt');
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(shown().notice.title).toBe('Folder access needed'));
+  });
+
+  it('looks again when the notice asks, as after the browser did not give access', async () => {
+    getPermissionState.mockResolvedValue('prompt');
+    renderHook(() => useFolderAccessNotice());
+    await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
+
+    getPermissionState.mockResolvedValue('denied');
+    act(() => shown().body.onLookAgain());
+    await waitFor(() => expect(shown().notice.title).toBe('Folder access blocked'));
+  });
+
   it('tells when the browser blocks the folder', async () => {
     getPermissionState.mockResolvedValue('denied');
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
 
     await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
     expect(shown().notice.title).toBe('Folder access blocked');
@@ -70,7 +90,7 @@ describe('useFolderAccessNotice', () => {
   });
 
   it('shows nothing while access is given', async () => {
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
 
     await waitFor(() => expect(getPermissionState).toHaveBeenCalled());
     expect(notifications.show).not.toHaveBeenCalled();
@@ -79,7 +99,7 @@ describe('useFolderAccessNotice', () => {
   it('asks nothing of the folder while data are kept in the browser only', async () => {
     vi.mocked(isFolderStorageOn).mockReturnValue(false);
     getPermissionState.mockResolvedValue('prompt');
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
     await act(async () => {});
 
     expect(getPermissionState).not.toHaveBeenCalled();
@@ -88,7 +108,7 @@ describe('useFolderAccessNotice', () => {
 
   it('takes the notice away when folder storage is switched off', async () => {
     getPermissionState.mockResolvedValue('prompt');
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
     await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(1));
 
     vi.mocked(isFolderStorageOn).mockReturnValue(false);
@@ -99,7 +119,7 @@ describe('useFolderAccessNotice', () => {
   it('keeps the answer of the latest look, however the looks finish', async () => {
     let answerFirst: (state: string) => void = () => {};
     getPermissionState.mockReturnValueOnce(new Promise((resolve) => (answerFirst = resolve)));
-    renderHook(() => useFolderAccessNotice(onGranted));
+    renderHook(() => useFolderAccessNotice());
 
     getPermissionState.mockResolvedValue('granted');
     accessChanged();
@@ -109,10 +129,13 @@ describe('useFolderAccessNotice', () => {
   });
 
   it('stops looking once HemoIO locks', async () => {
-    const { unmount } = renderHook(() => useFolderAccessNotice(onGranted));
+    const { unmount } = renderHook(() => useFolderAccessNotice());
     await waitFor(() => expect(getPermissionState).toHaveBeenCalledTimes(1));
     unmount();
 
     expect(listeners.size).toBe(0);
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(getPermissionState).toHaveBeenCalledTimes(1);
   });
 });

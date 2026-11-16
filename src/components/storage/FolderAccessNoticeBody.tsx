@@ -21,34 +21,36 @@ export const ACCESS_NOT_GIVEN_TEXT = 'The browser did not give access to the fol
 export interface FolderAccessNoticeBodyProps {
   /** The browser no longer asks: access can only be allowed in its settings */
   blocked: boolean;
-  /** Access was given: the folder can be used at once */
-  onGranted: () => void;
-  /** Folder storage was switched off meanwhile, so there was no folder to choose */
-  onFolderStorageOff: () => void;
+  /**
+   * Look at folder access again: the browser did not give it, and may now
+   * block it, or folder storage was switched off meanwhile
+   */
+  onLookAgain: () => void;
 }
 
 export function FolderAccessNoticeBody({
   blocked,
-  onGranted,
-  onFolderStorageOff,
+  onLookAgain,
 }: FolderAccessNoticeBodyProps): React.ReactNode {
-  const chooser = useChooseFolder(onFolderStorageOff);
+  const chooser = useChooseFolder(onLookAgain);
   const [notGiven, setNotGiven] = useState(false);
   const [asking, setAsking] = useState(false);
 
-  // Asked straight from the click: the browser asks only then
+  // Asked straight from the click: the browser asks only then. Given, every
+  // tab is told and this notice goes; not given, the browser may now block it.
   const grant = useCallback(async () => {
     setNotGiven(false);
     setAsking(true);
     try {
-      if ((await grantFolderAccess()) === 'granted') onGranted();
-      else setNotGiven(true);
+      if ((await grantFolderAccess()) === 'granted') return;
+      setNotGiven(true);
+      onLookAgain();
     } catch {
       setNotGiven(true);
     } finally {
       setAsking(false);
     }
-  }, [onGranted]);
+  }, [onLookAgain]);
 
   return (
     <Stack gap="xs">
