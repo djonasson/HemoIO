@@ -130,6 +130,15 @@ export function UploadStep({
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
 
+  // Some desktops now and then hand the browser a drop without its files: the
+  // dropzone ignores a drop that brings no files, so it would pass unnoticed
+  const handleEmptyDrop = useCallback((event: React.DragEvent) => {
+    const { files, items } = event.dataTransfer;
+    if (files.length === 0 && items.length === 0) {
+      setError('Nothing arrived from that drop: drag the file again, or click to choose it.');
+    }
+  }, []);
+
   // Handle file rejection (from Dropzone)
   const handleReject = useCallback(() => {
     setError('Some files were rejected. Please upload only PDF or image files.');
@@ -156,43 +165,45 @@ export function UploadStep({
   return (
     <Stack gap="lg">
       {/* Dropzone */}
-      <Dropzone
-        onDrop={handleDrop}
-        onReject={handleReject}
-        maxSize={50 * 1024 * 1024} // 50MB
-        accept={[
-          MIME_TYPES.pdf,
-          MIME_TYPES.png,
-          MIME_TYPES.jpeg,
-          MIME_TYPES.webp,
-          MIME_TYPES.gif,
-        ]}
-        multiple
-      >
-        <Group justify="center" gap="xl" mih={200} style={{ pointerEvents: 'none' }}>
-          <Dropzone.Accept>
-            <IconUpload size={52} stroke={1.5} color="var(--mantine-color-blue-text)" />
-          </Dropzone.Accept>
-          <Dropzone.Reject>
-            <IconX size={52} stroke={1.5} color="var(--mantine-color-red-text)" />
-          </Dropzone.Reject>
-          <Dropzone.Idle>
-            <IconUpload size={52} stroke={1.5} color="var(--mantine-color-dimmed)" />
-          </Dropzone.Idle>
+      <div onDrop={handleEmptyDrop}>
+        <Dropzone
+          onDrop={handleDrop}
+          onReject={handleReject}
+          maxSize={50 * 1024 * 1024} // 50MB
+          accept={[
+            MIME_TYPES.pdf,
+            MIME_TYPES.png,
+            MIME_TYPES.jpeg,
+            MIME_TYPES.webp,
+            MIME_TYPES.gif,
+          ]}
+          multiple
+        >
+          <Group justify="center" gap="xl" mih={200} style={{ pointerEvents: 'none' }}>
+            <Dropzone.Accept>
+              <IconUpload size={52} stroke={1.5} color="var(--mantine-color-blue-text)" />
+            </Dropzone.Accept>
+            <Dropzone.Reject>
+              <IconX size={52} stroke={1.5} color="var(--mantine-color-red-text)" />
+            </Dropzone.Reject>
+            <Dropzone.Idle>
+              <IconUpload size={52} stroke={1.5} color="var(--mantine-color-dimmed)" />
+            </Dropzone.Idle>
 
-          <div>
-            <Text size="xl" inline>
-              Drag files here or click to select
-            </Text>
-            <Text size="sm" c="dimmed" inline mt={7}>
-              Supported formats: PDF, JPEG, PNG, WebP, GIF
-            </Text>
-            <Text size="sm" c="dimmed" inline mt={4}>
-              Maximum file size: 50MB
-            </Text>
-          </div>
-        </Group>
-      </Dropzone>
+            <div>
+              <Text size="xl" inline>
+                Drag files here or click to select
+              </Text>
+              <Text size="sm" c="dimmed" inline mt={7}>
+                Supported formats: PDF, JPEG, PNG, WebP, GIF
+              </Text>
+              <Text size="sm" c="dimmed" inline mt={4}>
+                Maximum file size: 50MB
+              </Text>
+            </div>
+          </Group>
+        </Dropzone>
+      </div>
 
       {/* Error message */}
       {error && (
