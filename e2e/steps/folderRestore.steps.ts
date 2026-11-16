@@ -16,6 +16,8 @@ import { writeEnvelopeCopy } from './otherComputer.steps';
 /** The test folder: the same one useTestFolder hands out */
 export const FOLDER_NAME = TEST_FOLDER_NAME;
 const PERMISSION_KEY = 'e2e-folder-permission';
+/** Set while the browser answers a request for folder access without giving it */
+const REFUSE_KEY = 'e2e-refuse-folder-access';
 /** Where the picker looks for the folder a test picks next, or 'cancel' to have it cancelled */
 const NEXT_PICK_KEY = 'e2e-next-pick';
 /** Set while reading the folder copy fails */
@@ -24,7 +26,7 @@ const FAIL_READS_KEY = 'e2e-fail-folder-reads';
 /** Given the browser supports the File System Access API */
 export async function installFolderPicker(page: Page): Promise<void> {
   await page.addInitScript(
-    ({ folderName, permissionKey, nextPickKey }) => {
+    ({ folderName, permissionKey, nextPickKey, refuseKey }) => {
       const folder = async (): Promise<FileSystemDirectoryHandle> => {
         const next = sessionStorage.getItem(nextPickKey);
         // As the browser reports a picker the user closed
@@ -44,11 +46,13 @@ export async function installFolderPicker(page: Page): Promise<void> {
         return localStorage.getItem(permissionKey) ?? 'granted';
       };
       proto.requestPermission = async () => {
+        // As when the user closes the browser's question, or it is blocked
+        if (localStorage.getItem(refuseKey) !== null) return localStorage.getItem(permissionKey) ?? 'prompt';
         localStorage.removeItem(permissionKey);
         return 'granted';
       };
     },
-    { folderName: FOLDER_NAME, permissionKey: PERMISSION_KEY, nextPickKey: NEXT_PICK_KEY }
+    { folderName: FOLDER_NAME, permissionKey: PERMISSION_KEY, nextPickKey: NEXT_PICK_KEY, refuseKey: REFUSE_KEY }
   );
 }
 
@@ -97,6 +101,22 @@ export async function forgetFolderPermission(page: Page): Promise<void> {
   await page.evaluate((key) => localStorage.setItem(key, 'prompt'), PERMISSION_KEY);
 }
 
+/** And my browser blocks HemoIO from using the folder: it no longer asks */
+export async function blockFolderAccess(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ permissionKey, refuseKey }) => {
+      localStorage.setItem(permissionKey, 'denied');
+      localStorage.setItem(refuseKey, 'on');
+    },
+    { permissionKey: PERMISSION_KEY, refuseKey: REFUSE_KEY }
+  );
+}
+
+/** And the browser answers a request for folder access without giving it */
+export async function refuseFolderAccess(page: Page): Promise<void> {
+  await page.evaluate((key) => localStorage.setItem(key, 'on'), REFUSE_KEY);
+}
+
 async function openDataSettings(page: Page): Promise<void> {
   await openSettingsTab(page, 'Data');
 }
@@ -112,7 +132,8 @@ export async function switchToFolderStorage(page: Page): Promise<void> {
 /** When I grant folder access in Settings */
 export async function grantFolderAccess(page: Page): Promise<void> {
   await openDataSettings(page);
-  await page.getByRole('button', { name: 'Grant Access' }).click();
+  // Settings' button, not the folder access notice's
+  await page.getByRole('main').getByRole('button', { name: 'Grant Access' }).click();
 }
 
 /** How often the app has asked about folder permission, as each sync does first */

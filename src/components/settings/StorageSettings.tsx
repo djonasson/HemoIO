@@ -35,7 +35,8 @@ import {
   type FileSystemPermissionState,
 } from '@data/storage/FileSystemStorageProvider';
 import { chooseFolder } from '@data/storage/chooseFolder';
-import { notifyFolderAccessChanged, onFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { onFolderAccessChanged } from '@data/storage/folderAccessEvents';
+import { grantFolderAccess } from '@data/storage/grantFolderAccess';
 import { STORAGE_PROVIDER_KEY, saveStorageChoice } from '@data/storage/storageChoice';
 import { useFolderSyncIssue } from '@hooks/useFolderSyncIssue';
 import type { ParsedBackupData } from '@services/import';
@@ -108,12 +109,7 @@ export function StorageSettings({
     setError(null);
 
     try {
-      const provider = new FileSystemStorageProvider();
-      const state = await provider.requestPermission();
-      setPermissionState(state);
-      if (state === 'granted') {
-        notifyFolderAccessChanged();
-      }
+      setPermissionState(await grantFolderAccess());
     } catch {
       // Fixed text: the error could name the folder
       setError('HemoIO could not get access to the folder. Try again.');

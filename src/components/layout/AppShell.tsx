@@ -36,6 +36,7 @@ import {
   useEncryptedApiKey,
   useFilesystemSync,
   useFolderSyncNotice,
+  useFolderAccessNotice,
   useFolderSyncReplace,
   FolderSyncIssueContext,
   useFolderRestore,
@@ -201,6 +202,11 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     syncNow,
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+  // Access given from the notice: the folder is used at once, not at the next periodic sync
+  const syncAfterAccess = useCallback(() => {
+    syncNow().catch(() => undefined);
+  }, [syncNow]);
+  useFolderAccessNotice(syncAfterAccess);
 
   // Refresh from the folder in place: a reload would lock HemoIO
   const canRefresh = folderStorageOn && folderRestore.syncAllowed;

@@ -28,6 +28,7 @@ export {
 } from './useFilesystemSync';
 export { useFolderSyncIssue, FolderSyncIssueContext, type FolderSyncIssueState } from './useFolderSyncIssue';
 export { useFolderSyncNotice, type FolderSyncNoticeActions } from './useFolderSyncNotice';
+export { useFolderAccessNotice } from './useFolderAccessNotice';
 export { useFolderSyncReplace, type UseFolderSyncReplaceResult } from './useFolderSyncReplace';
 export { useAISettings, type UseAISettingsResult } from './useAISettings';
 export { useAlertState, type AlertState } from './useAlertState';
