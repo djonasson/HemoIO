@@ -256,7 +256,7 @@ test.describe('Document Analysis - AI Processing', () => {
     await startAnalysis(page);
 
     await expect(main(page).getByText('Processing 1 file(s)...')).toBeVisible();
-    await expectStageShown(page, 'Detecting document type');
+    // Telling a PDF from an image takes no time to show: the reading does
     await expectStageShown(page, 'Extracting text');
     await expectStageShown(page, /^Extracting page \d\/3$/);
 
@@ -754,7 +754,7 @@ test.describe('Document Analysis - Error Handling', () => {
     await startAnalysis(page);
     await expectAnalysisFinished(page);
 
-    await expect(analysisItem(page, 'corrupt.pdf')).toContainText(/Failed to parse PDF/);
+    await expect(analysisItem(page, 'corrupt.pdf')).toContainText(/Failed to extract text from PDF/);
     await expect(page.getByRole('alert', { name: 'Analysis Failed' })).toContainText(
       'No files could be processed. Retry them, choose other files, or type the values in yourself.'
     );
@@ -1176,7 +1176,7 @@ test.describe('Document Analysis - Performance', () => {
     await startAnalysis(page);
     await expectAnalysisFinished(page);
 
-    await expect(analysisItem(page, 'broken.pdf')).toContainText(/Failed to parse PDF/);
+    await expect(analysisItem(page, 'broken.pdf')).toContainText(/Failed to extract text from PDF/);
     await expect(page.getByRole('alert', { name: 'Some Files Failed' })).toContainText(
       '1 file(s) could not be processed'
     );

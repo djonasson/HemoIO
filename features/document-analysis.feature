@@ -87,21 +87,23 @@ Feature: Document Analysis
     And the AI should receive its text as printed
 
   # Document Type Detection
+  # A PDF is told from an image by the file alone; whether a PDF is typed
+  # or scanned is told while its pages are read, so it is opened once
   Scenario: Detect text-based PDF
     Given I upload a PDF with embedded text
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as a text PDF
     And OCR should not be used
 
   Scenario: Detect scanned PDF
     Given I upload a PDF that is a scanned image
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as a scanned PDF
     And OCR should be used for extraction
 
   Scenario: Detect image file
     Given I upload a JPEG or PNG file
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as an image
     And OCR should be used for extraction
 
@@ -230,7 +232,7 @@ Feature: Document Analysis
   Scenario: Handle corrupt PDF
     Given I upload a corrupt PDF file
     When extraction is attempted
-    Then an appropriate error message should be shown
+    Then an error message should say the text could not be extracted from the PDF
     And the user should be prompted to try another file
 
   Scenario: Handle empty document
