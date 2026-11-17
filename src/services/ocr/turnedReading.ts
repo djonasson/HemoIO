@@ -3,6 +3,7 @@
  * Tesseract straightens a page a little askew, but reads one turned a
  * quarter or upside down as noise.
  */
+import { letterCount } from './letters';
 import { recognizeImage, type OCRResult } from './tesseractService';
 
 /** The longest side of an image for OCR, an A4 page at 300 DPI: a larger page or photo is not read huge */
@@ -33,11 +34,6 @@ export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
       else reject(new Error('Could not make an image to read'));
     }, 'image/png');
   });
-}
-
-/** Letters and digits in a text */
-export function letterCount(text: string): number {
-  return text.replace(/[^\p{L}\p{N}]/gu, '').length;
 }
 
 /**
@@ -97,8 +93,9 @@ export async function readTurned(
   };
 
   const upright = await read(0, 1);
+  const asIs = { result: upright, turned: 0 };
   const uprightScore = readingScore(upright);
-  if (uprightScore >= TURN_RETRY_SCORE || letterCount(upright.text) === 0) return { result: upright, turned: 0 };
+  if (uprightScore >= TURN_RETRY_SCORE || letterCount(upright.text) === 0) return asIs;
 
   let best: { turn: number; score: number } | undefined;
   for (const turn of TURNS) {
@@ -107,7 +104,7 @@ export async function readTurned(
     if (score >= TURN_RETRY_SCORE) break;
   }
   // No way round reads better, even small: the image is as it is
-  if (!best || best.score <= uprightScore) return { result: upright, turned: 0 };
+  if (!best || best.score <= uprightScore) return asIs;
   const turned = await read(best.turn, 1);
-  return readingScore(turned) > uprightScore ? { result: turned, turned: best.turn } : { result: upright, turned: 0 };
+  return readingScore(turned) > uprightScore ? { result: turned, turned: best.turn } : asIs;
 }

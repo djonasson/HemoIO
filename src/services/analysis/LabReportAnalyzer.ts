@@ -223,6 +223,7 @@ export async function analyzeLabReport(
   const warnings: string[] = [];
 
   let documentType: AnalysisResult['documentType'] = 'image';
+  let isPdf = false;
   let extractedText = '';
   let extractionMethod: 'pdf-text' | 'ocr' = 'ocr';
 
@@ -234,8 +235,7 @@ export async function analyzeLabReport(
   try {
     startStage(detectionStage);
     const detection = await detectDocumentType(file);
-    // A PDF reads as its own text until one of its pages needs OCR
-    if (detection.type === 'pdf') documentType = 'text-pdf';
+    isPdf = detection.type === 'pdf';
 
     if (!detection.metadata.isValid) {
       throw new AnalysisError(
@@ -262,7 +262,7 @@ export async function analyzeLabReport(
   try {
     startStage(extractionStage);
 
-    if (documentType === 'text-pdf') {
+    if (isPdf) {
       // Each page as it is, its own text or OCR of its image
       const reading = await readPdf(file, {
         language: options.language,
@@ -272,8 +272,8 @@ export async function analyzeLabReport(
       warnings.push(...reading.errors);
       const ocrPages = reading.pages.filter((page) => page.method === 'ocr');
       extractionMethod = ocrPages.length > 0 ? 'ocr' : 'pdf-text';
+      documentType = ocrPages.length > 0 ? 'scanned-pdf' : 'text-pdf';
       if (ocrPages.length > 0) {
-        documentType = 'scanned-pdf';
         const averageConfidence = ocrPages.reduce((sum, page) => sum + (page.confidence ?? 0), 0) / ocrPages.length;
         warnings.push(...lowOcrConfidenceWarning(averageConfidence));
       }

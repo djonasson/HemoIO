@@ -2,9 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   detectDocumentType,
   isSupportedDocument,
-  getSupportedExtensions,
-  getAcceptString,
-  DocumentDetectionError,
   SUPPORTED_MIME_TYPES,
 } from './documentDetector';
 
@@ -142,58 +139,12 @@ describe('Document Detector', () => {
     });
   });
 
-  describe('getSupportedExtensions', () => {
-    it('returns array of supported extensions', () => {
-      const extensions = getSupportedExtensions();
-
-      expect(extensions).toContain('.pdf');
-      expect(extensions).toContain('.jpg');
-      expect(extensions).toContain('.jpeg');
-      expect(extensions).toContain('.png');
-      expect(extensions).toContain('.webp');
-    });
-
-    it('all extensions start with a dot', () => {
-      const extensions = getSupportedExtensions();
-
-      extensions.forEach((ext) => {
-        expect(ext.startsWith('.')).toBe(true);
-      });
-    });
-  });
-
-  describe('getAcceptString', () => {
-    it('returns valid accept attribute string', () => {
-      const accept = getAcceptString();
-
-      expect(accept).toContain('application/pdf');
-      expect(accept).toContain('image/jpeg');
-      expect(accept).toContain('image/png');
-    });
-
-    it('uses comma separation', () => {
-      const accept = getAcceptString();
-
-      // Should contain commas but no spaces after commas
-      expect(accept.split(',').length).toBeGreaterThan(1);
-    });
-  });
-
   describe('SUPPORTED_MIME_TYPES', () => {
     it('exports correct MIME types', () => {
       expect(SUPPORTED_MIME_TYPES.pdf).toBe('application/pdf');
       expect(SUPPORTED_MIME_TYPES.jpeg).toBe('image/jpeg');
       expect(SUPPORTED_MIME_TYPES.png).toBe('image/png');
       expect(SUPPORTED_MIME_TYPES.webp).toBe('image/webp');
-    });
-  });
-
-  describe('DocumentDetectionError', () => {
-    it('has correct name property', () => {
-      const error = new DocumentDetectionError('Test error');
-
-      expect(error.name).toBe('DocumentDetectionError');
-      expect(error.message).toBe('Test error');
     });
   });
 });

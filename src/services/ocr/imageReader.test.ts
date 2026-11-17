@@ -63,12 +63,14 @@ describe('readImage', () => {
     expect(reading).toMatchObject({ confidence: 88, turned: 90 });
   });
 
-  it('reads a large photo no larger than an A4 page at 300 DPI', async () => {
-    bitmap.width = 4000;
-    bitmap.height = 3000;
+  it('reads a large photo no larger than an A4 page at 300 DPI, letting the full-size one go at once', async () => {
+    const large = { width: 4000, height: 3000, close: vi.fn() };
+    createImageBitmap.mockResolvedValueOnce(large).mockResolvedValueOnce({ ...bitmap, width: 3508, height: 2631 });
 
     await readImage(photo);
 
+    expect(createImageBitmap).toHaveBeenLastCalledWith(large, expect.objectContaining({ resizeWidth: 3508, resizeHeight: 2631 }));
+    expect(large.close).toHaveBeenCalled();
     expect(drawn).toEqual(['3508x2631']);
   });
 

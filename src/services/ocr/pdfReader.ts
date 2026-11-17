@@ -5,12 +5,11 @@
 import { drawsImages, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
 import type * as PdfjsLib from 'pdfjs-dist';
 import { OCRError } from './tesseractService';
-import { canvasToPng, letterCount, MAX_OCR_SIDE, readTurned } from './turnedReading';
+import { letterCount, MIN_PAGE_LETTERS } from './letters';
+import { canvasToPng, MAX_OCR_SIDE, readTurned } from './turnedReading';
 
 /** Render scale for OCR: about 300 DPI, which Tesseract reads best (a PDF measures in 1/72 inch) */
 const OCR_SCALE = 300 / 72;
-/** Letters and digits a page's own text needs to be used as is: fewer, and it is a scan with a stray mark or stamp */
-const MIN_PAGE_LETTERS = 50;
 
 /** How one page of a PDF was read */
 export interface PdfPageReading {

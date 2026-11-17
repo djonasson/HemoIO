@@ -6,7 +6,6 @@ import { MantineProvider } from '@mantine/core';
 // Mock the services to avoid loading pdf.js
 vi.mock('../../services/ocr', () => ({
   isSupportedDocument: vi.fn().mockReturnValue(true),
-  getAcceptString: vi.fn().mockReturnValue('application/pdf,image/jpeg,image/png'),
   SUPPORTED_MIME_TYPES: {
     pdf: 'application/pdf',
     jpeg: 'image/jpeg',

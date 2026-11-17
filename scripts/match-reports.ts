@@ -33,6 +33,7 @@ import { loadCatalog } from '@data/loinc/catalog';
 import { matchLocally, type LocalMatch, type PrintedValue } from '@services/analysis/loincMatch';
 import { OllamaProvider } from '@services/ai/OllamaProvider';
 import { pageText, withPdf } from '@services/ocr/pdfExtractor';
+import { letterCount, MIN_PAGE_LETTERS } from '@services/ocr/letters';
 
 const REPOSITORY = resolve(__dirname, '..');
 
@@ -69,7 +70,7 @@ async function printedValues(pdf: string, cacheDir: string | undefined): Promise
   });
   const fullText = texts.join('\n\n');
   // Most pages with next to no text of their own: scans
-  const isScanned = texts.filter((text) => text.length >= 50).length < texts.length / 2;
+  const isScanned = texts.filter((text) => letterCount(text) >= MIN_PAGE_LETTERS).length < texts.length / 2;
   // OCR needs the browser's worker files: a scanned report is read in the app
   if (isScanned) throw new Error(`${basename(pdf)} is a scanned PDF; the runner reads text PDFs only`);
   globalThis.fetch = ((input: string | URL, init?: RequestInit) =>

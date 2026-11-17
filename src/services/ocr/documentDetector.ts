@@ -97,19 +97,9 @@ export async function detectDocumentType(file: File): Promise<DocumentDetectionR
     return { ...found, type: 'image', mimeType: file.type || 'unknown', metadata: validation };
   }
 
+  // Valid, so a PDF or an image
   const mimeType = getMimeType(file);
-  if (isImageType(mimeType)) return { ...found, type: 'image', mimeType, metadata: { isValid: true } };
-  if (mimeType === SUPPORTED_MIME_TYPES.pdf) return { ...found, type: 'pdf', mimeType, metadata: { isValid: true } };
-
-  return {
-    ...found,
-    type: 'image',
-    mimeType,
-    metadata: {
-      isValid: false,
-      validationError: `Unsupported file type: ${mimeType}`,
-    },
-  };
+  return { ...found, type: mimeType === SUPPORTED_MIME_TYPES.pdf ? 'pdf' : 'image', mimeType, metadata: { isValid: true } };
 }
 
 /**
@@ -190,16 +180,6 @@ function isSupportedType(mimeType: string): boolean {
 }
 
 /**
- * Check if MIME type is an image
- *
- * @param mimeType - MIME type to check
- * @returns true if image type
- */
-function isImageType(mimeType: string): boolean {
-  return IMAGE_MIME_TYPES.has(mimeType);
-}
-
-/**
  * Check if a file is a supported document type
  *
  * @param file - File to check
@@ -208,33 +188,4 @@ function isImageType(mimeType: string): boolean {
 export function isSupportedDocument(file: File): boolean {
   const mimeType = getMimeType(file);
   return isSupportedType(mimeType);
-}
-
-/**
- * Get list of supported file extensions
- *
- * @returns Array of supported extensions (with dots)
- */
-export function getSupportedExtensions(): string[] {
-  return Object.keys(EXTENSION_TO_MIME);
-}
-
-/**
- * Get accept string for file input elements
- *
- * @returns Accept attribute value
- */
-export function getAcceptString(): string {
-  const mimeTypes = Object.values(SUPPORTED_MIME_TYPES);
-  return mimeTypes.join(',');
-}
-
-/**
- * Error thrown when document detection fails
- */
-export class DocumentDetectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DocumentDetectionError';
-  }
 }

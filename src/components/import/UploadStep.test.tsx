@@ -6,7 +6,6 @@ import { UploadStep } from './UploadStep';
 // Mock the OCR service
 vi.mock('../../services/ocr', () => ({
   isSupportedDocument: vi.fn().mockReturnValue(true),
-  getAcceptString: vi.fn().mockReturnValue('application/pdf,image/jpeg,image/png'),
   SUPPORTED_MIME_TYPES: {
     pdf: 'application/pdf',
     jpeg: 'image/jpeg',

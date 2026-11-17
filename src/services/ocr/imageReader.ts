@@ -19,11 +19,10 @@ export interface ImageReading extends OCRResult {
   turned: number;
 }
 
-/** The image turned `turn` degrees clockwise, at `share` of the size OCR reads it at */
+/** The image turned `turn` degrees clockwise, at `share` of its size */
 async function drawTurned(bitmap: ImageBitmap, turn: number, share: number): Promise<Blob> {
-  const scale = Math.min(1, MAX_OCR_SIDE / Math.max(bitmap.width, bitmap.height)) * share;
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const width = Math.max(1, Math.round(bitmap.width * share));
+  const height = Math.max(1, Math.round(bitmap.height * share));
   const sideways = turn % 180 !== 0;
   const canvas = document.createElement('canvas');
   canvas.width = sideways ? height : width;
@@ -43,6 +42,24 @@ async function drawTurned(bitmap: ImageBitmap, turn: number, share: number): Pro
 }
 
 /**
+ * The image no larger than OCR reads: a photo of tens of megapixels is let
+ * go at once, rather than held while every turn is tried
+ */
+async function fitForOcr(bitmap: ImageBitmap): Promise<ImageBitmap> {
+  const scale = MAX_OCR_SIDE / Math.max(bitmap.width, bitmap.height);
+  if (scale >= 1) return bitmap;
+  try {
+    return await createImageBitmap(bitmap, {
+      resizeWidth: Math.round(bitmap.width * scale),
+      resizeHeight: Math.round(bitmap.height * scale),
+      resizeQuality: 'high',
+    });
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
  * Read an image. One the browser cannot draw (a TIFF, say) is read by OCR
  * as it is, untouched.
  */
@@ -50,7 +67,7 @@ export async function readImage(file: Blob, { language, onProgress }: ReadImageO
   let bitmap: ImageBitmap;
   try {
     // Drawn the way it is shown: a camera's mark of how to turn the photo is applied
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    bitmap = await fitForOcr(await createImageBitmap(file, { imageOrientation: 'from-image' }));
   } catch {
     const result = await recognizeImage(file, {
       language,
