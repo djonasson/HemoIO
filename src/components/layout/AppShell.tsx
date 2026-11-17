@@ -36,6 +36,7 @@ import {
   useEncryptedApiKey,
   useFilesystemSync,
   useFolderSyncNotice,
+  useFolderAccessNotice,
   useFolderSyncReplace,
   FolderSyncIssueContext,
   useFolderRestore,
@@ -201,6 +202,7 @@ export function AppShell({ children }: AppShellProps): React.ReactNode {
     syncNow,
   });
   useFolderSyncNotice(folderSyncIssue, folderSyncReplace.noticeActions);
+  useFolderAccessNotice();
 
   // Refresh from the folder in place: a reload would lock HemoIO
   const canRefresh = folderStorageOn && folderRestore.syncAllowed;
