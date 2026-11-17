@@ -20,6 +20,10 @@ import { removeTempFile, writeTempFile } from './steps/tempFiles';
 import { changeTest } from './steps/identification.steps';
 import { openSettingsTab } from './steps/app.steps';
 import {
+  canvasImages,
+  countPdfOpenings,
+  pdfOpenings,
+  recordCanvasImages,
   createScannedPdf,
   createTypedAndScannedPdf,
   createTextImage,
@@ -388,16 +392,7 @@ test.describe('Document Analysis - AI Processing', () => {
   test('should use OCR for scanned PDF', async ({ page }) => {
     // Scenario: A scanned page is read at a resolution OCR reads well
     test.setTimeout(120000);
-    // The size of every image the page makes from a canvas
-    await page.addInitScript(() => {
-      const sizes: string[] = [];
-      (window as unknown as { __canvasSizes: string[] }).__canvasSizes = sizes;
-      const toBlob = HTMLCanvasElement.prototype.toBlob;
-      HTMLCanvasElement.prototype.toBlob = function (...args: Parameters<HTMLCanvasElement['toBlob']>) {
-        sizes.push(`${this.width}x${this.height}`);
-        return toBlob.apply(this, args);
-      };
-    });
+    await recordCanvasImages(page);
     const ai = await loginWithOllama(page);
     await goToImport(page);
     await uploadFiles(page, track(await createScannedPdf(page, 'scanned.pdf')));
@@ -410,9 +405,7 @@ test.describe('Document Analysis - AI Processing', () => {
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
     await expectStageShown(page, /^OCR: /);
     // The 1400 × 400 point scan at 300 DPI would be 5833 wide: no wider than A4's 3508
-    expect(await page.evaluate(() => (window as unknown as { __canvasSizes: string[] }).__canvasSizes)).toContain(
-      '3508x1003'
-    );
+    expect(await canvasImages(page)).toContain('3508x1003');
   });
 
   test('reads a report of typed and scanned pages whole', async ({ page }) => {
@@ -439,6 +432,7 @@ test.describe('Document Analysis - AI Processing', () => {
   test('reads a page scanned sideways turned upright', async ({ page }) => {
     // Scenario: A page scanned sideways is read turned
     test.setTimeout(180000);
+    await recordCanvasImages(page);
     const ai = await loginWithOllama(page);
     await goToImport(page);
     await uploadFiles(page, track(await createScannedPdf(page, 'sideways.pdf', LAB_REPORT_LINES, { sideways: true })));
@@ -446,6 +440,57 @@ test.describe('Document Analysis - AI Processing', () => {
     await expectAnalysisFinished(page);
 
     expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
+    // Read at full size as it is and the way it reads best; the other ways tried small
+    const areas = (await canvasImages(page)).map((size) => size.split('x').map(Number)).map(([w, h]) => w * h);
+    const full = Math.max(...areas);
+    expect(areas.filter((area) => area === full)).toHaveLength(2);
+    const small = areas.filter((area) => area !== full);
+    expect(small.length).toBeGreaterThan(0);
+    small.forEach((area) => expect(area).toBeLessThanOrEqual(full / 8));
+  });
+
+  test('opens a PDF once to read it', async ({ page }) => {
+    // Scenario: A PDF is opened once
+    await countPdfOpenings(page);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(createTextPdf('once.pdf', [LAB_REPORT_LINES])));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
+    expect(await pdfOpenings(page)).toBe(1);
+  });
+
+  test('reads a photo taken sideways turned upright', async ({ page }) => {
+    // Scenario: A photo taken sideways is read turned
+    test.setTimeout(180000);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    await uploadFiles(page, track(await createTextImage(page, 'sideways.png', LAB_REPORT_LINES, { sideways: true })));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
+  });
+
+  test('reads a photo the camera marked as turned the way it is shown', async ({ page }) => {
+    // Scenario: A photo the camera marked as turned is read upright
+    test.setTimeout(120000);
+    await recordCanvasImages(page);
+    const ai = await loginWithOllama(page);
+    await goToImport(page);
+    const photo = await createTextImage(page, 'camera.jpg', LAB_REPORT_LINES, { markedUpright: true });
+    await uploadFiles(page, track(photo));
+    await startAnalysis(page);
+    await expectAnalysisFinished(page);
+
+    expect(squash(ai.prompts[0])).toContain('Glucose 95 mg/dL');
+    // Shown upright, it reads at once: one image, wider than tall, as the report is
+    const images = await canvasImages(page);
+    expect(images).toHaveLength(1);
+    const [width, height] = images[0].split('x').map(Number);
+    expect(width).toBeGreaterThan(height);
   });
 
   test('should handle multi-page PDF', async ({ page }) => {

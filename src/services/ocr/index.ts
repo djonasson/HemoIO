@@ -14,3 +14,5 @@ export * from './pdfExtractor';
 export * from './tesseractService';
 export * from './documentDetector';
 export * from './pdfReader';
+export * from './imageReader';
+export * from './turnedReading';

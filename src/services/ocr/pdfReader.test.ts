@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as pdfjsLib from 'pdfjs-dist';
-import { readPdf, readingScore } from './pdfReader';
+import { readPdf } from './pdfReader';
 import { PDFExtractionError } from './pdfExtractor';
 import { OCRError, recognizeImage, type OCRResult } from './tesseractService';
 import type { PdfjsMockControls } from '@/test/mocks/pdfjs';
@@ -17,19 +17,6 @@ describe('PDF reader', () => {
   beforeEach(() => {
     __resetMockConfig();
     vi.clearAllMocks();
-  });
-
-  describe('readingScore', () => {
-    it('scores a report, even of short names and units, above the same marks read the wrong way round', () => {
-      const report = readingScore({ text: 'Hb 14 g/dl\nGR 4,5\nGB 6,9 10^3/ul', confidence: 61 });
-      const sideways = readingScore({ text: 'Tr oO O = © = 9 Q = O Dj = © OO e I Q n = QD o © o ©', confidence: 61 });
-      expect(report).toBeGreaterThan(sideways * 1.2);
-    });
-
-    it('gives the confidence itself for text all in words, and nothing for no text', () => {
-      expect(readingScore({ text: 'Glucose 95 mg', confidence: 90 })).toBe(90);
-      expect(readingScore({ text: ' \n', confidence: 0 })).toBe(0);
-    });
   });
 
   describe('readPdf', () => {
@@ -97,29 +84,32 @@ describe('PDF reader', () => {
       expect(recognizeImage).toHaveBeenCalledTimes(1);
     });
 
-    it('reads a page scanned sideways turned, keeping the most confident reading', async () => {
+    it('reads a page scanned sideways turned, trying the turn on a small image first', async () => {
       __setMockConfig({ numPages: 1, isScanned: true });
       vi.mocked(recognizeImage)
         .mockResolvedValueOnce(ocr('q~ ;l 1r ,;', 20))
+        .mockResolvedValueOnce(ocr('Glucose 95 mg/dL', 80))
         .mockResolvedValueOnce(ocr('Glucose 95 mg/dL', 88));
 
       const reading = await readPdf(new ArrayBuffer(100));
 
-      expect(renderedSizes).toEqual(['417x625', '625x417']);
+      // As it is, the quarter turn at a third of the size, then that turn at full size
+      expect(renderedSizes).toEqual(['417x625', '209x139', '625x417']);
       expect(reading.pages[0]).toMatchObject({ text: 'Glucose 95 mg/dL', confidence: 88, turned: 90 });
     });
 
-    it('keeps the best of every turn when none reads well', async () => {
+    it('reads at full size the turn reading best when none reads well', async () => {
       __setMockConfig({ numPages: 1, isScanned: true });
       vi.mocked(recognizeImage)
         .mockResolvedValueOnce(ocr('noise', 30))
         .mockResolvedValueOnce(ocr('more noise', 20))
         .mockResolvedValueOnce(ocr('Glucose 9S mg/dL', 45))
-        .mockResolvedValueOnce(ocr('upside down', 10));
+        .mockResolvedValueOnce(ocr('upside down', 10))
+        .mockResolvedValueOnce(ocr('Glucose 9S mg/dL', 45));
 
       const reading = await readPdf(new ArrayBuffer(100));
 
-      expect(recognizeImage).toHaveBeenCalledTimes(4);
+      expect(renderedSizes).toEqual(['417x625', '209x139', '209x139', '139x209', '625x417']);
       expect(reading.pages[0]).toMatchObject({ text: 'Glucose 9S mg/dL', confidence: 45, turned: 270 });
     });
 

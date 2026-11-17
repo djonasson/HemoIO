@@ -12,7 +12,7 @@ vi.mock('./services/ocr', () => ({
   },
   detectDocumentType: vi.fn(),
   readPdf: vi.fn(),
-  recognizeImage: vi.fn(),
+  readImage: vi.fn(),
 }));
 
 vi.mock('./services/analysis', () => ({

@@ -44,6 +44,12 @@ Feature: Document Analysis
     When the document is processed
     Then the page should be read turned upright
     And the AI should receive its text as printed
+    And the other ways round should first be tried on a small image of the page, so the page is read at full size only the way it reads best
+
+  Scenario: A PDF is opened once
+    Given I upload a PDF lab report
+    When the document is processed
+    Then the PDF should be opened only once to be read
 
   Scenario: A scanned page is read at a resolution OCR reads well
     Given a scanned PDF lab report
@@ -68,11 +74,17 @@ Feature: Document Analysis
     When the document is processed
     Then OCR should extract the text
 
-  Scenario: Handle rotated images
-    Given I upload a rotated image of a lab report
+  Scenario: A photo taken sideways is read turned
+    Given I upload a photo of a lab report taken a quarter turn sideways
     When the document is processed
-    Then the image orientation should be detected
-    And text should be extracted correctly
+    Then the photo should be read turned upright
+    And the AI should receive its text as printed
+
+  Scenario: A photo the camera marked as turned is read upright
+    Given I upload a photo of a lab report whose camera stored it sideways, marked to be shown upright
+    When the document is processed
+    Then the photo should be read the way it is shown
+    And the AI should receive its text as printed
 
   # Document Type Detection
   Scenario: Detect text-based PDF

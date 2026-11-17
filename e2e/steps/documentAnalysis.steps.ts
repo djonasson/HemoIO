@@ -332,16 +332,40 @@ export async function renderTextImage(
 }
 
 /**
- * Create a photo-like image of a lab report
+ * A JPEG with an EXIF orientation, as cameras store a photo taken turned:
+ * the pixels as the sensor saw them, marked with how to show them. 8: turn
+ * a quarter counter-clockwise to show it.
+ */
+function withExifOrientation(jpeg: Buffer, orientation: number): Buffer {
+  const tiff = Buffer.from([
+    // Little-endian TIFF header, the first directory right after it
+    0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00,
+    // One entry: Orientation (0x0112), a SHORT, one of it
+    0x01, 0x00, 0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, orientation, 0x00, 0x00, 0x00,
+    // No next directory
+    0x00, 0x00, 0x00, 0x00,
+  ]);
+  const body = Buffer.concat([Buffer.from('Exif\0\0', 'binary'), tiff]);
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(body.length + 2);
+  // APP1 right after the start-of-image marker
+  return Buffer.concat([jpeg.subarray(0, 2), Buffer.from([0xff, 0xe1]), length, body, jpeg.subarray(2)]);
+}
+
+/**
+ * Create a photo-like image of a lab report. `sideways`: taken a quarter
+ * turn clockwise; `markedUpright`: a JPEG so taken, marked by the camera to
+ * be shown upright.
  */
 export async function createTextImage(
   page: Page,
   filename: string,
-  lines: string[] = LAB_REPORT_LINES
+  lines: string[] = LAB_REPORT_LINES,
+  { sideways = false, markedUpright = false }: { sideways?: boolean; markedUpright?: boolean } = {}
 ): Promise<string> {
   const mimeType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const image = await renderTextImage(page, lines, mimeType);
-  return writeTempFile(filename, image.data);
+  const image = await renderTextImage(page, lines, mimeType, { sideways: sideways || markedUpright });
+  return writeTempFile(filename, markedUpright ? withExifOrientation(image.data, 8) : image.data);
 }
 
 /**
@@ -365,6 +389,44 @@ export async function createTypedAndScannedPdf(
   scannedLines: string[]
 ): Promise<string> {
   return buildPdf(filename, [textPage(typedLines), await scannedPage(page, scannedLines)]);
+}
+
+/** Record the size of every image the page makes from a canvas, as each image read by OCR is */
+export async function recordCanvasImages(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const sizes: string[] = [];
+    (window as unknown as { __canvasSizes: string[] }).__canvasSizes = sizes;
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (...args: Parameters<HTMLCanvasElement['toBlob']>) {
+      sizes.push(`${this.width}x${this.height}`);
+      return toBlob.apply(this, args);
+    };
+  });
+}
+
+/** The sizes of the images made from a canvas since recordCanvasImages, as "WIDTHxHEIGHT" */
+export function canvasImages(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __canvasSizes: string[] }).__canvasSizes);
+}
+
+/** Count the PDFs opened from now on: PDF.js starts a worker for each */
+export async function countPdfOpenings(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const counter = window as unknown as { __pdfOpenings: number };
+    counter.__pdfOpenings = 0;
+    const NativeWorker = window.Worker;
+    window.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        if (String(url).includes('pdf.worker')) counter.__pdfOpenings += 1;
+        super(url, options);
+      }
+    };
+  });
+}
+
+/** How many PDFs were opened since countPdfOpenings */
+export function pdfOpenings(page: Page): Promise<number> {
+  return page.evaluate(() => (window as unknown as { __pdfOpenings: number }).__pdfOpenings);
 }
 
 /**
