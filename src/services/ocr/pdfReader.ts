@@ -2,24 +2,14 @@
  * Reading a PDF page by page, each page its own way: its own text when it
  * has some, OCR of its image when it is a scan.
  */
-import { canvasToPng, drawsImages, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
+import { drawsImages, pageText, PDFExtractionError, withPdf, type PdfPage } from './pdfExtractor';
 import type * as PdfjsLib from 'pdfjs-dist';
-import { OCRError, recognizeImage, type OCRResult } from './tesseractService';
+import { OCRError } from './tesseractService';
+import { letterCount, MIN_PAGE_LETTERS } from './letters';
+import { canvasToPng, MAX_OCR_SIDE, readTurned } from './turnedReading';
 
 /** Render scale for OCR: about 300 DPI, which Tesseract reads best (a PDF measures in 1/72 inch) */
 const OCR_SCALE = 300 / 72;
-/** The longest side of a page image for OCR, an A4 page at 300 DPI: an oversized page is not rendered huge */
-const MAX_OCR_SIDE = 3508;
-/** Letters and digits a page's own text needs to be used as is: fewer, and it is a scan with a stray mark or stamp */
-const MIN_PAGE_LETTERS = 50;
-/**
- * How well a page read, under which it is read again turned, in case it was scanned sideways or upside down. A page
- * read sideways comes out as letters and marks Tesseract can be fairly sure of (61% on a test scan), but they seldom
- * make words: the score is the confidence times the share of the text in words (see `readingScore`)
- */
-const TURN_RETRY_SCORE = 45;
-/** The turns tried, sideways first: a page is more often scanned sideways than upside down */
-const TURNS = [0, 90, 270, 180] as const;
 
 /** How one page of a PDF was read */
 export interface PdfPageReading {
@@ -49,29 +39,14 @@ export interface ReadPdfOptions {
   onProgress?: (message: string, done: number) => void;
 }
 
-function letterCount(text: string): number {
-  return text.replace(/[^\p{L}\p{N}]/gu, '').length;
-}
-
 /**
- * How well an OCR reading reads: its confidence times the share of its marks
- * in words, that is runs of two or more letters or digits, or decimals. A
- * report, even one of short names, units and values ("Hb 14 g/dl", "5.4"),
- * is mostly words; a page read the wrong way round is mostly single marks
- * ("Tr oO O = © = 9 Q").
+ * A page as an image for OCR, turned `turn` degrees clockwise on top of the
+ * page's own rotation, at `share` of the size OCR reads best
  */
-export function readingScore({ text, confidence }: Pick<OCRResult, 'text' | 'confidence'>): number {
-  const marks = text.replace(/\s/gu, '').length;
-  if (marks === 0) return 0;
-  const inWords = (text.match(/\p{N}+[.,]\p{N}+|[\p{L}\p{N}]{2,}/gu) ?? []).join('').length;
-  return (confidence * inWords) / marks;
-}
-
-/** A page as an image for OCR, turned `turn` degrees clockwise on top of the page's own rotation */
-async function renderForOcr(page: PdfPage, turn: number): Promise<Blob> {
+async function renderForOcr(page: PdfPage, turn: number, share: number): Promise<Blob> {
   const rotation = ((page.rotate ?? 0) + turn) % 360;
   const natural = page.getViewport({ scale: 1, rotation });
-  const scale = Math.min(OCR_SCALE, MAX_OCR_SIDE / Math.max(natural.width, natural.height));
+  const scale = Math.min(OCR_SCALE, MAX_OCR_SIDE / Math.max(natural.width, natural.height)) * share;
   const viewport = page.getViewport({ scale, rotation });
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(viewport.width);
@@ -86,32 +61,19 @@ async function renderForOcr(page: PdfPage, turn: number): Promise<Blob> {
   }
 }
 
-/**
- * OCR a page's image. One that reads poorly is read again turned, keeping
- * the best reading: a page scanned sideways reads as noise.
- */
+/** OCR a page's image, read turned when it reads poorly, as a page scanned sideways does */
 async function ocrPage(
   page: PdfPage,
   pageNumber: number,
   total: number,
   { language, onProgress }: ReadPdfOptions
 ): Promise<PdfPageReading> {
-  let best: { result: OCRResult; turned: number; score: number } | undefined;
-  for (const [index, turn] of TURNS.entries()) {
-    // Each turn has its share of the page, so progress never goes back for a page read again
-    const done = (share: number) => (pageNumber - 1 + (index + share) / TURNS.length) / total;
-    onProgress?.(`Rendering page ${pageNumber}/${total}`, done(0));
-    const image = await renderForOcr(page, turn);
-    const result = await recognizeImage(image, {
-      language,
-      onProgress: (progress) => onProgress?.(`OCR: ${progress.status} (page ${pageNumber}/${total})`, done(progress.progress)),
-    });
-    const score = readingScore(result);
-    if (!best || score > best.score) best = { result, turned: turn, score };
-    // A blank page reads as nothing whichever way it is turned
-    if (best.score >= TURN_RETRY_SCORE || letterCount(result.text) === 0) break;
-  }
-  const { result, turned } = best!;
+  const done = (share: number) => (pageNumber - 1 + share) / total;
+  const { result, turned } = await readTurned((turn, share) => renderForOcr(page, turn, share), {
+    language,
+    onRendering: (share) => onProgress?.(`Rendering page ${pageNumber}/${total}`, done(share)),
+    onOcr: (status, share) => onProgress?.(`OCR: ${status} (page ${pageNumber}/${total})`, done(share)),
+  });
   return { pageNumber, text: result.text.trim(), method: 'ocr', confidence: result.confidence, ...(turned && { turned }) };
 }
 

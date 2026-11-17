@@ -8,8 +8,7 @@
  * 4. Identifying each value's LOINC test: learned, local match, then the AI
  */
 
-import { OCRError, detectDocumentType, readPdf, recognizeImage } from '../ocr';
-import type { DocumentDetectionResult, OCRResult } from '../ocr';
+import { OCRError, detectDocumentType, readImage, readPdf } from '../ocr';
 import { getAIProvider, AIAnalysisError, extractedInterval, heldQualitative } from '../ai';
 import { AI_PROVIDER_NAMES } from '../ai/types';
 import {
@@ -128,8 +127,8 @@ export interface AnalysisResult {
   id: string;
   /** Original file name */
   fileName: string;
-  /** Document type detected */
-  documentType: DocumentDetectionResult['type'];
+  /** A PDF read from its own text, one with pages read by OCR, or an image */
+  documentType: 'text-pdf' | 'scanned-pdf' | 'image';
   /** Text extraction result */
   extractionMethod: 'pdf-text' | 'ocr';
   /** Extracted text */
@@ -223,7 +222,8 @@ export async function analyzeLabReport(
   const stages: AnalysisStage[] = [];
   const warnings: string[] = [];
 
-  let documentType: DocumentDetectionResult['type'] = 'image';
+  let documentType: AnalysisResult['documentType'] = 'image';
+  let isPdf = false;
   let extractedText = '';
   let extractionMethod: 'pdf-text' | 'ocr' = 'ocr';
 
@@ -235,7 +235,7 @@ export async function analyzeLabReport(
   try {
     startStage(detectionStage);
     const detection = await detectDocumentType(file);
-    documentType = detection.type;
+    isPdf = detection.type === 'pdf';
 
     if (!detection.metadata.isValid) {
       throw new AnalysisError(
@@ -262,7 +262,7 @@ export async function analyzeLabReport(
   try {
     startStage(extractionStage);
 
-    if (documentType === 'text-pdf' || documentType === 'scanned-pdf') {
+    if (isPdf) {
       // Each page as it is, its own text or OCR of its image
       const reading = await readPdf(file, {
         language: options.language,
@@ -272,17 +272,16 @@ export async function analyzeLabReport(
       warnings.push(...reading.errors);
       const ocrPages = reading.pages.filter((page) => page.method === 'ocr');
       extractionMethod = ocrPages.length > 0 ? 'ocr' : 'pdf-text';
+      documentType = ocrPages.length > 0 ? 'scanned-pdf' : 'text-pdf';
       if (ocrPages.length > 0) {
         const averageConfidence = ocrPages.reduce((sum, page) => sum + (page.confidence ?? 0), 0) / ocrPages.length;
         warnings.push(...lowOcrConfidenceWarning(averageConfidence));
       }
     } else {
-      // Image file - use OCR
-      const ocrResult: OCRResult = await recognizeImage(file, {
+      // Image file: drawn the way it is shown, read turned when it reads poorly
+      const ocrResult = await readImage(file, {
         language: options.language,
-        onProgress: (progress) => {
-          options.onProgress?.(`OCR: ${progress.status}`, 0.3 + progress.progress * 0.2);
-        },
+        onProgress: (message, done) => options.onProgress?.(message, 0.3 + done * 0.2),
       });
       extractedText = ocrResult.text;
       extractionMethod = 'ocr';

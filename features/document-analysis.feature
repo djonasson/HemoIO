@@ -44,6 +44,12 @@ Feature: Document Analysis
     When the document is processed
     Then the page should be read turned upright
     And the AI should receive its text as printed
+    And the other ways round should first be tried on a small image of the page, so the page is read at full size only the way it reads best
+
+  Scenario: A PDF is opened once
+    Given I upload a PDF lab report
+    When the document is processed
+    Then the PDF should be opened only once to be read
 
   Scenario: A scanned page is read at a resolution OCR reads well
     Given a scanned PDF lab report
@@ -68,28 +74,36 @@ Feature: Document Analysis
     When the document is processed
     Then OCR should extract the text
 
-  Scenario: Handle rotated images
-    Given I upload a rotated image of a lab report
+  Scenario: A photo taken sideways is read turned
+    Given I upload a photo of a lab report taken a quarter turn sideways
     When the document is processed
-    Then the image orientation should be detected
-    And text should be extracted correctly
+    Then the photo should be read turned upright
+    And the AI should receive its text as printed
+
+  Scenario: A photo the camera marked as turned is read upright
+    Given I upload a photo of a lab report whose camera stored it sideways, marked to be shown upright
+    When the document is processed
+    Then the photo should be read the way it is shown
+    And the AI should receive its text as printed
 
   # Document Type Detection
+  # A PDF is told from an image by the file alone; whether a PDF is typed
+  # or scanned is told while its pages are read, so it is opened once
   Scenario: Detect text-based PDF
     Given I upload a PDF with embedded text
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as a text PDF
     And OCR should not be used
 
   Scenario: Detect scanned PDF
     Given I upload a PDF that is a scanned image
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as a scanned PDF
     And OCR should be used for extraction
 
   Scenario: Detect image file
     Given I upload a JPEG or PNG file
-    When the document type is analyzed
+    When the document is read
     Then it should be classified as an image
     And OCR should be used for extraction
 
@@ -218,7 +232,7 @@ Feature: Document Analysis
   Scenario: Handle corrupt PDF
     Given I upload a corrupt PDF file
     When extraction is attempted
-    Then an appropriate error message should be shown
+    Then an error message should say the text could not be extracted from the PDF
     And the user should be prompted to try another file
 
   Scenario: Handle empty document

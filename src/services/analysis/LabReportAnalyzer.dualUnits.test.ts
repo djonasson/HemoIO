@@ -13,12 +13,10 @@ import * as aiModule from '../ai';
 vi.mock('../ocr', () => ({
   OCRError: class OCRError extends Error {},
   detectDocumentType: vi.fn().mockResolvedValue({
-    type: 'text-pdf',
+    type: 'pdf',
     mimeType: 'application/pdf',
     fileName: 'report.pdf',
     fileSize: 1024,
-    needsOCR: false,
-    confidence: 0.95,
     metadata: { isValid: true },
   }),
   readPdf: vi.fn().mockResolvedValue({

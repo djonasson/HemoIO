@@ -1,17 +1,15 @@
 /**
  * Document Type Detection Service
  *
- * Detects the type of uploaded documents and determines the best
- * extraction strategy (direct text extraction vs OCR).
+ * Tells a PDF from an image, and whether a file can be read at all, from
+ * the file alone: how each page or image is read is decided while reading
+ * it (readPdf, readImage), so the file is opened once.
  */
-
-import { extractTextFromPDF } from './pdfExtractor';
-import type { PDFExtractionResult } from './pdfExtractor';
 
 /**
  * Supported document types
  */
-export type DocumentType = 'text-pdf' | 'scanned-pdf' | 'image';
+export type DocumentType = 'pdf' | 'image';
 
 /**
  * Supported file MIME types
@@ -53,14 +51,6 @@ export interface DocumentDetectionResult {
   fileName: string;
   /** File size in bytes */
   fileSize: number;
-  /** Whether OCR is needed for text extraction */
-  needsOCR: boolean;
-  /** Confidence in the detection (0-1) */
-  confidence: number;
-  /** For PDFs, the number of pages */
-  pageCount?: number;
-  /** For PDFs, preview text if available */
-  previewText?: string;
   /** Additional metadata */
   metadata: DocumentMetadata;
 }
@@ -73,20 +63,6 @@ export interface DocumentMetadata {
   isValid: boolean;
   /** Error message if validation failed */
   validationError?: string;
-  /** Detected orientation for images */
-  orientation?: 'portrait' | 'landscape';
-  /** For PDFs, text confidence score */
-  textConfidence?: number;
-}
-
-/**
- * Options for document detection
- */
-export interface DetectionOptions {
-  /** Whether to do a quick scan (faster but less accurate) */
-  quickScan?: boolean;
-  /** Maximum pages to scan for PDFs */
-  maxPagesToScan?: number;
 }
 
 /**
@@ -110,54 +86,20 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
  * Detect the type of an uploaded document
  *
  * @param file - File to analyze
- * @param options - Detection options
  * @returns Detection result with document type and metadata
  */
-export async function detectDocumentType(
-  file: File,
-  options: DetectionOptions = {}
-): Promise<DocumentDetectionResult> {
-  const { quickScan = true, maxPagesToScan = 5 } = options;
+export async function detectDocumentType(file: File): Promise<DocumentDetectionResult> {
+  const found = { fileName: file.name, fileSize: file.size };
 
   // Basic validation
   const validation = validateFile(file);
   if (!validation.isValid) {
-    return {
-      type: 'image', // Default fallback
-      mimeType: file.type || 'unknown',
-      fileName: file.name,
-      fileSize: file.size,
-      needsOCR: false,
-      confidence: 0,
-      metadata: validation,
-    };
+    return { ...found, type: 'image', mimeType: file.type || 'unknown', metadata: validation };
   }
 
+  // Valid, so a PDF or an image
   const mimeType = getMimeType(file);
-
-  // Handle images
-  if (isImageType(mimeType)) {
-    return detectImageDocument(file, mimeType);
-  }
-
-  // Handle PDFs
-  if (mimeType === SUPPORTED_MIME_TYPES.pdf) {
-    return detectPDFDocument(file, { quickScan, maxPagesToScan });
-  }
-
-  // Unknown file type
-  return {
-    type: 'image',
-    mimeType,
-    fileName: file.name,
-    fileSize: file.size,
-    needsOCR: true,
-    confidence: 0,
-    metadata: {
-      isValid: false,
-      validationError: `Unsupported file type: ${mimeType}`,
-    },
-  };
+  return { ...found, type: mimeType === SUPPORTED_MIME_TYPES.pdf ? 'pdf' : 'image', mimeType, metadata: { isValid: true } };
 }
 
 /**
@@ -238,106 +180,6 @@ function isSupportedType(mimeType: string): boolean {
 }
 
 /**
- * Check if MIME type is an image
- *
- * @param mimeType - MIME type to check
- * @returns true if image type
- */
-function isImageType(mimeType: string): boolean {
-  return IMAGE_MIME_TYPES.has(mimeType);
-}
-
-/**
- * Detect properties of an image document
- *
- * @param file - Image file
- * @param mimeType - MIME type
- * @returns Detection result
- */
-async function detectImageDocument(
-  file: File,
-  mimeType: string
-): Promise<DocumentDetectionResult> {
-  // For images, we can try to detect orientation
-  let orientation: 'portrait' | 'landscape' | undefined;
-
-  try {
-    const imageBitmap = await createImageBitmap(file);
-    orientation = imageBitmap.width > imageBitmap.height ? 'landscape' : 'portrait';
-    imageBitmap.close();
-  } catch {
-    // Image dimension detection failed, continue without it
-  }
-
-  return {
-    type: 'image',
-    mimeType,
-    fileName: file.name,
-    fileSize: file.size,
-    needsOCR: true,
-    confidence: 1.0, // High confidence - it's definitely an image
-    metadata: {
-      isValid: true,
-      orientation,
-    },
-  };
-}
-
-/**
- * Detect properties of a PDF document
- *
- * @param file - PDF file
- * @param options - Detection options
- * @returns Detection result
- */
-async function detectPDFDocument(
-  file: File,
-  options: { quickScan: boolean; maxPagesToScan: number }
-): Promise<DocumentDetectionResult> {
-  try {
-    const extractionResult: PDFExtractionResult = await extractTextFromPDF(file, {
-      quickScan: options.quickScan,
-      maxPages: options.maxPagesToScan,
-    });
-
-    const isScanned = extractionResult.isScanned;
-    const type: DocumentType = isScanned ? 'scanned-pdf' : 'text-pdf';
-
-    // Get preview text (first 500 chars)
-    const previewText = extractionResult.fullText.slice(0, 500);
-
-    return {
-      type,
-      mimeType: SUPPORTED_MIME_TYPES.pdf,
-      fileName: file.name,
-      fileSize: file.size,
-      needsOCR: isScanned,
-      confidence: extractionResult.textConfidence,
-      pageCount: extractionResult.totalPages,
-      previewText: previewText || undefined,
-      metadata: {
-        isValid: true,
-        textConfidence: extractionResult.textConfidence,
-      },
-    };
-  } catch (error) {
-    // PDF parsing failed - might be corrupt
-    return {
-      type: 'scanned-pdf',
-      mimeType: SUPPORTED_MIME_TYPES.pdf,
-      fileName: file.name,
-      fileSize: file.size,
-      needsOCR: true,
-      confidence: 0,
-      metadata: {
-        isValid: false,
-        validationError: `Failed to parse PDF: ${error instanceof Error ? error.message : String(error)}`,
-      },
-    };
-  }
-}
-
-/**
  * Check if a file is a supported document type
  *
  * @param file - File to check
@@ -346,33 +188,4 @@ async function detectPDFDocument(
 export function isSupportedDocument(file: File): boolean {
   const mimeType = getMimeType(file);
   return isSupportedType(mimeType);
-}
-
-/**
- * Get list of supported file extensions
- *
- * @returns Array of supported extensions (with dots)
- */
-export function getSupportedExtensions(): string[] {
-  return Object.keys(EXTENSION_TO_MIME);
-}
-
-/**
- * Get accept string for file input elements
- *
- * @returns Accept attribute value
- */
-export function getAcceptString(): string {
-  const mimeTypes = Object.values(SUPPORTED_MIME_TYPES);
-  return mimeTypes.join(',');
-}
-
-/**
- * Error thrown when document detection fails
- */
-export class DocumentDetectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DocumentDetectionError';
-  }
 }

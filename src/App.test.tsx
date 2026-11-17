@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the OCR services to avoid loading pdf.js in tests
 vi.mock('./services/ocr', () => ({
   isSupportedDocument: vi.fn().mockReturnValue(true),
-  getAcceptString: vi.fn().mockReturnValue('application/pdf,image/jpeg,image/png'),
   SUPPORTED_MIME_TYPES: {
     pdf: 'application/pdf',
     jpeg: 'image/jpeg',
@@ -12,7 +11,7 @@ vi.mock('./services/ocr', () => ({
   },
   detectDocumentType: vi.fn(),
   readPdf: vi.fn(),
-  recognizeImage: vi.fn(),
+  readImage: vi.fn(),
 }));
 
 vi.mock('./services/analysis', () => ({

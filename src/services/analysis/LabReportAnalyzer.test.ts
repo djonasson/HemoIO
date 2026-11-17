@@ -9,12 +9,10 @@ import {
 vi.mock('../ocr', () => ({
   OCRError: class OCRError extends Error {},
   detectDocumentType: vi.fn().mockResolvedValue({
-    type: 'text-pdf',
+    type: 'pdf',
     mimeType: 'application/pdf',
     fileName: 'test.pdf',
     fileSize: 1024,
-    needsOCR: false,
-    confidence: 0.95,
     metadata: { isValid: true },
   }),
   readPdf: vi.fn().mockResolvedValue({
@@ -22,13 +20,14 @@ vi.mock('../ocr', () => ({
     pages: [{ pageNumber: 1, text: 'Patient Lab Report', method: 'pdf-text' }],
     errors: [],
   }),
-  recognizeImage: vi.fn().mockResolvedValue({
+  readImage: vi.fn().mockResolvedValue({
     text: 'OCR extracted text with enough content for analysis to proceed successfully',
     confidence: 85,
     words: [],
     wasRotated: false,
     rotationAngle: 0,
     processingTime: 1000,
+    turned: 0,
   }),
 }));
 
@@ -207,8 +206,6 @@ describe('LabReportAnalyzer', () => {
         mimeType: 'image/jpeg',
         fileName: 'scan.jpg',
         fileSize: 1024,
-        needsOCR: true,
-        confidence: 1.0,
         metadata: { isValid: true },
       });
 
@@ -217,7 +214,7 @@ describe('LabReportAnalyzer', () => {
       const result = await analyzeLabReport(file, defaultOptions);
 
       expect(result.extractionMethod).toBe('ocr');
-      expect(ocrModule.recognizeImage).toHaveBeenCalled();
+      expect(ocrModule.readImage).toHaveBeenCalled();
     });
 
     it('shows why OCR failed in words the user can act on', async () => {
@@ -226,11 +223,9 @@ describe('LabReportAnalyzer', () => {
         mimeType: 'image/jpeg',
         fileName: 'scan.jpg',
         fileSize: 1024,
-        needsOCR: true,
-        confidence: 1.0,
         metadata: { isValid: true },
       });
-      vi.mocked(ocrModule.recognizeImage).mockRejectedValueOnce(
+      vi.mocked(ocrModule.readImage).mockRejectedValueOnce(
         new ocrModule.OCRError('OCR could not load.')
       );
 
@@ -245,8 +240,6 @@ describe('LabReportAnalyzer', () => {
         mimeType: 'unknown',
         fileName: 'test.exe',
         fileSize: 1024,
-        needsOCR: false,
-        confidence: 0,
         metadata: {
           isValid: false,
           validationError: 'Unsupported file type',
@@ -330,18 +323,17 @@ describe('LabReportAnalyzer', () => {
         mimeType: 'image/jpeg',
         fileName: 'blurry.jpg',
         fileSize: 1024,
-        needsOCR: true,
-        confidence: 1.0,
         metadata: { isValid: true },
       });
 
-      vi.mocked(ocrModule.recognizeImage).mockResolvedValueOnce({
+      vi.mocked(ocrModule.readImage).mockResolvedValueOnce({
         text: 'Some blurry text that is hard to read but still contains enough characters',
         confidence: 50,
         words: [],
         wasRotated: false,
         rotationAngle: 0,
         processingTime: 1000,
+        turned: 0,
       });
 
       const file = createMockFile('blurry.jpg', 'image/jpeg');
@@ -400,12 +392,10 @@ describe('LabReportAnalyzer', () => {
     it('handles individual file failures', async () => {
       vi.mocked(ocrModule.detectDocumentType)
         .mockResolvedValueOnce({
-          type: 'text-pdf',
+          type: 'pdf',
           mimeType: 'application/pdf',
           fileName: 'good.pdf',
           fileSize: 1024,
-          needsOCR: false,
-          confidence: 0.95,
           metadata: { isValid: true },
         })
         .mockResolvedValueOnce({
@@ -413,8 +403,6 @@ describe('LabReportAnalyzer', () => {
           mimeType: 'unknown',
           fileName: 'bad.exe',
           fileSize: 1024,
-          needsOCR: false,
-          confidence: 0,
           metadata: { isValid: false, validationError: 'Unsupported' },
         });
 
@@ -437,17 +425,13 @@ describe('LabReportAnalyzer', () => {
           mimeType: 'unknown',
           fileName: 'bad.exe',
           fileSize: 1024,
-          needsOCR: false,
-          confidence: 0,
           metadata: { isValid: false, validationError: 'Unsupported' },
         })
         .mockResolvedValueOnce({
-          type: 'text-pdf',
+          type: 'pdf',
           mimeType: 'application/pdf',
           fileName: 'good.pdf',
           fileSize: 1024,
-          needsOCR: false,
-          confidence: 0.95,
           metadata: { isValid: true },
         });
 
@@ -517,12 +501,10 @@ describe('LabReportAnalyzer', () => {
 
     it('sends the text of every page, OCR\'d or its own, to the AI', async () => {
       vi.mocked(ocrModule.detectDocumentType).mockResolvedValueOnce({
-        type: 'scanned-pdf',
+        type: 'pdf',
         mimeType: 'application/pdf',
         fileName: 'scan.pdf',
         fileSize: 1024,
-        needsOCR: true,
-        confidence: 0.9,
         metadata: { isValid: true },
       });
       vi.mocked(ocrModule.readPdf).mockResolvedValueOnce(scanned);
@@ -535,6 +517,7 @@ describe('LabReportAnalyzer', () => {
       expect(sentText).toContain('Page one: Glucose 95 mg/dL');
       expect(sentText).toContain('Page two: Hemoglobin 14.5 g/dL');
       expect(result.extractionMethod).toBe('ocr');
+      expect(result.documentType).toBe('scanned-pdf');
       // The OCR'd pages average 65%
       expect(result.warnings).toContain('Low OCR confidence (65%). Results may be inaccurate.');
     });

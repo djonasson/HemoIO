@@ -32,7 +32,8 @@ import { it } from 'vitest';
 import { loadCatalog } from '@data/loinc/catalog';
 import { matchLocally, type LocalMatch, type PrintedValue } from '@services/analysis/loincMatch';
 import { OllamaProvider } from '@services/ai/OllamaProvider';
-import { extractTextFromPDF } from '@services/ocr/pdfExtractor';
+import { pageText, withPdf } from '@services/ocr/pdfExtractor';
+import { letterCount, MIN_PAGE_LETTERS } from '@services/ocr/letters';
 
 const REPOSITORY = resolve(__dirname, '..');
 
@@ -62,9 +63,14 @@ async function printedValues(pdf: string, cacheDir: string | undefined): Promise
   // PDF.js runs its worker in this thread when it finds it here (Node has no workers for it)
   Object.assign(globalThis, { pdfjsWorker: await import('pdfjs-dist/legacy/build/pdf.worker.mjs') });
   const bytes = readFileSync(pdf);
-  const { fullText, isScanned } = await extractTextFromPDF(
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)
-  );
+  const texts = await withPdf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length), async (doc) => {
+    const pages: string[] = [];
+    for (let number = 1; number <= doc.numPages; number++) pages.push(await pageText(await doc.getPage(number)));
+    return pages;
+  });
+  const fullText = texts.join('\n\n');
+  // Most pages with next to no text of their own: scans
+  const isScanned = texts.filter((text) => letterCount(text) >= MIN_PAGE_LETTERS).length < texts.length / 2;
   // OCR needs the browser's worker files: a scanned report is read in the app
   if (isScanned) throw new Error(`${basename(pdf)} is a scanned PDF; the runner reads text PDFs only`);
   globalThis.fetch = ((input: string | URL, init?: RequestInit) =>
